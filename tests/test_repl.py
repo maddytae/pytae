@@ -3004,7 +3004,7 @@ def test_repl_redirected_file_input_suppresses_prompt(tmp_path, monkeypatch) -> 
         r.run(output_fn=outputs.append)
 
     # Banner is printed, but no repeated prompt lines
-    assert any("PYTAE INTERACTIVE REPL" in o for o in outputs)
+    assert any("PYTAE INTERACTIVE WORKBENCH" in o for o in outputs)
     assert any("Exiting pytae REPL" in o for o in outputs)
     assert not any("winpty pytae" in o for o in outputs)
 

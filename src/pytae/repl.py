@@ -854,9 +854,44 @@ def _split_repl_pipe(raw: str) -> tuple[str, str] | None:
 
 REPL_BANNER = """\
 ================================================================================
-                         PYTAE INTERACTIVE REPL                                 
+                    PYTAE INTERACTIVE WORKBENCH (v{version})
 ================================================================================
-Type 'help' for REPL commands, 'reset' to revert to original, or 'exit' to quit.
+  Quick Start:
+    df = sample:penguins           Load built-in sample (penguins, tips, titanic)
+    df = orders.parquet            Load local dataset (Parquet, CSV, IPC, Excel)
+    help                           Full command reference and pipeline cheat sheet
+
+  Key Interactions:
+    Pipelines : -filter "age > 30" | -select name,age | -arrange "age desc"
+    SQL       : -sql "SELECT species, COUNT(*) as n FROM df GROUP BY species"
+    Inspect   : -head 5 | -schema | -cols | status tables | status
+    State     : checkpoint cp1 | restore cp1 | reset | session save <name>
+    Shell     : !<cmd> (e.g. !ls -la) or pipe pipeline output: -cols | grep mass
+    Exit      : exit (or 'exit -s' to save session commands to history.txt)
+
+  Tip: Press [Tab] to autocomplete table names, columns, commands, and flags.
+================================================================================\
+"""
+
+REPL_BANNER_LOADED = """\
+================================================================================
+                    PYTAE INTERACTIVE WORKBENCH (v{version})
+================================================================================
+  Quick Start:
+    help                           Full command reference and pipeline cheat sheet
+    -head 10                       Preview active dataset
+    status tables                  List all tables in memory and RAM footprint
+
+  Key Interactions:
+    Pipelines : -filter "<cond>" | -select <cols> | -arrange "<cols>"
+    SQL       : -sql "SELECT * FROM df LIMIT 10"
+    Inspect   : -schema | -cols | -dtype | status | diff
+    State     : checkpoint cp1 | restore cp1 | reset | session save <name>
+    Shell     : !<cmd> (e.g. !ls -la) or pipe pipeline output: -cols | grep mass
+    Exit      : exit (or 'exit -s' to save session commands to history.txt)
+
+  Tip: Press [Tab] to autocomplete table names, columns, commands, and flags.
+================================================================================\
 """
 
 REPL_HELP = """\
@@ -866,10 +901,10 @@ REPL_HELP = """\
 DATASET INGEST & MANAGEMENT:
   <var> = <path> [options]: Load dataset into named table (e.g. df = data.parquet)
   load <path> as <var>... : Load dataset with alias and options (-encoding, -dlim, -nrows)
-  tables                 : List all loaded datasets in memory with row/col counts
+  status tables [-v]     : List all loaded datasets in memory with row/col counts and RAM
   use <name>             : Switch active dataset (e.g. use df, use orders)
   rename <old> <new>     : Rename in-memory table (zero-copy alias reassignment)
-  rm <table_name>        : Remove in-memory table (e.g. rm df1, rm orders, or rm *)
+  rm table <table_name>  : Remove in-memory table (e.g. rm table df1, or rm table *)
 
 DATA TRANSFORMATION & PIPELINES:
   -filter <condition>    : Filter active table, e.g. -filter "species == 'Gentoo'"
@@ -5011,14 +5046,18 @@ class PytaeRepl:
     ) -> Any:
         """Run the REPL interactive loop until user exits. Returns final active DataFrame."""
         _init_readline(self._complete)
-        output_fn(REPL_BANNER)
+        from pytae import __version__
+
         if self.current_df is not None:
+            output_fn(REPL_BANNER_LOADED.format(version=__version__))
+            active_alias = self.path_str or "df"
             output_fn(
-                f"Loaded: {self.path_str or '<dataframe>'} ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols)"
+                f"Loaded: {active_alias} ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols)"
             )
         else:
+            output_fn(REPL_BANNER.format(version=__version__))
             output_fn(
-                "No initial dataset loaded. Use '<var> = <path.parquet>' (e.g. df1 = orders.parquet) to load a table."
+                "No initial dataset loaded. Use '<var> = <path>' or 'df = sample:penguins' to start."
             )
         is_redirected_input = False
         try:
