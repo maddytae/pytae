@@ -145,8 +145,9 @@ CHEATSHEET_TEXT = """\
   #   exit [-s [path]]        Exit REPL (optionally save session history to file)
   #   reset                   Restore original dataset from disk (instant O(1))
   #   checkpoint <name>       Save named snapshot across all session tables
-  #   rm checkpoint <name>    Delete a saved checkpoint
-  #   rm <tbl> / rm df        Remove table or active dataset from memory
+  #   rm table <tbl>          Remove in-memory table (or rm table *)
+  #   rm checkpoint <name>    Delete a saved checkpoint (or rm checkpoint *)
+  #   rm session <name>       Delete a saved persistent session
   #   restore <name>          Restore entire workbench to named snapshot
   #   -cols [asc|desc]        List column names (file order or sorted)
   #   <cmd> | <shell_cmd>     Pipe output to shell utility (e.g. -cols | grep mass)

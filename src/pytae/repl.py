@@ -854,13 +854,14 @@ STATE & WORKBENCH:
   checkpoint <name>      : Save snapshot of entire workbench (all tables in session)
   restore <name>         : Restore entire workbench to saved checkpoint
   checkpoints            : List saved checkpoints and their tables
+  rm table <name>        : Delete an in-memory table (or 'rm table *')
   rm checkpoint <name>   : Delete a saved checkpoint (or 'rm checkpoint *')
+  rm session <name>      : Remove a saved persistent session from disk
   set [key [= value]]    : Configure session & display settings (e.g. set session_name = proj, max_rows = 20, comma = on)
   session                : Show persistent session status
   session save <name>    : Persist workbench checkpoints to ~/.pytae/sessions/<name> (or custom sessions_dir)
   session load <name>    : Load persistent session checkpoints from disk
-  sessions [-v]           : List all saved persistent sessions on disk (-v for checkpoint & format details)
-  rm session <name>      : Remove a saved persistent session from disk
+  sessions [-v]          : List all saved persistent sessions on disk (-v for checkpoint & format details)
   clear                  : Clear the terminal screen
   exit [-s [path]]       : Exit REPL (optionally save session history to ./history.txt or <path>)
 
@@ -1390,7 +1391,7 @@ class PytaeRepl:
         # Explicit reset / restore / table removal or mutation of state
         if clean.startswith("reset") or clean.startswith("restore "):
             return True
-        if clean.startswith("rm ") and not clean.startswith(("rm checkpoint", "rm session", "rm cp", "rm tag")):
+        if clean.startswith("rm table ") or clean == "rm table *":
             return True
         if clean.startswith("rename ") or clean.startswith("use "):
             return True
@@ -2184,24 +2185,115 @@ class PytaeRepl:
                 output_fn(f"Memory released to operating system (PID {os.getpid()}).")
             return True
 
-        # Remove table or checkpoint: `rm <table_name>` or `rm checkpoint <name>`
+        # Remove entity: `rm table <name>`, `rm table *`, `rm checkpoint <name>`, `rm checkpoint *`, `rm session <name>`
         if first_lower == "rm":
             if len(tokens) < 2:
-                output_fn("Usage: rm <table_name> (e.g. rm df1) or rm *")
+                output_fn(
+                    "Usage: rm <category> <target>\n"
+                    "  rm table <name>        : Remove in-memory table\n"
+                    "  rm table *             : Remove all in-memory tables\n"
+                    "  rm checkpoint <name>   : Remove saved checkpoint\n"
+                    "  rm checkpoint *        : Remove all saved checkpoints\n"
+                    "  rm session <name>      : Remove persistent session"
+                )
                 return True
-            target = tokens[1]
-            if target.lower() == "session":
+
+            category = tokens[1].lower()
+
+            if category == "table":
+                if len(tokens) < 3:
+                    output_fn("Usage: rm table <name> or rm table *")
+                    return True
+                target = tokens[2]
+                if target == "*":
+                    if not self.tables:
+                        output_fn("No tables loaded to remove.")
+                        return True
+                    count = len(self.tables)
+                    self.tables.clear()
+                    self.orig_tables.clear()
+                    self.initial_tables.clear()
+                    self.table_sources.clear()
+                    self.current_df = None
+                    self.orig_df = None
+                    self.initial_df = None
+                    self.path_str = None
+                    self._record_history("rm table *")
+                    _release_memory()
+                    output_fn(f"Removed all {count} loaded tables. No tables remain loaded.")
+                    return True
+
+                if target in ("-all", "--all", "all", "-*"):
+                    output_fn(f"pytae: 'rm table {target}' is not recognized; use 'rm table *'.")
+                    return True
+
+                resolved = self._resolve_table_name(target)
+                if resolved is not None:
+                    del self.tables[resolved]
+                    if resolved in self.orig_tables:
+                        del self.orig_tables[resolved]
+                    if resolved in self.initial_tables:
+                        del self.initial_tables[resolved]
+                    if resolved in self.table_sources:
+                        del self.table_sources[resolved]
+                    if self.path_str == resolved:
+                        if self.tables:
+                            next_tbl = next(iter(self.tables.keys()))
+                            self.path_str = next_tbl
+                            self.current_df = self.tables[next_tbl]
+                            self.orig_df = self.orig_tables.get(next_tbl)
+                            self.initial_df = self.initial_tables.get(next_tbl)
+                            output_fn(f"Removed table '{resolved}'. Switched active dataset to '{next_tbl}'.")
+                        else:
+                            self.path_str = None
+                            self.current_df = None
+                            self.orig_df = None
+                            self.initial_df = None
+                            output_fn(f"Removed table '{resolved}'. No tables remain loaded.")
+                    else:
+                        if self.path_str and self.path_str in self.tables:
+                            self.current_df = self.tables[self.path_str]
+                            self.orig_df = self.orig_tables.get(self.path_str)
+                            self.initial_df = self.initial_tables.get(self.path_str)
+                        else:
+                            self.path_str = None
+                            self.current_df = None
+                            self.orig_df = None
+                            self.initial_df = None
+                        output_fn(f"Removed table '{resolved}'.")
+                    self._record_history(f"rm table {target}")
+                    _release_memory()
+                    return True
+
+                if target in self.checkpoints:
+                    output_fn(f"pytae: '{target}' is a checkpoint, not a table. Use 'rm checkpoint {target}' to remove it.")
+                    return True
+
+                avail = ", ".join(self.tables.keys()) if self.tables else "none"
+                output_fn(f"pytae: table '{target}' not found. Available: {avail}")
+                return True
+
+            if category == "tables":
+                if len(tokens) > 2 and tokens[2] in ("-all", "--all", "all", "-*", "*"):
+                    output_fn("pytae: 'rm tables' is not recognized; use 'rm table *'.")
+                elif len(tokens) > 2:
+                    output_fn(f"pytae: 'rm tables' is not recognized; use 'rm table {tokens[2]}'.")
+                else:
+                    output_fn("pytae: 'rm tables' is not recognized; use 'rm table <name>' or 'rm table *'.")
+                return True
+
+            if category == "session":
                 if len(tokens) < 3:
                     output_fn("Usage: rm session <name> (or session rm <name>)")
                     return True
                 self._cmd_rm_session(tokens[2], output_fn)
                 return True
 
-            if target.lower() == "sessions":
+            if category == "sessions":
                 output_fn("pytae: 'rm sessions' is not recognized; use 'rm session <name>'.")
                 return True
 
-            if target.lower() == "checkpoints":
+            if category == "checkpoints":
                 if len(tokens) > 2 and tokens[2] in ("-all", "--all", "all", "-*"):
                     output_fn("pytae: 'rm checkpoints' is not recognized; use 'rm checkpoint *'.")
                 elif len(tokens) > 2:
@@ -2210,7 +2302,7 @@ class PytaeRepl:
                     output_fn("pytae: 'rm checkpoints' is not recognized; use 'rm checkpoint'.")
                 return True
 
-            if target.lower() == "checkpoint":
+            if category == "checkpoint":
                 if len(tokens) < 3:
                     output_fn("Usage: rm checkpoint <name> or rm checkpoint *")
                     return True
@@ -2230,72 +2322,20 @@ class PytaeRepl:
                 output_fn(f"pytae: checkpoint '{cp_name}' not found. Available: {avail}")
                 return True
 
-            if target == "*":
-                if not self.tables:
-                    output_fn("No tables loaded to remove.")
-                    return True
-                count = len(self.tables)
-                self.tables.clear()
-                self.orig_tables.clear()
-                self.initial_tables.clear()
-                self.table_sources.clear()
-                self.current_df = None
-                self.orig_df = None
-                self.initial_df = None
-                self.path_str = None
-                self._record_history("rm *")
-                _release_memory()
-                output_fn(f"Removed all {count} loaded tables. No tables remain loaded.")
+            # If user entered bare `rm <target>` or `rm *` without category
+            if category == "*":
+                output_fn("pytae: 'rm *' requires a category; use 'rm table *' to remove all tables or 'rm checkpoint *'.")
                 return True
 
-            if target in ("-all", "--all", "all", "-*"):
-                output_fn(f"pytae: 'rm {target}' is not recognized; use 'rm *'.")
+            if self._resolve_table_name(tokens[1]) is not None or tokens[1] in self.tables:
+                output_fn(f"pytae: 'rm {tokens[1]}' requires explicit category; use 'rm table {tokens[1]}'.")
                 return True
 
-            resolved = self._resolve_table_name(target)
-            if resolved is not None:
-                del self.tables[resolved]
-                if resolved in self.orig_tables:
-                    del self.orig_tables[resolved]
-                if resolved in self.initial_tables:
-                    del self.initial_tables[resolved]
-                if resolved in self.table_sources:
-                    del self.table_sources[resolved]
-                if self.path_str == resolved:
-                    if self.tables:
-                        next_tbl = next(iter(self.tables.keys()))
-                        self.path_str = next_tbl
-                        self.current_df = self.tables[next_tbl]
-                        self.orig_df = self.orig_tables.get(next_tbl)
-                        self.initial_df = self.initial_tables.get(next_tbl)
-                        output_fn(f"Removed table '{resolved}'. Switched active dataset to '{next_tbl}'.")
-                    else:
-                        self.path_str = None
-                        self.current_df = None
-                        self.orig_df = None
-                        self.initial_df = None
-                        output_fn(f"Removed table '{resolved}'. No tables remain loaded.")
-                else:
-                    if self.path_str and self.path_str in self.tables:
-                        self.current_df = self.tables[self.path_str]
-                        self.orig_df = self.orig_tables.get(self.path_str)
-                        self.initial_df = self.initial_tables.get(self.path_str)
-                    else:
-                        self.path_str = None
-                        self.current_df = None
-                        self.orig_df = None
-                        self.initial_df = None
-                    output_fn(f"Removed table '{resolved}'.")
-                self._record_history(f"rm {target}")
-                _release_memory()
+            if tokens[1] in self.checkpoints:
+                output_fn(f"pytae: 'rm {tokens[1]}' requires explicit category; use 'rm checkpoint {tokens[1]}'.")
                 return True
 
-            if target in self.checkpoints:
-                output_fn(f"pytae: '{target}' is a checkpoint, not a table. Use 'rm checkpoint {target}' to remove it.")
-                return True
-
-            avail = ", ".join(self.tables.keys()) if self.tables else "none"
-            output_fn(f"pytae: table '{target}' not found. Available: {avail}")
+            output_fn(f"pytae: unrecognized rm category '{tokens[1]}'. Use 'rm table <name>', 'rm checkpoint <name>', or 'rm session <name>'.")
             return True
 
         # Variable Assignment: `df1 = orders.parquet` or `df3 = df1 -filter "..."` or `df3 = -sql ...`
@@ -4668,12 +4708,15 @@ class PytaeRepl:
         if last_token == "restore":
             return [c for c in self.checkpoints if c.startswith(text)]
 
-        # Case 5: 'rm ' -> complete table names or checkpoint/session keywords
+        # Case 5: 'rm ' -> complete categories: table, checkpoint, session
         if last_token == "rm":
-            options = list(self.tables.keys()) + ["checkpoint", "session"]
-            return [opt for opt in options if opt.startswith(text)]
+            return [opt for opt in ("table", "checkpoint", "session") if opt.startswith(text)]
+        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "rm" and prefix_tokens[-1].lower() == "table":
+            options = ["*"] + list(self.tables.keys())
+            return [t for t in options if t.startswith(text)]
         if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "rm" and prefix_tokens[-1].lower() == "checkpoint":
-            return [c for c in self.checkpoints if c.startswith(text)]
+            options = ["*"] + list(self.checkpoints.keys())
+            return [c for c in options if c.startswith(text)]
         if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "rm" and prefix_tokens[-1].lower() == "session":
             return [s for s in _get_saved_session_names() if s.startswith(text)]
 

@@ -843,15 +843,21 @@ def test_repl_rm_table(sample_df):
     r.path_str = "df1"
     r.current_df = r.tables["df1"]
 
-    # Remove active table df1 -> switches to df2
+    # Bare rm df1 is rejected with guidance
     r.execute_line("rm df1", output_fn=outputs.append)
+    assert "requires explicit category; use 'rm table df1'" in outputs[-1]
+    assert "df1" in r.tables
+
+    # Remove active table df1 -> switches to df2
+    outputs.clear()
+    r.execute_line("rm table df1", output_fn=outputs.append)
     assert "df1" not in r.tables
     assert "df2" in r.tables
     assert r.path_str == "df2"
     assert "Removed table 'df1'. Switched active dataset to 'df2'." in outputs[-1]
 
     # Remove last table
-    r.execute_line("rm df2", output_fn=outputs.append)
+    r.execute_line("rm table df2", output_fn=outputs.append)
     assert len(r.tables) == 0
     assert r.current_df is None
     assert r.path_str is None
@@ -1003,14 +1009,19 @@ def test_repl_rm_df_with_loaded_file(sample_parquet):
     assert r.current_df is not None
     assert "penguins_sample.parquet" in r.tables
 
-    # 'rm df' is rejected when 'df' is not a table name
+    # 'rm df' requires explicit category
     r.execute_line("rm df", output_fn=outputs.append)
-    assert "table 'df' not found" in outputs[-1]
+    assert "unrecognized rm category 'df'" in outputs[-1] or "requires explicit category" in outputs[-1]
     assert "penguins_sample.parquet" in r.tables
 
-    # Removing by explicit name or stem succeeds
+    # 'rm table df' is rejected when 'df' is not loaded
     outputs.clear()
-    r.execute_line("rm penguins_sample", output_fn=outputs.append)
+    r.execute_line("rm table df", output_fn=outputs.append)
+    assert "table 'df' not found" in outputs[-1]
+
+    # Removing by explicit name or stem succeeds with 'rm table'
+    outputs.clear()
+    r.execute_line("rm table penguins_sample", output_fn=outputs.append)
     assert "Removed table 'penguins_sample.parquet'" in outputs[-1]
     assert "No tables remain loaded" in outputs[-1]
     assert r.current_df is None
@@ -1025,7 +1036,14 @@ def test_repl_rm_df_in_memory(sample_df):
     assert r.current_df is not None
     assert "df" in r.tables
 
+    # Bare rm df rejected
     r.execute_line("rm df", output_fn=outputs.append)
+    assert "requires explicit category; use 'rm table df'" in outputs[-1]
+    assert "df" in r.tables
+
+    # Explicit rm table df succeeds
+    outputs.clear()
+    r.execute_line("rm table df", output_fn=outputs.append)
     assert "Removed table 'df'" in outputs[-1]
     assert r.current_df is None
     assert not r.tables
@@ -1036,7 +1054,7 @@ def test_repl_rm_stem_matching(sample_parquet):
     r = PytaeRepl(path=sample_parquet)
 
     # Stem match: 'penguins_sample' matches 'penguins_sample.parquet'
-    r.execute_line("rm penguins_sample", output_fn=outputs.append)
+    r.execute_line("rm table penguins_sample", output_fn=outputs.append)
     assert "Removed table 'penguins_sample.parquet'" in outputs[-1]
     assert not r.tables
 
@@ -1053,8 +1071,8 @@ def test_repl_rm_multiple_tables_switches_active(sample_df, tmp_path):
 
     # Active table is 't2'
     assert r.path_str == "t2"
-    # rm requires explicit table name
-    r.execute_line("rm t2", output_fn=outputs.append)
+    # rm requires explicit category
+    r.execute_line("rm table t2", output_fn=outputs.append)
     assert "Removed table 't2'" in outputs[-1]
     assert "Switched active dataset to 't1'" in outputs[-1]
     assert r.path_str == "t1"
@@ -1071,17 +1089,22 @@ def test_repl_rm_all_tables(sample_df, tmp_path):
     r = PytaeRepl(paths=[p1, p2])
     outputs = []
 
-    # Rejection of rm -all / rm all in favor of strict rm *
-    r.execute_line("rm -all", output_fn=outputs.append)
-    assert "use 'rm *'" in outputs[-1]
-    assert len(r.tables) == 2
-
-    r.execute_line("rm all", output_fn=outputs.append)
-    assert "use 'rm *'" in outputs[-1]
-    assert len(r.tables) == 2
-
-    # Canonical rm *
+    # Rejection of bare rm *, rm -all, rm all
     r.execute_line("rm *", output_fn=outputs.append)
+    assert "requires a category; use 'rm table *'" in outputs[-1]
+    assert len(r.tables) == 2
+
+    r.execute_line("rm table -all", output_fn=outputs.append)
+    assert "use 'rm table *'" in outputs[-1]
+    assert len(r.tables) == 2
+
+    r.execute_line("rm tables", output_fn=outputs.append)
+    assert "use 'rm table <name>' or 'rm table *'" in outputs[-1]
+    assert len(r.tables) == 2
+
+    # Canonical rm table *
+    outputs.clear()
+    r.execute_line("rm table *", output_fn=outputs.append)
     assert "Removed all 2 loaded tables" in outputs[-1]
     assert not r.tables
     assert r.current_df is None
@@ -1363,8 +1386,8 @@ def test_repl_rm_frees_table_without_affecting_disk_checkpoint():
     r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
     r.execute_line("checkpoint v1", output_fn=outputs.append)
 
-    # rm df1 drops from memory
-    r.execute_line("rm df1", output_fn=outputs.append)
+    # rm table df1 drops from memory
+    r.execute_line("rm table df1", output_fn=outputs.append)
     assert "df1" not in r.tables
     assert r.current_df is None
 
@@ -1666,7 +1689,7 @@ def test_repl_rm_releases_ram_immediately_without_disk_spill():
 
     # Remove table: must immediately drop table from memory with ZERO disk I/O
     outputs.clear()
-    r.execute_line("rm df1", output_fn=outputs.append)
+    r.execute_line("rm table df1", output_fn=outputs.append)
     assert "Removed table 'df1'" in outputs[-1]
 
     # In-memory tables and references MUST be genuinely empty
@@ -1694,7 +1717,7 @@ def test_repl_rm_wildcard_releases_ram_without_disk_spill():
     r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
     r.execute_line("df2 = sample:tips", output_fn=outputs.append)
 
-    r.execute_line("rm *", output_fn=outputs.append)
+    r.execute_line("rm table *", output_fn=outputs.append)
     assert len(r.tables) == 0
     assert len(r.orig_tables) == 0
     assert len(r.initial_tables) == 0
@@ -1719,7 +1742,7 @@ def test_repl_run_recovers_from_unhandled_exception(monkeypatch):
 
     monkeypatch.setattr(r, "execute_line", mock_execute_line)
 
-    inputs = iter(["rm df1", "exit"])
+    inputs = iter(["rm table df1", "exit"])
     monkeypatch.setattr("builtins.input", lambda _: next(inputs))
 
     res = r.run(output_fn=outputs.append)
@@ -1736,13 +1759,13 @@ def test_repl_rm_clears_all_internal_references_and_gc_command():
     r.execute_line("checkpoint abc", output_fn=outputs.append)
 
     # When df2 is active and df1 is removed, initial_df and orig_df must NOT retain df1
-    r.execute_line("rm df1", output_fn=outputs.append)
+    r.execute_line("rm table df1", output_fn=outputs.append)
     assert "df1" not in r.tables
     assert r.initial_df.shape == (244, 7)  # df2 shape, not df1
     assert r.orig_df.shape == (244, 7)
 
     # Remove second table
-    r.execute_line("rm df2", output_fn=outputs.append)
+    r.execute_line("rm table df2", output_fn=outputs.append)
     assert r.current_df is None
     assert r.orig_df is None
     assert r.initial_df is None
@@ -2504,7 +2527,7 @@ def test_repl_rm_memory_deallocation_weakref():
     ref_df3 = weakref.ref(r.tables["df3"])
 
     # 3. Remove non-active table df1 while df3 is active -> both initial and mutated df1 frames must be collected
-    r.execute_line("rm df1", output_fn=outputs.append)
+    r.execute_line("rm table df1", output_fn=outputs.append)
     gc.collect()
     assert ref_df1_init() is None
     assert ref_df1_mut() is None
@@ -2512,7 +2535,7 @@ def test_repl_rm_memory_deallocation_weakref():
     assert ref_df3() is not None
 
     # 4. Remove active table df3 -> df3 frame must be collected immediately
-    r.execute_line("rm df3", output_fn=outputs.append)
+    r.execute_line("rm table df3", output_fn=outputs.append)
     gc.collect()
     assert ref_df3() is None
     assert ref_df2_init() is not None
@@ -2524,8 +2547,8 @@ def test_repl_rm_memory_deallocation_weakref():
     ref_df2_new = weakref.ref(r.tables["df2"])
     assert ref_df2_new() is not None
 
-    # 6. Remove all with rm * -> remaining frame must be collected immediately
-    r.execute_line("rm *", output_fn=outputs.append)
+    # 6. Remove all with rm table * -> remaining frame must be collected immediately
+    r.execute_line("rm table *", output_fn=outputs.append)
     gc.collect()
     assert ref_df2_new() is None
     assert r.current_df is None

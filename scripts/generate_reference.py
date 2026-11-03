@@ -1123,11 +1123,12 @@ Persistent Sessions (~/.pytae/sessions/<name>/ or $PYTAE_SESSIONS_DIR/<name>/):
   * Note: Only checkpoints are persisted; uncheckpointed scratch tables/columns drop on exit.
 
 Strict Deletion Syntax (Wildcard):
-  - `rm <table_name>` / `rm df`: Remove specific table or active dataset from memory.
-  - `rm *`                    : Remove all in-memory tables from memory.
+  - `rm table <table_name>`   : Remove specific in-memory table.
+  - `rm table *`              : Remove all in-memory tables from memory.
   - `rm checkpoint <name>`    : Delete a named checkpoint snapshot.
   - `rm checkpoint *`         : Delete all saved checkpoint snapshots.
-  * Note: Legacy '-all' or 'all' flags are rejected; use '*' wildcard syntax. Plural 'rm checkpoints' is rejected; use singular 'rm checkpoint'.
+  - `rm session <name>`       : Delete a saved persistent session directory.
+  * Note: Legacy bare 'rm <name>' or 'rm *' requires a category ('table', 'checkpoint', 'session'). Legacy '-all' or 'all' flags are rejected; use '*' wildcard syntax. Plural 'rm tables' and 'rm checkpoints' are rejected; use singular 'rm table' and 'rm checkpoint'.
 
 Terminal Control & Utilities:
   - `clear`                   : Clear the terminal screen.
@@ -1238,11 +1239,11 @@ Use parenthesized target syntax `[prefix](target_cols)[suffix] = expr` with `_` 
    Passing `cls`, `-cls`, `--cls`, `-clear`, or `--clear` produces an immediate clear error
    directing the user to `clear`.
 
-2. Wildcard Deletion `rm *` and `rm checkpoint *`:
-   Pytae standardizes on standard wildcard `*` syntax rather than ad-hoc flags (`-all`, `all`):
-   - `rm *` removes all loaded tables from memory.
+2. Wildcard Deletion `rm table *` and `rm checkpoint *`:
+   Pytae standardizes on standard wildcard `*` syntax with explicit categories (`rm table *`, `rm checkpoint *`):
+   - `rm table *` removes all loaded tables from memory.
    - `rm checkpoint *` deletes all saved checkpoint snapshots.
-   - Singular `rm checkpoint <name>` is enforced strictly; plural `rm checkpoints` is redirected.
+   - Singular `rm table <name>` and `rm checkpoint <name>` are enforced strictly; plural `rm tables` or `rm checkpoints` are redirected.
 
 6.16. How do I get Top N records per group in the CLI? (Sequential -by)
 --------------------------------------------------------------------------------

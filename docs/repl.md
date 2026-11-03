@@ -37,7 +37,7 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
   - [Fluent Python Execution (`py <expr>`)](#fluent-python-execution-py-expr)
 - [Tab Autocompletion & Navigation](#tab-autocompletion--navigation)
 - [Memory Management & Garbage Collection](#memory-management--garbage-collection)
-  - [Removing Tables (`rm <name>`, `rm *`)](#removing-tables-rm-name-rm-)
+  - [Removing Tables (`rm table <name>`, `rm table *`)](#removing-tables-rm-table-name-rm-table-)
   - [Immediate Memory Deallocation & OS Trimming](#immediate-memory-deallocation--os-trimming)
   - [Manual GC & Memory Stats (`gc`, `status`)](#manual-gc--memory-stats-gc-status)
 - [State Navigation & History](#state-navigation--history)
@@ -416,25 +416,25 @@ shape: (3, 2)
 
 ## Memory Management & Garbage Collection
 
-### Removing Tables (`rm <name>`, `rm *`)
+### Removing Tables (`rm table <name>`, `rm table *`)
 Purge tables from memory when they are no longer needed:
 
 ```text
 # Remove specific table by variable name
-pytae [df1, df2]> rm df1
+pytae [df1, df2]> rm table df1
 Removed table 'df1'. Switched active dataset to 'df2'.
 
 # Remove all loaded tables at once
-pytae [orders, cust, big_orders]> rm *
+pytae [orders, cust, big_orders]> rm table *
 Removed all 3 loaded tables. No tables remain loaded.
 ```
 
 > [!NOTE]
-> Explicit table names (or `rm *`) are required. Vague generic aliases like `rm df` are not used when removing tables to protect against accidental deletions of the wrong dataset.
+> Explicit category syntax (`rm table <name>` or `rm table *`) is required. Categorical consistency eliminates ambiguity across tables, checkpoints (`rm checkpoint <name>`), and sessions (`rm session <name>`).
 
 ### Immediate Memory Deallocation & OS Trimming
 Unlike standard Python shells that retain memory pages in process heaps:
-1. **Zero Lingering References**: Running `rm <name>` or `rm *` purges the table from `self.tables`, `self.orig_tables`, and `self.initial_tables`.
+1. **Zero Lingering References**: Running `rm table <name>` or `rm table *` purges the table from `self.tables`, `self.orig_tables`, and `self.initial_tables`.
 2. **OS Memory Trimming**: Pytae automatically triggers [`_release_memory()`](file:///Users/maddy/Documents/my_repos/pytae/src/pytae/repl.py#L92-L131), which calls `gc.collect()` and instructs the OS memory manager to reclaim freed pages:
    - **macOS**: Resident pages trimmed and measured live via `mach_task_basic_info`.
    - **Windows**: `SetProcessWorkingSetSize(-1, -1)` and `K32EmptyWorkingSet` trim unused working set pages back to the Windows kernel.
@@ -927,7 +927,7 @@ The Pytae REPL provides context-aware autocompletion via standard `readline`:
 | | `use` | `use df1` | Switch active dataset | Yes (active) |
 | | `rename` | `rename df1 customers` | Zero-copy $O(1)$ in-memory table rename | Yes |
 | | Subject-first | `df1 -head 5`, `df2 -shape` | Execute command directly on named table | Depends |
-| | `rm` | `rm df1`, `rm orders`, `rm *` | Remove table from memory (immediate OS trim) | Yes |
+| | `rm table` | `rm table df1`, `rm table orders`, `rm table *` | Remove table from memory (immediate OS trim) | Yes |
 | **Transform** | `-filter` | `-filter "amount > 100"` | Filter rows by expression | Yes |
 | | `-mutate` | `-mutate "tax = amount * 0.1"` | Add or modify columns | Yes |
 | | `-select` | `-select "id,name,!notes"` | Column projection and exclusion | Yes |
