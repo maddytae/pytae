@@ -25739,10 +25739,7 @@ The Pytae REPL provides context-aware autocompletion via standard `readline`:
 | | `set max_rows` | `set max_rows = 20` | Max rows displayed in previews (`default`: 10) | No |
 | | `set max_cols` | `set max_cols = 5` | Max columns displayed in previews (`all`, `<int>`) | No |
 | | `set float_precision` | `set float_precision = 2` | Decimals rendered for floats (`auto`, `<int>`) | No |
-| | `set null_repr` | `set null_repr = '-'` | Custom missing value display (`null`, `<str>`) | No |
-| | `set timing` | `set timing = on` | Print elapsed wall-clock time per command | No |
-| | `set color` | `set color = off` | Toggle colored / ASCII table borders (`on`/`off`) | No |
-| | `set echo` | `set echo = on` | Echo commands before execution (`on`/`off`) | No |
+| | `set comma` | `set comma = on` | Thousands comma separators for display (`on`/`off`) | No |
 | **Export & Exit**| `-o` | `-o clean.parquet`, `-o clip` | Export dataset to file or clipboard | No |
 | | `status` | `status` | Display active dataset, RAM, undo depth | No |
 | | `gc` | `gc` | Force garbage collection and OS memory trim | No |

@@ -3205,10 +3205,11 @@ def test_repl_set_display_and_custom_settings():
     assert "max_rows          = 10" in set_text
     assert "max_cols          = all" in set_text
     assert "float_precision   = auto" in set_text
-    assert "null_repr         = null" in set_text
-    assert "timing            = off" in set_text
-    assert "color             = on" in set_text
-    assert "echo              = off" in set_text
+    assert "comma             = off" in set_text
+    assert "null_repr" not in set_text
+    assert "timing" not in set_text
+    assert "color" not in set_text
+    assert "echo" not in set_text
 
     # 2. max_rows / rows
     outputs.clear()
@@ -3256,143 +3257,92 @@ def test_repl_set_display_and_custom_settings():
     r.execute_line("set precision = -1", output_fn=outputs.append)
     assert "invalid float_precision" in outputs[-1].lower()
 
-    # 5. null_repr
+    # 5. comma
     outputs.clear()
-    r.execute_line("set null_repr = '-'", output_fn=outputs.append)
-    assert r.null_repr == "-"
-    assert "Set null_repr = '-'." in outputs[-1]
+    r.execute_line("set comma = on", output_fn=outputs.append)
+    assert r.comma is True
+    assert "Set comma = on" in outputs[-1]
 
     outputs.clear()
-    r.execute_line("set null_repr = NA", output_fn=outputs.append)
-    assert r.null_repr == "NA"
+    r.execute_line("set comma = off", output_fn=outputs.append)
+    assert r.comma is False
+    assert "Set comma = off." in outputs[-1]
 
     outputs.clear()
-    r.execute_line("set null_repr = null", output_fn=outputs.append)
-    assert r.null_repr is None
-    assert "Set null_repr = null" in outputs[-1]
+    r.execute_line("set comma = invalid", output_fn=outputs.append)
+    assert "invalid comma" in outputs[-1].lower()
 
-    # 6. timing
+    # 6. Multi-setting line with comma
     outputs.clear()
-    r.execute_line("set timing = on", output_fn=outputs.append)
-    assert r.timing is True
-
-    outputs.clear()
-    r.execute_line("set timing = off", output_fn=outputs.append)
-    assert r.timing is False
-
-    outputs.clear()
-    r.execute_line("set timing = maybe", output_fn=outputs.append)
-    assert "invalid timing" in outputs[-1].lower()
-
-    # 7. color / theme
-    outputs.clear()
-    r.execute_line("set color = off", output_fn=outputs.append)
-    assert r.color is False
-
-    outputs.clear()
-    r.execute_line("set theme = on", output_fn=outputs.append)
-    assert r.color is True
-
-    outputs.clear()
-    r.execute_line("set color = neon", output_fn=outputs.append)
-    assert "invalid color" in outputs[-1].lower()
-
-    # 8. echo
-    outputs.clear()
-    r.execute_line("set echo = on", output_fn=outputs.append)
-    assert r.echo is True
-
-    outputs.clear()
-    r.execute_line("set echo = off", output_fn=outputs.append)
-    assert r.echo is False
-
-    outputs.clear()
-    r.execute_line("set echo = random", output_fn=outputs.append)
-    assert "invalid echo" in outputs[-1].lower()
-
-    # 9. Multi-setting line
-    outputs.clear()
-    r.execute_line("set max_rows = 15, timing = on, color = off", output_fn=outputs.append)
+    r.execute_line("set max_rows = 15, comma = on, float_precision = 2", output_fn=outputs.append)
     assert r.max_rows == 15
-    assert r.timing is True
-    assert r.color is False
+    assert r.comma is True
+    assert r.float_precision == 2
+
+    # 7. Disallowed former settings
+    for retired in ("null_repr", "timing", "color", "echo", "commas", "thousands_separator"):
+        outputs.clear()
+        r.execute_line(f"set {retired} = on", output_fn=outputs.append)
+        assert "unknown setting" in outputs[-1].lower()
 
     r.close()
 
 
 def test_repl_set_table_formatting_and_inspection():
-    """Verify max_rows, float_precision, null_repr, and color affect table rendering."""
+    """Verify max_rows, float_precision, and comma affect table rendering without mutating raw data."""
     import polars as pl
 
     r = PytaeRepl()
     outputs: list[str] = []
 
-    # Create a test dataframe with floats and nulls
+    # Create a test dataframe with floats and integers
     test_df = pl.DataFrame({
-        "num": [1.234567, None, 3.456789, 4.567891, 5.678912, 6.789123],
-        "cat": ["a", "b", "c", None, "e", "f"],
+        "big_int": [1234567, 8910, 45000000],
+        "big_float": [1234.5678, 9876543.21, 100000.5],
+        "cat": ["a", "b", "c"],
     })
     r.tables["df"] = test_df
     r.current_df = test_df
     r.path_str = "df"
 
-    # Configure float_precision=2, null_repr='-', color=off
-    r.execute_line("set float_precision = 2, null_repr = '-', color = off", output_fn=outputs.append)
-    assert r.float_precision == 2
-    assert r.null_repr == "-"
-    assert r.color is False
+    # Default: comma=off, float_precision=auto
+    r.execute_line("-head 2", output_fn=outputs.append)
+    rendered_default = "\n".join(outputs)
+    assert "1234567" in rendered_default
+    assert "1,234,567" not in rendered_default
 
-    # Check inspection -head 3
+    # Configure float_precision=2, comma=on
+    outputs.clear()
+    r.execute_line("set float_precision = 2, comma = on", output_fn=outputs.append)
+    assert r.float_precision == 2
+    assert r.comma is True
+
+    # Check inspection with comma=on and float_precision=2
     outputs.clear()
     r.execute_line("-head 3", output_fn=outputs.append)
     rendered = "\n".join(outputs)
-    # Check ASCII box borders from color=off
-    assert "+" in rendered
-    # Check float_precision=2: 1.23
-    assert "1.23" in rendered
-    # Check null_repr='-'
-    assert "-" in rendered
+    # Check commas on big_int: 1,234,567 and 45,000,000
+    assert "1,234,567" in rendered
+    assert "45,000,000" in rendered
+    # Check commas and precision on big_float: 1,234.57 and 9,876,543.21
+    assert "1,234.57" in rendered
+    assert "9,876,543.21" in rendered
 
-    # Check py expression formatting
+    # Check py expression formatting honors comma and precision
     outputs.clear()
     r.execute_line("py df.head(2)", output_fn=outputs.append)
     py_rendered = "\n".join(outputs)
-    assert "+" in py_rendered
-    assert "1.23" in py_rendered
+    assert "1,234,567" in py_rendered
+    assert "1,234.57" in py_rendered
 
-    r.close()
-
-
-def test_repl_set_timing_and_echo():
-    """Verify timing and echo modes operate during command execution."""
-    import polars as pl
-
-    r = PytaeRepl()
-    r.tables["df"] = pl.DataFrame({"x": [1, 2, 3]})
-    r.current_df = r.tables["df"]
-    r.path_str = "df"
-    outputs: list[str] = []
-
-    # Turn on echo and timing
-    r.execute_line("set echo = on, timing = on", output_fn=outputs.append)
-
-    outputs.clear()
-    r.execute_line("-shape", output_fn=outputs.append)
-    # Echo should output '> -shape'
-    assert outputs[0] == "> -shape"
-    # Result should follow
-    assert "(3, 1)" in outputs[1]
-    # Timing should be appended at the end
-    assert any("[took" in o for o in outputs)
-
-    # Turn off timing and echo
-    outputs.clear()
-    r.execute_line("set echo = off, timing = off", output_fn=outputs.append)
-
-    outputs.clear()
-    r.execute_line("-shape", output_fn=outputs.append)
-    assert outputs[0] == "(3, 1)"
-    assert not any("[took" in o for o in outputs)
+    # CRITICAL: Verify that the underlying DataFrame is UNTOUCHED (display-only)
+    # Underlying data retains raw unrounded float and integers
+    assert r.current_df["big_int"][0] == 1234567
+    assert r.current_df["big_float"][0] == 1234.5678
+    # Exporting via to_pandas (used by -o clip) preserves raw numerical values
+    pdf = r.current_df.to_pandas()
+    assert pdf["big_int"].iloc[0] == 1234567
+    assert pdf["big_float"].iloc[0] == 1234.5678
 
     r.close()
 
@@ -3404,18 +3354,16 @@ def test_repl_saved_commands_pure_replayability(tmp_path):
 
     # Set various preferences
     r.execute_line("set max_rows = 50", output_fn=outputs.append)
-    r.execute_line("set timing = on", output_fn=outputs.append)
-    r.execute_line("set color = off", output_fn=outputs.append)
-    r.execute_line("set null_repr = 'NA'", output_fn=outputs.append)
+    r.execute_line("set comma = on", output_fn=outputs.append)
     r.execute_line("set float_precision = 2", output_fn=outputs.append)
-    r.execute_line("set echo = off", output_fn=outputs.append)
+    r.execute_line("set comma = off", output_fn=outputs.append)
 
     # Run genuine transformation commands
     r.execute_line("df = sample:penguins", output_fn=outputs.append)
     r.execute_line("df_clean = df -filter 'bill_length_mm > 40'", output_fn=outputs.append)
 
     # Run more set commands
-    r.execute_line("set timing = off", output_fn=outputs.append)
+    r.execute_line("set comma = on", output_fn=outputs.append)
     r.execute_line("set max_rows = 10", output_fn=outputs.append)
 
     # Export session commands

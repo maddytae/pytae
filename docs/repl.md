@@ -643,10 +643,7 @@ sessions_dir      = /Users/username/.pytae/sessions (options: <path>, default)
 max_rows          = 10 (options: <int>, default)
 max_cols          = all (options: <int>, all, default)
 float_precision   = auto (options: <int>, auto, default)
-null_repr         = null (options: <string>, null, default)
-timing            = off (options: on, off)
-color             = on (options: on, off)
-echo              = off (options: on, off)
+comma             = off (options: on, off)
 ```
 
 To query a single setting without modifying it, run `set <key>`:
@@ -767,7 +764,7 @@ Disabled auto-saving commands on exit.
 
 When you quit the REPL via `exit` or <kbd>Ctrl+D</kbd>, Pytae automatically writes the clean, executable pipeline script.
 
-### Display Preferences (`set max_rows`, `max_cols`, `float_precision`, `null_repr`, `color`)
+### Display Preferences (`set max_rows`, `max_cols`, `float_precision`, `comma`)
 
 Customize how datasets and tables are formatted and displayed during interactive inspection (`-head`, `-tail`, `-sample`, `-describe`, `py <expr>`, and pipeline executions):
 
@@ -792,7 +789,7 @@ Customize how datasets and tables are formatted and displayed during interactive
   ```
 
 - **Floating-Point Precision (`set float_precision = <int>|auto|default`, alias: `precision`)**:
-  Sets the number of decimal digits rendered for floating-point numbers. Defaults to `auto`.
+  Sets the number of decimal digits rendered for floating-point numbers during terminal table display. Defaults to `auto`.
   ```text
   pytae> set float_precision = 2
   Set float_precision = 2.
@@ -800,55 +797,31 @@ Customize how datasets and tables are formatted and displayed during interactive
   pytae> set precision = auto
   Set float_precision = auto (default precision).
   ```
+  > [!NOTE]
+  > `float_precision` is strictly a terminal display preference. It never modifies the underlying DataFrame in memory. Exports to file (`-o result.parquet`, `-o result.csv`) and clipboard (`-o clip`) always retain the full, unrounded IEEE 754 precision.
 
-- **Missing Value Representation (`set null_repr = <string>|null|default`)**:
-  Replaces standard `null` entries with a custom string (e.g. `-`, `NA`, `NaN`, `<null>`). Defaults to `null`.
+- **Thousands Comma Separator (`set comma = on|off`)**:
+  Toggles comma grouping separators for large numeric values (both integers and floating-point numbers) during terminal table display. Defaults to `off`.
   ```text
-  pytae> set null_repr = '-'
-  Set null_repr = '-'.
+  pytae> set comma = on
+  Set comma = on (numeric values will be formatted with thousands comma separators for display).
 
-  pytae> set null_repr = NA
-  Set null_repr = 'NA'.
+  pytae> df -head 2
+  shape: (2, 2)
+  ┌───────────┬──────────────┐
+  │ count     ┆ revenue      │
+  │ ---       ┆ ---          │
+  │ i64       ┆ f64          │
+  ╞═══════════╪══════════════╡
+  │ 1,234,567 ┆ 1,234.57     │
+  │ 8,910     ┆ 9,876,543.21 │
+  └───────────┴──────────────┘
 
-  pytae> set null_repr = null
-  Set null_repr = null (default Polars null representation).
+  pytae> set comma = off
+  Set comma = off.
   ```
-
-- **Color & Border Theme (`set color = on|off`, alias: `theme`)**:
-  Toggles between rich Unicode colored borders (`on`) and clean monochrome ASCII table borders (`off`). Defaults to `on`.
-  ```text
-  pytae> set color = off
-  Set color = off (monochrome/plain text formatting enabled).
-
-  pytae> set theme = on
-  Set color = on (colored terminal formatting enabled).
-  ```
-
-### Execution Feedback (`set timing`, `set echo`)
-
-Control runtime feedback and logging during interactive sessions:
-
-- **Command Execution Timing (`set timing = on|off`)**:
-  When enabled, prints precise elapsed wall-clock execution time (e.g. `[took 12.4ms]`) after every command. Defaults to `off`.
-  ```text
-  pytae> set timing = on
-  Set timing = on (elapsed execution time will be displayed for each command).
-
-  pytae> -distinct
-  (344, 8)
-  [took 3.2ms]
-  ```
-
-- **Command Echoing (`set echo = on|off`)**:
-  When enabled, echoes each input command prefixed with `>` before execution. Useful for recording demonstration logs, pipes, or automated scripts. Defaults to `off`.
-  ```text
-  pytae> set echo = on
-  Set echo = on (commands will be echoed before execution).
-
-  pytae> -shape
-  > -shape
-  (344, 8)
-  ```
+  > [!NOTE]
+  > `comma` formatting is strictly for visual display. Numerical columns remain typed `Int64` / `Float64` in memory. Copying via `-o clip` or exporting to file outputs raw unformatted numbers (`1234567`, not `"1,234,567"`), preserving calculation readiness in Excel, Google Sheets, and scripts.
 
 ### Combining Multiple Settings on One Line
 

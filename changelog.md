@@ -5,6 +5,8 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Removed
+- **REPL Settings Pruning (`set null_repr`, `timing`, `color`, `echo`)**:
+  - Removed `null_repr`, `timing`, `color`, and `echo` from REPL `set` configuration to eliminate visual clutter, reduce cognitive overhead, and focus the interactive settings surface strictly on session state, storage, and core tabular display.
 - **VS Code Extension (`extensions/vscode-pytae`)**:
   - Removed the standalone VS Code extension, themes, and syntaxes to streamline repository maintenance and focus exclusively on the core Python package, CLI, REPL, and MCP integrations.
   - Updated release and contribution protocols accordingly.
@@ -22,18 +24,16 @@ All notable changes to this project are documented in this file.
     - Concurrently reads each existing checkpoint, writes the new format (`.parquet` or `.ipc`), unlinks old files, updates `meta.json`, and records before-and-after storage statistics (`_format_bytes`).
     - Fully preserves seamless `restore` capability across both formats.
     - Excluded from replay scripts to keep batch pipelines pure and lightweight.
-- **Interactive Display & Runtime Preferences in REPL (`set max_rows`, `max_cols`, `float_precision`, `null_repr`, `timing`, `color`, `echo`)**:
-  - Added 7 new interactive workbench settings configurable on the fly via `set`:
+- **Interactive Display Preferences in REPL (`set max_rows`, `max_cols`, `float_precision`, `comma`)**:
+  - Added streamlined display preferences configurable on the fly via `set`:
     - `max_rows` (alias `rows`): Sets max rows displayed in table previews (`default`: 10).
     - `max_cols` (alias `cols`): Restricts column counts in wide table previews (`all`, `<int>`, `default`).
-    - `float_precision` (alias `precision`): Controls floating-point decimal precision (`auto`, `<int>`, `default`).
-    - `null_repr`: Replaces standard `null` with a custom string representation such as `-` or `NA` (`null`, `<str>`, `default`).
-    - `timing`: Toggles wall-clock execution timing feedback per command (`on`/`off`, default: `off`).
-    - `color` (alias `theme`): Toggles rich Unicode colored borders vs. monochrome ASCII borders (`on`/`off`, default: `on`).
-    - `echo`: Toggles echoing input commands prefixed with `>` before execution for logging and scripts (`on`/`off`, default: `off`).
-  - Added seamless multi-setting syntax (e.g. `set max_rows = 20, timing = on, color = off`).
-  - Bare `set` lists all 12 settings cleanly formatted and aligned.
-  - Full tab-autocompletion support for all 12 setting keys and their candidate values.
+    - `float_precision` (alias `precision`): Controls floating-point decimal precision rendered in terminal tables (`auto`, `<int>`, `default`).
+    - `comma`: Toggles thousands comma separators for large numeric values (integers and floats) in terminal table previews (`on`/`off`, default: `off`). Strictly display-only without alias clutter.
+  - Guaranteed display-only semantics: neither `comma` nor `float_precision` modifies in-memory DataFrames or affects exports. Exporting to file (`-o result.parquet`, `-o result.csv`) or clipboard (`-o clip`) continues to paste raw, unrounded, unformatted numerical data.
+  - Added seamless multi-setting syntax (e.g. `set max_rows = 20, comma = on, float_precision = 2`).
+  - Bare `set` lists all active settings cleanly formatted and aligned.
+  - Full tab-autocompletion support for all setting keys and candidate values.
   - Guaranteed pure replayability: all `set` commands are strictly excluded from exported command scripts (`~/.pytae/commands/` and `exit -s`), ensuring saved scripts remain 100% pure data transformation pipelines.
 - **Consistent Session Keys in REPL (`set session_name` & `set session_load`)**:
   - Renamed `set session = <name>` to `set session_name = <name>` and `set load_session = <name>` to `set session_load = <name>` for uniform `session_*` prefix alignment alongside `set sessions_dir = <path>`.
