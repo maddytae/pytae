@@ -17,6 +17,10 @@ All notable changes to this project are documented in this file.
   - Guarantees that only persistent disk file artifacts (`.parquet`, `.csv`, `.feather`, `.jsonl`) and state transformations are written to automated batch scripts, preventing failures or clipboard pollution during headless/CI batch replay while faithfully preserving all inputs in `~/.pytae/history/`.
 
 ### Added
+- **Key-Aligned Table Differences in REPL (`diff [tbl1] tbl2 on=<key>`)**:
+  - Enhanced the in-REPL `diff` (and `-diff`) command with full primary and composite key alignment support via `on=<key>` or `-on <key>` (e.g. `diff df1 df2 on=id` or `diff df2 on="store_id, product_id"`).
+  - Aligns rows by key prior to cell-by-cell comparison, reporting matched, added, and removed keys alongside schema drift and value differences.
+  - Seamlessly accepts both bare `diff` and hyphenated `-diff`, targeted table diffs (`df1 diff df2 on=id`), and embedded target formats (`diff df1 "df2,on=id"`).
 - **Non-Verbose vs. Verbose Session Listing (`pytae -sessions` & `sessions [-v]`)**:
   - Implemented clean dual-mode session inspection across CLI and REPL:
     - **Non-verbose mode** (default `pytae -sessions`, `sessions`, `session list`): Cleanly displays session name, filesystem path, and health status (`Ready` or `[Offline / Unreachable]`) without overwhelming checkpoint clutter.

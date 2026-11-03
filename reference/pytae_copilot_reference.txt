@@ -25709,7 +25709,7 @@ The Pytae REPL provides context-aware autocompletion via standard `readline`:
 | | `-dtype` / `-nulls` | `-dtype asc`, `-nulls` | Column types and missing value counts | No |
 | | `-glimpse` | `-glimpse` | Transposed schema and preview values | No |
 | | `-describe` | `-describe` | Statistical summary of numeric columns | No |
-| | `diff` | `diff df1 df2 [-tol 0.01]` | Compare two tables or active table against target | No |
+| | `diff` | `diff df1 df2 [on=id] [-tol 0.01]` | Compare two tables with optional key alignment | No |
 | **SQL & Python** | `-sql` | `-sql "SELECT * FROM df1"` | Run ANSI SQL across loaded tables | Yes (undoable) |
 | | SQL Assign | `df4 = -sql "..."` | Create new table from SQL query | Yes |
 | | `py` | `py pldf.columns` | Evaluate Python/Polars expression | No |

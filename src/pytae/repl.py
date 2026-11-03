@@ -797,7 +797,7 @@ INSPECTION & EXPORT:
   -schema                : Display structured schema breakdown (columns, dtypes, nulls, cardinality)
   -cols [asc|desc]       : List column names (file order, or asc/desc sorted)
   -dtype / -nulls        : Inspect schema dtypes and missing value counts
-  diff [<tbl1>] <tbl2>   : Compare two tables or active table against <tbl2> (or checkpoint)
+  diff [<tbl1>] <tbl2> [on=<key>] : Compare two tables or active table against <tbl2> (or checkpoint)
   -time [N]              : Benchmark execution over N runs (default: 1), e.g. -distinct -time 3
   -o <path> / -o clip    : Export table to file (Parquet/CSV/NDJSON) or clipboard
   <cmd> | <shell_cmd>    : Pipe command output to shell tool (e.g. -cols | grep bill)
@@ -2101,8 +2101,8 @@ class PytaeRepl:
             self._cmd_rename(tokens[1:], output_fn)
             return True
 
-        # Compare two datasets (`diff <tbl1> <tbl2>` or `diff <tbl>`)
-        if first_lower == "diff":
+        # Compare two datasets (`diff <tbl1> <tbl2>` or `diff <tbl>` or `-diff ...`)
+        if first_lower in ("diff", "-diff"):
             self._cmd_diff(tokens[1:], output_fn)
             return True
 
@@ -2364,6 +2364,9 @@ class PytaeRepl:
                 "py",
             )
         ):
+            if len(tokens) > 1 and tokens[1].lower() in ("diff", "-diff"):
+                self._cmd_diff([resolved_table] + tokens[2:], output_fn)
+                return True
             self._cmd_targeted_pipeline(resolved_table, line[len(tokens[0]) :].strip(), output_fn)
             return True
 
@@ -3680,12 +3683,13 @@ class PytaeRepl:
     def _cmd_diff(self, args: list[str], output_fn: Callable[[str], None]) -> None:
         """Compare two tables or compare active table against another table / checkpoint."""
         if not args:
-            output_fn("Usage: diff <tbl1> <tbl2> or diff <tbl2> (to compare active table with <tbl2>)")
+            output_fn("Usage: diff <tbl1> <tbl2> [on=<key>] [-tol N] or diff <tbl2> [on=<key>] [-tol N]")
             return
 
         left_tbl_name: str | None = None
         right_tbl_name: str | None = None
         tol_val: float = 0.0
+        on_val: str | list[str] | None = None
 
         clean_args = []
         i = 0
@@ -3703,9 +3707,38 @@ class PytaeRepl:
                 except ValueError:
                     pass
                 i += 1
+            elif a in ("-on", "--on") and i + 1 < len(args):
+                raw_on = args[i + 1].strip("'\"")
+                on_cols = [c.strip() for c in raw_on.replace(":", ",").split(",") if c.strip()]
+                on_val = on_cols[0] if len(on_cols) == 1 else on_cols
+                i += 2
+            elif a.startswith(("-on=", "--on=", "on=")):
+                raw_on = a.split("=", 1)[1].strip("'\"")
+                on_cols = [c.strip() for c in raw_on.replace(":", ",").split(",") if c.strip()]
+                on_val = on_cols[0] if len(on_cols) == 1 else on_cols
+                i += 1
             else:
                 clean_args.append(a)
                 i += 1
+
+        # Check for embedded ',on=' or ',tol=' in targets (e.g. "df2,on=id" or 'df2,on=id:date,tol=1e-3')
+        for idx, arg_item in enumerate(clean_args):
+            if "," in arg_item and any(k in arg_item.lower() for k in ("on=", "tol=", "atol=")):
+                parts = [p.strip() for p in arg_item.split(",")]
+                clean_args[idx] = parts[0]
+                for p in parts[1:]:
+                    if "=" in p:
+                        pk, pv = p.split("=", 1)
+                        pk_clean = pk.strip().lower()
+                        pv_clean = pv.strip().strip("'\"")
+                        if pk_clean in ("on", "key", "keys") and on_val is None:
+                            cols = [c.strip() for c in pv_clean.replace(":", ",").split(",") if c.strip()]
+                            on_val = cols[0] if len(cols) == 1 else cols
+                        elif pk_clean in ("tol", "atol") and tol_val == 0.0:
+                            try:
+                                tol_val = float(pv_clean)
+                            except ValueError:
+                                pass
 
         if len(clean_args) == 1:
             if self.current_df is None:
@@ -3772,13 +3805,13 @@ class PytaeRepl:
                     output_fn(f"pytae: right comparison table '{right_target}' not found. Available: {avail}")
                     return
         else:
-            output_fn("Usage: diff <tbl1> <tbl2> or diff <tbl2>")
+            output_fn("Usage: diff <tbl1> <tbl2> [on=<key>] [-tol N] or diff <tbl2> [on=<key>] [-tol N]")
             return
 
         from pytae import diff as pt_diff
 
         try:
-            diff_res = pt_diff(left_df, right_df, tol=tol_val)
+            diff_res = pt_diff(left_df, right_df, tol=tol_val, on=on_val)
             # Re-label header for clarity
             header = f"Comparing '{left_tbl_name}' vs '{right_tbl_name}':"
             output_fn(header)
@@ -4607,9 +4640,13 @@ class PytaeRepl:
         if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "rm" and prefix_tokens[-1].lower() == "session":
             return [s for s in _get_saved_session_names() if s.startswith(text)]
 
-        # Case 6: 'diff ' -> complete table names or checkpoint names
-        if first_token == "diff":
-            candidates = list(self.tables.keys()) + list(self.checkpoints.keys())
+        # Case 6: 'diff ' or '-diff ' -> complete table names, checkpoint names, flags, or on= columns
+        if first_token in ("diff", "-diff"):
+            if prefix.rstrip().endswith("on=") or last_token in ("-on", "--on"):
+                target_df = self.current_df
+                if target_df is not None:
+                    return [c for c in target_df.columns if c.startswith(text)]
+            candidates = list(self.tables.keys()) + list(self.checkpoints.keys()) + ["-tol", "on="]
             return [c for c in candidates if c.startswith(text)]
 
         # Case 7: 'set ' -> complete configuration keys

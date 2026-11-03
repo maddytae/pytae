@@ -332,7 +332,7 @@ pytae> -freq species     # Frequency distribution table for column
 ```
 
 ### Comparing Datasets (`diff <tbl1> <tbl2>`)
-Compare two in-memory tables, compare the active dataset against another table, or compare against a saved checkpoint:
+Compare two in-memory tables, compare the active dataset against another table, or compare against a saved checkpoint with optional key alignment (`on=...`) and numeric tolerance (`-tol ...`):
 
 ```text
 # Compare active table against orders_backup
@@ -341,11 +341,18 @@ pytae [orders]> diff orders_backup
 # Explicitly compare two loaded tables
 pytae> diff df1 df2
 
-# Compare with numeric float tolerance
-pytae> diff df1 df2 -tol 0.001
+# Align rows by primary key before comparing values (reports added/removed keys & mismatched cells)
+pytae> diff df1 df2 on=customer_id
+
+# Composite multi-column keys and numeric tolerance
+pytae> diff df1 df2 on="store_id, product_id" -tol 0.001
 
 # Compare active table against a saved checkpoint
-pytae [df: 344x7]> diff snap1
+pytae [df: 344x7]> diff snap1 on=id
+
+# Hyphenated -diff flag also accepted directly at prompt or as targeted table verb
+pytae> -diff df2 on=id
+pytae> df1 -diff df2 on=id
 ```
 
 ---
@@ -951,7 +958,7 @@ The Pytae REPL provides context-aware autocompletion via standard `readline`:
 | | `-dtype` / `-nulls` | `-dtype asc`, `-nulls` | Column types and missing value counts | No |
 | | `-glimpse` | `-glimpse` | Transposed schema and preview values | No |
 | | `-describe` | `-describe` | Statistical summary of numeric columns | No |
-| | `diff` | `diff df1 df2 [-tol 0.01]` | Compare two tables or active table against target | No |
+| | `diff` | `diff df1 df2 [on=id] [-tol 0.01]` | Compare two tables with optional key alignment | No |
 | **SQL & Python** | `-sql` | `-sql "SELECT * FROM df1"` | Run ANSI SQL across loaded tables | Yes (undoable) |
 | | SQL Assign | `df4 = -sql "..."` | Create new table from SQL query | Yes |
 | | `py` | `py pldf.columns` | Evaluate Python/Polars expression | No |

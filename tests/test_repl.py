@@ -2703,6 +2703,31 @@ def test_repl_diff_command():
     combined = "\n".join(outputs)
     assert "checkpoint:snap1" in combined
 
+    # diff with key alignment (on=<key>)
+    outputs.clear()
+    r.execute_line("diff df1 df2 on=species", output_fn=outputs.append)
+    combined_on = "\n".join(outputs)
+    assert "Key Alignment (on species):" in combined_on
+
+    # -diff alias with on=<key>
+    outputs.clear()
+    r.execute_line("-diff df2 on=species", output_fn=outputs.append)
+    combined_dash = "\n".join(outputs)
+    assert "Key Alignment (on species):" in combined_dash
+
+    # targeted table diff: df1 diff df2 on=species and df1 -diff df2 on=species
+    outputs.clear()
+    r.execute_line("df1 diff df2 on=species", output_fn=outputs.append)
+    assert "Key Alignment (on species):" in "\n".join(outputs)
+
+    outputs.clear()
+    r.execute_line("df1 -diff df2 on=species", output_fn=outputs.append)
+    assert "Key Alignment (on species):" in "\n".join(outputs)
+
+    outputs.clear()
+    r.execute_line('diff df1 "df2,on=species"', output_fn=outputs.append)
+    assert "Key Alignment (on species):" in "\n".join(outputs)
+
     # diff non-existent target
     outputs.clear()
     r.execute_line("diff nonexistent_target", output_fn=outputs.append)
