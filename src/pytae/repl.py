@@ -2078,15 +2078,15 @@ class PytaeRepl:
             self._cmd_clear(output_fn)
             return True
 
-        # Status
-        if line.lower() == "status":
-            self._cmd_status(output_fn)
-            return True
-
         # Tokenize line
         norm_line = _normalize_unquoted_windows_paths(line)
         tokens = shlex.split(norm_line)
         first_lower = tokens[0].lower()
+
+        # Status: `status`, `status tables` / `status table [name]`, `status checkpoints` / `status checkpoint [name]`
+        if first_lower == "status":
+            self._cmd_status(output_fn, args=tokens[1:])
+            return True
 
         # History
         if first_lower == "history":
@@ -2141,9 +2141,9 @@ class PytaeRepl:
             output_fn(f"pytae: bare '{first_lower}' is not recognized; use '-{first_lower}' (matching CLI syntax).")
             return True
 
-        # Tables list
+        # Tables list (disabled bare tables -> guide to status tables)
         if first_lower == "tables":
-            self._cmd_list_tables(output_fn)
+            output_fn("pytae: bare 'tables' is not recognized; use 'status tables' (or 'status tables -v').")
             return True
 
         # Switch active dataset (`use <name>`)
@@ -2470,8 +2470,7 @@ class PytaeRepl:
             return True
 
         if first_lower == "checkpoints":
-            verbose = any(t in ("-v", "-verbose", "--verbose", "verbose", "v") for t in tokens[1:])
-            self._cmd_list_checkpoints(output_fn, verbose=verbose)
+            output_fn("pytae: bare 'checkpoints' is not recognized; use 'status checkpoints' (or 'status checkpoints -v').")
             return True
 
         # Load file as table
@@ -2705,7 +2704,88 @@ class PytaeRepl:
         else:
             output_fn("\033[H\033[2J")
 
-    def _cmd_status(self, output_fn: Callable[[str], None]) -> None:
+    def _cmd_status(self, output_fn: Callable[[str], None], args: list[str] | None = None) -> None:
+        args = args or []
+        verbose = any(a in ("-v", "-verbose", "--verbose", "verbose", "v") for a in args)
+        target_args = [a for a in args if a not in ("-v", "-verbose", "--verbose", "verbose", "v")]
+
+        # Subcommand routing: `status tables`, `status table [name]`, `status checkpoints`, `status checkpoint [name]`
+        if target_args:
+            cat = target_args[0].lower()
+            if cat in ("tables", "table"):
+                if len(target_args) == 1:
+                    self._cmd_list_tables(output_fn, verbose=verbose)
+                    return
+                # Specific table: `status table <name>`
+                tbl_name = target_args[1]
+                resolved = self._resolve_table_name(tbl_name)
+                if resolved is None:
+                    avail = ", ".join(self.tables.keys()) if self.tables else "none"
+                    output_fn(f"pytae: table '{tbl_name}' not found. Available tables: {avail}")
+                    return
+                tbl_df = self.tables[resolved]
+                n_rows, n_cols = tbl_df.shape
+                tbl_mem_mb = tbl_df.estimated_size() / (1024 * 1024)
+                src = self.table_sources.get(resolved, "")
+                src_str = f" ({src})" if src else ""
+                is_active = self.path_str == resolved or (self.current_df is not None and self.current_df is tbl_df)
+                act_str = " [active]" if is_active else ""
+                output_fn(f"Table          : {resolved}{src_str}{act_str}")
+                output_fn(f"Shape          : {n_rows:,} rows x {n_cols} columns")
+                output_fn(f"Table memory   : ~{tbl_mem_mb:.2f} MB")
+                status_desc = "active" if is_active else "inactive (tip: 'use " + resolved + "' to switch active cursor)"
+                output_fn(f"Status         : {status_desc}")
+                if verbose:
+                    output_fn(f"Columns ({n_cols}):")
+                    for col_name, dtype in zip(tbl_df.columns, tbl_df.dtypes, strict=False):
+                        output_fn(f"  {col_name:<20}: {dtype}")
+                return
+
+            if cat in ("checkpoints", "checkpoint"):
+                if len(target_args) == 1:
+                    self._cmd_list_checkpoints(output_fn, verbose=verbose)
+                    return
+                # Specific checkpoint: `status checkpoint <name>`
+                cp_name = target_args[1]
+                if cp_name not in self.checkpoints:
+                    avail = ", ".join(self.checkpoints.keys()) if self.checkpoints else "none"
+                    output_fn(f"pytae: checkpoint '{cp_name}' not found. Available checkpoints: {avail}")
+                    return
+                snap = self.checkpoints[cp_name]
+                cp_path = Path(snap["dir"]) if "dir" in snap else (self._get_cp_dir() / cp_name)
+                created_at = snap.get("created_at", "unknown")
+                fmt = snap.get("format", "ipc")
+                output_fn(f"Checkpoint     : {cp_name}")
+                output_fn(f"Created        : {created_at}")
+                output_fn(f"Format         : {fmt}")
+                if cp_path.exists():
+                    try:
+                        total_b = sum(f.stat().st_size for f in cp_path.rglob("*") if f.is_file())
+                        output_fn(f"Disk size      : {_format_bytes(total_b)}")
+                    except Exception:
+                        pass
+                tbls = snap.get("tables", {})
+                if isinstance(tbls, dict) and tbls:
+                    output_fn(f"Tables ({len(tbls)}):")
+                    for t_name, val in tbls.items():
+                        s = val.get("shape", []) if isinstance(val, dict) else getattr(val, "shape", [])
+                        shape_str = f"{s[0]:,} rows x {s[1]} cols" if len(s) == 2 else ""
+                        if verbose and isinstance(val, dict):
+                            f_name = val.get("file", "")
+                            f_path = cp_path / f_name if f_name else None
+                            f_sz = f" ({_format_bytes(f_path.stat().st_size)})" if f_path and f_path.exists() else ""
+                            output_fn(f"  - {t_name:<14}: {shape_str} [{f_name}]{f_sz}")
+                        else:
+                            output_fn(f"  - {t_name:<14}: {shape_str}")
+                return
+
+            output_fn(
+                f"pytae: unrecognized status category '{target_args[0]}'. "
+                "Use 'status', 'status tables [-v]', or 'status checkpoints [-v]'."
+            )
+            return
+
+        # Overall workbench status: `status` or `status -v`
         rss = _get_process_rss_mb()
         rss_str = f"~{rss:.1f} MB (PID {os.getpid()})" if rss is not None else f"PID {os.getpid()}"
         if self.current_df is None:
@@ -2714,14 +2794,24 @@ class PytaeRepl:
             if self.checkpoints:
                 output_fn(f"Checkpoints   : {len(self.checkpoints)} saved ({', '.join(self.checkpoints.keys())})")
             return
+
         n_rows, n_cols = self.current_df.shape
         mem_mb = self.current_df.estimated_size() / (1024 * 1024)
         output_fn(f"Active dataset: {self.path_str or '<memory>'}")
         output_fn(f"Shape         : {n_rows:,} rows x {n_cols} columns")
         output_fn(f"Active table  : ~{mem_mb:.2f} MB")
+        if len(self.tables) > 1:
+            total_tables_mb = sum(t.estimated_size() / (1024 * 1024) for t in self.tables.values())
+            tbl_names = ", ".join(self.tables.keys())
+            output_fn(f"Loaded tables : {len(self.tables)} loaded ({tbl_names}) [~{total_tables_mb:.2f} MB total]")
+        else:
+            output_fn(f"Loaded tables : 1 loaded ({self.path_str or 'df'})")
         output_fn(f"Process RAM   : {rss_str}")
         output_fn(f"Checkpoints   : {len(self.checkpoints)} saved")
-        output_fn(f"Columns ({n_cols}): {', '.join(self.current_df.columns[:10])}{'...' if n_cols > 10 else ''}")
+        if verbose:
+            output_fn(f"Columns ({n_cols}):")
+            for col_name, dtype in zip(self.current_df.columns, self.current_df.dtypes, strict=False):
+                output_fn(f"  {col_name:<20}: {dtype}")
 
     def _cmd_reset(self, args: list[str], output_fn: Callable[[str], None]) -> None:
         if not args:
@@ -3596,7 +3686,7 @@ class PytaeRepl:
         if not self.checkpoints:
             output_fn("No checkpoints saved. Use 'checkpoint <name>' to save one.")
             return
-        output_fn("Saved Checkpoints:")
+        output_fn(f"Saved Checkpoints ({len(self.checkpoints)}):")
         for name, snap in self.checkpoints.items():
             if isinstance(snap, dict):
                 tbls = snap.get("tables", {})
@@ -3661,13 +3751,13 @@ class PytaeRepl:
             elif isinstance(snap, pl.DataFrame):
                 output_fn(f"  - {name:<15}: {snap.shape[0]:,} rows x {snap.shape[1]} cols")
 
-    def _cmd_list_tables(self, output_fn: Callable[[str], None]) -> None:
+    def _cmd_list_tables(self, output_fn: Callable[[str], None], *, verbose: bool = False) -> None:
         if not self.tables:
             output_fn(
                 "No tables loaded in memory. Use '<var> = <path.parquet>' (e.g. df1 = orders.parquet) to load a table."
             )
             return
-        output_fn("Tables in memory:")
+        output_fn(f"Loaded Tables ({len(self.tables)}):")
         total_mem_mb = 0.0
         for name, tbl_df in self.tables.items():
             tbl_mem_mb = tbl_df.estimated_size() / (1024 * 1024)
@@ -3677,13 +3767,18 @@ class PytaeRepl:
             is_active = self.path_str == name or (self.current_df is not None and self.current_df is tbl_df)
             marker = " *" if is_active else "  "
             status = " [active]" if is_active else ""
-            output_fn(
-                f"{marker} {name:<12}: {tbl_df.shape[0]:,} rows x {tbl_df.shape[1]} cols "
-                f"(~{tbl_mem_mb:.2f} MB){source_info}{status}"
-            )
-        rss = _get_process_rss_mb()
-        proc_str = f" | Process RAM: ~{rss:.1f} MB" if rss is not None else ""
-        output_fn(f"Total tables: ~{total_mem_mb:.2f} MB{proc_str}")
+            if verbose:
+                output_fn(
+                    f"{marker} {name:<12}: {tbl_df.shape[0]:,} rows x {tbl_df.shape[1]} cols "
+                    f"(~{tbl_mem_mb:.2f} MB){source_info}{status}"
+                )
+                output_fn(f"       Columns ({tbl_df.shape[1]}): {', '.join(tbl_df.columns)}")
+            else:
+                output_fn(f"{marker} {name:<12}: {tbl_df.shape[0]:,} rows x {tbl_df.shape[1]} cols{source_info}{status}")
+        if verbose:
+            rss = _get_process_rss_mb()
+            proc_str = f" | Process RAM: ~{rss:.1f} MB" if rss is not None else ""
+            output_fn(f"Total Tables: ~{total_mem_mb:.2f} MB{proc_str}")
 
     def _cmd_rename(self, args: list[str], output_fn: Callable[[str], None]) -> None:
         """Rename an in-memory table via zero-copy dictionary key reassignment."""
@@ -4701,6 +4796,16 @@ class PytaeRepl:
             options = ["*"] + list(self.checkpoints.keys())
             return [c for c in options if c.startswith(text)]
 
+        # Case 5b: 'status ' -> complete subcommands: tables, table, checkpoints, checkpoint, -v
+        if last_token == "status":
+            return [opt for opt in ("tables", "table", "checkpoints", "checkpoint", "-v") if opt.startswith(text)]
+        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "status" and prefix_tokens[-1].lower() in ("table", "tables"):
+            options = list(self.tables.keys()) + ["-v"]
+            return [t for t in options if t.startswith(text)]
+        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "status" and prefix_tokens[-1].lower() in ("checkpoint", "checkpoints"):
+            options = list(self.checkpoints.keys()) + ["-v"]
+            return [c for c in options if c.startswith(text)]
+
         # Case 6: '-diff ' -> complete table names, checkpoint names, flags, or on= columns
         if first_token == "-diff":
             if prefix.rstrip().endswith("on=") or last_token in ("-on", "--on"):
@@ -4748,8 +4853,8 @@ class PytaeRepl:
         # Case 10: Start of line (no prefix tokens)
         if not prefix_tokens:
             top_cmds = [
-                "use", "diff", "rename", "rm", "set", "load", "checkpoint", "restore",
-                "reset", "tables", "checkpoints", "history", "session", "sessions", "sql",
+                "use", "diff", "rename", "rm", "status", "set", "load", "checkpoint", "restore",
+                "reset", "history", "session", "sessions", "sql",
                 "python", "exit", "quit", "help", "time",
                 "clear",
                 # Bare verbs

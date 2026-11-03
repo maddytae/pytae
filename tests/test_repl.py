@@ -609,15 +609,24 @@ def test_repl_strict_checkpoints_vs_tables_separation():
     # Prompt MUST remain [df1, df2], never polluting with 'maddy'
     assert r._build_prompt() == "pytae [df1, df2]> "
 
-    # 'checkpoints' command lists ONLY saved checkpoints ('maddy'), not separate checkpoint entries for df1 or df2
+    # Bare 'checkpoints' and 'tables' are rejected with guidance
     outputs.clear()
     r.execute_line("checkpoints", output_fn=outputs.append)
+    assert "bare 'checkpoints' is not recognized; use 'status checkpoints'" in outputs[-1]
+
+    outputs.clear()
+    r.execute_line("tables", output_fn=outputs.append)
+    assert "bare 'tables' is not recognized; use 'status tables'" in outputs[-1]
+
+    # 'status checkpoints' command lists ONLY saved checkpoints ('maddy'), not separate checkpoint entries for df1 or df2
+    outputs.clear()
+    r.execute_line("status checkpoints", output_fn=outputs.append)
     cp_text = "\n".join(outputs)
     assert "maddy" in cp_text
     assert "df1 (344x7)" in cp_text  # Shows the table summary inside checkpoint 'maddy'
-    # And 'maddy' is not a table in 'tables' command
+    # And 'maddy' is not a table in 'status tables' command
     outputs.clear()
-    r.execute_line("tables", output_fn=outputs.append)
+    r.execute_line("status tables", output_fn=outputs.append)
     tbl_text = "\n".join(outputs)
     assert "df1" in tbl_text
     assert "df2" in tbl_text
@@ -719,15 +728,13 @@ def test_repl_multi_table_session_and_checkpoints():
     assert "Loaded tips.parquet as 'df2' (244 rows x 7 cols)." in outputs[-1]
     assert repl._build_prompt() == "pytae [df1, df2]> "
 
-    # 3. List tables
+    # 3. List tables via status tables
     outputs.clear()
-    repl.execute_line("tables", output_fn=outputs.append)
+    repl.execute_line("status tables", output_fn=outputs.append)
     tables_out = "\n".join(outputs)
-    assert "Tables in memory:" in tables_out
+    assert "Loaded Tables" in tables_out
     assert "df1" in tables_out and "(penguins.parquet)" in tables_out
     assert "* df2" in tables_out and "(tips.parquet) [active]" in tables_out
-    assert "Total tables:" in tables_out
-    assert "Process RAM:" in tables_out
 
     # 4. Save checkpoint maddy (captures all tables in workbench)
     outputs.clear()
@@ -736,11 +743,11 @@ def test_repl_multi_table_session_and_checkpoints():
     # Checkpoint should not change table prompt
     assert repl._build_prompt() == "pytae [df1, df2]> "
 
-    # 5. List checkpoints
+    # 5. List checkpoints via status checkpoints
     outputs.clear()
-    repl.execute_line("checkpoints", output_fn=outputs.append)
+    repl.execute_line("status checkpoints", output_fn=outputs.append)
     cps_out = "\n".join(outputs)
-    assert "Saved Checkpoints:" in cps_out
+    assert "Saved Checkpoints" in cps_out
     assert "maddy" in cps_out and "df1 (344x7), df2 (244x7)" in cps_out
     assert repl._build_prompt() == "pytae [df1, df2]> "
 
@@ -2409,9 +2416,9 @@ def test_repl_set_checkpoint_format_parquet_and_ipc(tmp_path, monkeypatch):
     df1_pq = pl.read_parquet(pq_dir / "df1.parquet")
     assert df1_pq.shape == r.tables["df1"].shape
 
-    # 7. Check checkpoints listing displays format
+    # 7. Check checkpoints listing displays format via status checkpoints
     outputs.clear()
-    r.execute_line("checkpoints", output_fn=outputs.append)
+    r.execute_line("status checkpoints", output_fn=outputs.append)
     cps_text = "\n".join(outputs)
     assert "cp_ipc" in cps_text
     assert "cp_pq" in cps_text
@@ -3636,17 +3643,17 @@ def test_sessions_ready_filter_and_pattern_inspection(tmp_path):
         assert "finance_audit" in repl_pat
         assert "water_analysis" not in repl_pat
 
-        # 6. Checkpoints rich output in REPL
+        # 6. Checkpoints rich output in REPL via status checkpoints
         r.execute_line("session load finance_audit")
         outputs.clear()
-        r.execute_line("checkpoints", output_fn=outputs.append)
+        r.execute_line("status checkpoints", output_fn=outputs.append)
         cp_out = "\n".join(outputs)
         assert "cp1" in cp_out
         assert "[ipc]" in cp_out
         assert "344 rows x 7 cols" in cp_out
 
         outputs.clear()
-        r.execute_line("checkpoints -v", output_fn=outputs.append)
+        r.execute_line("status checkpoints -v", output_fn=outputs.append)
         cp_v_out = "\n".join(outputs)
         assert "cp1" in cp_v_out
         assert "df.ipc" in cp_v_out
@@ -3676,6 +3683,113 @@ def test_sessions_ready_filter_and_pattern_inspection(tmp_path):
         assert "water_analysis" not in cli_v_out
     finally:
         set_sessions_dir(orig_dir)
+
+
+def test_repl_status_subcommands_and_verbose():
+    """Verify status, status -v, status tables [-v], status table <name> [-v], status checkpoints [-v], and status checkpoint <name> [-v]."""
+    outputs: list[str] = []
+    r = PytaeRepl()
+
+    # 1. Status with no dataset loaded
+    r.execute_line("status", output_fn=outputs.append)
+    st_none = "\n".join(outputs)
+    assert "No dataset loaded." in st_none
+
+    # 2. Load two tables
+    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
+    r.execute_line("df2 = sample:tips", output_fn=outputs.append)
+    r.execute_line("checkpoint cp1", output_fn=outputs.append)
+
+    # 3. Bare status (active table, shape, active RAM, process RAM, checkpoints count)
+    # MUST NOT show column names (reserved for -v)
+    outputs.clear()
+    r.execute_line("status", output_fn=outputs.append)
+    st = "\n".join(outputs)
+    assert "Active dataset: df2" in st
+    assert "Shape         : 244 rows x 7 columns" in st
+    assert "Active table  : ~0.01 MB" in st
+    assert "Loaded tables : 2 loaded (df1, df2)" in st
+    assert "Process RAM   :" in st
+    assert "Checkpoints   : 1 saved" in st
+    assert "Columns (" not in st
+
+    # 4. status -v (shows schema and column types)
+    outputs.clear()
+    r.execute_line("status -v", output_fn=outputs.append)
+    st_v = "\n".join(outputs)
+    assert "Active dataset: df2" in st_v
+    assert "Columns (7):" in st_v
+    assert "total_bill" in st_v
+    assert "tip" in st_v
+
+    # 5. status tables (shows table names, shapes, sources) - no column names
+    outputs.clear()
+    r.execute_line("status tables", output_fn=outputs.append)
+    st_tbl = "\n".join(outputs)
+    assert "Loaded Tables (2):" in st_tbl
+    assert "df1" in st_tbl
+    assert "* df2" in st_tbl
+    assert "Columns (" not in st_tbl
+
+    # 6. status tables -v (shows per-table columns and RAM totals)
+    outputs.clear()
+    r.execute_line("status tables -v", output_fn=outputs.append)
+    st_tbl_v = "\n".join(outputs)
+    assert "Loaded Tables (2):" in st_tbl_v
+    assert "Columns (7):" in st_tbl_v
+    assert "Total Tables:" in st_tbl_v
+
+    # 7. status table df1 (specific table) - no column names in non-verbose
+    outputs.clear()
+    r.execute_line("status table df1", output_fn=outputs.append)
+    st_df1 = "\n".join(outputs)
+    assert "Table          : df1" in st_df1
+    assert "Shape          : 344 rows x 7 columns" in st_df1
+    assert "Table memory   : ~0.02 MB" in st_df1
+    assert "Status         : inactive" in st_df1
+    assert "Columns (" not in st_df1
+
+    # 8. status table df1 -v (specific table with schema/columns)
+    outputs.clear()
+    r.execute_line("status table df1 -v", output_fn=outputs.append)
+    st_df1_v = "\n".join(outputs)
+    assert "Table          : df1" in st_df1_v
+    assert "Columns (7):" in st_df1_v
+    assert "species" in st_df1_v
+    assert "island" in st_df1_v
+
+    # 9. status checkpoints
+    outputs.clear()
+    r.execute_line("status checkpoints", output_fn=outputs.append)
+    st_cp = "\n".join(outputs)
+    assert "Saved Checkpoints (1):" in st_cp
+    assert "cp1" in st_cp
+
+    # 10. status checkpoint cp1
+    outputs.clear()
+    r.execute_line("status checkpoint cp1", output_fn=outputs.append)
+    st_cp1 = "\n".join(outputs)
+    assert "Checkpoint     : cp1" in st_cp1
+    assert "Format         : ipc" in st_cp1
+    assert "Tables (2):" in st_cp1
+
+    # 11. status checkpoint cp1 -v (includes file names)
+    outputs.clear()
+    r.execute_line("status checkpoint cp1 -v", output_fn=outputs.append)
+    st_cp1_v = "\n".join(outputs)
+    assert "Checkpoint     : cp1" in st_cp1_v
+    assert "df1.ipc" in st_cp1_v
+
+    # 12. Bare tables & checkpoints rejected with guidance
+    outputs.clear()
+    r.execute_line("tables", output_fn=outputs.append)
+    assert "bare 'tables' is not recognized; use 'status tables'" in outputs[-1]
+
+    outputs.clear()
+    r.execute_line("checkpoints", output_fn=outputs.append)
+    assert "bare 'checkpoints' is not recognized; use 'status checkpoints'" in outputs[-1]
+
+    r.close()
 
 
 

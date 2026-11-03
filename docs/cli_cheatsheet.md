@@ -411,7 +411,11 @@ set session_load = l1     # Load persistent session by name via set
 sessions             # List all saved persistent sessions on disk
 rm table orders      # Remove specific table from memory and free RAM (or rm table *)
 clear                # Clear the terminal screen
-status               # Show active dataset shape, columns, and memory
+status               # Show active dataset shape, memory, and checkpoints
+status -v            # Show active dataset schema/dtypes and environment
+status tables [-v]   # List loaded tables, shapes, and sources (optional -v for RAM & cols)
+status checkpoints   # List saved checkpoints and snapshots (optional -v for files & disk size)
+status table <name>  # Inspect specific table shape and memory without switching cursor
 [Tab]                # Autocomplete commands, flags, tables, columns, and paths
 
 # 2. Pipeline Execution & Inspection (RAM-speed with zero file re-reads)

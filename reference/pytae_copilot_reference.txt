@@ -24804,7 +24804,11 @@ set session_load = l1     # Load persistent session by name via set
 sessions             # List all saved persistent sessions on disk
 rm table orders      # Remove specific table from memory and free RAM (or rm table *)
 clear                # Clear the terminal screen
-status               # Show active dataset shape, columns, and memory
+status               # Show active dataset shape, memory, and checkpoints
+status -v            # Show active dataset schema/dtypes and environment
+status tables [-v]   # List loaded tables, shapes, and sources (optional -v for RAM & cols)
+status checkpoints   # List saved checkpoints and snapshots (optional -v for files & disk size)
+status table <name>  # Inspect specific table shape and memory without switching cursor
 [Tab]                # Autocomplete commands, flags, tables, columns, and paths
 
 # 2. Pipeline Execution & Inspection (RAM-speed with zero file re-reads)
@@ -25040,16 +25044,29 @@ Available bundled samples: `penguins`, `iris`, `tips`, `titanic`, `diamonds`, `f
 
 ## Multi-Table Workbench Operations
 
-### Listing Tables (`tables`)
+### Listing Tables (`status tables`, `status tables -v`)
 View all active datasets in memory, their shapes, and source files:
 
 ```text
-pytae [orders, cust]> tables
-Tables in memory:
- * orders      : 100,000 rows x 6 cols (~14.20 MB) (orders.parquet) [active]
-   cust        : 15,000 rows x 5 cols (~1.12 MB) (customers.csv)
-Total tables: ~15.32 MB | Process RAM: ~128.5 MB
+pytae [orders, cust]> status tables
+Loaded Tables (2):
+ * orders      : 100,000 rows x 6 cols (orders.parquet) [active]
+   cust        : 15,000 rows x 5 cols (customers.csv)
 ```
+
+Use `status tables -v` to inspect column lists and per-table memory footprint:
+```text
+pytae [orders, cust]> status tables -v
+Loaded Tables (2):
+ * orders      : 100,000 rows x 6 cols (~14.20 MB) (orders.parquet) [active]
+       Columns (6): order_id, customer_id, order_date, amount, status, items
+   cust        : 15,000 rows x 5 cols (~1.12 MB) (customers.csv)
+       Columns (5): customer_id, name, email, signup_date, country
+Total Tables: ~15.32 MB | Process RAM: ~128.5 MB
+```
+
+> [!NOTE]
+> Bare `tables` is disabled in favor of the unified `status tables` hierarchy.
 
 ### Switching Active Tables (`use <name>`)
 Switch the active cursor to another table using `use <name>` (e.g. `use orders`, `use df`, `use cust`):
@@ -25300,16 +25317,42 @@ Unlike standard Python shells that retain memory pages in process heaps:
    - **Windows**: `SetProcessWorkingSetSize(-1, -1)` and `K32EmptyWorkingSet` trim unused working set pages back to the Windows kernel.
    - **Linux**: `libc.malloc_trim(0)` flushes unmapped heap arenas back to the OS.
 
-### Memory & Environment Stats (`status`)
+### Memory & Environment Stats (`status`, `status -v`, `status table <name>`)
 Inspect active table dimensions, estimated memory footprint, and overall process RAM anytime:
 
 ```text
 pytae [df: 344x7]> status
 Active dataset : df
-Shape          : 344 rows x 7 cols
-Table memory   : 0.02 MB
-Process RAM    : ~129.5 MB
+Shape          : 344 rows x 7 columns
+Active table   : ~0.02 MB
+Loaded tables  : 1 loaded (df)
+Process RAM    : ~129.5 MB (PID 95089)
 Checkpoints    : 1 saved
+```
+
+Use `status -v` to inspect schema and column data types:
+```text
+pytae [df: 344x7]> status -v
+Active dataset : df
+Shape          : 344 rows x 7 columns
+Active table   : ~0.02 MB
+Loaded tables  : 1 loaded (df)
+Process RAM    : ~129.5 MB (PID 95089)
+Checkpoints    : 1 saved
+Columns (7):
+  species      : String
+  island       : String
+  culmen_len   : Float64
+  ...
+```
+
+Inspect a specific loaded table without switching cursors:
+```text
+pytae [orders, cust]> status table cust
+Table          : cust (customers.csv)
+Shape          : 15,000 rows x 5 columns
+Table memory   : ~1.12 MB
+Status         : inactive (tip: 'use cust' to switch active cursor)
 ```
 
 ---
@@ -25350,13 +25393,16 @@ Saved checkpoint 'baseline' (2 tables: orders, cust).
 - **Zero RAM Overhead**: Tables are written to disk storage (`.ipc` or `.parquet`). Checkpoints consume **0 MB of active RAM**.
 - **Milestone Established**: Creating a checkpoint frees intermediate memory while establishing a safe restore point.
 
-### Listing & Deleting Checkpoints (`checkpoints`, `rm checkpoint`)
+### Listing & Deleting Checkpoints (`status checkpoints`, `rm checkpoint`)
 ```text
 # List all checkpoints and their constituent tables
-pytae> checkpoints
-Saved Checkpoints:
+pytae> status checkpoints
+Saved Checkpoints (2):
   - baseline       : orders (100,000x6), cust (15,000x5) [active: cust]
   - cleaned        : orders (82,000x6) [active: orders] [parquet]
+
+# Detailed snapshot file listing
+pytae> status checkpoints -v
 
 # Delete a single checkpoint from disk
 pytae> rm checkpoint cleaned
@@ -25779,7 +25825,7 @@ The Pytae REPL provides context-aware autocompletion via standard `readline`:
 | **Ingestion** | Assignment | `df1 = orders.parquet [-nrows 1000]` | Load file into named table variable | Yes |
 | | `load` | `load sales.csv as df2 -dlim ";"` | Load file with alias and reader options | Yes |
 | | Samples | `df = sample:penguins` | Load bundled sample dataset | Yes |
-| **Tables** | `tables` | `tables` | List loaded tables, shapes, and sources | No |
+| **Tables** | `status tables` | `status tables [-v]` | List loaded tables, shapes, and sources | No |
 | | Bare name | `df1` | Display table dimensions without switching cursor | No |
 | | `use` | `use df1` | Switch active dataset | Yes (active) |
 | | `rename` | `rename df1 customers` | Zero-copy $O(1)$ in-memory table rename | Yes |
@@ -25810,7 +25856,7 @@ The Pytae REPL provides context-aware autocompletion via standard `readline`:
 | | `history` | `history [N]` | Display numbered audit log of session commands | No |
 | **Checkpoints** | `checkpoint` | `checkpoint <name>` | Save snapshot to disk (0 MB RAM) | No |
 | | `restore` | `restore <name>` | Restore workbench to named checkpoint | Yes |
-| | `checkpoints` | `checkpoints` | List all saved checkpoints on disk | No |
+| | `status checkpoints` | `status checkpoints [-v]` | List all saved checkpoints on disk | No |
 | | `rm checkpoint` | `rm checkpoint <name>`, `rm checkpoint *` | Delete checkpoint(s) from disk | No |
 | | `set` | `set checkpoint_format = parquet` | Set format to `parquet` or `ipc` | No |
 | **Sessions** | `session` | `session` | Display persistent session name and path | No |
@@ -25824,7 +25870,7 @@ The Pytae REPL provides context-aware autocompletion via standard `readline`:
 | | `set checkpoint_format`| `set checkpoint_format = parquet` | Set format to `parquet` or `ipc` | No |
 | | `set sessions_dir` | `set sessions_dir = <path>` | Configure persistent sessions base directory | No |
 | **Export & Exit**| `-o` | `-o clean.parquet`, `-o clip` | Export dataset to file or clipboard | No |
-| | `status` | `status` | Display active dataset, RAM, and checkpoints | No |
+| | `status` | `status [-v]` | Display active dataset, RAM, and checkpoints | No |
 | | `clear` | `clear` | Clear terminal screen | No |
 | | `exit` | `exit [-s [path]]` | Exit REPL (optionally save replay script) | — |
 | **Navigation** | `[Tab]` | `[Tab]` | Autocomplete commands, flags, tables, columns, paths | No |
