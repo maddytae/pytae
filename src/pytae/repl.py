@@ -2155,16 +2155,6 @@ class PytaeRepl:
                 output_fn(f"Usage: use <table_name> (available: {avail})")
             return True
 
-        # Force immediate OS memory release: `gc` or `free`
-        if first_lower in ("gc", "free"):
-            _release_memory()
-            rss = _get_process_rss_mb()
-            if rss is not None:
-                output_fn(f"Memory released to operating system. Process RAM: ~{rss:.1f} MB (PID {os.getpid()}).")
-            else:
-                output_fn(f"Memory released to operating system (PID {os.getpid()}).")
-            return True
-
         # Remove entity: `rm table <name>`, `rm table *`, `rm checkpoint <name>`, `rm checkpoint *`
         if first_lower == "rm":
             if len(tokens) < 2:
@@ -2376,8 +2366,6 @@ class PytaeRepl:
                 "status",
                 "reset",
                 "set",
-                "gc",
-                "free",
             )
         ):
             import time as _time
@@ -4753,7 +4741,7 @@ class PytaeRepl:
             top_cmds = [
                 "use", "diff", "rename", "rm", "set", "load", "checkpoint", "restore",
                 "reset", "tables", "checkpoints", "history", "session", "sessions", "sql",
-                "python", "gc", "free", "exit", "quit", "help", "time",
+                "python", "exit", "quit", "help", "time",
                 "clear",
                 # Bare verbs
                 "filter", "select", "mutate", "arrange", "group_by", "by", "summarize",

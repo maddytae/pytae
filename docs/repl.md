@@ -36,10 +36,10 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
   - [SQL Variable Assignment (`df3 = -sql "..."`)](#sql-variable-assignment-df3---sql-)
   - [Fluent Python Execution (`py <expr>`)](#fluent-python-execution-py-expr)
 - [Tab Autocompletion & Navigation](#tab-autocompletion--navigation)
-- [Memory Management & Garbage Collection](#memory-management--garbage-collection)
+- [Memory Management](#memory-management)
   - [Removing Tables (`rm table <name>`, `rm table *`)](#removing-tables-rm-table-name-rm-table-)
   - [Immediate Memory Deallocation & OS Trimming](#immediate-memory-deallocation--os-trimming)
-  - [Manual GC & Memory Stats (`gc`, `status`)](#manual-gc--memory-stats-gc-status)
+  - [Memory & Environment Stats (`status`)](#memory--environment-stats-status)
 - [State Navigation & History](#state-navigation--history)
   - [Reset Hierarchy (`reset`, `reset <tbl>`, `reset initial`)](#reset-hierarchy-reset-reset-tbl-reset-initial)
   - [In-REPL History Audit Log (`history`)](#in-repl-history-audit-log-history)
@@ -440,8 +440,8 @@ Unlike standard Python shells that retain memory pages in process heaps:
    - **Windows**: `SetProcessWorkingSetSize(-1, -1)` and `K32EmptyWorkingSet` trim unused working set pages back to the Windows kernel.
    - **Linux**: `libc.malloc_trim(0)` flushes unmapped heap arenas back to the OS.
 
-### Manual GC & Memory Stats (`gc`, `status`)
-Inspect memory usage and run garbage collection anytime:
+### Memory & Environment Stats (`status`)
+Inspect active table dimensions, estimated memory footprint, and overall process RAM anytime:
 
 ```text
 pytae [df: 344x7]> status
@@ -450,9 +450,6 @@ Shape          : 344 rows x 7 cols
 Table memory   : 0.02 MB
 Process RAM    : ~129.5 MB
 Checkpoints    : 1 saved
-
-pytae [df: 344x7]> gc
-Garbage collection complete. Process RAM: ~129.2 MB.
 ```
 
 ---
@@ -968,7 +965,6 @@ The Pytae REPL provides context-aware autocompletion via standard `readline`:
 | | `set sessions_dir` | `set sessions_dir = <path>` | Configure persistent sessions base directory | No |
 | **Export & Exit**| `-o` | `-o clean.parquet`, `-o clip` | Export dataset to file or clipboard | No |
 | | `status` | `status` | Display active dataset, RAM, and checkpoints | No |
-| | `gc` | `gc` | Force garbage collection and OS memory trim | No |
 | | `clear` | `clear` | Clear terminal screen | No |
 | | `exit` | `exit [-s [path]]` | Exit REPL (optionally save replay script) | — |
 | **Navigation** | `[Tab]` | `[Tab]` | Autocomplete commands, flags, tables, columns, paths | No |

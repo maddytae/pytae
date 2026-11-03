@@ -1781,17 +1781,6 @@ def test_repl_rm_clears_all_internal_references_and_gc_command():
     assert "No dataset loaded." in status_text
     assert "Process RAM" in status_text
 
-    # Test explicit 'gc' and 'free' commands
-    outputs.clear()
-    r.execute_line("gc", output_fn=outputs.append)
-    assert "Memory released to operating system." in outputs[-1]
-    assert "Process RAM" in outputs[-1]
-
-    outputs.clear()
-    r.execute_line("free", output_fn=outputs.append)
-    assert "Memory released to operating system." in outputs[-1]
-    assert "Process RAM" in outputs[-1]
-
     r.close()
 
 
@@ -2121,10 +2110,6 @@ def test_repl_shell_escape_and_pipe_and_gc(sample_df):
     assert any("species" in o for o in outputs)
     assert not any("body_mass_g" in o for o in outputs)
 
-    # 4. gc / free memory release command
-    outputs.clear()
-    r.execute_line("gc", output_fn=outputs.append)
-    assert any("Memory released" in o for o in outputs)
     r.close()
 
 
