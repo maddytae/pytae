@@ -3668,13 +3668,22 @@ class PytaeRepl:
             )
             return
         output_fn("Tables in memory:")
+        total_mem_mb = 0.0
         for name, tbl_df in self.tables.items():
+            tbl_mem_mb = tbl_df.estimated_size() / (1024 * 1024)
+            total_mem_mb += tbl_mem_mb
             source = self.table_sources.get(name, "")
             source_info = f" ({source})" if source else ""
             is_active = self.path_str == name or (self.current_df is not None and self.current_df is tbl_df)
             marker = " *" if is_active else "  "
             status = " [active]" if is_active else ""
-            output_fn(f"{marker} {name:<12}: {tbl_df.shape[0]:,} rows x {tbl_df.shape[1]} cols{source_info}{status}")
+            output_fn(
+                f"{marker} {name:<12}: {tbl_df.shape[0]:,} rows x {tbl_df.shape[1]} cols "
+                f"(~{tbl_mem_mb:.2f} MB){source_info}{status}"
+            )
+        rss = _get_process_rss_mb()
+        proc_str = f" | Process RAM: ~{rss:.1f} MB" if rss is not None else ""
+        output_fn(f"Total tables: ~{total_mem_mb:.2f} MB{proc_str}")
 
     def _cmd_rename(self, args: list[str], output_fn: Callable[[str], None]) -> None:
         """Rename an in-memory table via zero-copy dictionary key reassignment."""

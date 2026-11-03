@@ -25046,8 +25046,9 @@ View all active datasets in memory, their shapes, and source files:
 ```text
 pytae [orders, cust]> tables
 Tables in memory:
- * orders      : 100,000 rows x 6 cols (orders.parquet) [active]
-   cust        : 15,000 rows x 5 cols (customers.csv)
+ * orders      : 100,000 rows x 6 cols (~14.20 MB) (orders.parquet) [active]
+   cust        : 15,000 rows x 5 cols (~1.12 MB) (customers.csv)
+Total tables: ~15.32 MB | Process RAM: ~128.5 MB
 ```
 
 ### Switching Active Tables (`use <name>`)

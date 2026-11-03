@@ -726,6 +726,8 @@ def test_repl_multi_table_session_and_checkpoints():
     assert "Tables in memory:" in tables_out
     assert "df1" in tables_out and "(penguins.parquet)" in tables_out
     assert "* df2" in tables_out and "(tips.parquet) [active]" in tables_out
+    assert "Total tables:" in tables_out
+    assert "Process RAM:" in tables_out
 
     # 4. Save checkpoint maddy (captures all tables in workbench)
     outputs.clear()
