@@ -688,24 +688,39 @@ Configure the base filesystem directory where persistent sessions and their chec
   pytae -session project_x
   ```
 
-### Checkpoint Storage Format (`set checkpoint_format = parquet|ipc`)
+### Checkpoint Storage Format (`set checkpoint_format = parquet|ipc`, `convert = all`)
 
 Control the on-disk serialization format used for session checkpoints:
 
 - **`ipc` (Default)**: Uncompressed Arrow IPC streaming format (`.ipc`). Delivers maximum write and read speed for near-instant `checkpoint` and `restore` operations.
-- **`parquet`**: Compressed columnar Parquet format (`.parquet`). Minimizes disk usage on storage-constrained environments or network drives.
+- **`parquet`**: Compressed columnar Parquet format (`.parquet`). Minimizes disk usage on storage-constrained environments, USB drives, or shared networks.
+
+#### Future-Only by Default (Zero Latency)
+By default, changing the checkpoint format applies instantly to all subsequent checkpoints without blocking or freezing the REPL:
 
 ```text
-# Switch to compressed Parquet format
+# Switch future checkpoints to compressed Parquet format
 pytae> set checkpoint_format = parquet
-Set checkpoint_format = parquet (checkpoints will be saved as compressed Parquet).
-
-# Switch back to fast uncompressed Arrow IPC
-pytae> set checkpoint_format = ipc
-Set checkpoint_format = ipc (checkpoints will be saved as fast uncompressed Arrow IPC).
+Set checkpoint_format = parquet (new checkpoints will be saved as compressed Parquet).
+Note: 2 existing checkpoint(s) remain in IPC format. Run 'set checkpoint_format = parquet, convert = all' to re-encode them.
 ```
 
-*Pytae auto-detects formats on restore, allowing IPC and Parquet checkpoints to be used interchangeably within the same session.*
+*Pytae automatically detects formats during `restore`, allowing IPC and Parquet checkpoints to coexist and be used interchangeably within the same session.*
+
+#### Re-Encoding Existing Checkpoints (`convert = all`)
+To reclaim disk space immediately by converting all prior checkpoints in the active session:
+
+```text
+# Convert all existing checkpoints to Parquet and set future format
+pytae> set checkpoint_format = parquet, convert = all
+Converting 2 existing checkpoint(s) to parquet...
+  - cp1: converted (320.0 MB -> 62.4 MB)
+  - cp2: converted (320.0 MB -> 64.1 MB)
+All 2 checkpoint(s) converted. Set checkpoint_format = parquet.
+
+# Or convert existing checkpoints to the currently active format
+pytae> set convert = all
+```
 
 ### Replay Script Auto-Save (`set save_commands = <path>`)
 

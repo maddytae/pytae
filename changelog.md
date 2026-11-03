@@ -10,6 +10,13 @@ All notable changes to this project are documented in this file.
   - Updated release and contribution protocols accordingly.
 
 ### Added
+- **Checkpoint Format Re-Encoding & Future-Only Default (`set checkpoint_format = ... [, convert = all]`)**:
+  - `set checkpoint_format = parquet` (or `ipc`) defaults to setting the format for future checkpoints with zero execution latency.
+  - Automatically alerts the user if existing checkpoints remain in another format with instructions on how to re-encode them.
+  - Added opt-in full checkpoint re-encoding via `set checkpoint_format = <fmt>, convert = all` (or standalone `set convert = all`):
+    - Concurrently reads each existing checkpoint, writes the new format (`.parquet` or `.ipc`), unlinks old files, updates `meta.json`, and records before-and-after storage statistics (`_format_bytes`).
+    - Fully preserves seamless `restore` capability across both formats.
+    - Excluded from replay scripts to keep batch pipelines pure and lightweight.
 - **Interactive Display & Runtime Preferences in REPL (`set max_rows`, `max_cols`, `float_precision`, `null_repr`, `timing`, `color`, `echo`)**:
   - Added 7 new interactive workbench settings configurable on the fly via `set`:
     - `max_rows` (alias `rows`): Sets max rows displayed in table previews (`default`: 10).

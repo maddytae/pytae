@@ -21,7 +21,7 @@ from typing import Any, Callable
 
 import polars as pl
 
-from pytae.cli_run import _format_table, _process_path
+from pytae.cli_run import _format_bytes, _format_table, _process_path
 from pytae.readers import DataFrameReader, get_reader
 
 
@@ -1044,6 +1044,7 @@ _SET_KNOWN_KEYS = {
     "save_commands",
     "sessions_dir",
     "session_dir",
+    "convert",
     "max_rows",
     "rows",
     "max_cols",
@@ -3127,22 +3128,63 @@ class PytaeRepl:
                 )
 
         # 4. Handle remaining settings
-        for k, val in pair_map.items():
+        convert_val = pair_map.pop("convert", None)
+        should_convert = False
+        if convert_val is not None:
+            clean_c = convert_val.strip("'\"").lower()
+            if clean_c in ("all", "true", "1", "yes", ""):
+                should_convert = True
+            elif clean_c in ("none", "false", "0", "no"):
+                should_convert = False
+            else:
+                output_fn(f"pytae: invalid convert option '{convert_val}'. Supported options: all, none.")
+                return
+
+        handled_cp_fmt = False
+        for k, val in list(pair_map.items()):
             if k in ("checkpoint_format", "checkpoint_fmt", "cp_format", "cp_fmt"):
+                handled_cp_fmt = True
                 if not val:
                     output_fn(f"checkpoint_format = {self.checkpoint_format} (options: ipc, parquet)")
                     continue
                 clean_val = val.lower().strip("'\"")
                 if clean_val in ("parquet", "pq"):
-                    self.checkpoint_format = "parquet"
-                    self._record_history("set checkpoint_format = parquet")
-                    output_fn("Set checkpoint_format = parquet (checkpoints will be saved as compressed Parquet).")
+                    target_fmt = "parquet"
+                    desc_fmt = "compressed Parquet"
+                    other_fmt = "IPC"
                 elif clean_val in ("ipc", "arrow", "feather"):
-                    self.checkpoint_format = "ipc"
-                    self._record_history("set checkpoint_format = ipc")
-                    output_fn("Set checkpoint_format = ipc (checkpoints will be saved as fast uncompressed Arrow IPC).")
+                    target_fmt = "ipc"
+                    desc_fmt = "fast uncompressed Arrow IPC"
+                    other_fmt = "Parquet"
                 else:
                     output_fn(f"pytae: unsupported checkpoint_format '{val}'. Supported formats: ipc, parquet.")
+                    continue
+
+                self.checkpoint_format = target_fmt
+                self._record_history(f"set checkpoint_format = {target_fmt}")
+
+                # Count how many existing checkpoints differ from target format
+                diff_count = sum(
+                    1
+                    for cp in self.checkpoints.values()
+                    if isinstance(cp, dict) and cp.get("format", "").lower() != target_fmt
+                )
+
+                if should_convert:
+                    if diff_count > 0:
+                        output_fn(f"Converting {diff_count} existing checkpoint(s) to {target_fmt}...")
+                        converted = self._convert_all_checkpoints(target_fmt, output_fn)
+                        output_fn(f"All {converted} checkpoint(s) converted. Set checkpoint_format = {target_fmt}.")
+                    else:
+                        output_fn(f"All existing checkpoints are already in {target_fmt} format. Set checkpoint_format = {target_fmt}.")
+                else:
+                    if diff_count > 0:
+                        output_fn(f"Set checkpoint_format = {target_fmt} (new checkpoints will be saved as {desc_fmt}).")
+                        output_fn(
+                            f"Note: {diff_count} existing checkpoint(s) remain in {other_fmt} format. Run 'set checkpoint_format = {target_fmt}, convert = all' to re-encode them."
+                        )
+                    else:
+                        output_fn(f"Set checkpoint_format = {target_fmt} (checkpoints will be saved as {desc_fmt}).")
             elif k == "save_commands":
                 if not val:
                     save_str = self.save_history_file or "none"
@@ -3269,8 +3311,132 @@ class PytaeRepl:
                     output_fn(f"pytae: invalid echo '{val}'. Supported options: on, off.")
             else:
                 output_fn(
-                    f"pytae: unknown setting '{k}'. Supported settings: session_name, session_load, sessions_dir, checkpoint_format, save_commands, max_rows, max_cols, float_precision, null_repr, timing, color, echo."
+                    f"pytae: unknown setting '{k}'. Supported settings: session_name, session_load, sessions_dir, checkpoint_format, save_commands, max_rows, max_cols, float_precision, null_repr, timing, color, echo, convert."
                 )
+
+        if convert_val is not None and not handled_cp_fmt:
+            if should_convert:
+                target_fmt = self.checkpoint_format
+                diff_count = sum(
+                    1
+                    for cp in self.checkpoints.values()
+                    if isinstance(cp, dict) and cp.get("format", "").lower() != target_fmt
+                )
+                if diff_count > 0:
+                    output_fn(f"Converting {diff_count} existing checkpoint(s) to {target_fmt}...")
+                    converted = self._convert_all_checkpoints(target_fmt, output_fn)
+                    output_fn(f"All {converted} checkpoint(s) converted to {target_fmt}.")
+                else:
+                    output_fn(f"All existing checkpoints are already in {target_fmt} format.")
+
+    def _convert_all_checkpoints(self, target_fmt: str, output_fn: Callable[[str], None]) -> int:
+        """Convert all existing checkpoints in the session to target_fmt ('parquet' or 'ipc')."""
+        if not self.checkpoints:
+            return 0
+
+        target_fmt = target_fmt.lower()
+        target_ext = ".parquet" if target_fmt == "parquet" else ".ipc"
+        converted_count = 0
+
+        for cp_name, cp_meta in list(self.checkpoints.items()):
+            if not isinstance(cp_meta, dict) or "dir" not in cp_meta:
+                continue
+            cp_dir = Path(cp_meta["dir"])
+            if not cp_dir.exists():
+                continue
+
+            tbl_meta = cp_meta.get("tables", {})
+            cp_needs_convert = False
+            cp_old_bytes = 0
+            cp_new_bytes = 0
+
+            # Check if any file in this checkpoint needs conversion
+            for tbl_name, info in tbl_meta.items():
+                if isinstance(info, dict):
+                    curr_fmt = info.get("format", "").lower()
+                    if curr_fmt != target_fmt:
+                        cp_needs_convert = True
+                        break
+
+            if not cp_needs_convert:
+                continue
+
+            # Convert each table file in checkpoint
+            new_tables: dict[str, Any] = {}
+            for tbl_name, info in tbl_meta.items():
+                if not isinstance(info, dict):
+                    continue
+                old_fname = info.get("file", "")
+                old_file = cp_dir / old_fname
+                curr_fmt = info.get("format", "").lower()
+
+                if curr_fmt == target_fmt and old_file.exists():
+                    new_tables[tbl_name] = info
+                    f_size = old_file.stat().st_size
+                    cp_old_bytes += f_size
+                    cp_new_bytes += f_size
+                    continue
+
+                if not old_file.exists():
+                    alt = old_file.with_suffix(target_ext)
+                    if alt.exists():
+                        f_size = alt.stat().st_size
+                        cp_old_bytes += f_size
+                        cp_new_bytes += f_size
+                        new_tables[tbl_name] = dict(info, file=alt.name, format=target_fmt)
+                        continue
+                    new_tables[tbl_name] = info
+                    continue
+
+                old_size = old_file.stat().st_size
+                cp_old_bytes += old_size
+
+                # Read existing dataframe using Pytae's checkpoint reader
+                df = _read_checkpoint_file(old_file)
+
+                # Write to new format
+                new_fname = _safe_table_filename(tbl_name, target_ext)
+                new_file = cp_dir / new_fname
+
+                if target_fmt == "parquet":
+                    df.write_parquet(new_file)
+                else:
+                    df.write_ipc(new_file)
+
+                new_size = new_file.stat().st_size
+                cp_new_bytes += new_size
+
+                # Remove old file if name changed
+                if old_file.exists() and old_file != new_file:
+                    try:
+                        old_file.unlink()
+                    except Exception:
+                        pass
+
+                new_tables[tbl_name] = {
+                    "file": new_fname,
+                    "format": target_fmt,
+                    "shape": list(df.shape),
+                }
+
+            # Update meta.json and in-memory checkpoint structure
+            cp_meta["format"] = target_fmt
+            cp_meta["tables"] = new_tables
+            m_json = cp_dir / "meta.json"
+            try:
+                m_json.write_text(json.dumps(cp_meta), encoding="utf-8")
+            except Exception:
+                pass
+
+            converted_count += 1
+            output_fn(
+                f"  - {cp_name}: converted ({_format_bytes(cp_old_bytes)} -> {_format_bytes(cp_new_bytes)})"
+            )
+
+        if self.session_name:
+            self._save_session_metadata()
+
+        return converted_count
 
     def _cmd_checkpoint(self, name: str, output_fn: Callable[[str], None]) -> None:
         if not self.tables and self.current_df is None:
@@ -4409,6 +4575,7 @@ class PytaeRepl:
                     "sessions_dir",
                     "checkpoint_format",
                     "save_commands",
+                    "convert",
                     "max_rows",
                     "max_cols",
                     "float_precision",
@@ -4420,6 +4587,8 @@ class PytaeRepl:
                 return [c for c in configs if c.startswith(text)]
             if "checkpoint_format" in [t.lower() for t in prefix_tokens]:
                 return [fmt for fmt in ("ipc", "parquet", "arrow") if fmt.startswith(text)]
+            if "convert" in [t.lower() for t in prefix_tokens]:
+                return [opt for opt in ("all", "none") if opt.startswith(text)]
             if "session_load" in [t.lower() for t in prefix_tokens]:
                 return [s for s in _get_saved_session_names() if s.startswith(text)]
             if "session_name" in [t.lower() for t in prefix_tokens]:

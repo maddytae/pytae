@@ -3427,3 +3427,91 @@ def test_repl_saved_commands_pure_replayability(tmp_path):
     r.close()
 
 
+def test_repl_set_checkpoint_format_convert_option(tmp_path):
+    """Verify set checkpoint_format supports future-only by default, and convert=all on demand."""
+    from pathlib import Path
+
+    from pytae.repl import PytaeRepl, get_sessions_dir, set_sessions_dir
+
+    orig_dir = get_sessions_dir()
+    sess_dir = tmp_path / "sessions"
+    sess_dir.mkdir(parents=True, exist_ok=True)
+    set_sessions_dir(sess_dir)
+
+    try:
+        r = PytaeRepl(session="convert_test")
+        outputs: list[str] = []
+
+        # 1. Load data and create two checkpoints in default IPC format
+        r.execute_line("df = sample:penguins", output_fn=outputs.append)
+        r.execute_line("checkpoint cp1", output_fn=outputs.append)
+        r.execute_line("df2 = sample:tips", output_fn=outputs.append)
+        r.execute_line("checkpoint cp2", output_fn=outputs.append)
+
+        assert len(r.checkpoints) == 2
+        assert r.checkpoints["cp1"]["format"] == "ipc"
+        assert r.checkpoints["cp2"]["format"] == "ipc"
+        cp1_file = Path(r.checkpoints["cp1"]["dir"]) / "df.ipc"
+        assert cp1_file.exists()
+
+        # 2. Switch format to parquet WITHOUT convert=all -> future-only with informative note
+        outputs.clear()
+        r.execute_line("set checkpoint_format = parquet", output_fn=outputs.append)
+        assert r.checkpoint_format == "parquet"
+        out_text = "\n".join(outputs)
+        assert "new checkpoints will be saved as compressed Parquet" in out_text
+        assert "2 existing checkpoint(s) remain in IPC format" in out_text
+        assert "convert = all" in out_text
+
+        # Existing checkpoints remain IPC
+        assert r.checkpoints["cp1"]["format"] == "ipc"
+        assert cp1_file.exists()
+
+        # 3. Create a new checkpoint -> it is saved as Parquet!
+        outputs.clear()
+        r.execute_line("checkpoint cp3", output_fn=outputs.append)
+        assert r.checkpoints["cp3"]["format"] == "parquet"
+        cp3_file = Path(r.checkpoints["cp3"]["dir"]) / "df.parquet"
+        assert cp3_file.exists()
+
+        # 4. Now run convert = all to convert previous IPC checkpoints to Parquet
+        outputs.clear()
+        r.execute_line("set checkpoint_format = parquet, convert = all", output_fn=outputs.append)
+        conv_text = "\n".join(outputs)
+        assert "Converting 2 existing checkpoint(s) to parquet" in conv_text
+        assert "cp1: converted" in conv_text
+        assert "cp2: converted" in conv_text
+        assert "All 2 checkpoint(s) converted" in conv_text
+
+        # Verify files on disk are converted
+        assert r.checkpoints["cp1"]["format"] == "parquet"
+        assert (Path(r.checkpoints["cp1"]["dir"]) / "df.parquet").exists()
+        assert not (Path(r.checkpoints["cp1"]["dir"]) / "df.ipc").exists()
+
+        # 5. Restore cp1 from converted Parquet checkpoint
+        outputs.clear()
+        r.execute_line("restore cp1", output_fn=outputs.append)
+        assert "df" in r.tables
+        assert r.current_df is not None
+        assert r.current_df.shape[0] == 344
+
+        # 6. Convert all back from Parquet to IPC
+        outputs.clear()
+        r.execute_line("set checkpoint_format = ipc, convert = all", output_fn=outputs.append)
+        back_text = "\n".join(outputs)
+        assert "Converting 3 existing checkpoint(s) to ipc" in back_text
+        assert r.checkpoints["cp1"]["format"] == "ipc"
+        assert (Path(r.checkpoints["cp1"]["dir"]) / "df.ipc").exists()
+        assert not (Path(r.checkpoints["cp1"]["dir"]) / "df.parquet").exists()
+
+        # 7. Convert when already matching
+        outputs.clear()
+        r.execute_line("set convert = all", output_fn=outputs.append)
+        assert "All existing checkpoints are already in ipc format" in outputs[0]
+
+        r.close()
+    finally:
+        set_sessions_dir(orig_dir)
+
+
+

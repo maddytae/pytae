@@ -25732,7 +25732,8 @@ The Pytae REPL provides context-aware autocompletion via standard `readline`:
 | | `set session_name` | `set session_name = <name>` | Bind REPL to persistent session | No |
 | | `set session_load` | `set session_load = <name>` | Switch session and restore latest checkpoint | Yes |
 | | `set save_commands` | `set save_commands = pipeline.txt` | Set target replay script path upfront | No |
-| | `set checkpoint_format`| `set checkpoint_format = parquet` | Set format to `parquet` or `ipc` | No |
+| | `set checkpoint_format`| `set checkpoint_format = parquet [, convert=all]` | Set format to `parquet` or `ipc` (opt-in re-encode) | No |
+| | `set convert` | `set convert = all` | Convert all existing checkpoints to active format | No |
 | | `set sessions_dir` | `set sessions_dir = <path>` | Configure persistent sessions base directory | No |
 | | `set max_rows` | `set max_rows = 20` | Max rows displayed in previews (`default`: 10) | No |
 | | `set max_cols` | `set max_cols = 5` | Max columns displayed in previews (`all`, `<int>`) | No |
