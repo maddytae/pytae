@@ -235,20 +235,32 @@ def _get_process_rss_mb() -> float | None:
     return None
 
 
+_DEFAULT_CODE_DIR = Path.home() / ".pytae" / "code"
+_DEFAULT_COMMANDS_DIR = _DEFAULT_CODE_DIR
 _DEFAULT_SESSIONS_DIR = Path.home() / ".pytae" / "sessions"
-_DEFAULT_COMMANDS_DIR = Path.home() / ".pytae" / "commands"
 _CONFIGURED_SESSIONS_DIR: Path | None = None
 
 
-def get_commands_dir() -> Path:
-    """Return default directory for saved Pytae command scripts (~/.pytae/commands)."""
-    p = _DEFAULT_COMMANDS_DIR
+def get_code_dir() -> Path:
+    """Return default directory for auto-saved Pytae code scripts (~/.pytae/code)."""
+    p = _DEFAULT_CODE_DIR
+    legacy = Path.home() / ".pytae" / "commands"
+    if legacy.exists() and legacy.is_dir() and not p.exists():
+        try:
+            legacy.rename(p)
+        except Exception:
+            pass
     p.mkdir(parents=True, exist_ok=True)
     return p
 
 
+def get_commands_dir() -> Path:
+    """Legacy alias for get_code_dir()."""
+    return get_code_dir()
+
+
 def get_sessions_dir() -> Path:
-    """Return the base directory for persistent Pytae sessions."""
+    """Return the base directory for persistent Pytae sessions (defaults to current working directory)."""
     global _CONFIGURED_SESSIONS_DIR
     if _CONFIGURED_SESSIONS_DIR is not None:
         p = _CONFIGURED_SESSIONS_DIR
@@ -257,7 +269,7 @@ def get_sessions_dir() -> Path:
         if env_dir:
             p = Path(env_dir).expanduser().resolve()
         else:
-            p = _DEFAULT_SESSIONS_DIR
+            p = Path.cwd().resolve()
     p.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -265,7 +277,7 @@ def get_sessions_dir() -> Path:
 def set_sessions_dir(path: Path | str | None) -> Path:
     """Configure the base directory for persistent Pytae sessions."""
     global _CONFIGURED_SESSIONS_DIR
-    if path is None or str(path).lower() in ("default", "none", "reset"):
+    if path is None or str(path).lower() in ("default", "none", "reset", "cwd"):
         _CONFIGURED_SESSIONS_DIR = None
         return get_sessions_dir()
     p = Path(path).expanduser().resolve()
@@ -308,8 +320,7 @@ def is_session_dir(path: Path | str) -> bool:
 def _is_dedicated_sessions_dir(path: Path) -> bool:
     """Check if a directory is a dedicated sessions container folder."""
     return (
-        path == _DEFAULT_SESSIONS_DIR.resolve()
-        or path.name.lower() in ("sessions", ".sessions", "pytae_sessions", ".pytae")
+        path.name.lower() in ("sessions", ".sessions", "pytae_sessions", ".pytae")
     )
 
 
@@ -344,7 +355,7 @@ def list_saved_sessions(
     if directory is not None:
         raw_target = str(directory).strip()
         from pytae.cli_parsing import normalize_session_path
-        s_dir = _DEFAULT_SESSIONS_DIR.resolve() if raw_target.lower() == "default" else normalize_session_path(raw_target)
+        s_dir = Path.cwd().resolve() if raw_target.lower() == "default" else normalize_session_path(raw_target)
     else:
         s_dir = get_sessions_dir()
 
@@ -1488,7 +1499,8 @@ class PytaeRepl:
         self._session_start_time = datetime.datetime.now()
         timestamp_str = self._session_start_time.strftime("%Y_%m_%d_%H_%M_%S")
         self.session_history_path: Path = _get_history_dir() / f"history_{timestamp_str}.txt"
-        self.session_commands_path: Path = get_commands_dir() / f"commands_{timestamp_str}.txt"
+        self.session_code_path: Path = get_code_dir() / f"code_{timestamp_str}.txt"
+        self.session_commands_path: Path = self.session_code_path
         self.session_log_path: Path = self.session_history_path
         self.session_raw_cmd_count: int = 0
         self.session_cmd_count: int = 0
@@ -1620,7 +1632,7 @@ class PytaeRepl:
                 shutil.copyfile(self.session_commands_path, target_path)
             else:
                 lines = [
-                    f"# Pytae REPL Commands: {target_path.name}",
+                    f"# Pytae REPL Code: {target_path.name}",
                     f"# Started: {self._session_start_time.strftime('%Y-%m-%d %H:%M:%S')}",
                     "",
                 ]
@@ -1630,10 +1642,10 @@ class PytaeRepl:
                         continue
                     lines.append(clean)
                 target_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-            output_fn(f"Session commands saved to {target_path}.")
+            output_fn(f"Session code saved to {target_path}.")
             return True
         except Exception as exc:
-            output_fn(f"pytae: Error saving commands to '{target_path_str}': {exc}")
+            output_fn(f"pytae: Error saving code to '{target_path_str}': {exc}")
             return False
 
     def _set_initial_df(self, df: Any) -> None:
@@ -3522,7 +3534,7 @@ class PytaeRepl:
             from pytae.cli_parsing import normalize_session_path
 
             target_dir = (
-                _DEFAULT_SESSIONS_DIR.resolve()
+                Path.cwd().resolve()
                 if clean_sdir.lower() == "default"
                 else normalize_session_path(clean_sdir)
             )
@@ -3546,9 +3558,9 @@ class PytaeRepl:
 
             if not src_sess_dir.exists() or not src_sess_dir.is_dir():
                 hint_str = ""
-                default_candidate = _DEFAULT_SESSIONS_DIR.resolve() / clean_name
-                if default_candidate.exists() and default_candidate.is_dir() and default_candidate != src_sess_dir:
-                    hint_str = f" (Note: found session with this name in '{default_candidate}'. Pass full path to load it)."
+                legacy_candidate = Path.home() / ".pytae" / "sessions" / clean_name
+                if legacy_candidate.exists() and legacy_candidate.is_dir() and legacy_candidate != src_sess_dir:
+                    hint_str = f" (Note: found legacy session with this name in '{legacy_candidate}'. Pass full path to load it)."
                 output_fn(f"pytae: session directory '{src_sess_dir}' not found.{hint_str}")
                 return
 

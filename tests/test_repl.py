@@ -2373,7 +2373,7 @@ def test_repl_history_save_and_exit_save(tmp_path, monkeypatch):
     assert "df = sample:penguins" in saved_content
     # The 'set save_commands' command itself must not pollute the exported commands script
     assert "save_commands" not in saved_content
-    assert any("Session commands saved to" in o or "Session history saved to" in o for o in outputs)
+    assert any("Session code saved to" in o or "Session commands saved to" in o or "Session history saved to" in o for o in outputs)
 
     # Case 3: Invalid exit arguments
     outputs.clear()
@@ -2392,7 +2392,7 @@ def test_repl_history_save_and_exit_save(tmp_path, monkeypatch):
     assert res is False  # Exits!
     assert default_hist.exists()
     assert "df = sample:penguins" in default_hist.read_text(encoding="utf-8")
-    assert any("Session commands saved to" in o or "Session history saved to" in o for o in outputs)
+    assert any("Session code saved to" in o or "Session commands saved to" in o or "Session history saved to" in o for o in outputs)
     assert any("Exiting pytae REPL." in o for o in outputs)
 
     # Case 5: exit -s with named path saves and terminates REPL
@@ -2404,7 +2404,7 @@ def test_repl_history_save_and_exit_save(tmp_path, monkeypatch):
     saved_exit = work_dir / "final_exit.txt"
     assert saved_exit.exists()
     assert "df = sample:penguins" in saved_exit.read_text(encoding="utf-8")
-    assert any("Session commands saved to" in o or "Session history saved to" in o for o in outputs)
+    assert any("Session code saved to" in o or "Session commands saved to" in o or "Session history saved to" in o for o in outputs)
     assert any("Exiting pytae REPL." in o for o in outputs)
 
 
@@ -3077,7 +3077,7 @@ def test_list_saved_sessions_output_and_directories(tmp_path, monkeypatch) -> No
     assert hist_dir.parent.name == ".pytae"
 
     cmd_dir = get_commands_dir()
-    assert cmd_dir.name == "commands"
+    assert cmd_dir.name in ("code", "commands")
     assert cmd_dir.parent.name == ".pytae"
 
     # 2. Test list_saved_sessions with dummy sessions in custom temp dir

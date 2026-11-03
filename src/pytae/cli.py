@@ -1078,15 +1078,16 @@ def main(argv: list[str] | None = None) -> int:
     if getattr(args, "session", None) is not None:
         args.repl = True
         sess_arg = str(args.session).strip()
-        if "/" in sess_arg or "\\" in sess_arg:
-            p = Path(sess_arg).expanduser()
-            from pytae.repl import is_session_dir, set_sessions_dir
-            if p.is_dir() and not is_session_dir(p):
-                set_sessions_dir(p)
-                args.session = None
-            else:
-                set_sessions_dir(p.parent.resolve())
-                args.session = p.name
+        from pytae.cli_parsing import normalize_session_path
+        from pytae.repl import is_session_dir, set_sessions_dir
+
+        p = normalize_session_path(sess_arg)
+        if p.is_dir() and not is_session_dir(p):
+            set_sessions_dir(p)
+            args.session = None
+        else:
+            set_sessions_dir(p.parent.resolve())
+            args.session = p.name
 
     has_progress = args.progress is not None
     chunk_size = args.progress or 200_000
