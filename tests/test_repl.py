@@ -2842,15 +2842,15 @@ def test_repl_set_session_load_and_sessions_dir(tmp_path):
     custom_dir_2.mkdir(parents=True, exist_ok=True)
 
     try:
-        # 0. Legacy 'set session' and 'set load_session' are strictly rejected (no backward compatibility)
+        # 0. Unknown setting 'set session' is rejected; 'load_session' is official setting
         r = PytaeRepl()
         outputs.clear()
         r.execute_line("set session = legacy_name", output_fn=outputs.append)
         assert "unknown setting 'session'" in outputs[-1].lower()
 
         outputs.clear()
-        r.execute_line("set load_session = legacy_name", output_fn=outputs.append)
-        assert "unknown setting 'load_session'" in outputs[-1].lower()
+        r.execute_line("set load_session = non_existent_dir", output_fn=outputs.append)
+        assert "not found" in outputs[-1].lower()
 
         # 1. sessions_dir alone with NO active session is rejected / not modified
         outputs.clear()
@@ -3223,14 +3223,14 @@ def test_repl_set_display_and_custom_settings():
     r = PytaeRepl()
     outputs: list[str] = []
 
-    # 1. Bare 'set' lists all 12 settings
+    # 1. Bare 'set' lists all new proposal settings
     r.execute_line("set", output_fn=outputs.append)
     set_text = "\n".join(outputs)
-    assert "session_name      =" in set_text
-    assert "session_load      =" in set_text
+    assert "new_session       =" in set_text
+    assert "load_session      =" in set_text
+    assert "save_session      =" in set_text
     assert "checkpoint_format =" in set_text
     assert "save_commands     =" in set_text
-    assert "sessions_dir      =" in set_text
     assert "max_rows          = 10" in set_text
     assert "max_cols          = all" in set_text
     assert "float_precision   = auto" in set_text
@@ -4347,6 +4347,94 @@ def test_repl_named_session_status(tmp_path):
         r.close()
     finally:
         set_sessions_dir(orig)
+
+
+def test_repl_unified_path_first_sessions(tmp_path, monkeypatch):
+    """Test unified new_session, load_session, save_session (safe copy & move=true), and external status inspection."""
+    from pytae.repl import PytaeRepl, set_sessions_dir
+
+    # Reset any module-level sessions_dir override from prior tests
+    set_sessions_dir(None)
+
+    # Isolate CWD to tmp_path so CWD-relative sessions write to tmp_path
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("PYTAE_SESSIONS_DIR", raising=False)
+
+    outputs: list[str] = []
+    r = PytaeRepl()
+
+    # 1. Start new session in CWD
+    r.execute_line("set new_session = fresh_lab", output_fn=outputs.append)
+    assert any("Started new session 'fresh_lab'" in o for o in outputs)
+    assert r.session_name == "fresh_lab"
+    assert (tmp_path / "fresh_lab" / "checkpoints").exists()
+
+    # Create table & checkpoint in fresh_lab
+    r.execute_line("df = sample:penguins")
+    r.execute_line("checkpoint cp_base")
+    assert (tmp_path / "fresh_lab" / "checkpoints" / "cp_base").exists()
+
+    # 2. Start new session at explicit path
+    outputs.clear()
+    nested_dir = tmp_path / "custom_folder" / "custom_lab"
+    r.execute_line(f'set new_session = "{nested_dir}"', output_fn=outputs.append)
+    assert any("Started new session 'custom_lab'" in o for o in outputs)
+    assert r.session_name == "custom_lab"
+    assert (nested_dir / "checkpoints").exists()
+    assert len(r.tables) == 0  # Clean workbench state
+    assert len(r.checkpoints) == 0
+
+    # Add checkpoint in custom_lab
+    r.execute_line("df2 = sample:tips")
+    r.execute_line("checkpoint cp_tips")
+    assert (nested_dir / "checkpoints" / "cp_tips").exists()
+
+    # 3. Load session in-place from CWD
+    outputs.clear()
+    r.execute_line("set load_session = fresh_lab", output_fn=outputs.append)
+    assert r.session_name == "fresh_lab"
+    assert "df" in r.tables
+    assert "cp_base" in r.checkpoints
+
+    # 4. Safe copy session (save_session by default preserves source)
+    outputs.clear()
+    r.execute_line("set save_session = copied_lab", output_fn=outputs.append)
+    assert any("Session saved as 'copied_lab'" in o for o in outputs)
+    assert r.session_name == "copied_lab"
+    assert (tmp_path / "copied_lab" / "checkpoints" / "cp_base").exists()
+    # Source fresh_lab MUST remain completely intact!
+    assert (tmp_path / "fresh_lab" / "checkpoints" / "cp_base").exists()
+
+    # 5. Move session (save_session with move = true removes old directory)
+    outputs.clear()
+    r.execute_line("set save_session = moved_lab, move = true", output_fn=outputs.append)
+    assert any("Moved session 'moved_lab'" in o for o in outputs)
+    assert r.session_name == "moved_lab"
+    assert (tmp_path / "moved_lab" / "checkpoints" / "cp_base").exists()
+    # Old copied_lab directory MUST be cleaned up!
+    assert not (tmp_path / "copied_lab").exists()
+    # Original fresh_lab remains untouched!
+    assert (tmp_path / "fresh_lab" / "checkpoints" / "cp_base").exists()
+
+    # 6. External status inspection without loading into active REPL
+    outputs.clear()
+    r.execute_line(f'status session "{nested_dir}"', output_fn=outputs.append)
+    ext_st = "\n".join(outputs)
+    assert "=== Session Inspection: custom_lab ===" in ext_st
+    assert "Storage Path" in ext_st
+    assert "cp_tips" in ext_st
+    # Active REPL remains moved_lab!
+    assert r.session_name == "moved_lab"
+
+    # 7. External verbose status inspection with -session flag
+    outputs.clear()
+    r.execute_line(f'status -session "{nested_dir}" -v', output_fn=outputs.append)
+    ext_st_v = "\n".join(outputs)
+    assert "=== Session Inspection: custom_lab ===" in ext_st_v
+    assert "cp_tips" in ext_st_v
+
+    r.close()
+
 
 
 

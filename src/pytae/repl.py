@@ -1918,9 +1918,14 @@ class PytaeRepl:
         (s_dir / ".pytae_session").touch(exist_ok=True)
         (s_dir / "history.json").write_text(json.dumps(self.history, indent=2), encoding="utf-8")
 
-    def _load_session_from_disk(self, name: str, output_fn: Callable[[str], None] | None = None) -> bool:
+    def _load_session_from_disk(
+        self,
+        name: str,
+        output_fn: Callable[[str], None] | None = None,
+        sess_dir: Path | None = None,
+    ) -> bool:
         """Load session history and saved checkpoints from disk, activating the latest checkpoint."""
-        s_dir = get_sessions_dir() / name
+        s_dir = (sess_dir if sess_dir is not None else (get_sessions_dir() / name)).resolve()
         if not s_dir.exists():
             return False
 
@@ -1976,6 +1981,8 @@ class PytaeRepl:
                 if output_fn:
                     output_fn(f"Resumed session '{name}' from latest checkpoint '{latest_cp}'.")
                 return True
+        elif output_fn:
+            output_fn(f"Loaded session '{name}' from '{s_dir}'.")
 
         return True
 
@@ -1989,7 +1996,7 @@ class PytaeRepl:
                 )
             else:
                 output_fn(
-                    "No active session (ephemeral). Use 'session save <name>' or 'set session_name = <name>' to persist."
+                    "No active session (ephemeral). Use 'set new_session = <name>' or 'set save_session = <name>' to persist."
                 )
             return
 
@@ -1998,11 +2005,15 @@ class PytaeRepl:
             if len(tokens) < 2:
                 output_fn("Usage: session save <name>")
                 return
+            target_tok = tokens[1].strip()
+            if any(c in target_tok for c in ("..", "\0")):
+                output_fn("pytae: invalid session name. Use alphanumeric characters, dashes, and underscores.")
+                return
             self._cmd_session_save(tokens[1], output_fn)
             return
 
         if subcmd == "load":
-            output_fn("pytae: 'session load' is not supported. Use 'set session_load = <path>' instead.")
+            output_fn("pytae: 'session load' is not supported. Use 'set load_session = <path>' instead.")
             return
 
         if subcmd in ("list", "ls"):
@@ -2019,24 +2030,61 @@ class PytaeRepl:
         if subcmd == "rm":
             output_fn(
                 "pytae: deleting sessions from inside the REPL is disabled to prevent session corruption. "
-                "Use your terminal or OS file manager to remove session directories (e.g. 'rm -rf ~/.pytae/sessions/<name>')."
+                "Use your terminal or OS file manager to remove session directories (e.g. 'rm -rf <path>')."
             )
             return
 
         output_fn(
             f"pytae: unknown session action '{subcmd}'. "
-            "Usage: session, session save <name>, or sessions (use 'set session_load = <path>' to load a session)"
+            "Usage: session, session save <name>, or sessions (use 'set load_session = <path>' to load a session)"
         )
 
-    def _cmd_session_save(self, name: str, output_fn: Callable[[str], None]) -> None:
-        target_name = name.strip()
-        if not target_name or any(c in target_name for c in ("/", "\\", "..", "\0")):
-            output_fn("pytae: invalid session name. Use alphanumeric characters, dashes, and underscores.")
+    def _cmd_new_session(self, target: str, output_fn: Callable[[str], None]) -> None:
+        from pytae.cli_parsing import normalize_session_path
+
+        clean_target = target.strip().strip("'\"")
+        if not clean_target:
+            output_fn("Usage: set new_session = <name_or_path>")
             return
 
-        s_dir = get_sessions_dir() / target_name
-        target_cp_dir = s_dir / "checkpoints"
+        dst_sess_dir = normalize_session_path(clean_target, base_dir=get_sessions_dir())
+        target_name = dst_sess_dir.name or dst_sess_dir.stem
+        target_cp_dir = dst_sess_dir / "checkpoints"
         target_cp_dir.mkdir(parents=True, exist_ok=True)
+
+        self.close()
+        self.tables.clear()
+        self.checkpoints.clear()
+        self.history.clear()
+        self.current_df = None
+        self.path_str = None
+
+        set_sessions_dir(dst_sess_dir.parent.resolve())
+        self.session_name = target_name
+        self._save_session_metadata()
+        output_fn(f"Started new session '{target_name}' at '{dst_sess_dir}'.")
+
+    def _cmd_session_save(self, target: str, output_fn: Callable[[str], None], is_move: bool = False) -> None:
+        from pytae.cli_parsing import normalize_session_path
+
+        clean_target = target.strip().strip("'\"")
+        if not clean_target:
+            output_fn("Usage: set save_session = <name_or_path>")
+            return
+
+        if clean_target.lower() in ("none", "off", "false", "0", ""):
+            old_sess = self.session_name
+            self.session_name = None
+            output_fn("Session detached (reverted to ephemeral in-memory).")
+            return
+
+        dst_sess_dir = normalize_session_path(clean_target, base_dir=get_sessions_dir())
+        target_name = dst_sess_dir.name or dst_sess_dir.stem
+        target_cp_dir = dst_sess_dir / "checkpoints"
+        target_cp_dir.mkdir(parents=True, exist_ok=True)
+
+        orig_dir = get_sessions_dir().resolve()
+        src_sess_dir = (orig_dir / self.session_name).resolve() if self.session_name else None
 
         if self._cp_temp_dir is not None:
             temp_p = Path(self._cp_temp_dir.name)
@@ -2049,17 +2097,17 @@ class PytaeRepl:
                     shutil.copytree(src_sub, dst_sub)
                     if isinstance(cp_meta, dict):
                         cp_meta["dir"] = str(dst_sub)
-                        m_json = dst_sub / "meta.json"
-                        if m_json.exists():
-                            try:
-                                m_data = json.loads(m_json.read_text(encoding="utf-8"))
-                                m_data["dir"] = str(dst_sub)
-                                m_json.write_text(json.dumps(m_data), encoding="utf-8")
-                            except Exception:
-                                pass
+                    m_json = dst_sub / "meta.json"
+                    if m_json.exists():
+                        try:
+                            m_data = json.loads(m_json.read_text(encoding="utf-8"))
+                            m_data["dir"] = str(dst_sub)
+                            m_json.write_text(json.dumps(m_data), encoding="utf-8")
+                        except Exception:
+                            pass
             self._cleanup_cp_dir()
-        elif self.session_name and self.session_name != target_name:
-            src_cp_dir = get_sessions_dir() / self.session_name / "checkpoints"
+        elif src_sess_dir and src_sess_dir.exists():
+            src_cp_dir = src_sess_dir / "checkpoints"
             if src_cp_dir.exists():
                 for cp_name, cp_meta in list(self.checkpoints.items()):
                     src_sub = src_cp_dir / cp_name
@@ -2070,10 +2118,30 @@ class PytaeRepl:
                         shutil.copytree(src_sub, dst_sub)
                         if isinstance(cp_meta, dict):
                             cp_meta["dir"] = str(dst_sub)
+                        m_json = dst_sub / "meta.json"
+                        if m_json.exists():
+                            try:
+                                m_data = json.loads(m_json.read_text(encoding="utf-8"))
+                                m_data["dir"] = str(dst_sub)
+                                m_json.write_text(json.dumps(m_data), encoding="utf-8")
+                            except Exception:
+                                pass
+            if src_sess_dir != dst_sess_dir:
+                for item in src_sess_dir.iterdir():
+                    if item.is_file() and not (dst_sess_dir / item.name).exists():
+                        shutil.copy2(item, dst_sess_dir / item.name)
 
+        set_sessions_dir(dst_sess_dir.parent.resolve())
         self.session_name = target_name
         self._save_session_metadata()
-        output_fn(f"Session saved as '{target_name}' ({len(self.checkpoints)} checkpoints saved).")
+
+        if is_move and src_sess_dir and src_sess_dir.exists() and src_sess_dir != dst_sess_dir:
+            shutil.rmtree(src_sess_dir, ignore_errors=True)
+            output_fn(f"Moved session '{target_name}' to '{dst_sess_dir}' ({len(self.checkpoints)} checkpoints moved). Old directory removed.")
+        elif src_sess_dir and src_sess_dir != dst_sess_dir:
+            output_fn(f"Session saved as '{target_name}' at '{dst_sess_dir}' ({len(self.checkpoints)} checkpoints saved). Original preserved.")
+        else:
+            output_fn(f"Session saved as '{target_name}' at '{dst_sess_dir}' ({len(self.checkpoints)} checkpoints saved).")
 
     def _cmd_session_load(self, name: str, output_fn: Callable[[str], None]) -> None:
         target_name = name.strip()
@@ -3012,6 +3080,95 @@ class PytaeRepl:
         output_fn("-" * 60)
         output_fn("(Tip: Use 'status table [name]' for table details, 'status checkpoint [name]' for checkpoints)")
 
+    def _show_external_session_status(self, path_or_name: str, output_fn: Callable[[str], None], verbose: bool = False) -> None:
+        """Inspect a saved session directory on disk without loading it into active memory."""
+        from pytae.cli_parsing import normalize_session_path
+
+        s_path = normalize_session_path(path_or_name, base_dir=get_sessions_dir())
+        if not s_path.exists() or not s_path.is_dir():
+            output_fn(f"pytae: session directory '{s_path}' not found.")
+            return
+
+        meta_file = s_path / "session.json"
+        sess_name = s_path.name
+        cp_format = "unknown"
+        created_at = "unknown"
+        cp_order: list[str] = []
+        if meta_file.exists():
+            try:
+                s_meta = json.loads(meta_file.read_text(encoding="utf-8"))
+                sess_name = s_meta.get("name", s_path.name)
+                cp_format = s_meta.get("checkpoint_format", "ipc")
+                created_at = s_meta.get("created_at", "unknown")
+                cp_order = s_meta.get("checkpoints", [])
+            except Exception:
+                pass
+
+        cp_dir = s_path / "checkpoints"
+        checkpoints_info: list[tuple[str, dict]] = []
+        if cp_dir.exists():
+            subdirs = sorted([p for p in cp_dir.iterdir() if p.is_dir() and not p.name.startswith(".")])
+            ordered_subs: list[Path] = []
+            for cp_n in cp_order:
+                sub = cp_dir / cp_n
+                if sub.is_dir() and sub not in ordered_subs:
+                    ordered_subs.append(sub)
+            for sub in subdirs:
+                if sub not in ordered_subs:
+                    ordered_subs.append(sub)
+
+            for sub in ordered_subs:
+                m_file = sub / "meta.json"
+                cp_meta: dict = {}
+                if m_file.exists():
+                    try:
+                        cp_meta = json.loads(m_file.read_text(encoding="utf-8"))
+                    except Exception:
+                        pass
+                checkpoints_info.append((sub.name, cp_meta))
+
+        output_fn(f"=== Session Inspection: {sess_name} ===")
+        output_fn(f"Storage Path  : {_format_friendly_path(s_path)}")
+        output_fn("Status        : Ready" if cp_dir.exists() else "Status        : Empty / Inactive")
+        output_fn(f"Default Format: {cp_format}")
+        if created_at != "unknown":
+            output_fn(f"Created       : {created_at}")
+
+        if not checkpoints_info:
+            output_fn("Checkpoints   : 0 saved")
+        else:
+            output_fn(f"Checkpoints ({len(checkpoints_info)}):")
+            for cp_name, cp_meta in checkpoints_info:
+                fmt = cp_meta.get("format", cp_format)
+                created = cp_meta.get("created_at", "")
+                created_str = f" created {created}" if created else ""
+                tables = cp_meta.get("tables", {})
+                if tables:
+                    t_descs = []
+                    for t_n, t_info in tables.items():
+                        r = t_info.get("rows", "?")
+                        c = t_info.get("cols", "?")
+                        t_descs.append(f"{t_n} [{r} rows x {c} cols]")
+                    t_str = f" ({', '.join(t_descs)})"
+                else:
+                    t_str = ""
+                output_fn(f"  - {cp_name:<14}: [{fmt}]{t_str}{created_str}")
+
+                if verbose and tables:
+                    for t_n, t_info in tables.items():
+                        cols = t_info.get("columns", [])
+                        if cols:
+                            col_preview = ", ".join(cols[:8]) + ("..." if len(cols) > 8 else "")
+                            output_fn(f"      columns: [{col_preview}]")
+
+        hist_file = s_path / "history.json"
+        if hist_file.exists():
+            try:
+                hist_data = json.loads(hist_file.read_text(encoding="utf-8"))
+                output_fn(f"History Steps : {len(hist_data)} recorded commands")
+            except Exception:
+                pass
+
     def _cmd_status(self, output_fn: Callable[[str], None], args: list[str] | None = None) -> None:
         args = args or []
         verbose = any(a in ("-v", "-verbose", "--verbose", "verbose", "v") for a in args)
@@ -3020,16 +3177,19 @@ class PytaeRepl:
         # Direct user to specific subcommands if bare 'status' or 'status -v' is typed
         if not target_args:
             output_fn("pytae: please specify a status category to inspect:")
-            output_fn("  - status session [-v]      : Inspect current REPL session state and storage directory")
-            output_fn("  - status table [name] [-v] : Inspect active table or a specific table schema")
-            output_fn("  - status tables [-v]       : View inventory of all loaded in-memory tables")
-            output_fn("  - status checkpoint [name] : Inspect checkpoint snapshot and frozen tables")
-            output_fn("  - status checkpoints [-v]  : View inventory of all saved checkpoints")
+            output_fn("  - status session [path] [-v] : Inspect active session or a session on disk")
+            output_fn("  - status table [name] [-v]   : Inspect active table or a specific table schema")
+            output_fn("  - status tables [-v]         : View inventory of all loaded in-memory tables")
+            output_fn("  - status checkpoint [name]   : Inspect checkpoint snapshot and frozen tables")
+            output_fn("  - status checkpoints [-v]    : View inventory of all saved checkpoints")
             return
 
-        cat = target_args[0].lower()
+        cat = target_args[0].lower().lstrip("-")
         if cat in ("session", "sessions"):
-            self._show_session_status(output_fn, verbose=verbose)
+            if len(target_args) > 1:
+                self._show_external_session_status(target_args[1], output_fn, verbose=verbose)
+            else:
+                self._show_session_status(output_fn, verbose=verbose)
             return
 
         if cat in ("tables", "table"):
@@ -3294,20 +3454,19 @@ class PytaeRepl:
                 self.initial_df = None
 
     def _cmd_set(self, args: list[str], output_fn: Callable[[str], None], raw_line: str = "") -> None:
-        """Handle REPL configuration settings (e.g. set checkpoint_format = parquet, set sessions_dir = <path>, set session_name = <name>, set session_load = <name>)."""
+        """Handle REPL configuration settings (e.g. set new_session = <name>, set load_session = <path>, set save_session = <path>, set checkpoint_format = parquet)."""
         if not args:
             sess_name = self.session_name or "none"
             save_cmd_str = self.save_history_file or "none"
-            sess_dir = str(get_sessions_dir())
             max_cols_str = str(self.max_cols) if self.max_cols is not None else "all"
             prec_str = str(self.float_precision) if self.float_precision is not None else "auto"
             comma_str = "on" if self.comma else "off"
 
-            output_fn(f"session_name      = {sess_name} (options: <name>, none)")
-            output_fn("session_load      = (options: <name>)")
+            output_fn("new_session       = (options: <name>, <path>) (e.g. set new_session = rwa_analysis)")
+            output_fn("load_session      = (options: <name>, <path>) (e.g. set load_session = rwa_analysis)")
+            output_fn(f"save_session      = {sess_name} (options: <name>, <path>, move = true)")
             output_fn(f"checkpoint_format = {self.checkpoint_format} (options: ipc, parquet)")
             output_fn(f"save_commands     = {save_cmd_str} (options: <path>, none)")
-            output_fn(f"sessions_dir      = {sess_dir} (options: <path>, default)")
             output_fn(f"max_rows          = {self.max_rows} (options: <int>, default)")
             output_fn(f"max_cols          = {max_cols_str} (options: <int>, all, default)")
             output_fn(f"float_precision   = {prec_str} (options: <int>, auto, default)")
@@ -3318,7 +3477,7 @@ class PytaeRepl:
         pairs = _parse_set_pairs(line)
         if not pairs:
             output_fn(
-                "Usage: set [key [= value]] (e.g. set session_name = my_project, set session_load = my_project, set max_rows = 20, set comma = on)"
+                "Usage: set [key [= value]] (e.g. set new_session = rwa_analysis, set load_session = rwa_analysis, set save_session = rwa_analysis, set checkpoint_format = parquet)"
             )
             return
 
@@ -3326,20 +3485,46 @@ class PytaeRepl:
         for k, v in pairs:
             pair_map[k.lower().replace("-", "_")] = v
 
-        session_name_val = pair_map.pop("session_name", None)
-        session_load_val = pair_map.pop("session_load", None)
-        session_dir_val = pair_map.pop("sessions_dir", None)
-        if session_dir_val is None:
-            session_dir_val = pair_map.pop("session_dir", None)
+        new_session_val = pair_map.pop("new_session", None)
+        load_session_val = pair_map.pop("load_session", None) or pair_map.pop("session_load", None)
+        save_session_val = (
+            pair_map.pop("save_session", None)
+            or pair_map.pop("session_save", None)
+            or pair_map.pop("session_name", None)
+        )
+        copy_session_val = pair_map.pop("copy_session", None) or pair_map.pop("session_copy", None)
+        move_session_val = pair_map.pop("move_session", None) or pair_map.pop("session_move", None)
 
-        # 1. Handle session_load (loading, copying/relocating, or forking into a new session)
-        if session_load_val is not None:
-            raw_path = session_load_val.strip("'\"")
+        move_flag_val = pair_map.pop("move", None)
+        is_move_flag = move_flag_val is not None and move_flag_val.strip("'\"").lower() in ("true", "1", "yes")
+
+        # Absorb legacy sessions_dir / session_dir if provided
+        session_dir_val = pair_map.pop("sessions_dir", None) or pair_map.pop("session_dir", None)
+        target_dir = None
+        if session_dir_val is not None:
+            clean_sdir = session_dir_val.strip("'\"")
+            from pytae.cli_parsing import normalize_session_path
+
+            target_dir = (
+                _DEFAULT_SESSIONS_DIR.resolve()
+                if clean_sdir.lower() == "default"
+                else normalize_session_path(clean_sdir)
+            )
+
+        # 1. Handle new_session
+        if new_session_val is not None:
+            self._cmd_new_session(new_session_val, output_fn)
+            self._record_history(f"set new_session = {new_session_val}")
+
+        # 2. Handle load_session (loading existing session in-place from CWD or path)
+        elif load_session_val is not None:
+            raw_path = load_session_val.strip("'\"")
             if not raw_path:
-                output_fn('session_load      = (options: <path>) (e.g. set session_load = rwa_analysis or set session_load = "C:\\path\\to\\rwa_analysis")')
+                output_fn('load_session      = (options: <name>, <path>) (e.g. set load_session = rwa_analysis)')
                 return
 
             from pytae.cli_parsing import normalize_session_path
+
             src_sess_dir = normalize_session_path(raw_path, base_dir=get_sessions_dir())
             clean_name = src_sess_dir.name or src_sess_dir.stem
 
@@ -3351,188 +3536,47 @@ class PytaeRepl:
                 output_fn(f"pytae: session directory '{src_sess_dir}' not found.{hint_str}")
                 return
 
-            orig_dir = src_sess_dir.parent.resolve()
+            self.close()
+            set_sessions_dir(src_sess_dir.parent.resolve())
+            self.session_name = clean_name
+            self._load_session_from_disk(clean_name, output_fn, sess_dir=src_sess_dir)
+            self._record_history(f"set load_session = {raw_path}")
 
-            # Target directory (where this session will reside)
-            if session_dir_val is not None:
-                clean_dir = session_dir_val.strip("'\"")
-                target_dir = _DEFAULT_SESSIONS_DIR.resolve() if clean_dir.lower() == "default" else normalize_session_path(clean_dir)
-            else:
-                target_dir = orig_dir
+            # If save_session / session_name is ALSO specified with load_session, fork to target!
+            if save_session_val is not None or copy_session_val is not None or move_session_val is not None:
+                target_save = save_session_val or copy_session_val or move_session_val
+                is_move = is_move_flag or (move_session_val is not None)
+                if session_dir_val is not None and target_dir:
+                    target_save = str(target_dir / target_save)
+                self._cmd_session_save(target_save, output_fn, is_move=is_move)
+                dst_loc = get_sessions_dir() / self.session_name
+                output_fn(f"Forked session '{clean_name}' -> '{self.session_name}' at '{dst_loc}' ({len(self.checkpoints)} checkpoints copied). Original preserved.")
+                hist_str = f"set save_session = {target_save}" + (", move = true" if is_move else "")
+                self._record_history(hist_str)
+            elif session_dir_val is not None and target_dir and target_dir != src_sess_dir.parent:
+                self._cmd_session_save(str(target_dir / clean_name), output_fn, is_move=False)
+                output_fn(f"Forked session '{clean_name}' -> '{self.session_name}' at '{target_dir / clean_name}' ({len(self.checkpoints)} checkpoints copied). Original preserved.")
 
-            # Target session name
-            target_new_name = clean_name
-            if session_name_val is not None:
-                clean_target = session_name_val.strip("'\"")
-                if clean_target.lower() not in ("none", "off", "false", "0", ""):
-                    if any(c in clean_target for c in ("/", "\\", "..", "\0")):
-                        output_fn(f"pytae: invalid session name '{clean_target}'. Session name must not contain path separators.")
-                        return
-                    target_new_name = clean_target
+        # 3. Handle save_session / copy_session / move_session alone
+        elif save_session_val is not None or copy_session_val is not None or move_session_val is not None:
+            target_save = save_session_val or copy_session_val or move_session_val
+            is_move = is_move_flag or (move_session_val is not None)
+            if session_dir_val is not None and target_dir:
+                target_save = str(target_dir / target_save)
+            self._cmd_session_save(target_save, output_fn, is_move=is_move)
+            hist_str = f"set save_session = {target_save}" + (", move = true" if is_move else "")
+            self._record_history(hist_str)
 
-            is_fork = (target_dir != orig_dir or target_new_name != clean_name)
-
-            if is_fork:
-                # Load source session into workbench
-                self.close()
-                set_sessions_dir(orig_dir)
-                self.session_name = clean_name
-                self._load_session_from_disk(clean_name, output_fn)
-
-                # Fork to new target session directory without removing source
-                dst_sess_dir = target_dir / target_new_name
-                dst_cp_dir = dst_sess_dir / "checkpoints"
-                dst_cp_dir.mkdir(parents=True, exist_ok=True)
-                src_cp_dir = src_sess_dir / "checkpoints"
-                if src_cp_dir.exists():
-                    for cp_name, cp_meta in list(self.checkpoints.items()):
-                        src_sub = src_cp_dir / cp_name
-                        dst_sub = dst_cp_dir / cp_name
-                        if src_sub.exists():
-                            if dst_sub.exists():
-                                shutil.rmtree(dst_sub, ignore_errors=True)
-                            shutil.copytree(src_sub, dst_sub)
-                            if isinstance(cp_meta, dict):
-                                cp_meta["dir"] = str(dst_sub)
-                            m_json = dst_sub / "meta.json"
-                            if m_json.exists():
-                                try:
-                                    m_data = json.loads(m_json.read_text(encoding="utf-8"))
-                                    m_data["dir"] = str(dst_sub)
-                                    m_json.write_text(json.dumps(m_data), encoding="utf-8")
-                                except Exception:
-                                    pass
-                if src_sess_dir.exists():
-                    for item in src_sess_dir.iterdir():
-                        if item.is_file():
-                            shutil.copy2(item, dst_sess_dir / item.name)
-
-                set_sessions_dir(target_dir)
-                self.session_name = target_new_name
-                self._save_session_metadata()
-                output_fn(f"Forked session '{clean_name}' -> '{target_new_name}' at {target_dir}. Original session preserved.")
-                self._record_history(f"set session_load = {raw_path}, sessions_dir = {target_dir}")
-                session_name_val = None  # Handled as fork
-
-            else:
-                # In-place session load
-                self.close()
-                set_sessions_dir(orig_dir)
-                self.session_name = clean_name
-                self._load_session_from_disk(clean_name, output_fn)
-                self._record_history(f"set session_load = {raw_path}")
-
-        # 2. Handle session_name (binding/saving)
-        elif session_name_val is not None:
-            clean_val = session_name_val.strip("'\"")
-            if not clean_val:
-                sess_name = self.session_name or "none"
-                output_fn(f"session_name      = {sess_name} (options: <name>, none)")
-                return
-            if clean_val.lower() in ("none", "off", "false", "0", ""):
-                if self.session_name:
-                    old_sess = self.session_name
-                    self.session_name = None
-                    self._record_history("set session_name = none")
-                    output_fn(f"Detached persistent session '{old_sess}' (session reverted to ephemeral).")
-                else:
-                    output_fn("Session is already ephemeral.")
-            else:
-                if any(c in clean_val for c in ("/", "\\", "..", "\0")):
-                    output_fn(f"pytae: invalid session name '{clean_val}'. Session name must not contain path separators.")
-                    return
-                if session_dir_val is not None:
-                    clean_dir = session_dir_val.strip("'\"")
-                    from pytae.cli_parsing import normalize_session_path
-                    new_dir = _DEFAULT_SESSIONS_DIR.resolve() if clean_dir.lower() == "default" else normalize_session_path(clean_dir)
-                    orig_dir = get_sessions_dir().resolve()
-                    if self.session_name and new_dir != orig_dir:
-                        src_sess_dir = orig_dir / self.session_name
-                        dst_sess_dir = new_dir / clean_val
-                        dst_cp_dir = dst_sess_dir / "checkpoints"
-                        dst_cp_dir.mkdir(parents=True, exist_ok=True)
-                        src_cp_dir = src_sess_dir / "checkpoints"
-                        if src_cp_dir.exists():
-                            for cp_name, cp_meta in list(self.checkpoints.items()):
-                                src_sub = src_cp_dir / cp_name
-                                dst_sub = dst_cp_dir / cp_name
-                                if src_sub.exists() and src_sub != dst_sub:
-                                    if dst_sub.exists():
-                                        shutil.rmtree(dst_sub, ignore_errors=True)
-                                    shutil.copytree(src_sub, dst_sub)
-                                    if isinstance(cp_meta, dict):
-                                        cp_meta["dir"] = str(dst_sub)
-                                    m_json = dst_sub / "meta.json"
-                                    if m_json.exists():
-                                        try:
-                                            m_data = json.loads(m_json.read_text(encoding="utf-8"))
-                                            m_data["dir"] = str(dst_sub)
-                                            m_json.write_text(json.dumps(m_data), encoding="utf-8")
-                                        except Exception:
-                                            pass
-                        if src_sess_dir.exists():
-                            for item in src_sess_dir.iterdir():
-                                if item.is_file():
-                                    shutil.copy2(item, dst_sess_dir / item.name)
-                        set_sessions_dir(new_dir)
-                        self.session_name = clean_val
-                        self._save_session_metadata()
-                        if src_sess_dir.exists() and src_sess_dir != dst_sess_dir:
-                            shutil.rmtree(src_sess_dir, ignore_errors=True)
-                        self._record_history(f"set session_name = {clean_val}, sessions_dir = {clean_dir}")
-                        output_fn(f"Relocated active session '{clean_val}' to '{dst_sess_dir}' ({len(self.checkpoints)} checkpoints moved).")
-                        return
-                    else:
-                        set_sessions_dir(new_dir)
-                self._cmd_session_save(clean_val, output_fn)
-                self._record_history(f"set session_name = {clean_val}")
-
-        # 3. Handle session_dir alone
+        # 3b. Handle sessions_dir alone when an active session is loaded
         elif session_dir_val is not None:
-            clean_dir = session_dir_val.strip("'\"")
-            if not clean_dir:
-                output_fn(f"sessions_dir = {get_sessions_dir()} (options: <path>, default)")
-                return
             if self.session_name:
-                from pytae.cli_parsing import normalize_session_path
-                new_dir = _DEFAULT_SESSIONS_DIR.resolve() if clean_dir.lower() == "default" else normalize_session_path(clean_dir)
                 orig_dir = get_sessions_dir().resolve()
-                if new_dir != orig_dir:
-                    src_sess_dir = orig_dir / self.session_name
-                    dst_sess_dir = new_dir / self.session_name
-                    dst_cp_dir = dst_sess_dir / "checkpoints"
-                    dst_cp_dir.mkdir(parents=True, exist_ok=True)
-                    src_cp_dir = src_sess_dir / "checkpoints"
-                    if src_cp_dir.exists():
-                        for cp_name, cp_meta in list(self.checkpoints.items()):
-                            src_sub = src_cp_dir / cp_name
-                            dst_sub = dst_cp_dir / cp_name
-                            if src_sub.exists() and src_sub != dst_sub:
-                                if dst_sub.exists():
-                                    shutil.rmtree(dst_sub, ignore_errors=True)
-                                shutil.copytree(src_sub, dst_sub)
-                                if isinstance(cp_meta, dict):
-                                    cp_meta["dir"] = str(dst_sub)
-                                m_json = dst_sub / "meta.json"
-                                if m_json.exists():
-                                    try:
-                                        m_data = json.loads(m_json.read_text(encoding="utf-8"))
-                                        m_data["dir"] = str(dst_sub)
-                                        m_json.write_text(json.dumps(m_data), encoding="utf-8")
-                                    except Exception:
-                                        pass
-                    if src_sess_dir.exists():
-                        for item in src_sess_dir.iterdir():
-                            if item.is_file():
-                                shutil.copy2(item, dst_sess_dir / item.name)
-                    set_sessions_dir(new_dir)
-                    self._save_session_metadata()
-                    if src_sess_dir.exists() and src_sess_dir != dst_sess_dir:
-                        shutil.rmtree(src_sess_dir, ignore_errors=True)
-                    self._record_history(f"set sessions_dir = {clean_dir}")
-                    output_fn(f"Relocated active session '{self.session_name}' to '{dst_sess_dir}' ({len(self.checkpoints)} checkpoints moved).")
+                if target_dir != orig_dir:
+                    dst_sess_path = target_dir / self.session_name
+                    self._cmd_session_save(str(dst_sess_path), output_fn, is_move=True)
+                    output_fn(f"Relocated active session '{self.session_name}' to '{dst_sess_path}' ({len(self.checkpoints)} checkpoints moved).")
                 else:
-                    output_fn(f"sessions_dir is already '{new_dir}'.")
+                    output_fn(f"sessions_dir is already '{target_dir}'.")
             else:
                 output_fn(
                     "pytae: no active session. 'sessions_dir' must be accompanied by 'session_name = <name>' or 'session_load = <name>' (e.g. set session_name = my_project, sessions_dir = <path>)."

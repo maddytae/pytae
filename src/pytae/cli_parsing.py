@@ -807,6 +807,9 @@ def normalize_session_path(
         base_candidate = (base_dir / p).resolve()
         if base_candidate.exists() and base_candidate.is_dir():
             return base_candidate
+        default_sessions_dir = (Path.home() / ".pytae" / "sessions").resolve()
+        if base_dir.resolve() != default_sessions_dir and not any(ch in str(raw_path) for ch in ("/", "\\")):
+            return base_candidate
 
     return cwd_candidate
 

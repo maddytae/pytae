@@ -1193,34 +1193,37 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "session": KeywordHelp(
         name="session",
-        flag="-session, --session NAME",
-        syntax="pytae -i -session <NAME> (or 'session [save | load | list | rm]' in REPL)",
-        summary="Name, resume, or manage isolated persistent REPL interactive sessions.",
+        flag="-session, --session <name_or_path>",
+        syntax="pytae -i -session <name_or_path> (or 'set new_session = <path>', 'set load_session = <path>', 'set save_session = <path> [, move = true]' in REPL)",
+        summary="Create, load, save, move, or inspect isolated persistent REPL interactive sessions.",
         description=(
-            "Loads, creates, or manages persistent named REPL sessions stored in ~/.pytae/sessions/<name>/.\n"
+            "Unified, path-first framework for isolated persistent REPL sessions.\n"
             "Preserves history, in-memory tables, active configurations, and checkpoints across restarts.\n"
-            "- CLI flag 'pytae -i -session <NAME>': Launch REPL directly into the named persistent session.\n"
-            "- 'session save <name>': Promote current ephemeral session or save current state under <name>.\n"
-            "- 'set session_load = <path>': Load and resume a saved session from disk (path relative to CWD or absolute).\n"
-            "- 'session list [-v]': View all saved sessions on disk (paths, readiness, checkpoint count).\n"
-            "- 'status session [-v]': Inspect current active session, storage path, and resource health."
+            "- 'set new_session = <name | path>': Start a fresh persistent session from scratch (in CWD or at path).\n"
+            "- 'set load_session = <name | path>': Load and resume an existing session in-place from disk.\n"
+            "- 'set save_session = <name | path>': Save current session state (safe copy by default; preserves original).\n"
+            "- 'set save_session = <name | path>, move = true': Relocate session to target path and remove old directory.\n"
+            "- 'status session [path] [-v]': Inspect active session state or inspect an external session directory without loading it.\n"
+            "- CLI flag 'pytae -i -session <name_or_path>': Launch REPL directly into a persistent session."
         ),
         options=[
-            "-session NAME : CLI flag to launch REPL directly into persistent session NAME.",
+            "set new_session = <name | path> : Start a fresh persistent session from scratch (at CWD or specified path).",
+            "set load_session = <name | path> : Load and resume an existing persistent session from disk.",
+            "set save_session = <name | path> : Save current session state (safe copy by default; preserves source).",
+            "set save_session = <path>, move = true : Relocate active session to target path and remove old directory.",
+            "status session [path] [-v] : Inspect active session state or an external session directory on disk.",
+            "-session <name | path> : CLI flag to launch REPL directly into a persistent session.",
             "-sessions [-ready] [-v] : Shell CLI listing of all saved persistent sessions on disk.",
-            "session save <name> : Persist current interactive session and checkpoints under <name>.",
-            "set session_load = <path> : Load and resume a saved session from disk (CWD relative or full path).",
+            "session save <name> : Legacy shortcut to save current interactive session and checkpoints under <name>.",
             "session list [-v] : List saved persistent sessions and check status from inside REPL.",
-            "session rm <name> : Delete a saved session directory from disk.",
-            "status session [-v] : Inspect active session state, storage directory, and table inventory.",
-            "set sessions_dir = <path> : Configure custom base directory for persistent sessions.",
         ],
         examples=[
             "pytae -i -session my_project",
+            "pytae -i  # Inside REPL: set new_session = experiment_1",
+            "pytae -i  # Inside REPL: set save_session = 'C:/Users/TAF3842/my_sessions/rwa_analysis'",
+            "pytae -i  # Inside REPL: set save_session = ./archived_run, move = true",
+            "pytae -i  # Inside REPL: status session 'C:/Users/TAF3842/my_sessions/rwa_analysis' -v",
             "pytae -sessions  # List all existing saved sessions from shell",
-            "pytae -sessions -ready  # List only ready/healthy sessions from shell",
-            "pytae -i  # Inside REPL: session save experiment_1",
-            "pytae -i  # Inside REPL: status session -v",
         ],
         see_also=["-i", "-sessions", "status", "set", "checkpoint"],
     ),
@@ -1300,12 +1303,12 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     "status": KeywordHelp(
         name="status",
         flag="status <category> [-v]",
-        syntax="status [session | table [name] | tables | checkpoint [name] | checkpoints] [-v]",
+        syntax="status [session [path] | table [name] | tables | checkpoint [name] | checkpoints] [-v]",
         summary="Inspect REPL session status, storage location, loaded tables, or saved checkpoints.",
         description=(
             "Central inspection command for REPL session and workbench state:\n"
             "- Bare 'status' or 'status -v': Directs to specific inspection categories.\n"
-            "- 'status session [-v]': Shows current REPL session name, storage directory, active table, tables count, checkpoints, and process RAM.\n"
+            "- 'status session [path] [-v]': Shows active session state, or inspects an external session directory on disk without loading it into memory.\n"
             "- 'status table [name] [-v]': Displays table schema, shape, source, dtypes, and memory footprint.\n"
             "- 'status tables [-v]': Displays inventory of all in-memory tables and their memory footprint.\n"
             "- 'status checkpoint [name] [-v]': Displays snapshot metadata, storage formats, disk bytes, and frozen tables.\n"
@@ -1313,7 +1316,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ),
         options=[
             "status : Directs to specific status categories (session, table, checkpoints).",
-            "status session [-v] : Current REPL session state, storage directory, and resource health.",
+            "status session [path] [-v] : Current REPL session state or inspect an external session directory on disk.",
             "status table [name] [-v] : Diagnostics and schema for active or named table.",
             "status tables [-v] : Table inventory and per-table RAM consumption.",
             "status checkpoints [-v] : Checkpoint history and format breakdown.",
@@ -1321,6 +1324,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         examples=[
             "pytae -i  # Inside REPL: status session",
+            "pytae -i  # Inside REPL: status session 'C:/Users/TAF3842/my_sessions/rwa_analysis' -v",
             "pytae -i data.parquet  # Inside REPL: status table -v",
         ],
         see_also=["checkpoint", "restore", "tables", "diff"],
@@ -1360,11 +1364,11 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "- 'set <key> = <val>': Updates setting (supports multiple comma-separated pairs, e.g. set checkpoint_format = parquet, convert = all)."
         ),
         options=[
+            "new_session = <name | path> : Start a new persistent session from scratch (in CWD or at path).",
+            "load_session = <name | path> : Load an existing persistent session from disk (in CWD or at path).",
+            "save_session = <name | path> [, move = true] : Save current session state (safe copy by default; moves with move = true).",
             "checkpoint_format = <ipc | parquet> : Checkpoint serialization ('ipc' default fast Arrow, or 'parquet' compressed).",
             "convert = all : Re-encode all existing session checkpoints into the target checkpoint_format.",
-            "session_name = <name | none> : Set active persistent session (saves snapshots to ~/.pytae/sessions/<name>).",
-            "session_load = <name> : Load a saved persistent session from disk.",
-            "sessions_dir = <path | default> : Custom base directory for persistent sessions.",
             "save_commands = <path | none> : Auto-append executed pipeline commands to a script file.",
             "max_rows = <int | default> : Number of rows displayed in table previews.",
             "max_cols = <int | all | default> : Number of columns displayed in previews.",
@@ -1372,8 +1376,10 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "comma = <on | off> : Thousands grouping comma formatting in integer outputs.",
         ],
         examples=[
+            "pytae -i  # Inside REPL: set new_session = rwa_analysis",
+            "pytae -i  # Inside REPL: set load_session = 'C:/Users/TAF3842/my_sessions/rwa_analysis'",
+            "pytae -i  # Inside REPL: set save_session = ./archived_run, move = true",
             "pytae -i  # Inside REPL: set checkpoint_format = parquet, convert = all",
-            "pytae -i  # Inside REPL: set session_name = my_lab, max_rows = 20",
         ],
         see_also=["checkpoint", "session", "sessions", "status"],
     ),
@@ -1533,6 +1539,11 @@ KEYWORD_ALIASES: dict[str, str] = {
     "sessions": "session",
     "-sessions": "session",
     "--sessions": "session",
+    "new_session": "session",
+    "load_session": "session",
+    "save_session": "session",
+    "copy_session": "session",
+    "move_session": "session",
     "v": "session",
     "-v": "session",
     "verbose": "session",
