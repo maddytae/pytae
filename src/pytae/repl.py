@@ -1909,7 +1909,19 @@ class PytaeRepl:
         if line.startswith("#"):
             return True
 
-        return self._execute_line_core(line, output_fn)
+        try:
+            return self._execute_line_core(line, output_fn)
+        except SystemExit as exc:
+            msg = str(exc)
+            if msg and msg != "0":
+                if msg.startswith("-") or msg.startswith("pytae") or msg.startswith("invalid"):
+                    output_fn(msg)
+                else:
+                    output_fn(f"pytae error: {msg}")
+            return True
+        except Exception as exc:
+            output_fn(f"pytae error: {exc}")
+            return True
 
     def _execute_line_core(self, line: str, output_fn: Callable[[str], None] = print) -> bool:
         """Core dispatch logic for one REPL command line."""
@@ -4396,13 +4408,22 @@ class PytaeRepl:
             output_fn(f"pytae syntax error: {exc}")
             return None, None, True
 
-        rename_specs = [parse_rename(raw) for raw in (args.rename or [])]
-        select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
-        filter_specs = [parse_filter(raw) for raw in (args.filter or [])]
-        mutate_specs = list(args.mutate or [])
-        sql_specs = list(args.sql or [])
-        join_specs = [parse_join_arg(raw) for raw in (args.join or [])]
-        concat_specs = [parse_concat_arg(raw) for raw in (args.concat or [])]
+        try:
+            rename_specs = [parse_rename(raw) for raw in (args.rename or [])]
+            select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
+            filter_specs = [parse_filter(raw) for raw in (args.filter or [])]
+            mutate_specs = list(args.mutate or [])
+            sql_specs = list(args.sql or [])
+            join_specs = [parse_join_arg(raw) for raw in (args.join or [])]
+            concat_specs = [parse_concat_arg(raw) for raw in (args.concat or [])]
+        except (argparse.ArgumentError, SystemExit, Exception) as exc:
+            msg = str(exc)
+            if msg and not quiet:
+                if msg.startswith("-") or msg.startswith("pytae") or msg.startswith("invalid"):
+                    output_fn(msg)
+                else:
+                    output_fn(f"pytae syntax error: {msg}")
+            return None, None, True
         op_order = getattr(args, "op_order", [])
 
         cfg_kwargs: dict[str, Any] = {
@@ -4503,8 +4524,13 @@ class PytaeRepl:
             else:
                 res_pl = source_df
             return res_pl, durations, False
-        except Exception as exc:
-            output_fn(f"pytae error: {exc}")
+        except (Exception, SystemExit) as exc:
+            msg = str(exc)
+            if msg and not quiet:
+                if msg.startswith("-") or msg.startswith("pytae") or msg.startswith("invalid"):
+                    output_fn(msg)
+                else:
+                    output_fn(f"pytae error: {msg}")
             return None, None, True
 
     def _eval_pipeline_df(
@@ -4819,8 +4845,15 @@ class PytaeRepl:
                         break
                 except KeyboardInterrupt:
                     output_fn("\n(KeyboardInterrupt - command cancelled)")
-                except Exception as exc:
-                    output_fn(f"pytae error: {exc}")
+                except (Exception, SystemExit) as exc:
+                    if isinstance(exc, SystemExit) and exc.code in (0, None):
+                        break
+                    msg = str(exc)
+                    if msg:
+                        if msg.startswith("-") or msg.startswith("pytae") or msg.startswith("invalid"):
+                            output_fn(msg)
+                        else:
+                            output_fn(f"pytae error: {msg}")
         finally:
             if getattr(self, "session_cmd_count", 0) == 0 and getattr(self, "session_commands_path", None) is not None:
                 if self.session_commands_path.exists():

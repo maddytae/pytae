@@ -88,8 +88,19 @@ class _Pipeline:
                         self._pldf = eager.lazy() if isinstance(eager, pl.DataFrame) else eager
                     self._pending_exact = None
                 except Exception:
-                    df = self.dataframe()
-                    self._pldf = pl.from_pandas(df).lazy()
+                    if self._pandas_df is not None:
+                        self._pldf = pl.from_pandas(self._pandas_df).lazy()
+                    elif self._reader is not None:
+                        df = self._reader.to_dataframe(
+                            columns=self._pending_exact,
+                            nrows=self._nrows,
+                            progress=self._progress,
+                            chunk_size=self._chunk_size,
+                        )
+                        self._pandas_df = df
+                        self._pldf = pl.from_pandas(df).lazy()
+                    else:
+                        self._pldf = pl.LazyFrame()
             else:
                 self._pldf = pl.LazyFrame()
         elif isinstance(self._pldf, pl.DataFrame):
@@ -104,20 +115,21 @@ class _Pipeline:
         if isinstance(lf, pl.LazyFrame):
             try:
                 self._pldf = lf.collect()
-            except pl.exceptions.ComputeError:
-                try:
-                    if hasattr(self._reader, "to_polars"):
-                        self._pldf = self._reader.to_polars(
-                            columns=self._pending_exact, nrows=self._nrows, infer_schema_length=None
-                        )
-                    else:
-                        raise
-                except Exception:
-                    df = self.dataframe()
-                    self._pldf = pl.from_pandas(df)
             except Exception:
-                df = self.dataframe()
-                self._pldf = pl.from_pandas(df)
+                if self._reader is not None and hasattr(self._reader, "to_polars"):
+                    try:
+                        self._pldf = self._reader.to_polars(
+                            columns=self._pending_exact, nrows=self._nrows
+                        )
+                    except Exception:
+                        if self._pandas_df is not None:
+                            self._pldf = pl.from_pandas(self._pandas_df)
+                        else:
+                            raise
+                elif self._pandas_df is not None:
+                    self._pldf = pl.from_pandas(self._pandas_df)
+                else:
+                    raise
         return self._pldf
 
     def apply_select(self, names: list[str], kwargs: dict) -> str | None:

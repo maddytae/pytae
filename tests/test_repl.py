@@ -3609,5 +3609,45 @@ def test_sessions_cli_and_repl_verbose_modes(tmp_path):
         set_sessions_dir(orig_dir)
 
 
+def test_repl_does_not_abort_on_pipeline_errors():
+    """Verify invalid pipeline flags/syntax (e.g. -scatter 'age,fare', -filter 'age >') do not abort REPL."""
+    r = PytaeRepl()
+    outputs: list[str] = []
+
+    # Load dataset
+    cont = r.execute_line("df = sample:titanic", output_fn=outputs.append)
+    assert cont is True
+    assert r.current_df is not None
+
+    # Invalid scatter syntax (comma instead of x:y)
+    outputs.clear()
+    cont = r.execute_line('-scatter "age,fare"', output_fn=outputs.append)
+    assert cont is True  # REPL remains active
+    out_text = "\n".join(outputs)
+    assert "scatter() requires two numeric columns" in out_text
+
+    # Invalid filter condition
+    outputs.clear()
+    cont = r.execute_line('-filter "age >"', output_fn=outputs.append)
+    assert cont is True
+    out_text = "\n".join(outputs)
+    assert "invalid filter condition" in out_text
+
+    # Invalid rename spec
+    outputs.clear()
+    cont = r.execute_line('-rename "bad"', output_fn=outputs.append)
+    assert cont is True
+    out_text = "\n".join(outputs)
+    assert "invalid -rename mapping" in out_text
+
+    # Valid pipeline still works immediately afterwards
+    outputs.clear()
+    cont = r.execute_line("-head 2", output_fn=outputs.append)
+    assert cont is True
+    assert len(outputs) > 0
+    r.close()
+
+
+
 
 

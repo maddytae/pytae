@@ -15,6 +15,13 @@ All notable changes to this project are documented in this file.
   - Updated release and contribution protocols accordingly.
 
 ### Fixed
+- **Prevent Unhandled `SystemExit` from Aborting Interactive REPL on Validation / Syntax Errors**:
+  - Intercepted `SystemExit` across pipeline argument parsing, specification extraction (`parse_scatter_spec`, `parse_bar_spec`, `parse_filter`, `parse_rename`, etc.), and CLI execution (`_process_path`, `_run_viz_op`).
+  - Caught `(Exception, SystemExit)` in `PytaeRepl._run_pipeline_on_df`, `execute_line`, and the REPL interactive loop (`run()`).
+  - Previously, Python's `except Exception:` missed `SystemExit` (which inherits from `BaseException`), causing invalid arguments (such as `-scatter "age,fare"`) to terminate the Python process and return to the host OS shell.
+  - The REPL now cleanly prints the validation or syntax guidance message and remains active at the prompt.
+- **Prevent Infinite Recursion in Pipeline Frame Resolution (`cli_pipeline.py`)**:
+  - Replaced circular fallbacks between `polars_frame()` and `dataframe()` when Polars collection or column resolution fails, ensuring errors re-raise cleanly without recursion depth exhaustion.
 - **Exclude Transient Clipboard Exports (`-o clip`) from Replay Scripts (`~/.pytae/commands/`)**:
   - Tightened `_is_replayable_entry` to inspect `-o` target arguments and ignore transient clipboard copies (`-o clip`, `-o clipboard`, and preview pipelines ending in `-head ... -o clip`).
   - Guarantees that only persistent disk file artifacts (`.parquet`, `.csv`, `.feather`, `.jsonl`) and state transformations are written to automated batch scripts, preventing failures or clipboard pollution during headless/CI batch replay while faithfully preserving all inputs in `~/.pytae/history/`.
