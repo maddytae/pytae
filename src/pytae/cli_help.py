@@ -1194,50 +1194,64 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     "session": KeywordHelp(
         name="session",
         flag="-session, --session NAME",
-        syntax="pytae -i -session <NAME>",
-        summary="Name or resume an isolated persistent REPL interactive session.",
+        syntax="pytae -i -session <NAME> (or 'session [save | load | list | rm]' in REPL)",
+        summary="Name, resume, or manage isolated persistent REPL interactive sessions.",
         description=(
-            "Loads or creates a persistent named REPL session stored in ~/.pytae/sessions/<name>/. "
-            "Preserves history, in-memory tables, and checkpoints across terminal restarts."
+            "Loads, creates, or manages persistent named REPL sessions stored in ~/.pytae/sessions/<name>/.\n"
+            "Preserves history, in-memory tables, active configurations, and checkpoints across restarts.\n"
+            "- CLI flag 'pytae -i -session <NAME>': Launch REPL directly into the named persistent session.\n"
+            "- 'session save <name>': Promote current ephemeral session or save current state under <name>.\n"
+            "- 'session load <name>': Switch to or reload an existing persistent session from disk.\n"
+            "- 'session list [-v]': View all saved sessions on disk (paths, readiness, checkpoint count).\n"
+            "- 'status session [-v]': Inspect current active session, storage path, and resource health."
         ),
         options=[
-            "NAME : Session directory name (e.g. 'analytics', 'experiment_1').",
-            "-sessions : List all saved persistent sessions on disk (non-verbose: name, path, status).",
-            "-sessions -ready : Filter session listing to only ready/healthy sessions.",
-            "-sessions -v : List saved sessions with verbose checkpoint details, sizes, formats, and table breakdown.",
-            "-sessions <pattern> [-ready] [-v] : Inspect sessions matching a wildcard pattern (e.g. '*sales*').",
+            "-session NAME : CLI flag to launch REPL directly into persistent session NAME.",
+            "-sessions [-ready] [-v] : Shell CLI listing of all saved persistent sessions on disk.",
+            "session save <name> : Persist current interactive session and checkpoints under <name>.",
+            "session load <name> : Load and resume a saved session from disk into the REPL.",
+            "session list [-v] : List saved persistent sessions and check status from inside REPL.",
+            "session rm <name> : Delete a saved session directory from disk.",
+            "status session [-v] : Inspect active session state, storage directory, and table inventory.",
+            "set sessions_dir = <path> : Configure custom base directory for persistent sessions.",
         ],
         examples=[
             "pytae -i -session my_project",
-            "pytae -sessions  # List all existing saved sessions",
-            "pytae -sessions -ready  # List only ready/healthy sessions",
-            "pytae -sessions *sales* -v  # Detailed verbose breakdown for matching sessions",
+            "pytae -sessions  # List all existing saved sessions from shell",
+            "pytae -sessions -ready  # List only ready/healthy sessions from shell",
+            "pytae -i  # Inside REPL: session save experiment_1",
+            "pytae -i  # Inside REPL: status session -v",
         ],
-        see_also=["-i", "-sessions", "-ready"],
+        see_also=["-i", "-sessions", "status", "set", "checkpoint"],
     ),
     "checkpoint": KeywordHelp(
         name="checkpoint",
         flag="checkpoint <name>",
-        syntax="checkpoint <name>",
-        summary="Freeze in-memory workbench state into an immutable snapshot.",
+        syntax="checkpoint <name> (or 'set checkpoint_format = <ipc|parquet>[, convert = all]')",
+        summary="Freeze in-memory workbench state into an immutable snapshot with format control.",
         description=(
             "Takes an in-memory snapshot of all active tables and pipeline history.\n"
-            "If an active persistent session is enabled, the snapshot is also flushed\n"
-            "to disk in the configured format (IPC or Parquet) under checkpoints/<name>/.\n"
-            "If running in ephemeral mode (no active session), checkpoints are held in temporary memory/disk\n"
-            "and automatically cleaned up on exit unless promoted with 'session save <name>'."
+            "- Named session: Snapshot is written to ~/.pytae/sessions/<name>/checkpoints/<name>/.\n"
+            "- Ephemeral session: Snapshot is held in temporary storage and cleaned up on exit.\n"
+            "- Formats: Uses uncompressed Arrow IPC ('ipc') by default for zero-copy instantaneous restores,\n"
+            "  or compressed Parquet ('parquet') for compact long-term disk storage.\n"
+            "- Re-encoding ('convert = all'): Convert all existing checkpoints in the session to the new format."
         ),
         options=[
             "<name> : Unique checkpoint identifier (alphanumeric, dashes, underscores).",
+            "set checkpoint_format = <ipc | parquet> : Set format for new checkpoints ('ipc' default, or 'parquet').",
+            "set checkpoint_format = <fmt>, convert = all : Convert all existing session snapshots to <fmt>.",
             "restore <name> : Restore entire workbench to this checkpoint snapshot.",
+            "status checkpoint <name> [-v] : Inspect snapshot metadata, format, files, and frozen tables.",
             "status checkpoints [-v] : List all saved checkpoints with timestamp and format.",
             "rm checkpoint <name> : Delete an individual checkpoint (or 'rm checkpoint *').",
         ],
         examples=[
             "pytae -i  # Inside REPL: checkpoint base_clean",
+            "pytae -i  # Inside REPL: set checkpoint_format = parquet, convert = all",
             "pytae -i -session my_project  # Inside REPL: checkpoint model_v1",
         ],
-        see_also=["restore", "reset", "status", "session"],
+        see_also=["restore", "reset", "status", "session", "set"],
     ),
     "restore": KeywordHelp(
         name="restore",
@@ -1246,11 +1260,14 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         summary="Restore the interactive workbench to a previously frozen checkpoint snapshot.",
         description=(
             "Reverts all tables and pipeline state to the exact condition recorded when\n"
-            "'checkpoint <name>' was created. Any intermediate uncheckpointed modifications\n"
-            "are cleared, and memory from abandoned steps is trimmed immediately."
+            "'checkpoint <name>' was created. Automatically detects and decodes the checkpoint format\n"
+            "(Arrow IPC or Parquet). Intermediate uncheckpointed modifications are cleared, and\n"
+            "memory from abandoned steps is freed immediately."
         ),
         options=[
-            "<name> : Name of an existing checkpoint snapshot to restore.",
+            "<name> : Name of an existing checkpoint snapshot to restore (auto-detects IPC or Parquet).",
+            "reset : Shortcut to revert all tables to the latest checkpoint snapshot.",
+            "status checkpoint <name> : Preview snapshot contents, format, and tables before restoring.",
         ],
         examples=[
             "pytae -i  # Inside REPL: restore base_clean",
@@ -1335,26 +1352,30 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         name="set",
         flag="set [key [= value]]",
         syntax="set [key [= value]]",
-        summary="Configure or inspect interactive REPL workbench display and session settings.",
+        summary="Configure or inspect interactive REPL workbench display, session, and checkpoint settings.",
         description=(
             "Inspects or updates runtime settings in the interactive workbench:\n"
-            "- Bare 'set': Displays all current settings and choices.\n"
-            "- 'set <key>': Shows current value and permitted choices for <key>.\n"
-            "- 'set <key> = <val>': Updates setting (supports multiple comma- or space-separated pairs)."
+            "- Bare 'set': Displays all current settings and permitted choices.\n"
+            "- 'set <key>': Shows current value and choices for <key>.\n"
+            "- 'set <key> = <val>': Updates setting (supports multiple comma-separated pairs, e.g. set checkpoint_format = parquet, convert = all)."
         ),
         options=[
-            "session_name : Set active persistent session (saves checkpoints to ~/.pytae/sessions/<name>).",
-            "session_load : Load persistent session from disk.",
-            "sessions_dir : Override session storage directory path.",
-            "checkpoint_format : Checkpoint serialization ('ipc' default, or 'parquet').",
-            "save_commands : Auto-append executed pipeline commands to a script file.",
-            "max_rows, max_cols, float_precision, comma : Display format controls.",
+            "checkpoint_format = <ipc | parquet> : Checkpoint serialization ('ipc' default fast Arrow, or 'parquet' compressed).",
+            "convert = all : Re-encode all existing session checkpoints into the target checkpoint_format.",
+            "session_name = <name | none> : Set active persistent session (saves snapshots to ~/.pytae/sessions/<name>).",
+            "session_load = <name> : Load a saved persistent session from disk.",
+            "sessions_dir = <path | default> : Custom base directory for persistent sessions.",
+            "save_commands = <path | none> : Auto-append executed pipeline commands to a script file.",
+            "max_rows = <int | default> : Number of rows displayed in table previews.",
+            "max_cols = <int | all | default> : Number of columns displayed in previews.",
+            "float_precision = <int | auto | default> : Decimal places for floating-point values.",
+            "comma = <on | off> : Thousands grouping comma formatting in integer outputs.",
         ],
         examples=[
-            "pytae -i  # Inside REPL: set session_name = my_lab",
-            "pytae -i  # Inside REPL: set checkpoint_format = parquet",
+            "pytae -i  # Inside REPL: set checkpoint_format = parquet, convert = all",
+            "pytae -i  # Inside REPL: set session_name = my_lab, max_rows = 20",
         ],
-        see_also=["session", "sessions", "status"],
+        see_also=["checkpoint", "session", "sessions", "status"],
     ),
     "history": KeywordHelp(
         name="history",
@@ -1476,6 +1497,15 @@ KEYWORD_ALIASES: dict[str, str] = {
     "--checkpoints": "checkpoint",
     "-checkpoint": "checkpoint",
     "--checkpoint": "checkpoint",
+    "convert": "set",
+    "-convert": "set",
+    "--convert": "set",
+    "checkpoint_format": "checkpoint",
+    "-checkpoint_format": "checkpoint",
+    "--checkpoint_format": "checkpoint",
+    "cp_format": "checkpoint",
+    "-cp_format": "checkpoint",
+    "--cp_format": "checkpoint",
     "-restore": "restore",
     "--restore": "restore",
     "-reset": "reset",

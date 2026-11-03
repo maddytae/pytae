@@ -96,6 +96,19 @@ def test_help_unified_routing() -> None:
     assert "No dedicated help topic for keyword" in unknown_help
     assert "pytae -doc <phrase>" in unknown_help
 
+    # 7. Checkpoint, convert, and session keyword help
+    cp_help = get_keyword_help("checkpoint")
+    assert "convert = all" in cp_help
+    assert "checkpoint_format" in cp_help
+
+    convert_help = get_keyword_help("convert")
+    assert "convert = all" in convert_help
+    assert "checkpoint_format" in convert_help
+
+    session_help = get_keyword_help("session")
+    assert "session save" in session_help
+    assert "status session" in session_help
+
 
 def test_bare_subcommands_retired(capsys: pytest.CaptureFixture[str]) -> None:
     """Bare subcommands (doc, mcp, check, repl) are retired with clear redirect errors."""
