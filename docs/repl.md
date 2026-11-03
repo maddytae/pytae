@@ -45,7 +45,7 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
   - [In-REPL History Audit Log (`history`)](#in-repl-history-audit-log-history)
 - [Checkpoints (Disk-Backed & RAM-Isolated)](#checkpoints-disk-backed--ram-isolated)
   - [Saving Checkpoints (`checkpoint <name>`)](#saving-checkpoints-checkpoint-name)
-  - [Listing & Deleting Checkpoints (`checkpoints`, `rm checkpoint`)](#listing--deleting-checkpoints-checkpoints-rm-checkpoint)
+  - [Listing & Deleting Checkpoints (`status checkpoints`, `rm checkpoint`)](#listing--deleting-checkpoints-status-checkpoints-rm-checkpoint)
   - [Restoring Entire Workbench (`restore <name>`)](#restoring-entire-workbench-restore-name)
   - [Reloading After `rm *` via `restore <name>`](#reloading-after-rm--via-restore-name)
 - [Persistent REPL Sessions](#persistent-repl-sessions)
@@ -444,7 +444,7 @@ Removed all 3 loaded tables. No tables remain loaded.
 ```
 
 > [!NOTE]
-> Explicit category syntax (`rm table <name>` or `rm table *`) is required. Categorical consistency eliminates ambiguity across tables, checkpoints (`rm checkpoint <name>`), and sessions (`rm session <name>`).
+> Explicit category syntax (`rm table <name>`, `rm table *`, `rm checkpoint <name>`, or `rm checkpoint *`) is required. Categorical consistency eliminates ambiguity between in-memory tables and on-disk checkpoints. Deleting persistent sessions is managed directly via standard OS file operations (`rm -rf ~/.pytae/sessions/<name>`).
 
 ### Immediate Memory Deallocation & OS Trimming
 Unlike standard Python shells that retain memory pages in process heaps:
@@ -603,7 +603,7 @@ All user state in Pytae is structured under a unified `~/.pytae/` home root:
 - `~/.pytae/commands/`: Default home for generated replayable command scripts.
 - `~/.pytae/history/`: Flight recorder logging all interactive keystrokes and queries.
 
-### In-REPL Session Commands (`session`, `session save`, `session load`, `sessions`, `rm session`)
+### In-REPL Session Commands (`session`, `session save`, `session load`, `sessions`)
 
 In addition to configuring sessions via `set`, Pytae provides dedicated top-level session commands:
 
@@ -657,9 +657,8 @@ Saved Sessions (2 found):
 $ pytae -sessions        # Non-verbose: name, path, status
 $ pytae -sessions -v     # Verbose: full checkpoint details and format breakdown
 
-# Remove a persistent session and its checkpoints from disk
-pytae> rm session old_project
-Removed session 'old_project' from disk.
+# Remove a persistent session from your terminal using OS file commands
+$ rm -rf ~/.pytae/sessions/old_project
 ```
 
 > [!NOTE]
