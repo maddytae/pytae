@@ -3345,19 +3345,24 @@ class PytaeRepl:
                 return
 
             target_new_name = session_name_val.strip("'\"") if session_name_val is not None else None
-            is_fork = target_new_name and target_new_name.lower() not in ("none", "off", "false", "0", "") and target_new_name != clean_name
+
+            orig_dir = get_sessions_dir().resolve()
+            target_dir = orig_dir
+            if session_dir_val is not None:
+                clean_dir = session_dir_val.strip("'\"")
+                target_dir = _DEFAULT_SESSIONS_DIR.resolve() if clean_dir.lower() == "default" else Path(clean_dir).expanduser().resolve()
+
+            is_fork = (
+                target_new_name
+                and target_new_name.lower() not in ("none", "off", "false", "0", "")
+                and (target_new_name != clean_name or target_dir != orig_dir)
+            )
 
             if is_fork:
                 if any(c in target_new_name for c in ("/", "\\", "..", "\0")):
                     output_fn(f"pytae: invalid session name '{target_new_name}'. Session name must not contain path separators.")
                     return
 
-                target_dir = get_sessions_dir().resolve()
-                if session_dir_val is not None:
-                    clean_dir = session_dir_val.strip("'\"")
-                    target_dir = _DEFAULT_SESSIONS_DIR.resolve() if clean_dir.lower() == "default" else Path(clean_dir).expanduser().resolve()
-
-                orig_dir = get_sessions_dir().resolve()
                 src_sess_dir = orig_dir / clean_name
                 if not src_sess_dir.exists():
                     src_sess_dir = _DEFAULT_SESSIONS_DIR.resolve() / clean_name

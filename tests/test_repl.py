@@ -3931,6 +3931,39 @@ def test_repl_set_fork_session_preserves_source(tmp_path, monkeypatch):
     r2.close()
 
 
+def test_repl_set_copy_session_same_name_to_different_dir_preserves_source(tmp_path):
+    """Verify that specifying session_load, session_name with same name, and different sessions_dir copies cleanly and preserves source."""
+    from pytae.repl import PytaeRepl, set_sessions_dir
+
+    src_dir = tmp_path / "src_sessions"
+    dst_dir = tmp_path / "dst_sessions"
+    src_dir.mkdir(parents=True, exist_ok=True)
+    dst_dir.mkdir(parents=True, exist_ok=True)
+
+    set_sessions_dir(src_dir)
+    r1 = PytaeRepl(session="rwa_analysis")
+    r1.execute_line("df = sample:penguins")
+    r1.execute_line("checkpoint cp1")
+    r1.close()
+
+    assert (src_dir / "rwa_analysis" / "checkpoints" / "cp1").exists()
+
+    r2 = PytaeRepl()
+    outputs: list[str] = []
+    r2.execute_line(
+        f'set session_load = rwa_analysis, session_name = rwa_analysis, sessions_dir = "{dst_dir}"',
+        output_fn=outputs.append,
+    )
+    assert any("Forked session 'rwa_analysis' -> 'rwa_analysis'" in o for o in outputs)
+    assert r2.session_name == "rwa_analysis"
+    assert "cp1" in r2.checkpoints
+
+    # Both source and destination directories must have the session intact
+    assert (src_dir / "rwa_analysis" / "checkpoints" / "cp1").exists()
+    assert (dst_dir / "rwa_analysis" / "checkpoints" / "cp1").exists()
+    r2.close()
+
+
 def test_session_markers_and_directory_exploration(tmp_path):
     """Verify is_session_dir accurately distinguishes session folders from ordinary project directories, and targeted exploration lists sessions cleanly."""
     from pytae.repl import PytaeRepl, is_session_dir, list_saved_sessions, set_sessions_dir
