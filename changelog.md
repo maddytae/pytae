@@ -5,6 +5,10 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Faithful Flight Recorder (`~/.pytae/history/`) vs Pure Replayable Scripts (`~/.pytae/commands/`)**:
+  - Separated session tracking into two purpose-built logs:
+    - `~/.pytae/history/history_<timestamp>.txt`: Unadulterated flight recorder capturing every input typed by the user, including previews (`-head`, `-tail`), status checks (`status`, `tables`), help queries, `# comments`, and exports.
+    - `~/.pytae/commands/commands_<timestamp>.txt` (and target of `set save_commands`): Strictly replayable pipeline commands (pure assignments, transformations, and exports) stripped of comments, previews, and `set` settings for 100% automated script reproduction.
 - **Unified `~/.pytae/` Directory Architecture & Resilient Session Inspection (`pytae -sessions`)**:
   - Unified all Pytae user state under a single root directory `~/.pytae/` with dedicated subdirectories:
     - `~/.pytae/sessions/` for persistent named sessions and checkpoints.

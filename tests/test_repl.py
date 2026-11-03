@@ -2256,13 +2256,21 @@ def test_repl_session_history_logging(tmp_path, monkeypatch):
     r.execute_line("checkpoint v1", output_fn=outputs.append)
     r.execute_line("df = -mutate \"m = 1\"", output_fn=outputs.append)  # State mutation via assignment
 
-    # Check file content on disk in real time: checkpoints & exploratory previews omitted
-    content = r.session_log_path.read_text(encoding="utf-8")
-    assert "# Pytae REPL Session History" in content
-    assert "df = sample:penguins" in content
-    assert '-filter "species == \'Gentoo\'"' not in content  # Exploratory preview omitted!
-    assert "*checkpoint: v1*" not in content  # Checkpoint omitted!
-    assert 'df = -mutate "m = 1"' in content  # State mutation preserved!
+    # Check faithful history file on disk: all lines logged
+    hist_content = r.session_history_path.read_text(encoding="utf-8")
+    assert "# Pytae REPL Session History" in hist_content
+    assert "# my custom comment" in hist_content
+    assert "df = sample:penguins" in hist_content
+    assert '-filter "species == \'Gentoo\'"' in hist_content
+    assert 'df = -mutate "m = 1"' in hist_content
+
+    # Check commands file on disk: exploratory previews and comments omitted
+    cmds_content = r.session_commands_path.read_text(encoding="utf-8")
+    assert "# Pytae REPL Commands" in cmds_content
+    assert "df = sample:penguins" in cmds_content
+    assert '-filter "species == \'Gentoo\'"' not in cmds_content  # Exploratory preview omitted from commands!
+    assert "# my custom comment" not in cmds_content  # Comments omitted from commands!
+    assert 'df = -mutate "m = 1"' in cmds_content  # State mutation preserved in commands!
 
     # Test in-REPL history command: clean sequential numbering without comments
     outputs.clear()
@@ -2354,7 +2362,7 @@ def test_repl_history_save_and_exit_save(tmp_path, monkeypatch):
     assert "df = sample:penguins" in saved_content
     # The 'set save_commands' command itself must not pollute the exported commands script
     assert "save_commands" not in saved_content
-    assert any("Session history saved to" in o for o in outputs)
+    assert any("Session commands saved to" in o or "Session history saved to" in o for o in outputs)
 
     # Case 3: Invalid exit arguments
     outputs.clear()
@@ -2373,7 +2381,7 @@ def test_repl_history_save_and_exit_save(tmp_path, monkeypatch):
     assert res is False  # Exits!
     assert default_hist.exists()
     assert "df = sample:penguins" in default_hist.read_text(encoding="utf-8")
-    assert any("Session history saved to" in o for o in outputs)
+    assert any("Session commands saved to" in o or "Session history saved to" in o for o in outputs)
     assert any("Exiting pytae REPL." in o for o in outputs)
 
     # Case 5: exit -s with named path saves and terminates REPL
@@ -2385,7 +2393,7 @@ def test_repl_history_save_and_exit_save(tmp_path, monkeypatch):
     saved_exit = work_dir / "final_exit.txt"
     assert saved_exit.exists()
     assert "df = sample:penguins" in saved_exit.read_text(encoding="utf-8")
-    assert any("Session history saved to" in o for o in outputs)
+    assert any("Session commands saved to" in o or "Session history saved to" in o for o in outputs)
     assert any("Exiting pytae REPL." in o for o in outputs)
 
 
@@ -3050,6 +3058,56 @@ def test_list_saved_sessions_output_and_directories(tmp_path, monkeypatch) -> No
         assert any("[Offline / Unreachable]" in o for o in outputs)
     finally:
         set_sessions_dir(orig_sess_dir)
+
+
+def test_faithful_history_vs_commands_script(tmp_path) -> None:
+    """Verify that ~/.pytae/history/ saves all lines faithfully while commands script contains only replayable steps."""
+    import polars as pl
+
+    from pytae.repl import PytaeRepl
+
+    r = PytaeRepl()
+    r.tables["df"] = pl.DataFrame({"a": list(range(10))})
+    r.current_df = r.tables["df"]
+    r.path_str = "df"
+
+    cmd_export = tmp_path / "my_commands.txt"
+    out_csv = tmp_path / "out.csv"
+
+    # Run diverse mix of exploratory, informational, comment, config, and mutation steps
+    r.execute_line("# A descriptive comment")
+    r.execute_line("status")
+    r.execute_line("help")
+    r.execute_line("-head 3")
+    r.execute_line(f"set save_commands = {cmd_export}")
+    r.execute_line("k = df -head 5")
+    r.execute_line(f"k -o {out_csv}")
+    r.execute_line("exit")
+
+    # 1. Verify history file (faithful flight recorder in history/)
+    assert r.session_history_path.exists()
+    hist_text = r.session_history_path.read_text(encoding="utf-8")
+    assert "# A descriptive comment" in hist_text
+    assert "status" in hist_text
+    assert "help" in hist_text
+    assert "-head 3" in hist_text
+    assert "set save_commands" in hist_text
+    assert "k = df -head 5" in hist_text
+    assert f"k -o {out_csv}" in hist_text
+    assert "exit" in hist_text
+
+    # 2. Verify commands script (clean replayable commands in commands/)
+    assert cmd_export.exists()
+    cmd_text = cmd_export.read_text(encoding="utf-8")
+    assert "k = df -head 5" in cmd_text
+    assert f"k -o {out_csv}" in cmd_text
+    # Meta / preview / comments must NOT be in commands script
+    assert "status" not in cmd_text
+    assert "help" not in cmd_text
+    assert "-head 3" not in cmd_text
+    assert "set save_commands" not in cmd_text
+    assert "# A descriptive comment" not in cmd_text
+
 
 
 

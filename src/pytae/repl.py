@@ -1218,18 +1218,31 @@ class PytaeRepl:
 
         self._session_start_time = datetime.datetime.now()
         timestamp_str = self._session_start_time.strftime("%Y_%m_%d_%H_%M_%S")
-        self.session_log_path: Path = _get_history_dir() / f"history_{timestamp_str}.txt"
+        self.session_history_path: Path = _get_history_dir() / f"history_{timestamp_str}.txt"
+        self.session_commands_path: Path = get_commands_dir() / f"commands_{timestamp_str}.txt"
+        self.session_log_path: Path = self.session_history_path
+        self.session_raw_cmd_count: int = 0
         self.session_cmd_count: int = 0
         self._completion_matches: list[str] = []
 
         init_target = str(path) if path else (str(paths[0]) if paths else "(none)")
-        header = [
+        hist_header = [
             f"# Pytae REPL Session History: started {self._session_start_time.strftime('%Y-%m-%d %H:%M:%S')}",
             f"# Target: {init_target}",
             "",
         ]
         try:
-            self.session_log_path.write_text("\n".join(header), encoding="utf-8")
+            self.session_history_path.write_text("\n".join(hist_header), encoding="utf-8")
+        except Exception:
+            pass
+
+        cmd_header = [
+            f"# Pytae REPL Commands: started {self._session_start_time.strftime('%Y-%m-%d %H:%M:%S')}",
+            f"# Target: {init_target}",
+            "",
+        ]
+        try:
+            self.session_commands_path.write_text("\n".join(cmd_header), encoding="utf-8")
         except Exception:
             pass
 
@@ -1279,13 +1292,27 @@ class PytaeRepl:
         # Otherwise, bare pipelines without assignment or -o (e.g. -pivot ..., -filter ..., -head 5) are exploratory previews
         return False
 
+    def _log_history_line(self, raw_line: str) -> None:
+        """Faithfully record every input line to the session history file (~/.pytae/history/)."""
+        clean = raw_line.strip()
+        if not clean:
+            return
+        self.session_raw_cmd_count += 1
+        try:
+            with open(self.session_history_path, "a", encoding="utf-8") as f:
+                f.write(f"{clean}\n")
+                f.flush()
+        except Exception:
+            pass
+
     def _log_session_line(self, entry: str) -> None:
+        """Record replayable commands to the session commands file (~/.pytae/commands/)."""
         clean = entry.strip()
         if not self._is_replayable_entry(clean):
             return
         self.session_cmd_count += 1
         try:
-            with open(self.session_log_path, "a", encoding="utf-8") as f:
+            with open(self.session_commands_path, "a", encoding="utf-8") as f:
                 f.write(f"{clean}\n")
                 f.flush()
         except Exception:
@@ -1296,7 +1323,7 @@ class PytaeRepl:
         self._log_session_line(entry)
 
     def _export_session_history(self, target_path_str: str, output_fn: Callable[[str], None]) -> bool:
-        """Export session history to a named file.
+        """Export session commands to a named file.
 
         Expands '~' and resolves paths. Relative paths are resolved against current working directory.
         """
@@ -1309,11 +1336,11 @@ class PytaeRepl:
             target_path.parent.mkdir(parents=True, exist_ok=True)
             import shutil
 
-            if self.session_log_path.exists():
-                shutil.copyfile(self.session_log_path, target_path)
+            if self.session_commands_path.exists():
+                shutil.copyfile(self.session_commands_path, target_path)
             else:
                 lines = [
-                    f"# Pytae REPL Session History: {target_path.name}",
+                    f"# Pytae REPL Commands: {target_path.name}",
                     f"# Started: {self._session_start_time.strftime('%Y-%m-%d %H:%M:%S')}",
                     "",
                 ]
@@ -1323,10 +1350,10 @@ class PytaeRepl:
                         continue
                     lines.append(clean)
                 target_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-            output_fn(f"Session history saved to {target_path}.")
+            output_fn(f"Session commands saved to {target_path}.")
             return True
         except Exception as exc:
-            output_fn(f"pytae: Error saving history to '{target_path_str}': {exc}")
+            output_fn(f"pytae: Error saving commands to '{target_path_str}': {exc}")
             return False
 
     def _set_initial_df(self, df: Any) -> None:
@@ -1807,8 +1834,8 @@ class PytaeRepl:
         line = raw_line.strip()
         if not line:
             return True
+        self._log_history_line(line)
         if line.startswith("#"):
-            self._record_history(line)
             return True
 
         # Handle ANSI arrow keys sent directly via Git Bash / MinTTY terminal pipe
@@ -4241,22 +4268,43 @@ class PytaeRepl:
             output_fn(
                 "No initial dataset loaded. Use '<var> = <path.parquet>' (e.g. df1 = orders.parquet) to load a table."
             )
-        is_file_input = False
+        is_redirected_input = False
         try:
             import stat
 
-            is_file_input = stat.S_ISREG(os.fstat(sys.stdin.fileno()).st_mode)
+            mode = os.fstat(sys.stdin.fileno()).st_mode
+            if stat.S_ISREG(mode):
+                is_redirected_input = True
+            elif sys.platform != "win32":
+                is_redirected_input = not sys.stdin.isatty()
+            elif stat.S_ISFIFO(mode):
+                # On Windows: check if FIFO is an interactive mintty / msys pty pipe
+                is_pty = False
+                try:
+                    import ctypes
+                    import msvcrt
+
+                    handle = msvcrt.get_osfhandle(sys.stdin.fileno())
+                    buf = ctypes.create_unicode_buffer(512)
+                    if ctypes.windll.kernel32.GetNamedPipeHandleStateW(
+                        handle, None, None, None, None, buf, 512
+                    ):
+                        if "pty" in buf.value.lower():
+                            is_pty = True
+                except Exception:
+                    pass
+                is_redirected_input = not is_pty
         except Exception:
             pass
 
-        if sys.platform == "win32" and not sys.stdin.isatty() and not is_file_input:
+        if sys.platform == "win32" and not sys.stdin.isatty() and not is_redirected_input:
             output_fn(
                 "  (Tip: If running in Git Bash on Windows, run 'winpty pytae ...' for interactive arrow key navigation)"
             )
         output_fn("")
 
         def _get_input(prompt_text: str) -> str:
-            effective_prompt = "" if is_file_input else prompt_text
+            effective_prompt = "" if is_redirected_input else prompt_text
             if input_fn is not None:
                 try:
                     return input_fn(effective_prompt)
@@ -4299,10 +4347,16 @@ class PytaeRepl:
                 except Exception as exc:
                     output_fn(f"pytae error: {exc}")
         finally:
-            if getattr(self, "session_cmd_count", 0) == 0 and getattr(self, "session_log_path", None) is not None:
-                if self.session_log_path.exists():
+            if getattr(self, "session_cmd_count", 0) == 0 and getattr(self, "session_commands_path", None) is not None:
+                if self.session_commands_path.exists():
                     try:
-                        self.session_log_path.unlink()
+                        self.session_commands_path.unlink()
+                    except Exception:
+                        pass
+            if getattr(self, "session_raw_cmd_count", 0) == 0 and getattr(self, "session_history_path", None) is not None:
+                if self.session_history_path.exists():
+                    try:
+                        self.session_history_path.unlink()
                     except Exception:
                         pass
             _save_readline_history()
