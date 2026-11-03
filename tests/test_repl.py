@@ -4027,6 +4027,8 @@ def test_session_load_cwd_relative_and_hint(tmp_path, monkeypatch):
     finally:
         import shutil
         shutil.rmtree(mock_default, ignore_errors=True)
+        if default_dir.exists() and not list(default_dir.iterdir()):
+            shutil.rmtree(default_dir, ignore_errors=True)
 
 
 def test_session_load_various_path_formats(tmp_path, monkeypatch):
