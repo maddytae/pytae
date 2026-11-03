@@ -409,7 +409,6 @@ session load my_lab  # Switch to persistent session and boot from its latest che
 set session_name = lab1   # Bind current workbench to persistent session via set
 set session_load = l1     # Load persistent session by name via set
 sessions             # List all saved persistent sessions on disk
-rm session my_lab    # Delete a saved persistent session from disk
 rm table orders      # Remove specific table from memory and free RAM (or rm table *)
 clear                # Clear the terminal screen
 status               # Show active dataset shape, columns, and memory

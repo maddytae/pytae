@@ -50,7 +50,7 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
   - [Reloading After `rm *` via `restore <name>`](#reloading-after-rm--via-restore-name)
 - [Persistent REPL Sessions](#persistent-repl-sessions)
   - [Overview & User Architecture (`~/.pytae/sessions/`)](#overview--user-architecture-pytaesessions)
-  - [In-REPL Session Commands (`session`, `session save`, `session load`, `sessions`, `rm session`)](#in-repl-session-commands-session-session-save-session-load-sessions-rm-session)
+  - [In-REPL Session Commands (`session`, `session save`, `session load`, `sessions`)](#in-repl-session-commands-session-session-save-session-load-sessions)
 - [REPL Configuration (`set`)](#repl-configuration-set)
   - [Querying Settings (`set`, `set <key>`)](#querying-settings-set-set-key)
   - [Session Persistence (`set session_name = <name>`, `set session_name = none`)](#session-persistence-set-session_name--name-set-session_name--none)
@@ -960,7 +960,6 @@ The Pytae REPL provides context-aware autocompletion via standard `readline`:
 | | `session save` | `session save <name>` | Promote session to persistent disk storage | No |
 | | `session load` | `session load <name>` | Switch session and restore latest checkpoint | Yes |
 | | `sessions` | `sessions` | List all persistent sessions on disk | No |
-| | `rm session` | `rm session <name>` | Delete a persistent session from disk | No |
 | **Settings** | `set` | `set` | Inspect all configuration settings | No |
 | | `set session_name` | `set session_name = <name>` | Bind REPL to persistent session | No |
 | | `set session_load` | `set session_load = <name>` | Switch session and restore latest checkpoint | Yes |

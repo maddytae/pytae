@@ -1621,10 +1621,14 @@ def test_repl_persistent_sessions_lifecycle(tmp_path, monkeypatch):
     r2.execute_line("session load proj_x", output_fn=outputs.append)
     assert r2.session_name == "proj_x"
 
-    # Test rm session
+    # Verify rm session is disabled with guidance
     outputs.clear()
     r2.execute_line("rm session proj_y", output_fn=outputs.append)
-    assert "Removed session 'proj_y'" in outputs[-1]
+    assert "deleting sessions from inside the REPL is disabled" in outputs[-1]
+    assert (sess_dir / "proj_y").exists()
+    # OS level removal
+    import shutil
+    shutil.rmtree(sess_dir / "proj_y", ignore_errors=True)
     assert not (sess_dir / "proj_y").exists()
 
     # Apply second checkpoint in r2 and verify history across another restart
@@ -2165,15 +2169,14 @@ def test_repl_session_copy_and_validation_errors(tmp_path, monkeypatch, sample_d
     assert r.session_name == "work1"
     assert "cp1" in r.checkpoints
 
-    # Remove sessions
+    # Verify rm session / session rm is disabled inside REPL
     outputs.clear()
     r.execute_line("rm session work2", output_fn=outputs.append)
-    assert any("Removed session 'work2'" in o for o in outputs)
+    assert any("deleting sessions from inside the REPL is disabled" in o for o in outputs)
 
     outputs.clear()
     r.execute_line("session rm work1", output_fn=outputs.append)
-    assert r.session_name is None
-    assert any("Active session reverted to ephemeral" in o for o in outputs)
+    assert any("deleting sessions from inside the REPL is disabled" in o for o in outputs)
     r.close()
 
 

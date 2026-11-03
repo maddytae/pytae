@@ -856,7 +856,6 @@ STATE & WORKBENCH:
   checkpoints            : List saved checkpoints and their tables
   rm table <name>        : Delete an in-memory table (or 'rm table *')
   rm checkpoint <name>   : Delete a saved checkpoint (or 'rm checkpoint *')
-  rm session <name>      : Remove a saved persistent session from disk
   set [key [= value]]    : Configure session & display settings (e.g. set session_name = proj, max_rows = 20, comma = on)
   session                : Show persistent session status
   session save <name>    : Persist workbench checkpoints to ~/.pytae/sessions/<name> (or custom sessions_dir)
@@ -1853,15 +1852,15 @@ class PytaeRepl:
             return True
 
         if subcmd == "rm":
-            if len(tokens) < 2:
-                output_fn("Usage: session rm <name> or rm session <name>")
-                return
-            self._cmd_rm_session(tokens[1], output_fn)
+            output_fn(
+                "pytae: deleting sessions from inside the REPL is disabled to prevent session corruption. "
+                "Use your terminal or OS file manager to remove session directories (e.g. 'rm -rf ~/.pytae/sessions/<name>')."
+            )
             return
 
         output_fn(
             f"pytae: unknown session action '{subcmd}'. "
-            f"Usage: session, session save <name>, session load <name>, sessions, or rm session <name>"
+            "Usage: session, session save <name>, session load <name>, or sessions"
         )
 
     def _cmd_session_save(self, name: str, output_fn: Callable[[str], None]) -> None:
@@ -1921,25 +1920,6 @@ class PytaeRepl:
         self.close()
         self.session_name = target_name
         self._load_session_from_disk(target_name, output_fn)
-
-    def _cmd_rm_session(self, name: str, output_fn: Callable[[str], None]) -> None:
-        target_name = name.strip()
-        s_dir = get_sessions_dir() / target_name
-        if not s_dir.exists():
-            avail = (
-                [p.name for p in get_sessions_dir().iterdir() if p.is_dir() and not p.name.startswith(".")]
-                if get_sessions_dir().exists()
-                else []
-            )
-            avail_str = ", ".join(avail) if avail else "none"
-            output_fn(f"pytae: session '{target_name}' not found. Available: {avail_str}")
-            return
-        shutil.rmtree(s_dir, ignore_errors=True)
-        if self.session_name == target_name:
-            self.session_name = None
-            output_fn(f"Removed session '{target_name}'. Active session reverted to ephemeral.")
-        else:
-            output_fn(f"Removed session '{target_name}'.")
 
     def execute_line(self, raw_line: str, output_fn: Callable[[str], None] = print) -> bool:
         """Execute one REPL input line. Returns False if REPL should terminate."""
@@ -2185,7 +2165,7 @@ class PytaeRepl:
                 output_fn(f"Memory released to operating system (PID {os.getpid()}).")
             return True
 
-        # Remove entity: `rm table <name>`, `rm table *`, `rm checkpoint <name>`, `rm checkpoint *`, `rm session <name>`
+        # Remove entity: `rm table <name>`, `rm table *`, `rm checkpoint <name>`, `rm checkpoint *`
         if first_lower == "rm":
             if len(tokens) < 2:
                 output_fn(
@@ -2193,12 +2173,18 @@ class PytaeRepl:
                     "  rm table <name>        : Remove in-memory table\n"
                     "  rm table *             : Remove all in-memory tables\n"
                     "  rm checkpoint <name>   : Remove saved checkpoint\n"
-                    "  rm checkpoint *        : Remove all saved checkpoints\n"
-                    "  rm session <name>      : Remove persistent session"
+                    "  rm checkpoint *        : Remove all saved checkpoints"
                 )
                 return True
 
             category = tokens[1].lower()
+
+            if category in ("session", "sessions"):
+                output_fn(
+                    "pytae: deleting sessions from inside the REPL is disabled to prevent session corruption. "
+                    "Use your terminal or OS file manager to remove session directories (e.g. 'rm -rf ~/.pytae/sessions/<name>')."
+                )
+                return True
 
             if category == "table":
                 if len(tokens) < 3:
@@ -2335,7 +2321,7 @@ class PytaeRepl:
                 output_fn(f"pytae: 'rm {tokens[1]}' requires explicit category; use 'rm checkpoint {tokens[1]}'.")
                 return True
 
-            output_fn(f"pytae: unrecognized rm category '{tokens[1]}'. Use 'rm table <name>', 'rm checkpoint <name>', or 'rm session <name>'.")
+            output_fn(f"pytae: unrecognized rm category '{tokens[1]}'. Use 'rm table <name>' or 'rm checkpoint <name>'.")
             return True
 
         # Variable Assignment: `df1 = orders.parquet` or `df3 = df1 -filter "..."` or `df3 = -sql ...`
@@ -4708,17 +4694,15 @@ class PytaeRepl:
         if last_token == "restore":
             return [c for c in self.checkpoints if c.startswith(text)]
 
-        # Case 5: 'rm ' -> complete categories: table, checkpoint, session
+        # Case 5: 'rm ' -> complete categories: table, checkpoint
         if last_token == "rm":
-            return [opt for opt in ("table", "checkpoint", "session") if opt.startswith(text)]
+            return [opt for opt in ("table", "checkpoint") if opt.startswith(text)]
         if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "rm" and prefix_tokens[-1].lower() == "table":
             options = ["*"] + list(self.tables.keys())
             return [t for t in options if t.startswith(text)]
         if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "rm" and prefix_tokens[-1].lower() == "checkpoint":
             options = ["*"] + list(self.checkpoints.keys())
             return [c for c in options if c.startswith(text)]
-        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "rm" and prefix_tokens[-1].lower() == "session":
-            return [s for s in _get_saved_session_names() if s.startswith(text)]
 
         # Case 6: '-diff ' -> complete table names, checkpoint names, flags, or on= columns
         if first_token == "-diff":

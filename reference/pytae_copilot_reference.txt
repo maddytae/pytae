@@ -1078,17 +1078,16 @@ Persistent Sessions (~/.pytae/sessions/<name>/ or $PYTAE_SESSIONS_DIR/<name>/):
   - `session save <name>`     : Save or promote current session checkpoints under <name>.
   - `session load <name>`     : Switch to persistent session and restore its latest checkpoint.
   - `sessions`                : List all saved persistent sessions on disk.
-  - `rm session <name>`       : Delete a saved persistent session directory from disk.
   * Note: Default location is ~/.pytae/sessions/<name>/. Set the PYTAE_SESSIONS_DIR environment variable to customize session storage location.
   * Note: Only checkpoints are persisted; uncheckpointed scratch tables/columns drop on exit.
+  * Note: Sessions can be deleted from your terminal using OS file commands (e.g. 'rm -rf ~/.pytae/sessions/<name>').
 
 Strict Deletion Syntax (Wildcard):
   - `rm table <table_name>`   : Remove specific in-memory table.
   - `rm table *`              : Remove all in-memory tables from memory.
   - `rm checkpoint <name>`    : Delete a named checkpoint snapshot.
   - `rm checkpoint *`         : Delete all saved checkpoint snapshots.
-  - `rm session <name>`       : Delete a saved persistent session directory.
-  * Note: Legacy bare 'rm <name>' or 'rm *' requires a category ('table', 'checkpoint', 'session'). Legacy '-all' or 'all' flags are rejected; use '*' wildcard syntax. Plural 'rm tables' and 'rm checkpoints' are rejected; use singular 'rm table' and 'rm checkpoint'.
+  * Note: Legacy bare 'rm <name>' or 'rm *' requires a category ('table' or 'checkpoint'). Legacy '-all' or 'all' flags are rejected; use '*' wildcard syntax. Plural 'rm tables' and 'rm checkpoints' are rejected; use singular 'rm table' and 'rm checkpoint'.
 
 Terminal Control & Utilities:
   - `clear`                   : Clear the terminal screen.
@@ -24803,7 +24802,6 @@ session load my_lab  # Switch to persistent session and boot from its latest che
 set session_name = lab1   # Bind current workbench to persistent session via set
 set session_load = l1     # Load persistent session by name via set
 sessions             # List all saved persistent sessions on disk
-rm session my_lab    # Delete a saved persistent session from disk
 rm table orders      # Remove specific table from memory and free RAM (or rm table *)
 clear                # Clear the terminal screen
 status               # Show active dataset shape, columns, and memory
@@ -24911,7 +24909,7 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
   - [Reloading After `rm *` via `restore <name>`](#reloading-after-rm--via-restore-name)
 - [Persistent REPL Sessions](#persistent-repl-sessions)
   - [Overview & User Architecture (`~/.pytae/sessions/`)](#overview--user-architecture-pytaesessions)
-  - [In-REPL Session Commands (`session`, `session save`, `session load`, `sessions`, `rm session`)](#in-repl-session-commands-session-session-save-session-load-sessions-rm-session)
+  - [In-REPL Session Commands (`session`, `session save`, `session load`, `sessions`)](#in-repl-session-commands-session-session-save-session-load-sessions)
 - [REPL Configuration (`set`)](#repl-configuration-set)
   - [Querying Settings (`set`, `set <key>`)](#querying-settings-set-set-key)
   - [Session Persistence (`set session_name = <name>`, `set session_name = none`)](#session-persistence-set-session_name--name-set-session_name--none)
@@ -25821,7 +25819,6 @@ The Pytae REPL provides context-aware autocompletion via standard `readline`:
 | | `session save` | `session save <name>` | Promote session to persistent disk storage | No |
 | | `session load` | `session load <name>` | Switch session and restore latest checkpoint | Yes |
 | | `sessions` | `sessions` | List all persistent sessions on disk | No |
-| | `rm session` | `rm session <name>` | Delete a persistent session from disk | No |
 | **Settings** | `set` | `set` | Inspect all configuration settings | No |
 | | `set session_name` | `set session_name = <name>` | Bind REPL to persistent session | No |
 | | `set session_load` | `set session_load = <name>` | Switch session and restore latest checkpoint | Yes |

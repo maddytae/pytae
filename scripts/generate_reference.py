@@ -1118,17 +1118,16 @@ Persistent Sessions (~/.pytae/sessions/<name>/ or $PYTAE_SESSIONS_DIR/<name>/):
   - `session save <name>`     : Save or promote current session checkpoints under <name>.
   - `session load <name>`     : Switch to persistent session and restore its latest checkpoint.
   - `sessions`                : List all saved persistent sessions on disk.
-  - `rm session <name>`       : Delete a saved persistent session directory from disk.
   * Note: Default location is ~/.pytae/sessions/<name>/. Set the PYTAE_SESSIONS_DIR environment variable to customize session storage location.
   * Note: Only checkpoints are persisted; uncheckpointed scratch tables/columns drop on exit.
+  * Note: Sessions can be deleted from your terminal using OS file commands (e.g. 'rm -rf ~/.pytae/sessions/<name>').
 
 Strict Deletion Syntax (Wildcard):
   - `rm table <table_name>`   : Remove specific in-memory table.
   - `rm table *`              : Remove all in-memory tables from memory.
   - `rm checkpoint <name>`    : Delete a named checkpoint snapshot.
   - `rm checkpoint *`         : Delete all saved checkpoint snapshots.
-  - `rm session <name>`       : Delete a saved persistent session directory.
-  * Note: Legacy bare 'rm <name>' or 'rm *' requires a category ('table', 'checkpoint', 'session'). Legacy '-all' or 'all' flags are rejected; use '*' wildcard syntax. Plural 'rm tables' and 'rm checkpoints' are rejected; use singular 'rm table' and 'rm checkpoint'.
+  * Note: Legacy bare 'rm <name>' or 'rm *' requires a category ('table' or 'checkpoint'). Legacy '-all' or 'all' flags are rejected; use '*' wildcard syntax. Plural 'rm tables' and 'rm checkpoints' are rejected; use singular 'rm table' and 'rm checkpoint'.
 
 Terminal Control & Utilities:
   - `clear`                   : Clear the terminal screen.
