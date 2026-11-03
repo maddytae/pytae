@@ -914,15 +914,17 @@ Pytae provides a powerful workflow to turn interactive exploration into portable
 
 ### Exit-Time Export (`exit -s [path]`)
 
-Save the session history directly when exiting:
+Save pure data transformation commands directly when exiting. Output paths always resolve to the **current working directory (`cwd`)**, and Pytae prints the full absolute path as an unambiguous reminder and clickable terminal link:
 
 ```text
-# Save to default history.txt
+# Save to default ./history.txt in the current working directory
 pytae> exit -s
+Session commands saved to /Users/maddy/my_analysis/history.txt.
+Exiting pytae REPL.
 
-# Save to custom script file
+# Save to custom script file in the current working directory
 pytae> exit -s transform_orders.txt
-Session history saved to /Users/username/transform_orders.txt.
+Session commands saved to /Users/maddy/my_analysis/transform_orders.txt.
 Exiting pytae REPL.
 ```
 
