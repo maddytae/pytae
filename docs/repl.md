@@ -528,6 +528,16 @@ pytae [orders, cust]> checkpoint baseline
 Saved checkpoint 'baseline' (2 tables: orders, cust).
 ```
 - **Zero RAM Overhead**: Tables are written to disk storage (`.ipc` or `.parquet`). Checkpoints consume **0 MB of active RAM**.
+- **Default Storage Location (Ephemeral Mode)**:
+  When running `pytae -i` without binding to a named session, checkpoints are written to an isolated, secure OS temporary folder (e.g. `/tmp/pytae_cp_xxxxxx/` or `$TMPDIR/pytae_cp_xxxxxx/` on macOS/Linux, `%TEMP%\pytae_cp_xxxxxx\` on Windows).
+  - **Automatic Cleanup**: When you exit or close the REPL, the temporary checkpoint folder is automatically purged from disk, leaving zero lingering files on your machine.
+  - **Inspect Location**: Run `status checkpoints -v` anytime to inspect the exact temporary directory path and on-disk byte sizes.
+- **Mid-Session Promotion**:
+  If you start in ephemeral mode, save several checkpoints, and decide you want to keep them permanently, simply bind a session name:
+  ```text
+  pytae> set session_name = my_permanent_project
+  ```
+  Pytae immediately promotes all existing temporary checkpoints into `~/.pytae/sessions/my_permanent_project/` (or your project working directory if `sessions_dir = .`).
 - **Milestone Established**: Creating a checkpoint frees intermediate memory while establishing a safe restore point.
 
 ### Listing & Deleting Checkpoints (`status checkpoints`, `rm checkpoint`)
@@ -1068,7 +1078,21 @@ pytae> set save_commands = pipeline.txt
 
 ---
 
-### 2. `status`: Diagnostics & Inspection
+### 2. Checkpoints & Memory Storage
+
+#### Q: If I run `pytae -i` without setting a session, where are checkpoints stored?
+- Checkpoints are **never stored in RAM** (they always consume 0 MB of active memory).
+- By default in ephemeral mode, checkpoints are written to the OS temporary directory (`/tmp/pytae_cp_xxxxxx/` or `$TMPDIR` on macOS/Linux, `%TEMP%` on Windows).
+- When you exit the REPL, the temporary folder is **automatically cleaned and deleted**.
+- To keep your checkpoints permanently without restarting, simply promote the session mid-flight:
+  ```text
+  pytae> set session_name = my_permanent_project
+  ```
+  Pytae will immediately migrate your existing checkpoints to `~/.pytae/sessions/my_permanent_project/`.
+
+---
+
+### 3. `status`: Diagnostics & Inspection
 
 #### Q: What is the difference between `status` and `status -v`?
 - **`status`**: Fast, compact dashboard. Shows active dataset, shape, active table RAM, loaded table count, OS Process RAM, and checkpoint count. Column names are hidden to keep output concise.
@@ -1084,7 +1108,7 @@ In accordance with Pytae's *"One Obvious Way"* philosophy:
 
 ---
 
-### 3. `rm`: Explicit Categorical Deletion
+### 4. `rm`: Explicit Categorical Deletion
 
 #### Q: Why does `rm` require `table` or `checkpoint`?
 Bare `rm df1` or `rm *` is strictly rejected:
