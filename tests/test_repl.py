@@ -4426,12 +4426,18 @@ def test_repl_unified_path_first_sessions(tmp_path, monkeypatch):
     # Active REPL remains moved_lab!
     assert r.session_name == "moved_lab"
 
-    # 7. External verbose status inspection with -session flag
+    # 7. External verbose status inspection with 'status session <path> -v'
     outputs.clear()
-    r.execute_line(f'status -session "{nested_dir}" -v', output_fn=outputs.append)
+    r.execute_line(f'status session "{nested_dir}" -v', output_fn=outputs.append)
     ext_st_v = "\n".join(outputs)
     assert "=== Session Inspection: custom_lab ===" in ext_st_v
     assert "cp_tips" in ext_st_v
+
+    # 8. Leading dash on status subcommands ('status -session') is strictly rejected
+    outputs.clear()
+    r.execute_line(f'status -session "{nested_dir}"', output_fn=outputs.append)
+    assert "Status subcommands do not use a leading '-'" in outputs[-1]
+    assert "Use 'status session' instead" in outputs[-1]
 
     r.close()
 

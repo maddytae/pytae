@@ -3184,7 +3184,16 @@ class PytaeRepl:
             output_fn("  - status checkpoints [-v]    : View inventory of all saved checkpoints")
             return
 
-        cat = target_args[0].lower().lstrip("-")
+        raw_cat = target_args[0].lower()
+        if raw_cat.startswith("-"):
+            clean_cmd = raw_cat.lstrip("-")
+            output_fn(
+                f"pytae: unrecognized status category '{target_args[0]}'. "
+                f"Status subcommands do not use a leading '-'. Use 'status {clean_cmd}' instead."
+            )
+            return
+
+        cat = raw_cat
         if cat in ("session", "sessions"):
             if len(target_args) > 1:
                 self._show_external_session_status(target_args[1], output_fn, verbose=verbose)
