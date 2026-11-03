@@ -3072,7 +3072,7 @@ class PytaeRepl:
         if session_dir_val is None:
             session_dir_val = pair_map.pop("session_dir", None)
 
-        # 1. Handle session_load
+        # 1. Handle session_load (loading, relocation, or forking into a new session)
         if session_load_val is not None:
             clean_name = session_load_val.strip("'\"")
             if not clean_name:
@@ -3082,7 +3082,69 @@ class PytaeRepl:
                 output_fn(f"pytae: invalid session name '{clean_name}'. Session name must not contain path separators.")
                 return
 
-            if session_dir_val is not None:
+            target_new_name = session_name_val.strip("'\"") if session_name_val is not None else None
+            is_fork = target_new_name and target_new_name.lower() not in ("none", "off", "false", "0", "") and target_new_name != clean_name
+
+            if is_fork:
+                if any(c in target_new_name for c in ("/", "\\", "..", "\0")):
+                    output_fn(f"pytae: invalid session name '{target_new_name}'. Session name must not contain path separators.")
+                    return
+
+                target_dir = get_sessions_dir().resolve()
+                if session_dir_val is not None:
+                    clean_dir = session_dir_val.strip("'\"")
+                    target_dir = _DEFAULT_SESSIONS_DIR.resolve() if clean_dir.lower() == "default" else Path(clean_dir).expanduser().resolve()
+
+                orig_dir = get_sessions_dir().resolve()
+                src_sess_dir = orig_dir / clean_name
+                if not src_sess_dir.exists():
+                    src_sess_dir = _DEFAULT_SESSIONS_DIR.resolve() / clean_name
+
+                if not src_sess_dir.exists():
+                    output_fn(f"pytae: source session '{clean_name}' not found. Cannot fork to '{target_new_name}'.")
+                    return
+
+                # Load source session into workbench
+                self.close()
+                self.session_name = clean_name
+                self._load_session_from_disk(clean_name, output_fn)
+
+                # Fork to new target session directory without removing source
+                dst_sess_dir = target_dir / target_new_name
+                dst_cp_dir = dst_sess_dir / "checkpoints"
+                dst_cp_dir.mkdir(parents=True, exist_ok=True)
+                src_cp_dir = src_sess_dir / "checkpoints"
+                if src_cp_dir.exists():
+                    for cp_name, cp_meta in list(self.checkpoints.items()):
+                        src_sub = src_cp_dir / cp_name
+                        dst_sub = dst_cp_dir / cp_name
+                        if src_sub.exists():
+                            if dst_sub.exists():
+                                shutil.rmtree(dst_sub, ignore_errors=True)
+                            shutil.copytree(src_sub, dst_sub)
+                            if isinstance(cp_meta, dict):
+                                cp_meta["dir"] = str(dst_sub)
+                            m_json = dst_sub / "meta.json"
+                            if m_json.exists():
+                                try:
+                                    m_data = json.loads(m_json.read_text(encoding="utf-8"))
+                                    m_data["dir"] = str(dst_sub)
+                                    m_json.write_text(json.dumps(m_data), encoding="utf-8")
+                                except Exception:
+                                    pass
+                if src_sess_dir.exists():
+                    for item in src_sess_dir.iterdir():
+                        if item.is_file():
+                            shutil.copy2(item, dst_sess_dir / item.name)
+
+                set_sessions_dir(target_dir)
+                self.session_name = target_new_name
+                self._save_session_metadata()
+                output_fn(f"Forked session '{clean_name}' -> '{target_new_name}' at {target_dir}. Original session preserved.")
+                self._record_history(f"set session_load = {clean_name}, session_name = {target_new_name}")
+                session_name_val = None  # Handled as fork
+
+            elif session_dir_val is not None:
                 clean_dir = session_dir_val.strip("'\"")
                 target_dir = _DEFAULT_SESSIONS_DIR.resolve() if clean_dir.lower() == "default" else Path(clean_dir).expanduser().resolve()
                 orig_dir = get_sessions_dir().resolve()

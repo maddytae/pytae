@@ -752,6 +752,21 @@ Configure the base filesystem directory where persistent sessions and their chec
   pytae -session project_x
   ```
 
+### Session Forking & Branching (`set session_load = <source>, session_name = <new_name>`)
+
+Spin off a new independent session from an existing baseline session without modifying or deleting the source. This is the Pytae equivalent of `git branch` or `cp -r`:
+
+```text
+# Fork 'base_analysis' into a new local session 'client_run1' in the current working directory
+pytae> set session_load = base_analysis, session_name = client_run1, sessions_dir = .
+Forked session 'base_analysis' -> 'client_run1' at /path/to/project. Original session preserved.
+pytae:client_run1 [df]>
+```
+
+- **Source Session (`base_analysis`)**: Remains completely intact in `~/.pytae/sessions/` with all original checkpoints untouched.
+- **New Session (`client_run1`)**: Created with a complete independent snapshot of the source checkpoints, now saved at `./client_run1/`.
+- **Subsequent Mutations**: Future checkpoints (`checkpoint v2`) only modify `client_run1`.
+
 ### Checkpoint Storage Format (`set checkpoint_format = parquet|ipc`, `convert = all`)
 
 Control the on-disk serialization format used for session checkpoints:
@@ -1020,3 +1035,73 @@ The Pytae REPL provides context-aware autocompletion via standard `readline`:
 | | `clear` | `clear` | Clear terminal screen | No |
 | | `exit` | `exit [-s [path]]` | Exit REPL (optionally save replay script) | — |
 | **Navigation** | `[Tab]` | `[Tab]` | Autocomplete commands, flags, tables, columns, paths | No |
+
+---
+
+## Frequently Asked Questions (FAQ)
+
+### 1. `set`: Configuration & Session Lifecycle
+
+#### Q: How do I move (relocate) an existing session to my current working directory?
+```text
+pytae> set session_load = my_project, sessions_dir = .
+```
+- **Relocation (`mv`)**: Moves the session directory from `~/.pytae/sessions/my_project` to `./my_project`.
+- The old directory is unlinked to avoid duplicate ghost directories.
+
+#### Q: How do I fork (branch) an existing session into a new session without touching the original?
+```text
+pytae> set session_load = base_template, session_name = client_run1, sessions_dir = .
+```
+- **Fork (`cp -r`)**: Source session `base_template` is preserved untouched.
+- An independent clone `client_run1` is created at `./client_run1/`. Future checkpoints apply strictly to `client_run1`.
+
+#### Q: How do I automatically save my pipeline commands to a script upon exit?
+```text
+pytae> set save_commands = pipeline.txt
+```
+- When you type `exit` or `quit`, Pytae automatically writes all pure pipeline transformations to `pipeline.txt`.
+- You can chain this with your session in a single command:
+  ```text
+  pytae> set session_name = my_lab, sessions_dir = ., save_commands = pipeline.txt
+  ```
+
+---
+
+### 2. `status`: Diagnostics & Inspection
+
+#### Q: What is the difference between `status` and `status -v`?
+- **`status`**: Fast, compact dashboard. Shows active dataset, shape, active table RAM, loaded table count, OS Process RAM, and checkpoint count. Column names are hidden to keep output concise.
+- **`status -v`**: Verbose inspection. Expands the active dataset's schema, showing all column names and their precise data types (`Float64`, `String`, etc.).
+
+#### Q: Why are bare `tables` and `checkpoints` rejected?
+In accordance with Pytae's *"One Obvious Way"* philosophy:
+- Inspection is unified under the `status` command family:
+  - `status tables` (or `status tables -v` for columns and RAM totals).
+  - `status checkpoints` (or `status checkpoints -v` for disk bytes and file paths).
+- To inspect a specific dataset without switching active cursors:
+  - `status table df1` (or `status table df1 -v` for schema).
+
+---
+
+### 3. `rm`: Explicit Categorical Deletion
+
+#### Q: Why does `rm` require `table` or `checkpoint`?
+Bare `rm df1` or `rm *` is strictly rejected:
+```text
+pytae: 'rm df1' requires explicit category; use 'rm table df1'.
+```
+- **Explicit Grammar**: Prevents accidental namespace collisions (e.g. if a table is named `checkpoint`).
+- **Syntax Symmetry**:
+  - `rm table <name>` / `rm table *`: Frees in-memory tables and immediately trims OS memory.
+  - `rm checkpoint <name>` / `rm checkpoint *`: Deletes saved snapshots from disk.
+
+#### Q: Why can't I run `rm session` from inside the REPL?
+Deleting persistent session directories from inside the running REPL was removed to prevent process corruption and accidental self-deletion. To delete saved sessions, use standard OS commands from your terminal:
+```bash
+rm -rf ~/.pytae/sessions/old_session
+```
+Or for local sessions:
+```bash
+rm -rf ./old_session
+```

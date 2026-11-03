@@ -3792,6 +3792,47 @@ def test_repl_status_subcommands_and_verbose():
     r.close()
 
 
+def test_repl_set_fork_session_preserves_source(tmp_path, monkeypatch):
+    """Verify that 'set session_load = base, session_name = fork_app, sessions_dir = <dir>' creates an independent fork leaving base untouched."""
+    sess_dir = tmp_path / "sessions"
+    sess_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("PYTAE_SESSIONS_DIR", str(sess_dir))
+
+    outputs: list[str] = []
+    # 1. Create source session 'base_model' with checkpoint
+    r1 = PytaeRepl(session="base_model")
+    r1.execute_line("df = sample:penguins")
+    r1.execute_line("checkpoint v1")
+    r1.close()
+
+    assert (sess_dir / "base_model" / "checkpoints" / "v1").exists()
+
+    # 2. Fork into new session 'fork_run' at a new directory target
+    new_dir = tmp_path / "custom_dir"
+    new_dir.mkdir(parents=True, exist_ok=True)
+
+    r2 = PytaeRepl()
+    r2.execute_line(
+        f"set session_load = base_model, session_name = fork_run, sessions_dir = {new_dir}",
+        output_fn=outputs.append,
+    )
+    assert any("Forked session 'base_model' -> 'fork_run'" in o for o in outputs)
+    assert r2.session_name == "fork_run"
+    assert "v1" in r2.checkpoints
+
+    # Source session MUST remain completely intact!
+    assert (sess_dir / "base_model" / "checkpoints" / "v1").exists()
+    # Forked session exists at target directory!
+    assert (new_dir / "fork_run" / "checkpoints" / "v1").exists()
+
+    # 3. Mutate and checkpoint in fork_run
+    r2.execute_line("checkpoint v2_fork")
+    assert (new_dir / "fork_run" / "checkpoints" / "v2_fork").exists()
+    # Source session MUST NOT have v2_fork
+    assert not (sess_dir / "base_model" / "checkpoints" / "v2_fork").exists()
+    r2.close()
+
+
 
 
 
