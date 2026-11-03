@@ -4382,17 +4382,17 @@ def test_repl_unified_path_first_sessions(tmp_path, monkeypatch):
     r.execute_line("checkpoint cp_base")
     assert (tmp_path / "fresh_lab" / "checkpoints" / "cp_base").exists()
 
-    # 2. Start new session at explicit path
+    # 2. Start new session at explicit path (checkpoints start fresh, in-memory tables preserved)
     outputs.clear()
     nested_dir = tmp_path / "custom_folder" / "custom_lab"
     r.execute_line(f'set new_session = "{nested_dir}"', output_fn=outputs.append)
     assert any("Started new session 'custom_lab'" in o for o in outputs)
     assert r.session_name == "custom_lab"
     assert (nested_dir / "checkpoints").exists()
-    assert len(r.tables) == 0  # Clean workbench state
-    assert len(r.checkpoints) == 0
+    assert len(r.checkpoints) == 0  # Fresh checkpoint history for new session
+    assert "df" in r.tables  # Loaded tables remain active in memory!
 
-    # Add checkpoint in custom_lab
+    # Add second table and checkpoint in custom_lab
     r.execute_line("df2 = sample:tips")
     r.execute_line("checkpoint cp_tips")
     assert (nested_dir / "checkpoints" / "cp_tips").exists()
@@ -4446,6 +4446,41 @@ def test_repl_unified_path_first_sessions(tmp_path, monkeypatch):
     r.execute_line(f'status -session "{nested_dir}"', output_fn=outputs.append)
     assert "Status subcommands do not use a leading '-'" in outputs[-1]
     assert "Use 'status session' instead" in outputs[-1]
+
+    r.close()
+
+
+def test_repl_new_session_preserves_loaded_tables(tmp_path, monkeypatch):
+    """Verify that loading a dataset upfront in an ephemeral session and then running 'set new_session = <name>' keeps the dataset and allows checkpointing immediately."""
+    from pytae.repl import PytaeRepl, set_sessions_dir
+
+    set_sessions_dir(None)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("PYTAE_SESSIONS_DIR", raising=False)
+
+    outputs: list[str] = []
+    r = PytaeRepl()
+
+    # 1. User loads dataset upfront in ephemeral session
+    r.execute_line("df = sample:penguins", output_fn=outputs.append)
+    assert "df" in r.tables
+    assert r.tables["df"].shape[0] == 344
+
+    # 2. User names/starts new session
+    outputs.clear()
+    r.execute_line("set new_session = chamiya", output_fn=outputs.append)
+    assert any("Started new session 'chamiya'" in o for o in outputs)
+    assert any("1 tables active in workbench" in o for o in outputs)
+    assert r.session_name == "chamiya"
+    # df MUST remain intact in memory!
+    assert "df" in r.tables
+    assert r.current_df is not None
+
+    # 3. Checkpoint captures df immediately without requiring re-load
+    outputs.clear()
+    r.execute_line("checkpoint abc", output_fn=outputs.append)
+    assert any("Saved checkpoint 'abc' (344 rows x 7 cols)" in o for o in outputs)
+    assert (tmp_path / "chamiya" / "checkpoints" / "abc").exists()
 
     r.close()
 

@@ -2071,17 +2071,17 @@ class PytaeRepl:
         target_cp_dir = dst_sess_dir / "checkpoints"
         target_cp_dir.mkdir(parents=True, exist_ok=True)
 
-        self.close()
-        self.tables.clear()
+        # Start clean checkpoint history for the new session while preserving in-memory tables
+        if self.session_name is None:
+            self._cleanup_cp_dir()
         self.checkpoints.clear()
         self.history.clear()
-        self.current_df = None
-        self.path_str = None
 
         set_sessions_dir(dst_sess_dir.parent.resolve())
         self.session_name = target_name
         self._save_session_metadata()
-        output_fn(f"Started new session '{target_name}' at '{dst_sess_dir}'.")
+        tbl_info = f" ({len(self.tables)} tables active in workbench)" if self.tables else ""
+        output_fn(f"Started new session '{target_name}' at '{dst_sess_dir}'{tbl_info}.")
 
     def _cmd_session_save(self, target: str, output_fn: Callable[[str], None], is_move: bool = False) -> None:
         from pytae.cli_parsing import normalize_session_path
