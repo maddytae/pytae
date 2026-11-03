@@ -766,7 +766,7 @@ STATE NAVIGATION (Undoable):
   restore <name>         : Restore entire workbench to saved checkpoint
   checkpoints            : List saved checkpoints and their tables
   rm checkpoint <name>   : Delete a saved checkpoint (or 'rm checkpoint *')
-  set [key [= value]]    : Configure session settings (e.g. set session_name = my_project, set session_load = my_project, set sessions_dir = <path>)
+  set [key [= value]]    : Configure session & display settings (e.g. set session_name = proj, max_rows = 20, timing = on)
   session                : Show persistent session status
   session save <name>    : Persist workbench checkpoints to ~/.pytae/sessions/<name> (or custom sessions_dir)
   session load <name>    : Load persistent session checkpoints from disk
@@ -1043,6 +1043,18 @@ _SET_KNOWN_KEYS = {
     "cp_fmt",
     "save_commands",
     "sessions_dir",
+    "session_dir",
+    "max_rows",
+    "rows",
+    "max_cols",
+    "cols",
+    "float_precision",
+    "precision",
+    "null_repr",
+    "timing",
+    "color",
+    "theme",
+    "echo",
 }
 
 
@@ -1156,6 +1168,13 @@ class PytaeRepl:
         self.checkpoints: dict[str, Any] = {}
         self.checkpoint_format: str = "ipc"
         self.save_history_file: str | None = None
+        self.max_rows: int = 10
+        self.max_cols: int | None = None
+        self.float_precision: int | None = None
+        self.null_repr: str | None = None
+        self.timing: bool = False
+        self.color: bool = True
+        self.echo: bool = False
         self._cp_temp_dir: tempfile.TemporaryDirectory[str] | None = None
         self.table_sources: dict[str, str] = {}
         self.history: list[str] = []
@@ -1261,6 +1280,10 @@ class PytaeRepl:
         if clean.startswith("history") or clean == "tables" or clean == "checkpoints" or clean == "session":
             return False
 
+        # Session configuration commands ('set ...') are REPL environment settings and are excluded from exported scripts
+        if clean == "set" or clean.startswith("set ") or clean.startswith("set="):
+            return False
+
         # Variable assignments (df = ..., df1 = df -pivot ..., etc.) are state mutations
         if "=" in clean and not clean.startswith("-"):
             left_part = clean.split("=", 1)[0].strip()
@@ -1275,10 +1298,6 @@ class PytaeRepl:
         tokens = clean.split()
         if any(t == "-o" or t.startswith("-o=") for t in tokens):
             return True
-
-        # Session configuration commands ('set ...') are REPL environment settings and are excluded from exported scripts
-        if clean == "set" or clean.startswith("set "):
-            return False
 
         # Explicit reset / restore / table removal or mutation of state
         if clean.startswith("reset") or clean.startswith("restore "):
@@ -1837,6 +1856,26 @@ class PytaeRepl:
         if line.startswith("#"):
             return True
 
+        if self.echo:
+            output_fn(f"> {line}")
+
+        if self.timing:
+            import time as _time
+
+            t0 = _time.perf_counter()
+            ret = self._execute_line_core(line, output_fn)
+            elapsed_ms = (_time.perf_counter() - t0) * 1000.0
+            if ret is not False and not line.lower().startswith("exit"):
+                if elapsed_ms >= 1000.0:
+                    output_fn(f"[took {elapsed_ms / 1000.0:.2f}s]")
+                else:
+                    output_fn(f"[took {elapsed_ms:.1f}ms]")
+            return ret
+
+        return self._execute_line_core(line, output_fn)
+
+    def _execute_line_core(self, line: str, output_fn: Callable[[str], None] = print) -> bool:
+        """Core dispatch logic for one REPL command line."""
         # Handle ANSI arrow keys sent directly via Git Bash / MinTTY terminal pipe
         ansi_up_count = line.count("\x1b[A") + line.count("\x1bOA") + line.count("^[[A") + line.count("^[OA")
         ansi_down_count = line.count("\x1b[B") + line.count("\x1bOB") + line.count("^[[B") + line.count("^[OB")
@@ -1879,7 +1918,7 @@ class PytaeRepl:
         if pipe_parts is not None:
             left_cmd, shell_cmd = pipe_parts
             buffer: list[str] = []
-            cont = self.execute_line(left_cmd, output_fn=buffer.append)
+            cont = self._execute_line_core(left_cmd, output_fn=buffer.append)
             if buffer:
                 combined_output = "\n".join(buffer)
                 if not combined_output.endswith("\n"):
@@ -2397,6 +2436,40 @@ class PytaeRepl:
         self._cmd_pipeline(line, tokens, output_fn)
         return True
 
+    def _format_table(self, df: Any, tbl_rows: int | None = None) -> str:
+        """Format a DataFrame using the REPL's current display settings."""
+        effective_rows = tbl_rows if tbl_rows is not None else self.max_rows
+        effective_cols = self.max_cols if self.max_cols is not None else -1
+
+        import polars as pl
+
+        from pytae.dataframe import DataFrame as PytaeDataFrame
+
+        if isinstance(df, PytaeDataFrame):
+            df = df._df
+        if isinstance(df, pl.LazyFrame):
+            df = df.collect()
+
+        cfg_kwargs: dict[str, Any] = {
+            "tbl_rows": effective_rows,
+            "tbl_cols": effective_cols,
+        }
+        if self.float_precision is not None:
+            cfg_kwargs["float_precision"] = self.float_precision
+        if not self.color:
+            cfg_kwargs["ascii_tables"] = True
+
+        with pl.Config(**cfg_kwargs):
+            text = _format_table(df, tbl_rows=effective_rows, is_tty=True)
+
+        if self.null_repr is not None:
+            text = re.sub(r"(?<=[│┆|\s])null(?=[│┆|\s]|$)", self.null_repr, text)
+
+        if not self.color:
+            text = re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+        return text
+
     def _try_fast_inspection(
         self,
         df: pl.DataFrame | None,
@@ -2491,13 +2564,13 @@ class PytaeRepl:
 
             output_fn(format_glimpse(df))
         elif first_lower == "-describe":
-            output_fn(_format_table(df.describe()))
+            output_fn(self._format_table(df.describe()))
         elif first_lower == "-head":
             n = int(tokens[1]) if len(tokens) > 1 and tokens[1].isdigit() else 5
-            output_fn(_format_table(df.head(n), tbl_rows=max(n, 10)))
+            output_fn(self._format_table(df.head(n), tbl_rows=n))
         elif first_lower == "-tail":
             n = int(tokens[1]) if len(tokens) > 1 and tokens[1].isdigit() else 5
-            output_fn(_format_table(df.tail(n), tbl_rows=max(n, 10)))
+            output_fn(self._format_table(df.tail(n), tbl_rows=n))
         elif first_lower == "-sample":
             n = 5
             frac = None
@@ -2520,7 +2593,7 @@ class PytaeRepl:
             else:
                 sample_n = min(n, len(df))
                 sampled = df.sample(n=sample_n) if sample_n > 0 else df.head(0)
-            output_fn(_format_table(sampled, tbl_rows=max(len(sampled), 10)))
+            output_fn(self._format_table(sampled, tbl_rows=len(sampled)))
         return True
 
     def clear(self, output_fn: Callable[[str], None] = print) -> None:
@@ -2829,17 +2902,33 @@ class PytaeRepl:
             sess_name = self.session_name or "none"
             save_cmd_str = self.save_history_file or "none"
             sess_dir = str(get_sessions_dir())
+            max_cols_str = str(self.max_cols) if self.max_cols is not None else "all"
+            prec_str = str(self.float_precision) if self.float_precision is not None else "auto"
+            null_str = self.null_repr if self.null_repr is not None else "null"
+            timing_str = "on" if self.timing else "off"
+            color_str = "on" if self.color else "off"
+            echo_str = "on" if self.echo else "off"
+
             output_fn(f"session_name      = {sess_name} (options: <name>, none)")
             output_fn("session_load      = (options: <name>)")
             output_fn(f"checkpoint_format = {self.checkpoint_format} (options: ipc, parquet)")
             output_fn(f"save_commands     = {save_cmd_str} (options: <path>, none)")
             output_fn(f"sessions_dir      = {sess_dir} (options: <path>, default)")
+            output_fn(f"max_rows          = {self.max_rows} (options: <int>, default)")
+            output_fn(f"max_cols          = {max_cols_str} (options: <int>, all, default)")
+            output_fn(f"float_precision   = {prec_str} (options: <int>, auto, default)")
+            output_fn(f"null_repr         = {null_str} (options: <string>, null, default)")
+            output_fn(f"timing            = {timing_str} (options: on, off)")
+            output_fn(f"color             = {color_str} (options: on, off)")
+            output_fn(f"echo              = {echo_str} (options: on, off)")
             return
 
         line = raw_line if raw_line else " ".join(args).strip()
         pairs = _parse_set_pairs(line)
         if not pairs:
-            output_fn("Usage: set [key [= value]] (e.g. set session_name = my_project, set session_load = my_project, set checkpoint_format = parquet, set save_commands = history.txt)")
+            output_fn(
+                "Usage: set [key [= value]] (e.g. set session_name = my_project, set session_load = my_project, set max_rows = 20, set timing = on)"
+            )
             return
 
         pair_map: dict[str, str] = {}
@@ -3071,9 +3160,116 @@ class PytaeRepl:
                 else:
                     self.save_history_file = clean_val
                     output_fn(f"Set save_commands = '{clean_val}' (session commands will be auto-saved here on exit).")
+            elif k in ("max_rows", "rows"):
+                if not val:
+                    output_fn(f"max_rows          = {self.max_rows} (options: <int>, default)")
+                    continue
+                clean_val = val.lower().strip("'\"")
+                if clean_val == "default":
+                    self.max_rows = 10
+                    output_fn("Set max_rows = 10 (default).")
+                else:
+                    try:
+                        num = int(clean_val)
+                        if num <= 0:
+                            raise ValueError
+                        self.max_rows = num
+                        output_fn(f"Set max_rows = {num}.")
+                    except ValueError:
+                        output_fn(f"pytae: invalid max_rows '{val}'. Expected a positive integer or 'default'.")
+            elif k in ("max_cols", "cols"):
+                if not val:
+                    curr = str(self.max_cols) if self.max_cols is not None else "all"
+                    output_fn(f"max_cols          = {curr} (options: <int>, all, default)")
+                    continue
+                clean_val = val.lower().strip("'\"")
+                if clean_val in ("all", "default", "none"):
+                    self.max_cols = None
+                    output_fn("Set max_cols = all (show all columns).")
+                else:
+                    try:
+                        num = int(clean_val)
+                        if num <= 0:
+                            raise ValueError
+                        self.max_cols = num
+                        output_fn(f"Set max_cols = {num}.")
+                    except ValueError:
+                        output_fn(f"pytae: invalid max_cols '{val}'. Expected a positive integer, 'all', or 'default'.")
+            elif k in ("float_precision", "precision"):
+                if not val:
+                    curr = str(self.float_precision) if self.float_precision is not None else "auto"
+                    output_fn(f"float_precision   = {curr} (options: <int>, auto, default)")
+                    continue
+                clean_val = val.lower().strip("'\"")
+                if clean_val in ("auto", "default", "none"):
+                    self.float_precision = None
+                    output_fn("Set float_precision = auto (default precision).")
+                else:
+                    try:
+                        num = int(clean_val)
+                        if num < 0:
+                            raise ValueError
+                        self.float_precision = num
+                        output_fn(f"Set float_precision = {num}.")
+                    except ValueError:
+                        output_fn(f"pytae: invalid float_precision '{val}'. Expected a non-negative integer, 'auto', or 'default'.")
+            elif k == "null_repr":
+                if not val:
+                    curr = self.null_repr if self.null_repr is not None else "null"
+                    output_fn(f"null_repr         = {curr} (options: <string>, null, default)")
+                    continue
+                clean_val = val.strip("'\"")
+                if clean_val.lower() in ("default", "null", "none"):
+                    self.null_repr = None
+                    output_fn("Set null_repr = null (default Polars null representation).")
+                else:
+                    self.null_repr = clean_val
+                    output_fn(f"Set null_repr = '{clean_val}'.")
+            elif k == "timing":
+                if not val:
+                    curr = "on" if self.timing else "off"
+                    output_fn(f"timing            = {curr} (options: on, off)")
+                    continue
+                clean_val = val.lower().strip("'\"")
+                if clean_val in ("on", "true", "1", "yes"):
+                    self.timing = True
+                    output_fn("Set timing = on (elapsed execution time will be displayed for each command).")
+                elif clean_val in ("off", "false", "0", "no"):
+                    self.timing = False
+                    output_fn("Set timing = off.")
+                else:
+                    output_fn(f"pytae: invalid timing '{val}'. Supported options: on, off.")
+            elif k in ("color", "theme"):
+                if not val:
+                    curr = "on" if self.color else "off"
+                    output_fn(f"color             = {curr} (options: on, off)")
+                    continue
+                clean_val = val.lower().strip("'\"")
+                if clean_val in ("on", "true", "1", "yes"):
+                    self.color = True
+                    output_fn("Set color = on (colored terminal formatting enabled).")
+                elif clean_val in ("off", "false", "0", "no"):
+                    self.color = False
+                    output_fn("Set color = off (monochrome/plain text formatting enabled).")
+                else:
+                    output_fn(f"pytae: invalid color '{val}'. Supported options: on, off.")
+            elif k == "echo":
+                if not val:
+                    curr = "on" if self.echo else "off"
+                    output_fn(f"echo              = {curr} (options: on, off)")
+                    continue
+                clean_val = val.lower().strip("'\"")
+                if clean_val in ("on", "true", "1", "yes"):
+                    self.echo = True
+                    output_fn("Set echo = on (commands will be echoed before execution).")
+                elif clean_val in ("off", "false", "0", "no"):
+                    self.echo = False
+                    output_fn("Set echo = off.")
+                else:
+                    output_fn(f"pytae: invalid echo '{val}'. Supported options: on, off.")
             else:
                 output_fn(
-                    f"pytae: unknown setting '{k}'. Supported settings: session_name, session_load, sessions_dir, checkpoint_format, save_commands."
+                    f"pytae: unknown setting '{k}'. Supported settings: session_name, session_load, sessions_dir, checkpoint_format, save_commands, max_rows, max_cols, float_precision, null_repr, timing, color, echo."
                 )
 
     def _cmd_checkpoint(self, name: str, output_fn: Callable[[str], None]) -> None:
@@ -3974,7 +4170,7 @@ class PytaeRepl:
                         local_scope[cp_name] = PytaeDataFrame(cp_df)
             res = eval(expr, {}, local_scope)
             if isinstance(res, (pl.DataFrame, PytaeDataFrame)):
-                output_fn(_format_table(res))
+                output_fn(self._format_table(res))
             else:
                 output_fn(repr(res))
         except Exception as exc:
@@ -4025,10 +4221,30 @@ class PytaeRepl:
         concat_specs = [parse_concat_arg(raw) for raw in (args.concat or [])]
         op_order = getattr(args, "op_order", [])
 
+        cfg_kwargs: dict[str, Any] = {
+            "tbl_rows": self.max_rows,
+            "tbl_cols": self.max_cols if self.max_cols is not None else -1,
+        }
+        if self.float_precision is not None:
+            cfg_kwargs["float_precision"] = self.float_precision
+        if not self.color:
+            cfg_kwargs["ascii_tables"] = True
+
+        wrapped_output_fn = output_fn
+        if not quiet and (self.null_repr is not None or not self.color):
+            def _transform_output(s: str) -> None:
+                if self.null_repr is not None:
+                    s = re.sub(r"(?<=[│┆|\s])null(?=[│┆|\s]|$)", self.null_repr, s)
+                if not self.color:
+                    s = re.sub(r"\x1b\[[0-9;]*m", "", s)
+                output_fn(s)
+
+            wrapped_output_fn = _transform_output
+
         args._memory_df = source_df
         args.in_repl = True
         args.quiet = quiet
-        args.output_fn = (lambda s: None) if quiet else output_fn
+        args.output_fn = (lambda s: None) if quiet else wrapped_output_fn
 
         has_action = bool(op_order) or any(
             [
@@ -4057,22 +4273,41 @@ class PytaeRepl:
         runs = getattr(args, "time", None)
         durations: list[float] | None = None
         try:
-            if runs:
-                import time as _time
+            with pl.Config(**cfg_kwargs):
+                if runs:
+                    import time as _time
 
-                durations = []
-                failed = False
-                for run_idx in range(runs):
-                    t0 = _time.perf_counter()
-                    curr_args = args if (run_idx == 0 and not quiet) else argparse.Namespace(**vars(args))
-                    if run_idx > 0 or quiet:
-                        curr_args.output_fn = lambda s: None
+                    durations = []
+                    failed = False
+                    for run_idx in range(runs):
+                        t0 = _time.perf_counter()
+                        curr_args = args if (run_idx == 0 and not quiet) else argparse.Namespace(**vars(args))
+                        if run_idx > 0 or quiet:
+                            curr_args.output_fn = lambda s: None
+                        failed = _process_path(
+                            Path("<memory>"),
+                            curr_args,
+                            parser,
+                            batch=True,
+                            show_all=show_all if (run_idx == 0 and not quiet) else False,
+                            select_specs=select_specs,
+                            filter_specs=filter_specs,
+                            mutate_specs=mutate_specs,
+                            sql_specs=sql_specs,
+                            rename_specs=rename_specs,
+                            join_specs=join_specs,
+                            concat_specs=concat_specs,
+                        )
+                        durations.append(_time.perf_counter() - t0)
+                        if failed:
+                            break
+                else:
                     failed = _process_path(
                         Path("<memory>"),
-                        curr_args,
+                        args,
                         parser,
                         batch=True,
-                        show_all=show_all if (run_idx == 0 and not quiet) else False,
+                        show_all=show_all,
                         select_specs=select_specs,
                         filter_specs=filter_specs,
                         mutate_specs=mutate_specs,
@@ -4081,24 +4316,6 @@ class PytaeRepl:
                         join_specs=join_specs,
                         concat_specs=concat_specs,
                     )
-                    durations.append(_time.perf_counter() - t0)
-                    if failed:
-                        break
-            else:
-                failed = _process_path(
-                    Path("<memory>"),
-                    args,
-                    parser,
-                    batch=True,
-                    show_all=show_all,
-                    select_specs=select_specs,
-                    filter_specs=filter_specs,
-                    mutate_specs=mutate_specs,
-                    sql_specs=sql_specs,
-                    rename_specs=rename_specs,
-                    join_specs=join_specs,
-                    concat_specs=concat_specs,
-                )
             if failed:
                 return None, None, True
             res_frame = getattr(args, "_result_frame", None)
@@ -4186,7 +4403,20 @@ class PytaeRepl:
         # Case: 'set ' configuration keys and values
         if first_token == "set":
             if last_token == "set":
-                configs = ["session_name", "session_load", "sessions_dir", "checkpoint_format", "save_commands"]
+                configs = [
+                    "session_name",
+                    "session_load",
+                    "sessions_dir",
+                    "checkpoint_format",
+                    "save_commands",
+                    "max_rows",
+                    "max_cols",
+                    "float_precision",
+                    "null_repr",
+                    "timing",
+                    "color",
+                    "echo",
+                ]
                 return [c for c in configs if c.startswith(text)]
             if "checkpoint_format" in [t.lower() for t in prefix_tokens]:
                 return [fmt for fmt in ("ipc", "parquet", "arrow") if fmt.startswith(text)]
@@ -4195,6 +4425,16 @@ class PytaeRepl:
             if "session_name" in [t.lower() for t in prefix_tokens]:
                 avail = ["none"] + _get_saved_session_names()
                 return [s for s in avail if s.startswith(text)]
+            if any(k in [t.lower() for t in prefix_tokens] for k in ("timing", "color", "theme", "echo")):
+                return [opt for opt in ("on", "off") if opt.startswith(text)]
+            if any(k in [t.lower() for t in prefix_tokens] for k in ("max_rows", "rows")):
+                return [opt for opt in ("10", "20", "50", "100", "default") if opt.startswith(text)]
+            if any(k in [t.lower() for t in prefix_tokens] for k in ("max_cols", "cols")):
+                return [opt for opt in ("all", "default", "5", "10", "20") if opt.startswith(text)]
+            if any(k in [t.lower() for t in prefix_tokens] for k in ("float_precision", "precision")):
+                return [opt for opt in ("auto", "default", "2", "4", "6") if opt.startswith(text)]
+            if "null_repr" in [t.lower() for t in prefix_tokens]:
+                return [opt for opt in ("default", "null", "NA", "-", "NaN") if opt.startswith(text)]
             if "sessions_dir" in [t.lower() for t in prefix_tokens] or "save_commands" in [t.lower() for t in prefix_tokens]:
                 return _complete_paths(text)
 

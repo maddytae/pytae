@@ -611,6 +611,13 @@ session_load      = (options: <name>)
 checkpoint_format = ipc (options: ipc, parquet)
 save_commands     = none (options: <path>, none)
 sessions_dir      = /Users/username/.pytae/sessions (options: <path>, default)
+max_rows          = 10 (options: <int>, default)
+max_cols          = all (options: <int>, all, default)
+float_precision   = auto (options: <int>, auto, default)
+null_repr         = null (options: <string>, null, default)
+timing            = off (options: on, off)
+color             = on (options: on, off)
+echo              = off (options: on, off)
 ```
 
 To query a single setting without modifying it, run `set <key>`:
@@ -716,6 +723,89 @@ Disabled auto-saving commands on exit.
 
 When you quit the REPL via `exit` or <kbd>Ctrl+D</kbd>, Pytae automatically writes the clean, executable pipeline script.
 
+### Display Preferences (`set max_rows`, `max_cols`, `float_precision`, `null_repr`, `color`)
+
+Customize how datasets and tables are formatted and displayed during interactive inspection (`-head`, `-tail`, `-sample`, `-describe`, `py <expr>`, and pipeline executions):
+
+- **Row Truncation (`set max_rows = <int>|default`, alias: `rows`)**:
+  Controls the maximum number of rows printed in table previews. Defaults to `10`.
+  ```text
+  pytae> set max_rows = 25
+  Set max_rows = 25.
+
+  pytae> set rows = default
+  Set max_rows = 10 (default).
+  ```
+
+- **Column Truncation (`set max_cols = <int>|all|default`, alias: `cols`)**:
+  Limits the maximum number of columns displayed in wide tables. Defaults to `all` (unconstrained).
+  ```text
+  pytae> set max_cols = 5
+  Set max_cols = 5.
+
+  pytae> set cols = all
+  Set max_cols = all (show all columns).
+  ```
+
+- **Floating-Point Precision (`set float_precision = <int>|auto|default`, alias: `precision`)**:
+  Sets the number of decimal digits rendered for floating-point numbers. Defaults to `auto`.
+  ```text
+  pytae> set float_precision = 2
+  Set float_precision = 2.
+
+  pytae> set precision = auto
+  Set float_precision = auto (default precision).
+  ```
+
+- **Missing Value Representation (`set null_repr = <string>|null|default`)**:
+  Replaces standard `null` entries with a custom string (e.g. `-`, `NA`, `NaN`, `<null>`). Defaults to `null`.
+  ```text
+  pytae> set null_repr = '-'
+  Set null_repr = '-'.
+
+  pytae> set null_repr = NA
+  Set null_repr = 'NA'.
+
+  pytae> set null_repr = null
+  Set null_repr = null (default Polars null representation).
+  ```
+
+- **Color & Border Theme (`set color = on|off`, alias: `theme`)**:
+  Toggles between rich Unicode colored borders (`on`) and clean monochrome ASCII table borders (`off`). Defaults to `on`.
+  ```text
+  pytae> set color = off
+  Set color = off (monochrome/plain text formatting enabled).
+
+  pytae> set theme = on
+  Set color = on (colored terminal formatting enabled).
+  ```
+
+### Execution Feedback (`set timing`, `set echo`)
+
+Control runtime feedback and logging during interactive sessions:
+
+- **Command Execution Timing (`set timing = on|off`)**:
+  When enabled, prints precise elapsed wall-clock execution time (e.g. `[took 12.4ms]`) after every command. Defaults to `off`.
+  ```text
+  pytae> set timing = on
+  Set timing = on (elapsed execution time will be displayed for each command).
+
+  pytae> -distinct
+  (344, 8)
+  [took 3.2ms]
+  ```
+
+- **Command Echoing (`set echo = on|off`)**:
+  When enabled, echoes each input command prefixed with `>` before execution. Useful for recording demonstration logs, pipes, or automated scripts. Defaults to `off`.
+  ```text
+  pytae> set echo = on
+  Set echo = on (commands will be echoed before execution).
+
+  pytae> -shape
+  > -shape
+  (344, 8)
+  ```
+
 ### Combining Multiple Settings on One Line
 
 Multiple settings can be chained in a single command using comma, semicolon, space, or repeated `set` syntax:
@@ -759,7 +849,7 @@ When exporting a replay script, Pytae automatically filters out noise:
 - **Excluded**:
   - Checkpoint commands (`checkpoint <name>`, `restore <name>`) — checkpoints are interactive exploration tools; omitting them avoids redundant disk I/O during batch replay.
   - Bare exploratory inspection commands (`-head`, `-tail`, `-describe`, `-cols`, bare `-pivot`) that do not assign to a variable or export to a file.
-  - REPL UI controls and configuration (`tables`, `checkpoints`, `history`, `clear`, `set ...`).
+  - REPL UI controls and configuration (`tables`, `checkpoints`, `history`, `clear`, `set ...`) — display preferences, timing, and session bindings are never injected into replay scripts, keeping exported pipelines 100% pure and reproducible.
 - **Included**:
   - File ingestion commands (`df = ...`, `load ...`).
   - Variable assignments (`orders_clean = orders -filter ...`).

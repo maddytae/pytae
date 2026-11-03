@@ -10,6 +10,19 @@ All notable changes to this project are documented in this file.
   - Updated release and contribution protocols accordingly.
 
 ### Added
+- **Interactive Display & Runtime Preferences in REPL (`set max_rows`, `max_cols`, `float_precision`, `null_repr`, `timing`, `color`, `echo`)**:
+  - Added 7 new interactive workbench settings configurable on the fly via `set`:
+    - `max_rows` (alias `rows`): Sets max rows displayed in table previews (`default`: 10).
+    - `max_cols` (alias `cols`): Restricts column counts in wide table previews (`all`, `<int>`, `default`).
+    - `float_precision` (alias `precision`): Controls floating-point decimal precision (`auto`, `<int>`, `default`).
+    - `null_repr`: Replaces standard `null` with a custom string representation such as `-` or `NA` (`null`, `<str>`, `default`).
+    - `timing`: Toggles wall-clock execution timing feedback per command (`on`/`off`, default: `off`).
+    - `color` (alias `theme`): Toggles rich Unicode colored borders vs. monochrome ASCII borders (`on`/`off`, default: `on`).
+    - `echo`: Toggles echoing input commands prefixed with `>` before execution for logging and scripts (`on`/`off`, default: `off`).
+  - Added seamless multi-setting syntax (e.g. `set max_rows = 20, timing = on, color = off`).
+  - Bare `set` lists all 12 settings cleanly formatted and aligned.
+  - Full tab-autocompletion support for all 12 setting keys and their candidate values.
+  - Guaranteed pure replayability: all `set` commands are strictly excluded from exported command scripts (`~/.pytae/commands/` and `exit -s`), ensuring saved scripts remain 100% pure data transformation pipelines.
 - **Consistent Session Keys in REPL (`set session_name` & `set session_load`)**:
   - Renamed `set session = <name>` to `set session_name = <name>` and `set load_session = <name>` to `set session_load = <name>` for uniform `session_*` prefix alignment alongside `set sessions_dir = <path>`.
   - Zero backward compatibility: legacy `set session` and `set load_session` are strictly rejected with clear educational guidance pointing to supported settings.

@@ -3168,3 +3168,262 @@ def test_repl_relocate_active_session_full_migration(tmp_path) -> None:
     finally:
         set_sessions_dir(orig_dir)
 
+
+def test_repl_set_display_and_custom_settings():
+    """Verify bare 'set' lists all 12 settings and individual setters work cleanly."""
+    r = PytaeRepl()
+    outputs: list[str] = []
+
+    # 1. Bare 'set' lists all 12 settings
+    r.execute_line("set", output_fn=outputs.append)
+    set_text = "\n".join(outputs)
+    assert "session_name      =" in set_text
+    assert "session_load      =" in set_text
+    assert "checkpoint_format =" in set_text
+    assert "save_commands     =" in set_text
+    assert "sessions_dir      =" in set_text
+    assert "max_rows          = 10" in set_text
+    assert "max_cols          = all" in set_text
+    assert "float_precision   = auto" in set_text
+    assert "null_repr         = null" in set_text
+    assert "timing            = off" in set_text
+    assert "color             = on" in set_text
+    assert "echo              = off" in set_text
+
+    # 2. max_rows / rows
+    outputs.clear()
+    r.execute_line("set max_rows = 25", output_fn=outputs.append)
+    assert r.max_rows == 25
+    assert "Set max_rows = 25." in outputs[-1]
+
+    outputs.clear()
+    r.execute_line("set rows = default", output_fn=outputs.append)
+    assert r.max_rows == 10
+    assert "Set max_rows = 10 (default)." in outputs[-1]
+
+    outputs.clear()
+    r.execute_line("set max_rows = -5", output_fn=outputs.append)
+    assert "invalid max_rows" in outputs[-1].lower()
+    assert r.max_rows == 10
+
+    # 3. max_cols / cols
+    outputs.clear()
+    r.execute_line("set max_cols = 5", output_fn=outputs.append)
+    assert r.max_cols == 5
+    assert "Set max_cols = 5." in outputs[-1]
+
+    outputs.clear()
+    r.execute_line("set cols = all", output_fn=outputs.append)
+    assert r.max_cols is None
+    assert "Set max_cols = all" in outputs[-1]
+
+    outputs.clear()
+    r.execute_line("set max_cols = abc", output_fn=outputs.append)
+    assert "invalid max_cols" in outputs[-1].lower()
+
+    # 4. float_precision / precision
+    outputs.clear()
+    r.execute_line("set float_precision = 3", output_fn=outputs.append)
+    assert r.float_precision == 3
+    assert "Set float_precision = 3." in outputs[-1]
+
+    outputs.clear()
+    r.execute_line("set precision = auto", output_fn=outputs.append)
+    assert r.float_precision is None
+    assert "Set float_precision = auto" in outputs[-1]
+
+    outputs.clear()
+    r.execute_line("set precision = -1", output_fn=outputs.append)
+    assert "invalid float_precision" in outputs[-1].lower()
+
+    # 5. null_repr
+    outputs.clear()
+    r.execute_line("set null_repr = '-'", output_fn=outputs.append)
+    assert r.null_repr == "-"
+    assert "Set null_repr = '-'." in outputs[-1]
+
+    outputs.clear()
+    r.execute_line("set null_repr = NA", output_fn=outputs.append)
+    assert r.null_repr == "NA"
+
+    outputs.clear()
+    r.execute_line("set null_repr = null", output_fn=outputs.append)
+    assert r.null_repr is None
+    assert "Set null_repr = null" in outputs[-1]
+
+    # 6. timing
+    outputs.clear()
+    r.execute_line("set timing = on", output_fn=outputs.append)
+    assert r.timing is True
+
+    outputs.clear()
+    r.execute_line("set timing = off", output_fn=outputs.append)
+    assert r.timing is False
+
+    outputs.clear()
+    r.execute_line("set timing = maybe", output_fn=outputs.append)
+    assert "invalid timing" in outputs[-1].lower()
+
+    # 7. color / theme
+    outputs.clear()
+    r.execute_line("set color = off", output_fn=outputs.append)
+    assert r.color is False
+
+    outputs.clear()
+    r.execute_line("set theme = on", output_fn=outputs.append)
+    assert r.color is True
+
+    outputs.clear()
+    r.execute_line("set color = neon", output_fn=outputs.append)
+    assert "invalid color" in outputs[-1].lower()
+
+    # 8. echo
+    outputs.clear()
+    r.execute_line("set echo = on", output_fn=outputs.append)
+    assert r.echo is True
+
+    outputs.clear()
+    r.execute_line("set echo = off", output_fn=outputs.append)
+    assert r.echo is False
+
+    outputs.clear()
+    r.execute_line("set echo = random", output_fn=outputs.append)
+    assert "invalid echo" in outputs[-1].lower()
+
+    # 9. Multi-setting line
+    outputs.clear()
+    r.execute_line("set max_rows = 15, timing = on, color = off", output_fn=outputs.append)
+    assert r.max_rows == 15
+    assert r.timing is True
+    assert r.color is False
+
+    r.close()
+
+
+def test_repl_set_table_formatting_and_inspection():
+    """Verify max_rows, float_precision, null_repr, and color affect table rendering."""
+    import polars as pl
+
+    r = PytaeRepl()
+    outputs: list[str] = []
+
+    # Create a test dataframe with floats and nulls
+    test_df = pl.DataFrame({
+        "num": [1.234567, None, 3.456789, 4.567891, 5.678912, 6.789123],
+        "cat": ["a", "b", "c", None, "e", "f"],
+    })
+    r.tables["df"] = test_df
+    r.current_df = test_df
+    r.path_str = "df"
+
+    # Configure float_precision=2, null_repr='-', color=off
+    r.execute_line("set float_precision = 2, null_repr = '-', color = off", output_fn=outputs.append)
+    assert r.float_precision == 2
+    assert r.null_repr == "-"
+    assert r.color is False
+
+    # Check inspection -head 3
+    outputs.clear()
+    r.execute_line("-head 3", output_fn=outputs.append)
+    rendered = "\n".join(outputs)
+    # Check ASCII box borders from color=off
+    assert "+" in rendered
+    # Check float_precision=2: 1.23
+    assert "1.23" in rendered
+    # Check null_repr='-'
+    assert "-" in rendered
+
+    # Check py expression formatting
+    outputs.clear()
+    r.execute_line("py df.head(2)", output_fn=outputs.append)
+    py_rendered = "\n".join(outputs)
+    assert "+" in py_rendered
+    assert "1.23" in py_rendered
+
+    r.close()
+
+
+def test_repl_set_timing_and_echo():
+    """Verify timing and echo modes operate during command execution."""
+    import polars as pl
+
+    r = PytaeRepl()
+    r.tables["df"] = pl.DataFrame({"x": [1, 2, 3]})
+    r.current_df = r.tables["df"]
+    r.path_str = "df"
+    outputs: list[str] = []
+
+    # Turn on echo and timing
+    r.execute_line("set echo = on, timing = on", output_fn=outputs.append)
+
+    outputs.clear()
+    r.execute_line("-shape", output_fn=outputs.append)
+    # Echo should output '> -shape'
+    assert outputs[0] == "> -shape"
+    # Result should follow
+    assert "(3, 1)" in outputs[1]
+    # Timing should be appended at the end
+    assert any("[took" in o for o in outputs)
+
+    # Turn off timing and echo
+    outputs.clear()
+    r.execute_line("set echo = off, timing = off", output_fn=outputs.append)
+
+    outputs.clear()
+    r.execute_line("-shape", output_fn=outputs.append)
+    assert outputs[0] == "(3, 1)"
+    assert not any("[took" in o for o in outputs)
+
+    r.close()
+
+
+def test_repl_saved_commands_pure_replayability(tmp_path):
+    """CRITICAL: Ensure 'set' commands are NEVER saved to replayable command scripts."""
+    r = PytaeRepl()
+    outputs: list[str] = []
+
+    # Set various preferences
+    r.execute_line("set max_rows = 50", output_fn=outputs.append)
+    r.execute_line("set timing = on", output_fn=outputs.append)
+    r.execute_line("set color = off", output_fn=outputs.append)
+    r.execute_line("set null_repr = 'NA'", output_fn=outputs.append)
+    r.execute_line("set float_precision = 2", output_fn=outputs.append)
+    r.execute_line("set echo = off", output_fn=outputs.append)
+
+    # Run genuine transformation commands
+    r.execute_line("df = sample:penguins", output_fn=outputs.append)
+    r.execute_line("df_clean = df -filter 'bill_length_mm > 40'", output_fn=outputs.append)
+
+    # Run more set commands
+    r.execute_line("set timing = off", output_fn=outputs.append)
+    r.execute_line("set max_rows = 10", output_fn=outputs.append)
+
+    # Export session commands
+    export_file = tmp_path / "replay_pipeline.txt"
+    r.execute_line(f"exit -s {export_file}", output_fn=outputs.append)
+
+    assert export_file.exists()
+    content = export_file.read_text(encoding="utf-8")
+
+    # Genuine transformations MUST be present
+    assert "df = sample:penguins" in content
+    assert "df_clean = df -filter 'bill_length_mm > 40'" in content
+
+    # NO 'set' commands of any kind should EVER appear in the replay script!
+    for line in content.splitlines():
+        clean_l = line.strip()
+        if clean_l and not clean_l.startswith("#"):
+            assert not clean_l.startswith("set "), f"Found unexpected set command in replay script: {clean_l}"
+            assert not clean_l.startswith("set="), f"Found unexpected set command in replay script: {clean_l}"
+
+    # Also verify live session_commands_path in ~/.pytae/commands/
+    if r.session_commands_path.exists():
+        live_content = r.session_commands_path.read_text(encoding="utf-8")
+        for line in live_content.splitlines():
+            clean_l = line.strip()
+            if clean_l and not clean_l.startswith("#"):
+                assert not clean_l.startswith("set "), f"Found set command in live session commands: {clean_l}"
+
+    r.close()
+
+
