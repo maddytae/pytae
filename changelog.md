@@ -10,6 +10,9 @@ All notable changes to this project are documented in this file.
   - Updated release and contribution protocols accordingly.
 
 ### Added
+- **Consistent Session Keys in REPL (`set session_name` & `set session_load`)**:
+  - Renamed `set session = <name>` to `set session_name = <name>` and `set load_session = <name>` to `set session_load = <name>` for uniform `session_*` prefix alignment alongside `set sessions_dir = <path>`.
+  - Zero backward compatibility: legacy `set session` and `set load_session` are strictly rejected with clear educational guidance pointing to supported settings.
 - **Full Active Session Migration Without Duplicates (`set sessions_dir = <path>`)**:
   - Relocating an active session now performs a complete, atomic migration from the default or existing directory to the new target directory.
   - Copies all checkpoints, disk IPC/Parquet files, and session metadata (`session.json`), updating in-memory pointers and filesystem references to the new destination.

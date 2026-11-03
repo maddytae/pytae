@@ -290,7 +290,7 @@ def list_saved_sessions(output_fn: Callable[[str], None] = print) -> None:
     s_dir = get_sessions_dir()
     output_fn(f"Sessions Directory: {s_dir}")
     if not s_dir.exists():
-        output_fn("No saved sessions found. (Use 'session save <name>' or 'set session = <name>' in REPL to persist one.)")
+        output_fn("No saved sessions found. (Use 'session save <name>' or 'set session_name = <name>' in REPL to persist one.)")
         return
     try:
         sessions = sorted([p for p in s_dir.iterdir() if not p.name.startswith(".")])
@@ -299,7 +299,7 @@ def list_saved_sessions(output_fn: Callable[[str], None] = print) -> None:
         return
 
     if not sessions:
-        output_fn("No saved sessions found. (Use 'session save <name>' or 'set session = <name>' in REPL to persist one.)")
+        output_fn("No saved sessions found. (Use 'session save <name>' or 'set session_name = <name>' in REPL to persist one.)")
         return
 
     output_fn("")
@@ -766,7 +766,7 @@ STATE NAVIGATION (Undoable):
   restore <name>         : Restore entire workbench to saved checkpoint
   checkpoints            : List saved checkpoints and their tables
   rm checkpoint <name>   : Delete a saved checkpoint (or 'rm checkpoint *')
-  set [key [= value]]    : Configure session settings (e.g. set session = my_project, set load_session = my_project, set sessions_dir = <path>)
+  set [key [= value]]    : Configure session settings (e.g. set session_name = my_project, set session_load = my_project, set sessions_dir = <path>)
   session                : Show persistent session status
   session save <name>    : Persist workbench checkpoints to ~/.pytae/sessions/<name> (or custom sessions_dir)
   session load <name>    : Load persistent session checkpoints from disk
@@ -1035,9 +1035,8 @@ def _split_respecting_quotes(s: str, seps: str = ",;") -> list[str]:
 
 
 _SET_KNOWN_KEYS = {
-    "session",
     "session_name",
-    "load_session",
+    "session_load",
     "checkpoint_format",
     "checkpoint_fmt",
     "cp_format",
@@ -1051,9 +1050,9 @@ def _parse_set_pairs(line: str) -> list[tuple[str, str]]:
     """Parse key=value setting pairs from a command line.
 
     Supports:
-      - Comma-separated: set session = proj_x, save_commands = run.txt
-      - Semicolon-separated: set session = proj_x; set save_commands = run.txt
-      - Space-separated: set session = proj_x save_commands = run.txt
+      - Comma-separated: set session_name = proj_x, save_commands = run.txt
+      - Semicolon-separated: set session_name = proj_x; set save_commands = run.txt
+      - Space-separated: set session_name = proj_x save_commands = run.txt
       - Multiple 'set' keywords on the same line
     """
     pairs: list[tuple[str, str]] = []
@@ -1717,7 +1716,7 @@ class PytaeRepl:
                 )
             else:
                 output_fn(
-                    "No active session (ephemeral). Use 'session save <name>' or 'set session = <name>' to persist."
+                    "No active session (ephemeral). Use 'session save <name>' or 'set session_name = <name>' to persist."
                 )
             return
 
@@ -2825,13 +2824,13 @@ class PytaeRepl:
                 self.initial_df = None
 
     def _cmd_set(self, args: list[str], output_fn: Callable[[str], None], raw_line: str = "") -> None:
-        """Handle REPL configuration settings (e.g. set checkpoint_format = parquet, set save = history.txt, set sessions_dir = <path>, set session = <name>, set load_session = <name>)."""
+        """Handle REPL configuration settings (e.g. set checkpoint_format = parquet, set sessions_dir = <path>, set session_name = <name>, set session_load = <name>)."""
         if not args:
             sess_name = self.session_name or "none"
             save_cmd_str = self.save_history_file or "none"
             sess_dir = str(get_sessions_dir())
-            output_fn(f"session           = {sess_name} (options: <name>, none)")
-            output_fn("load_session      = (options: <name>)")
+            output_fn(f"session_name      = {sess_name} (options: <name>, none)")
+            output_fn("session_load      = (options: <name>)")
             output_fn(f"checkpoint_format = {self.checkpoint_format} (options: ipc, parquet)")
             output_fn(f"save_commands     = {save_cmd_str} (options: <path>, none)")
             output_fn(f"sessions_dir      = {sess_dir} (options: <path>, default)")
@@ -2840,34 +2839,24 @@ class PytaeRepl:
         line = raw_line if raw_line else " ".join(args).strip()
         pairs = _parse_set_pairs(line)
         if not pairs:
-            output_fn("Usage: set [key [= value]] (e.g. set session = my_project, set load_session = my_project, set checkpoint_format = parquet, set save_commands = history.txt)")
+            output_fn("Usage: set [key [= value]] (e.g. set session_name = my_project, set session_load = my_project, set checkpoint_format = parquet, set save_commands = history.txt)")
             return
 
         pair_map: dict[str, str] = {}
         for k, v in pairs:
             pair_map[k.lower().replace("-", "_")] = v
 
-        session_val = pair_map.pop("session", None)
-        if session_val is None:
-            session_val = pair_map.pop("session_name", None)
-
-        load_session_val = pair_map.pop("load_session", None)
-        if load_session_val is None:
-            load_session_val = pair_map.pop("session_load", None)
-
+        session_name_val = pair_map.pop("session_name", None)
+        session_load_val = pair_map.pop("session_load", None)
         session_dir_val = pair_map.pop("sessions_dir", None)
         if session_dir_val is None:
             session_dir_val = pair_map.pop("session_dir", None)
-            if session_dir_val is None:
-                session_dir_val = pair_map.pop("sessions_path", None)
-                if session_dir_val is None:
-                    session_dir_val = pair_map.pop("session_path", None)
 
-        # 1. Handle load_session
-        if load_session_val is not None:
-            clean_name = load_session_val.strip("'\"")
+        # 1. Handle session_load
+        if session_load_val is not None:
+            clean_name = session_load_val.strip("'\"")
             if not clean_name:
-                output_fn("load_session      = (options: <name>) (e.g. set load_session = my_project)")
+                output_fn("session_load      = (options: <name>) (e.g. set session_load = my_project)")
                 return
             if any(c in clean_name for c in ("/", "\\", "..", "\0")):
                 output_fn(f"pytae: invalid session name '{clean_name}'. Session name must not contain path separators.")
@@ -2882,7 +2871,7 @@ class PytaeRepl:
                     self.close()
                     self.session_name = clean_name
                     self._load_session_from_disk(clean_name, output_fn)
-                    self._record_history(f"set load_session = {clean_name}, sessions_dir = {target_dir}")
+                    self._record_history(f"set session_load = {clean_name}, sessions_dir = {target_dir}")
                 elif (orig_dir / clean_name).exists():
                     self.close()
                     self.session_name = clean_name
@@ -2920,7 +2909,7 @@ class PytaeRepl:
                         if src_sess_dir.exists() and src_sess_dir != dst_sess_dir:
                             shutil.rmtree(src_sess_dir, ignore_errors=True)
                         output_fn(f"Loaded session '{clean_name}' from {orig_dir} and relocated to {target_dir}.")
-                    self._record_history(f"set load_session = {clean_name}, sessions_dir = {target_dir}")
+                    self._record_history(f"set session_load = {clean_name}, sessions_dir = {target_dir}")
                 else:
                     output_fn(f"pytae: session '{clean_name}' not found in '{orig_dir}' or '{target_dir}'.")
                     return
@@ -2932,20 +2921,20 @@ class PytaeRepl:
                 self.close()
                 self.session_name = clean_name
                 self._load_session_from_disk(clean_name, output_fn)
-                self._record_history(f"set load_session = {clean_name}")
+                self._record_history(f"set session_load = {clean_name}")
 
-        # 2. Handle session (binding/saving)
-        elif session_val is not None:
-            clean_val = session_val.strip("'\"")
+        # 2. Handle session_name (binding/saving)
+        elif session_name_val is not None:
+            clean_val = session_name_val.strip("'\"")
             if not clean_val:
                 sess_name = self.session_name or "none"
-                output_fn(f"session = {sess_name} (options: <name>, none)")
+                output_fn(f"session_name      = {sess_name} (options: <name>, none)")
                 return
             if clean_val.lower() in ("none", "off", "false", "0", ""):
                 if self.session_name:
                     old_sess = self.session_name
                     self.session_name = None
-                    self._record_history("set session = none")
+                    self._record_history("set session_name = none")
                     output_fn(f"Detached persistent session '{old_sess}' (session reverted to ephemeral).")
                 else:
                     output_fn("Session is already ephemeral.")
@@ -2990,13 +2979,13 @@ class PytaeRepl:
                         self._save_session_metadata()
                         if src_sess_dir.exists() and src_sess_dir != dst_sess_dir:
                             shutil.rmtree(src_sess_dir, ignore_errors=True)
-                        self._record_history(f"set session = {clean_val}, sessions_dir = {clean_dir}")
+                        self._record_history(f"set session_name = {clean_val}, sessions_dir = {clean_dir}")
                         output_fn(f"Relocated active session '{clean_val}' to '{dst_sess_dir}' ({len(self.checkpoints)} checkpoints moved).")
                         return
                     else:
                         set_sessions_dir(new_dir)
                 self._cmd_session_save(clean_val, output_fn)
-                self._record_history(f"set session = {clean_val}")
+                self._record_history(f"set session_name = {clean_val}")
 
         # 3. Handle session_dir alone
         elif session_dir_val is not None:
@@ -3045,7 +3034,7 @@ class PytaeRepl:
                     output_fn(f"sessions_dir is already '{new_dir}'.")
             else:
                 output_fn(
-                    "pytae: no active session. 'session_dir' must be accompanied by 'session = <name>' or 'load_session = <name>' (e.g. set session = my_project, session_dir = <path>)."
+                    "pytae: no active session. 'sessions_dir' must be accompanied by 'session_name = <name>' or 'session_load = <name>' (e.g. set session_name = my_project, sessions_dir = <path>)."
                 )
 
         # 4. Handle remaining settings
@@ -3084,7 +3073,7 @@ class PytaeRepl:
                     output_fn(f"Set save_commands = '{clean_val}' (session commands will be auto-saved here on exit).")
             else:
                 output_fn(
-                    f"pytae: unknown setting '{k}'. Supported settings: session, load_session, checkpoint_format, save_commands, sessions_dir."
+                    f"pytae: unknown setting '{k}'. Supported settings: session_name, session_load, sessions_dir, checkpoint_format, save_commands."
                 )
 
     def _cmd_checkpoint(self, name: str, output_fn: Callable[[str], None]) -> None:
@@ -4197,13 +4186,13 @@ class PytaeRepl:
         # Case: 'set ' configuration keys and values
         if first_token == "set":
             if last_token == "set":
-                configs = ["session", "load_session", "checkpoint_format", "sessions_dir", "save_commands"]
+                configs = ["session_name", "session_load", "sessions_dir", "checkpoint_format", "save_commands"]
                 return [c for c in configs if c.startswith(text)]
             if "checkpoint_format" in [t.lower() for t in prefix_tokens]:
                 return [fmt for fmt in ("ipc", "parquet", "arrow") if fmt.startswith(text)]
-            if "load_session" in [t.lower() for t in prefix_tokens]:
+            if "session_load" in [t.lower() for t in prefix_tokens]:
                 return [s for s in _get_saved_session_names() if s.startswith(text)]
-            if "session" in [t.lower() for t in prefix_tokens]:
+            if "session_name" in [t.lower() for t in prefix_tokens]:
                 avail = ["none"] + _get_saved_session_names()
                 return [s for s in avail if s.startswith(text)]
             if "sessions_dir" in [t.lower() for t in prefix_tokens] or "save_commands" in [t.lower() for t in prefix_tokens]:
@@ -4244,14 +4233,14 @@ class PytaeRepl:
 
         # Case 7: 'set ' -> complete configuration keys
         if last_token == "set":
-            configs = ["session", "load_session", "checkpoint_format", "sessions_dir", "save_commands"]
+            configs = ["session_name", "session_load", "sessions_dir", "checkpoint_format", "save_commands"]
             return [c for c in configs if c.startswith(text)]
         if "set" in [t.lower() for t in prefix_tokens]:
             if "checkpoint_format" in [t.lower() for t in prefix_tokens]:
                 return [fmt for fmt in ("ipc", "parquet", "arrow") if fmt.startswith(text)]
-            if "load_session" in [t.lower() for t in prefix_tokens]:
+            if "session_load" in [t.lower() for t in prefix_tokens]:
                 return [s for s in _get_saved_session_names() if s.startswith(text)]
-            if "session" in [t.lower() for t in prefix_tokens]:
+            if "session_name" in [t.lower() for t in prefix_tokens]:
                 avail = ["none"] + _get_saved_session_names()
                 return [s for s in avail if s.startswith(text)]
             if "sessions_dir" in [t.lower() for t in prefix_tokens] or "save_commands" in [t.lower() for t in prefix_tokens]:

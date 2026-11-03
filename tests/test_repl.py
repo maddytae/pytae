@@ -2776,8 +2776,12 @@ def test_repl_tab_autocompletions():
     matches = r._get_completions("ch", "set ch")
     assert "checkpoint_format" in matches
 
+    matches = r._get_completions("session_", "set session_")
+    assert "session_name" in matches
+    assert "session_load" in matches
+
     matches = r._get_completions("load_", "set load_")
-    assert "load_session" in matches
+    assert "load_session" not in matches
 
     matches = r._get_completions("par", "set checkpoint_format = par")
     assert "parquet" in matches
@@ -2789,7 +2793,7 @@ def test_repl_tab_autocompletions():
     r.close()
 
 
-def test_repl_set_load_session_and_sessions_dir(tmp_path):
+def test_repl_set_session_load_and_sessions_dir(tmp_path):
     outputs = []
     from pytae.repl import get_sessions_dir, set_sessions_dir
 
@@ -2800,16 +2804,25 @@ def test_repl_set_load_session_and_sessions_dir(tmp_path):
     custom_dir_2.mkdir(parents=True, exist_ok=True)
 
     try:
-        # 1. sessions_dir alone with NO active session is rejected / not modified
+        # 0. Legacy 'set session' and 'set load_session' are strictly rejected (no backward compatibility)
         r = PytaeRepl()
+        outputs.clear()
+        r.execute_line("set session = legacy_name", output_fn=outputs.append)
+        assert "unknown setting 'session'" in outputs[-1].lower()
+
+        outputs.clear()
+        r.execute_line("set load_session = legacy_name", output_fn=outputs.append)
+        assert "unknown setting 'load_session'" in outputs[-1].lower()
+
+        # 1. sessions_dir alone with NO active session is rejected / not modified
         outputs.clear()
         r.execute_line(f"set sessions_dir = {custom_dir_1}", output_fn=outputs.append)
         assert "no active session" in outputs[-1].lower()
         assert get_sessions_dir() == orig_dir
 
-        # 2. Bind active session
+        # 2. Bind active session via session_name
         outputs.clear()
-        r.execute_line("set session = project_alpha", output_fn=outputs.append)
+        r.execute_line("set session_name = project_alpha", output_fn=outputs.append)
         assert r.session_name == "project_alpha"
         r.execute_line("df = sample:penguins")
         r.execute_line("checkpoint cp1")
@@ -2823,16 +2836,16 @@ def test_repl_set_load_session_and_sessions_dir(tmp_path):
         assert get_sessions_dir() == custom_dir_1.resolve()
         r.close()
 
-        # 4. load_session must not contain path separators
+        # 4. session_load must not contain path separators
         r2 = PytaeRepl()
         outputs.clear()
-        r2.execute_line("set load_session = bad/path/name", output_fn=outputs.append)
+        r2.execute_line("set session_load = bad/path/name", output_fn=outputs.append)
         assert "invalid session name" in outputs[-1].lower()
 
-        # 5. load_session with session_dir relocates to new sessions_dir
+        # 5. session_load with sessions_dir relocates to new sessions_dir
         outputs.clear()
         r2.execute_line(
-            f"set load_session = project_alpha, sessions_dir = {custom_dir_2}",
+            f"set session_load = project_alpha, sessions_dir = {custom_dir_2}",
             output_fn=outputs.append,
         )
         assert r2.session_name == "project_alpha"
@@ -3127,7 +3140,7 @@ def test_repl_relocate_active_session_full_migration(tmp_path) -> None:
     try:
         r = PytaeRepl()
         outputs: list[str] = []
-        r.execute_line("set session = analytics_v1", output_fn=outputs.append)
+        r.execute_line("set session_name = analytics_v1", output_fn=outputs.append)
         r.tables["df"] = pl.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]})
         r.current_df = r.tables["df"]
         r.path_str = "df"

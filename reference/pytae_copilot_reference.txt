@@ -24803,8 +24803,8 @@ restore v1           # Restore workbench to snapshot (RAM strictly from v1, purg
 session              # Display active session name, disk path, and saved checkpoints
 session save v_done  # Save current session checkpoints under named directory
 session load my_lab  # Switch to persistent session and boot from its latest checkpoint
-set session = lab1   # Bind current workbench to persistent session via set
-set load_session = l1# Load persistent session by name via set
+set session_name = lab1   # Bind current workbench to persistent session via set
+set session_load = l1     # Load persistent session by name via set
 sessions             # List all saved persistent sessions on disk
 rm session my_lab    # Delete a saved persistent session from disk
 rm orders            # Remove specific table from memory and free RAM (or rm *)
@@ -24918,8 +24918,8 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
   - [In-REPL Session Commands (`session`, `session save`, `session load`, `sessions`, `rm session`)](#in-repl-session-commands-session-session-save-session-load-sessions-rm-session)
 - [REPL Configuration (`set`)](#repl-configuration-set)
   - [Querying Settings (`set`, `set <key>`)](#querying-settings-set-set-key)
-  - [Session Persistence (`set session = <name>`, `set session = none`)](#session-persistence-set-session--name-set-session--none)
-  - [Session Loading & Switching (`set load_session = <name>`)](#session-loading--switching-set-load_session--name)
+  - [Session Persistence (`set session_name = <name>`, `set session_name = none`)](#session-persistence-set-session_name--name-set-session_name--none)
+  - [Session Loading & Switching (`set session_load = <name>`)](#session-loading--switching-set-session_load--name)
   - [Session Storage & Relocation (`set sessions_dir = <path>`)](#session-storage--relocation-set-sessions_dir--path)
   - [Checkpoint Storage Format (`set checkpoint_format = parquet|ipc`)](#checkpoint-storage-format-set-checkpoint_format--parquetipc)
   - [Replay Script Auto-Save (`set save_commands = <path>`)](#replay-script-auto-save-set-save_commands--path)
@@ -24968,7 +24968,7 @@ pytae -i
 ```
 
 > [!NOTE]
-> `pytae -i` is the dedicated entrypoint for the interactive workbench. Datasets are loaded explicitly inside the REPL with `df = file.parquet`, and persistent project sessions are configured inside via `set session = <name>`. This guarantees that exported session history files contain the full ingestion command and run anywhere.
+> `pytae -i` is the dedicated entrypoint for the interactive workbench. Datasets are loaded explicitly inside the REPL with `df = file.parquet`, and persistent project sessions are configured inside via `set session_name = <name>`. This guarantees that exported session history files contain the full ingestion command and run anywhere.
 
 Upon launching, load a dataset to begin exploring:
 ```text
@@ -25470,7 +25470,8 @@ Running `set` with no arguments displays all current configuration values and av
 
 ```text
 pytae> set
-session           = none (options: <name>, none)
+session_name      = none (options: <name>, none)
+session_load      = (options: <name>)
 checkpoint_format = ipc (options: ipc, parquet)
 save_commands     = none (options: <path>, none)
 sessions_dir      = /Users/username/.pytae/sessions (options: <path>, default)
@@ -25486,37 +25487,37 @@ pytae> set sessions_dir
 sessions_dir = /Users/username/.pytae/sessions (options: <path>, default)
 ```
 
-### Session Persistence (`set session = <name>`, `set session = none`)
+### Session Persistence (`set session_name = <name>`, `set session_name = none`)
 
 Bind your current ephemeral workbench to a persistent named session on disk, or detach back to an ephemeral state:
 
 - **Bind / Promote to Named Session**:
   Saves all current checkpoints and workbench tables to disk, updating your prompt to reflect the active session name:
   ```text
-  pytae [df1, df2]> set session = my_project
+  pytae [df1, df2]> set session_name = my_project
   Session saved as 'my_project' (2 checkpoints saved).
   pytae:my_project [df1, df2]>
   ```
 - **Detach / Revert to Ephemeral**:
   Pass `none` (or `off`, `false`, `0`) to detach from disk persistence while preserving loaded tables in memory:
   ```text
-  pytae:my_project [df1, df2]> set session = none
+  pytae:my_project [df1, df2]> set session_name = none
   Detached persistent session 'my_project' (session reverted to ephemeral).
   pytae [df1, df2]>
   ```
 
-### Session Loading & Switching (`set load_session = <name>`)
+### Session Loading & Switching (`set session_load = <name>`)
 
 Switch directly to an existing persistent session from disk, automatically restoring its latest checkpoint:
 
 ```text
-pytae> set load_session = sales_q3
+pytae> set session_load = sales_q3
 Switched to session 'sales_q3'. Restored latest checkpoint 'v2'.
 pytae:sales_q3 [sales_q3: 150,000x12]>
 ```
 
 > [!NOTE]
-> `set load_session` strictly expects a session name (e.g. `sales_q3`), never file paths with `/` or `\`. To switch session storage directories, see [Session Storage & Relocation](#session-storage--relocation-set-sessions_dir--path).
+> `set session_load` strictly expects a session name (e.g. `sales_q3`), never file paths with `/` or `\`. To switch session storage directories, see [Session Storage & Relocation](#session-storage--relocation-set-sessions_dir--path).
 
 ### Session Storage & Relocation (`set sessions_dir = <path>`)
 
@@ -25536,7 +25537,7 @@ Configure the base filesystem directory where persistent sessions and their chec
   Set sessions_dir = '/Users/username/.pytae/sessions'.
   ```
 - **Ephemeral Protection**:
-  Running `set sessions_dir = <path>` alone while in ephemeral mode is cleanly rejected to prevent orphaned directory pointers. Set `session = <name>` alongside `sessions_dir = <path>` to establish both together.
+  Running `set sessions_dir = <path>` alone while in ephemeral mode is cleanly rejected to prevent orphaned directory pointers. Set `session_name = <name>` alongside `sessions_dir = <path>` to establish both together.
 - **Environment Variable**:
   You can configure a global default across all CLI launches via `PYTAE_SESSIONS_DIR`:
   ```bash
@@ -25585,10 +25586,10 @@ Multiple settings can be chained in a single command using comma, semicolon, spa
 
 ```text
 # Bind a named session and relocate its storage directory simultaneously
-pytae> set session = analytics, sessions_dir = /Volumes/Share/sessions
+pytae> set session_name = analytics, sessions_dir = /Volumes/Share/sessions
 
 # Load an existing session and migrate it to a new location in one step
-pytae> set load_session = sales_q3, sessions_dir = /Volumes/ExternalSSD/pytae_sessions
+pytae> set session_load = sales_q3, sessions_dir = /Volumes/ExternalSSD/pytae_sessions
 
 # Configure replay script destination and checkpoint compression together
 pytae> set save_commands = build.txt, checkpoint_format = parquet
@@ -25628,7 +25629,6 @@ When exporting a replay script, Pytae automatically filters out noise:
   - Variable assignments (`orders_clean = orders -filter ...`).
   - Table removals (`rm df1`, `rm *`) to keep batch memory footprints low.
   - Output exports (`-o clean.parquet`, `-o clip`).
-  - Session configuration (`set checkpoint_format = parquet`).
 
 ### Path Canonicalization & Windows UNC Resolution
 Replay scripts must be portable across directories:
@@ -25729,8 +25729,8 @@ The Pytae REPL provides context-aware autocompletion via standard `readline`:
 | | `sessions` | `sessions` | List all persistent sessions on disk | No |
 | | `rm session` | `rm session <name>` | Delete a persistent session from disk | No |
 | **Settings** | `set` | `set` | Inspect all configuration settings | No |
-| | `set session` | `set session = <name>` | Bind REPL to persistent session | No |
-| | `set load_session` | `set load_session = <name>` | Switch session and restore latest checkpoint | Yes |
+| | `set session_name` | `set session_name = <name>` | Bind REPL to persistent session | No |
+| | `set session_load` | `set session_load = <name>` | Switch session and restore latest checkpoint | Yes |
 | | `set save_commands` | `set save_commands = pipeline.txt` | Set target replay script path upfront | No |
 | | `set checkpoint_format`| `set checkpoint_format = parquet` | Set format to `parquet` or `ipc` | No |
 | | `set sessions_dir` | `set sessions_dir = <path>` | Configure persistent sessions base directory | No |
