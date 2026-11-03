@@ -1076,9 +1076,8 @@ def main(argv: list[str] | None = None) -> int:
         sess_arg = str(args.session).strip()
         if "/" in sess_arg or "\\" in sess_arg:
             p = Path(sess_arg).expanduser()
-            # If path ends with trailing slash or is existing directory, parent/name resolution
-            from pytae.repl import set_sessions_dir
-            if p.is_dir() and not (p / "checkpoints").exists() and not (p / "session.json").exists():
+            from pytae.repl import is_session_dir, set_sessions_dir
+            if p.is_dir() and not is_session_dir(p):
                 set_sessions_dir(p)
                 args.session = None
             else:

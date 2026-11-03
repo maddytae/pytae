@@ -25528,6 +25528,15 @@ $ pytae -session ./my_project  # Directly boot into a local project session path
 $ rm -rf ~/.pytae/sessions/old_project
 ```
 
+### Session Markers and Directory Exploration
+
+Every Pytae session directory contains standard markers:
+- `session.json`: JSON manifest storing session metadata (`name`, `created_at`, `updated_at`, `checkpoint_format`, `checkpoints`).
+- `checkpoints/`: Directory containing IPC/Parquet snapshot subdirectories and table states.
+- `.pytae_session`: Marker file ensuring the directory is recognized as an active Pytae session.
+
+When running `pytae -sessions <dir>` or setting `sessions_dir = <dir>` to explore an arbitrary folder (e.g. project root `.`), Pytae safely identifies only directories containing these markers, automatically ignoring non-session project subfolders like `src/`, `tests/`, `dist/`, or `node_modules/`. If the target directory itself is a session (e.g. `pytae -sessions ./my_project`), Pytae recognizes the markers and inspects that session directly.
+
 > [!NOTE]
 > Network shares or external drives listed in `sessions` that are temporarily disconnected or unreachable are safely presented as `[Offline / Unreachable]` without modifying or pruning records.
 

@@ -274,13 +274,44 @@ def set_sessions_dir(path: Path | str | None) -> Path:
     return p
 
 
+def is_session_dir(path: Path | str) -> bool:
+    """Check if a path is a valid Pytae session directory via standard session markers.
+
+    Recognized markers:
+      - `session.json` metadata manifest
+      - `checkpoints` directory
+      - `.pytae_session` marker file
+    """
+    p = Path(path).expanduser().resolve()
+    try:
+        if not p.is_dir():
+            return False
+        return (p / "session.json").exists() or (p / "checkpoints").is_dir() or (p / ".pytae_session").exists()
+    except (OSError, PermissionError):
+        return False
+
+
+def _is_dedicated_sessions_dir(path: Path) -> bool:
+    """Check if a directory is a dedicated sessions container folder."""
+    return (
+        path == _DEFAULT_SESSIONS_DIR.resolve()
+        or path.name.lower() in ("sessions", ".sessions", "pytae_sessions", ".pytae")
+    )
+
+
 def _get_saved_session_names() -> list[str]:
     """Return list of saved persistent session names on disk."""
     s_dir = get_sessions_dir()
     if not s_dir.exists():
         return []
     try:
-        return sorted([p.name for p in s_dir.iterdir() if p.is_dir() and not p.name.startswith(".")])
+        # If in a dedicated sessions folder, list all subdirectories;
+        # otherwise, enforce is_session_dir check so project subfolders (src, tests) are omitted.
+        is_dedicated = _is_dedicated_sessions_dir(s_dir)
+        return sorted([
+            p.name for p in s_dir.iterdir()
+            if not p.name.startswith(".") and (is_dedicated and p.is_dir() or is_session_dir(p))
+        ])
     except Exception:
         return []
 
@@ -301,15 +332,28 @@ def list_saved_sessions(
         s_dir = _DEFAULT_SESSIONS_DIR.resolve() if raw_target.lower() == "default" else Path(raw_target).expanduser().resolve()
     else:
         s_dir = get_sessions_dir()
-    output_fn(f"Sessions Directory: {s_dir}")
-    if not s_dir.exists():
-        output_fn("No saved sessions found. (Use 'session save <name>' or 'set session_name = <name>' in REPL to persist one.)")
-        return
-    try:
-        raw_sessions = sorted([p for p in s_dir.iterdir() if not p.name.startswith(".")])
-    except (OSError, PermissionError) as exc:
-        output_fn(f"pytae: could not access sessions directory: {exc}")
-        return
+
+    # If the target directory itself IS a session, display it directly
+    if is_session_dir(s_dir):
+        output_fn(f"Sessions Directory: {s_dir.parent}")
+        raw_sessions = [s_dir]
+    else:
+        output_fn(f"Sessions Directory: {s_dir}")
+        if not s_dir.exists():
+            output_fn("No saved sessions found. (Use 'session save <name>' or 'set session_name = <name>' in REPL to persist one.)")
+            return
+        try:
+            is_dedicated = _is_dedicated_sessions_dir(s_dir)
+            # If dedicated sessions folder (e.g. ~/.pytae/sessions or a folder named sessions),
+            # list all non-hidden entries so offline/inaccessible entries are visible.
+            # If general project directory (e.g. . or workspace), only list entries identified as sessions.
+            if is_dedicated:
+                raw_sessions = sorted([p for p in s_dir.iterdir() if not p.name.startswith(".")])
+            else:
+                raw_sessions = sorted([p for p in s_dir.iterdir() if not p.name.startswith(".") and is_session_dir(p)])
+        except (OSError, PermissionError) as exc:
+            output_fn(f"pytae: could not access sessions directory: {exc}")
+            return
 
     if not raw_sessions:
         output_fn("No saved sessions found. (Use 'session save <name>' or 'set session_name = <name>' in REPL to persist one.)")
@@ -1753,6 +1797,7 @@ class PytaeRepl:
             except Exception:
                 meta["created_at"] = now_str
         meta_file.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+        (s_dir / ".pytae_session").touch(exist_ok=True)
         (s_dir / "history.json").write_text(json.dumps(self.history, indent=2), encoding="utf-8")
 
     def _load_session_from_disk(self, name: str, output_fn: Callable[[str], None] | None = None) -> bool:

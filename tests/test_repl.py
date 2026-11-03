@@ -1689,15 +1689,17 @@ def test_cli_session_flags(tmp_path, monkeypatch, capsys):
     assert "uses double hyphens; pytae uses single hyphen '-sessions'" in captured_err.err
 
     # Test pytae -sessions <dir_path> lists sessions from specified directory only
+    from pytae.repl import get_sessions_dir, set_sessions_dir
+    orig_sess_dir = get_sessions_dir()
     custom_dir = tmp_path / "custom_location"
     custom_dir.mkdir(parents=True, exist_ok=True)
-    r_cust = PytaeRepl(session="isolated_lab")
-    from pytae.repl import set_sessions_dir
     set_sessions_dir(custom_dir)
+    r_cust = PytaeRepl(session="isolated_lab")
     r_cust.session_name = "isolated_lab"
     r_cust.execute_line("df = sample:tips", output_fn=lambda _: None)
     r_cust.execute_line("checkpoint cp_tip", output_fn=lambda _: None)
     r_cust.close()
+    set_sessions_dir(orig_sess_dir)
 
     # Listing custom_dir specifically
     ret = cli.main(["-sessions", str(custom_dir)])
@@ -2389,6 +2391,8 @@ def test_repl_schema_and_sample_and_keyword_join():
 
 
 def test_repl_set_checkpoint_format_parquet_and_ipc(tmp_path, monkeypatch):
+    from pytae.repl import set_sessions_dir
+    set_sessions_dir(None)
     sess_dir = tmp_path / "sessions"
     sess_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("PYTAE_SESSIONS_DIR", str(sess_dir))
@@ -3602,7 +3606,9 @@ def test_sessions_ready_filter_and_pattern_inspection(tmp_path):
     """Test -ready flag and pattern filtering in session listing across REPL and CLI."""
     from pytae.repl import PytaeRepl, get_sessions_dir, list_saved_sessions, set_sessions_dir
     orig_dir = get_sessions_dir()
-    set_sessions_dir(tmp_path)
+    sess_container = tmp_path / "sessions"
+    sess_container.mkdir(parents=True, exist_ok=True)
+    set_sessions_dir(sess_container)
     try:
         # Create 2 healthy sessions
         r1 = PytaeRepl()
@@ -3618,7 +3624,7 @@ def test_sessions_ready_filter_and_pattern_inspection(tmp_path):
         r2.close()
 
         # Create an offline/inaccessible session (a non-directory file)
-        offline_file = tmp_path / "offline_sess"
+        offline_file = sess_container / "offline_sess"
         offline_file.write_text("broken session")
 
         # 1. Non-filtered listing displays all 3 (including offline)
@@ -3858,6 +3864,59 @@ def test_repl_set_fork_session_preserves_source(tmp_path, monkeypatch):
     # Source session MUST NOT have v2_fork
     assert not (sess_dir / "base_model" / "checkpoints" / "v2_fork").exists()
     r2.close()
+
+
+def test_session_markers_and_directory_exploration(tmp_path):
+    """Verify is_session_dir accurately distinguishes session folders from ordinary project directories, and targeted exploration lists sessions cleanly."""
+    from pytae.repl import PytaeRepl, is_session_dir, list_saved_sessions, set_sessions_dir
+
+    proj_dir = tmp_path / "my_project"
+    proj_dir.mkdir(parents=True, exist_ok=True)
+
+    # Standard non-session project subdirectories
+    (proj_dir / "src").mkdir()
+    (proj_dir / "tests").mkdir()
+    (proj_dir / "data").mkdir()
+    (proj_dir / "README.md").write_text("# Project")
+
+    # None of these should be recognized as a session directory
+    assert not is_session_dir(proj_dir)
+    assert not is_session_dir(proj_dir / "src")
+    assert not is_session_dir(proj_dir / "tests")
+
+    # Creating a session inside the project
+    sess_dir = proj_dir / "experiment_1"
+    orig_sess = set_sessions_dir(proj_dir)
+    try:
+        r = PytaeRepl(session="experiment_1")
+        r.execute_line("df = sample:penguins")
+        r.execute_line("checkpoint cp1")
+        r.close()
+
+        # Session markers should now exist and be recognized
+        assert is_session_dir(sess_dir)
+        assert (sess_dir / "session.json").exists()
+        assert (sess_dir / ".pytae_session").exists()
+        assert (sess_dir / "checkpoints").is_dir()
+
+        # Listing proj_dir should ONLY discover experiment_1, ignoring src, tests, data
+        outputs: list[str] = []
+        list_saved_sessions(outputs.append, directory=proj_dir)
+        listed = "\n".join(outputs)
+        assert "experiment_1" in listed
+        assert "src" not in listed
+        assert "tests" not in listed
+        assert "data" not in listed
+
+        # Listing sess_dir directly should recognize it as a session and inspect it
+        outputs.clear()
+        list_saved_sessions(outputs.append, directory=sess_dir)
+        direct_listed = "\n".join(outputs)
+        assert "experiment_1" in direct_listed
+        assert "Ready" in direct_listed
+    finally:
+        set_sessions_dir(orig_sess)
+
 
 
 
