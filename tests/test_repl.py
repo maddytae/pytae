@@ -2351,7 +2351,13 @@ def test_repl_history_save_and_exit_save(tmp_path, monkeypatch):
     assert any("unknown setting 'save'" in o for o in outputs)
     assert r2.save_history_file is None
 
-    # Configure 'set save_commands = rel_hist.txt' upfront
+    # Configure 'set save_code = rel_hist.txt' upfront
+    outputs.clear()
+    r2.execute_line("set save_code = rel_hist.txt", output_fn=outputs.append)
+    assert r2.save_history_file == "rel_hist.txt"
+    assert any("Set save_code = 'rel_hist.txt'" in o for o in outputs)
+
+    # Legacy 'set save_commands = rel_hist.txt' also supported
     outputs.clear()
     r2.execute_line("set save_commands = rel_hist.txt", output_fn=outputs.append)
     assert r2.save_history_file == "rel_hist.txt"
@@ -2448,7 +2454,7 @@ def test_repl_set_checkpoint_format_parquet_and_ipc(tmp_path, monkeypatch):
     outputs.clear()
     r.execute_line("set", output_fn=outputs.append)
     assert any("checkpoint_format = ipc" in o for o in outputs)
-    assert any("save_commands     = none" in o for o in outputs)
+    assert any("save_code         = none" in o for o in outputs)
 
     outputs.clear()
     r.execute_line("set checkpoint_format", output_fn=outputs.append)
@@ -2819,7 +2825,7 @@ def test_repl_tab_autocompletions():
     assert "session_load" in matches
 
     matches = r._get_completions("load_", "set load_")
-    assert "load_session" not in matches
+    assert "load_session" in matches
 
     matches = r._get_completions("par", "set checkpoint_format = par")
     assert "parquet" in matches
@@ -3230,7 +3236,7 @@ def test_repl_set_display_and_custom_settings():
     assert "load_session      =" in set_text
     assert "save_session      =" in set_text
     assert "checkpoint_format =" in set_text
-    assert "save_commands     =" in set_text
+    assert "save_code         =" in set_text
     assert "max_rows          = 10" in set_text
     assert "max_cols          = all" in set_text
     assert "float_precision   = auto" in set_text

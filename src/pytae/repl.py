@@ -1299,6 +1299,7 @@ _SET_KNOWN_KEYS = {
     "checkpoint_fmt",
     "cp_format",
     "cp_fmt",
+    "save_code",
     "save_commands",
     "save_command",
     "sessions_dir",
@@ -3481,7 +3482,7 @@ class PytaeRepl:
             output_fn("load_session      = (options: <name>, <path>) (e.g. set load_session = rwa_analysis)")
             output_fn(f"save_session      = {sess_name} (options: <name>, <path>, move = true)")
             output_fn(f"checkpoint_format = {self.checkpoint_format} (options: ipc, parquet)")
-            output_fn(f"save_commands     = {save_cmd_str} (options: <path>, none)")
+            output_fn(f"save_code         = {save_cmd_str} (options: <path>, none)")
             output_fn(f"max_rows          = {self.max_rows} (options: <int>, default)")
             output_fn(f"max_cols          = {max_cols_str} (options: <int>, all, default)")
             output_fn(f"float_precision   = {prec_str} (options: <int>, auto, default)")
@@ -3655,10 +3656,10 @@ class PytaeRepl:
                         )
                     else:
                         output_fn(f"Set checkpoint_format = {target_fmt} (checkpoints will be saved as {desc_fmt}).")
-            elif k in ("save_commands", "save_command"):
+            elif k in ("save_code", "save_commands", "save_command"):
                 if not val:
                     save_str = self.save_history_file or "none"
-                    output_fn(f"save_commands     = {save_str} (options: <path>, none)")
+                    output_fn(f"{k.ljust(18)}= {save_str} (options: <path>, none)")
                     continue
                 from pytae.cli_parsing import normalize_git_bash_path
 
@@ -3668,10 +3669,10 @@ class PytaeRepl:
                     output_fn("Disabled auto-saving commands on exit.")
                 elif clean_val.lower() in ("true", "on", "1"):
                     self.save_history_file = "history.txt"
-                    output_fn("Set save_commands = 'history.txt' (session commands will be auto-saved here on exit).")
+                    output_fn(f"Set {k} = 'history.txt' (session commands will be auto-saved here on exit).")
                 else:
                     self.save_history_file = clean_val
-                    output_fn(f"Set save_commands = '{clean_val}' (session commands will be auto-saved here on exit).")
+                    output_fn(f"Set {k} = '{clean_val}' (session commands will be auto-saved here on exit).")
             elif k in ("max_rows", "rows"):
                 if not val:
                     output_fn(f"max_rows          = {self.max_rows} (options: <int>, default)")
@@ -5065,9 +5066,13 @@ class PytaeRepl:
             if last_token == "set":
                 configs = [
                     "session_name",
+                    "new_session",
+                    "load_session",
+                    "save_session",
+                    "save_code",
+                    "checkpoint_format",
                     "session_load",
                     "sessions_dir",
-                    "checkpoint_format",
                     "save_commands",
                     "convert",
                     "max_rows",
@@ -5080,9 +5085,9 @@ class PytaeRepl:
                 return [fmt for fmt in ("ipc", "parquet", "arrow") if fmt.startswith(text)]
             if "convert" in [t.lower() for t in prefix_tokens]:
                 return [opt for opt in ("all", "none") if opt.startswith(text)]
-            if "session_load" in [t.lower() for t in prefix_tokens]:
+            if any(k in [t.lower() for t in prefix_tokens] for k in ("session_load", "load_session")):
                 return [s for s in _get_saved_session_names() if s.startswith(text)]
-            if "session_name" in [t.lower() for t in prefix_tokens]:
+            if any(k in [t.lower() for t in prefix_tokens] for k in ("session_name", "save_session")):
                 avail = ["none"] + _get_saved_session_names()
                 return [s for s in avail if s.startswith(text)]
             if "comma" in [t.lower() for t in prefix_tokens]:
@@ -5093,7 +5098,7 @@ class PytaeRepl:
                 return [opt for opt in ("all", "default", "5", "10", "20") if opt.startswith(text)]
             if any(k in [t.lower() for t in prefix_tokens] for k in ("float_precision", "precision")):
                 return [opt for opt in ("auto", "default", "2", "4", "6") if opt.startswith(text)]
-            if "sessions_dir" in [t.lower() for t in prefix_tokens] or "save_commands" in [t.lower() for t in prefix_tokens]:
+            if any(k in [t.lower() for t in prefix_tokens] for k in ("sessions_dir", "save_commands", "save_code", "save_session", "new_session")):
                 return _complete_paths(text)
 
         # Case 0: 'sessions ' -> complete flags and session names
@@ -5171,17 +5176,17 @@ class PytaeRepl:
 
         # Case 7: 'set ' -> complete configuration keys
         if last_token == "set":
-            configs = ["session_name", "session_load", "sessions_dir", "checkpoint_format", "save_commands"]
+            configs = ["session_name", "new_session", "load_session", "save_session", "save_code", "checkpoint_format", "save_commands"]
             return [c for c in configs if c.startswith(text)]
         if "set" in [t.lower() for t in prefix_tokens]:
             if "checkpoint_format" in [t.lower() for t in prefix_tokens]:
                 return [fmt for fmt in ("ipc", "parquet", "arrow") if fmt.startswith(text)]
-            if "session_load" in [t.lower() for t in prefix_tokens]:
+            if any(k in [t.lower() for t in prefix_tokens] for k in ("session_load", "load_session")):
                 return [s for s in _get_saved_session_names() if s.startswith(text)]
-            if "session_name" in [t.lower() for t in prefix_tokens]:
+            if any(k in [t.lower() for t in prefix_tokens] for k in ("session_name", "save_session")):
                 avail = ["none"] + _get_saved_session_names()
                 return [s for s in avail if s.startswith(text)]
-            if "sessions_dir" in [t.lower() for t in prefix_tokens] or "save_commands" in [t.lower() for t in prefix_tokens]:
+            if any(k in [t.lower() for t in prefix_tokens] for k in ("sessions_dir", "save_commands", "save_code", "save_session", "new_session")):
                 return _complete_paths(text)
 
         # Case 8: 'session ' -> complete subcommands
