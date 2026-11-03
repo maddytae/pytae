@@ -27,6 +27,45 @@ def test_normalize_git_bash_path_single_quoted_nt() -> None:
     assert res == "'D:/risk_data/deals.parquet'"
 
 
+def test_normalize_git_bash_path_wsl_and_cygwin_nt() -> None:
+    # WSL path: /mnt/c/...
+    assert normalize_git_bash_path("/mnt/c/Users/TAF3842/data.parquet", _force_nt=True) == "C:/Users/TAF3842/data.parquet"
+    assert normalize_git_bash_path('"/mnt/d/projects/file.csv"', _force_nt=True) == '"D:/projects/file.csv"'
+
+    # Cygwin path: /cygdrive/c/...
+    assert normalize_git_bash_path("/cygdrive/c/Users/TAF3842/data.parquet", _force_nt=True) == "C:/Users/TAF3842/data.parquet"
+    assert normalize_git_bash_path("'/cygdrive/e/backups/db.ipc'", _force_nt=True) == "'E:/backups/db.ipc'"
+
+
+def test_normalize_session_path_cross_platform() -> None:
+    from pytae.cli_parsing import normalize_session_path
+    from pathlib import Path
+
+    # Git Bash path
+    p_gb = normalize_session_path("/c/Users/TAF3842/my_projects/pytae_sessions/rwa_analysis", _force_nt=True)
+    assert str(p_gb).replace("\\", "/").endswith("C:/Users/TAF3842/my_projects/pytae_sessions/rwa_analysis")
+
+    # Git Bash with trailing slash
+    p_gbt = normalize_session_path("/c/Users/TAF3842/my_projects/pytae_sessions/rwa_analysis/", _force_nt=True)
+    assert str(p_gbt).replace("\\", "/").endswith("C:/Users/TAF3842/my_projects/pytae_sessions/rwa_analysis")
+
+    # Windows path with backslashes and quotes
+    p_win = normalize_session_path(r'"C:\Users\TAF3842\my_projects\pytae_sessions\rwa_analysis"')
+    assert "rwa_analysis" in str(p_win)
+
+    # WSL path
+    p_wsl = normalize_session_path("/mnt/c/Users/TAF3842/my_projects/pytae_sessions/rwa_analysis", _force_nt=True)
+    assert str(p_wsl).replace("\\", "/").endswith("C:/Users/TAF3842/my_projects/pytae_sessions/rwa_analysis")
+
+    # Cygwin path
+    p_cyg = normalize_session_path("/cygdrive/c/Users/TAF3842/my_projects/pytae_sessions/rwa_analysis", _force_nt=True)
+    assert str(p_cyg).replace("\\", "/").endswith("C:/Users/TAF3842/my_projects/pytae_sessions/rwa_analysis")
+
+    # file:// scheme
+    p_file = normalize_session_path("file:///C:/Users/TAF3842/my_projects/pytae_sessions/rwa_analysis", _force_nt=True)
+    assert str(p_file).replace("\\", "/").endswith("C:/Users/TAF3842/my_projects/pytae_sessions/rwa_analysis")
+
+
 def test_normalize_git_bash_path_preserves_standard_paths() -> None:
     # Standard Windows paths, relative paths, and UNC paths are completely unchanged
     cases = [

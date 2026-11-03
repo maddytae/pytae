@@ -4023,6 +4023,51 @@ def test_session_load_cwd_relative_and_hint(tmp_path, monkeypatch):
         shutil.rmtree(mock_default, ignore_errors=True)
 
 
+def test_session_load_various_path_formats(tmp_path, monkeypatch):
+    """Verify that session_load handles trailing slashes, quotes, relative paths, and Git Bash format."""
+    from pytae.repl import PytaeRepl, set_sessions_dir
+
+    set_sessions_dir(None)
+    sess_dir = tmp_path / "sessions_formats"
+    sess_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(sess_dir)
+
+    # 1. Create a session named 'analysis_run'
+    r1 = PytaeRepl()
+    r1.execute_line("df = sample:penguins")
+    r1.execute_line("set sessions_dir = '.', session_name = analysis_run")
+    r1.execute_line("checkpoint cp_base")
+    r1.close()
+
+    target_sess = sess_dir / "analysis_run"
+    assert (target_sess / "checkpoints" / "cp_base").exists()
+
+    # 2. Load with trailing slash
+    r2 = PytaeRepl()
+    outputs = []
+    r2.execute_line(f'set session_load = "{target_sess}/"', output_fn=outputs.append)
+    assert r2.session_name == "analysis_run"
+    assert "cp_base" in r2.checkpoints
+    r2.close()
+
+    # 3. Load with relative path './analysis_run'
+    r3 = PytaeRepl()
+    outputs.clear()
+    r3.execute_line('set session_load = "./analysis_run"', output_fn=outputs.append)
+    assert r3.session_name == "analysis_run"
+    assert "cp_base" in r3.checkpoints
+    r3.close()
+
+    # 4. Load with quotes and backslashes
+    win_style = str(target_sess).replace("/", "\\")
+    r4 = PytaeRepl()
+    outputs.clear()
+    r4.execute_line(f'set session_load = "{win_style}"', output_fn=outputs.append)
+    assert r4.session_name == "analysis_run"
+    assert "cp_base" in r4.checkpoints
+    r4.close()
+
+
 def test_session_markers_and_directory_exploration(tmp_path):
     """Verify is_session_dir accurately distinguishes session folders from ordinary project directories, and targeted exploration lists sessions cleanly."""
     from pytae.repl import PytaeRepl, is_session_dir, list_saved_sessions, set_sessions_dir

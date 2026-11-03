@@ -6,6 +6,7 @@ import argparse
 import ast
 import difflib
 import glob
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -702,10 +703,10 @@ def parse_clean_columns_arg(raw: str) -> dict:
 
 
 def normalize_git_bash_path(path: str, *, _force_nt: bool = False) -> str:
-    """Normalize Git Bash / MSYS POSIX-style drive mounts (e.g. '/c/Users/...') to Windows paths ('C:/Users/...').
+    """Normalize Git Bash / MSYS POSIX-style drive mounts (e.g. '/c/Users/...'), WSL mounts ('/mnt/c/...'), and Cygwin mounts ('/cygdrive/c/...') to Windows paths ('C:/Users/...').
 
     On Windows (os.name == 'nt') or when _force_nt is True:
-    If the path begins with '/<drive>/' and does not exist as-is, translate '/c/...' -> 'C:/...'.
+    If the path begins with '/<drive>/', '/mnt/<drive>/', or '/cygdrive/<drive>/' and does not exist as-is, translate to 'C:/...'.
     On non-Windows platforms (Linux/macOS), the path is returned untouched unless forced for testing.
     Surrounding quotes are preserved.
     """
@@ -723,6 +724,25 @@ def normalize_git_bash_path(path: str, *, _force_nt: bool = False) -> str:
         unquoted = stripped
 
     if os.name == "nt" or _force_nt:
+        # WSL: /mnt/c/...
+        m_wsl = re.match(r"^/mnt/([a-zA-Z])(/.*)$", unquoted)
+        if m_wsl:
+            if not _force_nt and Path(unquoted).exists():
+                return path
+            drive = m_wsl.group(1).upper()
+            converted = f"{drive}:{m_wsl.group(2)}"
+            return f"{quote_char}{converted}{quote_char}" if quote_char else converted
+
+        # Cygwin: /cygdrive/c/...
+        m_cyg = re.match(r"^/cygdrive/([a-zA-Z])(/.*)$", unquoted)
+        if m_cyg:
+            if not _force_nt and Path(unquoted).exists():
+                return path
+            drive = m_cyg.group(1).upper()
+            converted = f"{drive}:{m_cyg.group(2)}"
+            return f"{quote_char}{converted}{quote_char}" if quote_char else converted
+
+        # Git Bash / MSYS: /c/...
         m = re.match(r"^/([a-zA-Z])(/.*)$", unquoted)
         if m:
             if not _force_nt and Path(unquoted).exists():
@@ -732,6 +752,63 @@ def normalize_git_bash_path(path: str, *, _force_nt: bool = False) -> str:
             return f"{quote_char}{converted}{quote_char}" if quote_char else converted
 
     return path
+
+
+def normalize_session_path(
+    raw_path: str | Path,
+    *,
+    base_dir: Path | None = None,
+    _force_nt: bool = False,
+) -> Path:
+    """Normalize and resolve any session path across Windows (CMD, PowerShell, Git Bash, WSL, Cygwin) and POSIX.
+
+    Supported formats:
+      - Windows backslash paths: r'C:\\Users\\...\\rwa_analysis'
+      - Windows forward-slash paths: 'C:/Users/.../rwa_analysis'
+      - Git Bash / MSYS paths: '/c/Users/.../rwa_analysis' -> 'C:/Users/.../rwa_analysis'
+      - WSL paths: '/mnt/c/Users/.../rwa_analysis' -> 'C:/Users/.../rwa_analysis'
+      - Cygwin paths: '/cygdrive/c/Users/.../rwa_analysis' -> 'C:/Users/.../rwa_analysis'
+      - file:// URLs: 'file:///C:/Users/...' -> 'C:/Users/...'
+      - Tilde home expansion: '~/...' -> expands to user home
+      - Relative paths: './rwa_analysis', r'.\\rwa_analysis', 'rwa_analysis'
+      - Strips wrapping quotes and trailing slashes.
+    """
+    if isinstance(raw_path, Path):
+        return raw_path.expanduser().resolve()
+
+    clean = str(raw_path).strip()
+    while len(clean) >= 2 and clean[0] in ('"', "'") and clean[-1] == clean[0]:
+        clean = clean[1:-1].strip()
+
+    if clean.startswith("file:///"):
+        clean = clean[8:]
+    elif clean.startswith("file://"):
+        clean = clean[7:]
+
+    # Strip trailing slashes, preserving root slashes like "/" or "C:\"
+    if len(clean) > 3 and clean.endswith(("/", "\\")):
+        clean = clean.rstrip("/\\")
+
+    clean = normalize_git_bash_path(clean, _force_nt=_force_nt)
+    if os.name != "nt" and "\\" in clean and not Path(clean).exists():
+        clean = clean.replace("\\", "/")
+    p = Path(clean).expanduser()
+
+    if p.is_absolute():
+        return p.resolve()
+
+    # Relative path resolution: check CWD first
+    cwd_candidate = (Path.cwd() / p).resolve()
+    if cwd_candidate.exists() and cwd_candidate.is_dir():
+        return cwd_candidate
+
+    # Check base_dir fallback (e.g. configured sessions_dir)
+    if base_dir is not None:
+        base_candidate = (base_dir / p).resolve()
+        if base_candidate.exists() and base_candidate.is_dir():
+            return base_candidate
+
+    return cwd_candidate
 
 
 def parse_input_target(token: str) -> dict[str, Any]:

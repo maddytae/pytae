@@ -343,7 +343,8 @@ def list_saved_sessions(
 
     if directory is not None:
         raw_target = str(directory).strip()
-        s_dir = _DEFAULT_SESSIONS_DIR.resolve() if raw_target.lower() == "default" else Path(raw_target).expanduser().resolve()
+        from pytae.cli_parsing import normalize_session_path
+        s_dir = _DEFAULT_SESSIONS_DIR.resolve() if raw_target.lower() == "default" else normalize_session_path(raw_target)
     else:
         s_dir = get_sessions_dir()
 
@@ -3338,20 +3339,8 @@ class PytaeRepl:
                 output_fn('session_load      = (options: <path>) (e.g. set session_load = rwa_analysis or set session_load = "C:\\path\\to\\rwa_analysis")')
                 return
 
-            p = Path(raw_path).expanduser()
-            if p.is_absolute():
-                src_sess_dir = p.resolve()
-            else:
-                cwd_candidate = (Path.cwd() / p).resolve()
-                if cwd_candidate.exists() and cwd_candidate.is_dir():
-                    src_sess_dir = cwd_candidate
-                else:
-                    conf_candidate = (get_sessions_dir() / p).resolve()
-                    if conf_candidate.exists() and conf_candidate.is_dir():
-                        src_sess_dir = conf_candidate
-                    else:
-                        src_sess_dir = cwd_candidate
-
+            from pytae.cli_parsing import normalize_session_path
+            src_sess_dir = normalize_session_path(raw_path, base_dir=get_sessions_dir())
             clean_name = src_sess_dir.name or src_sess_dir.stem
 
             if not src_sess_dir.exists() or not src_sess_dir.is_dir():
@@ -3367,7 +3356,7 @@ class PytaeRepl:
             # Target directory (where this session will reside)
             if session_dir_val is not None:
                 clean_dir = session_dir_val.strip("'\"")
-                target_dir = _DEFAULT_SESSIONS_DIR.resolve() if clean_dir.lower() == "default" else Path(clean_dir).expanduser().resolve()
+                target_dir = _DEFAULT_SESSIONS_DIR.resolve() if clean_dir.lower() == "default" else normalize_session_path(clean_dir)
             else:
                 target_dir = orig_dir
 
@@ -3454,7 +3443,8 @@ class PytaeRepl:
                     return
                 if session_dir_val is not None:
                     clean_dir = session_dir_val.strip("'\"")
-                    new_dir = _DEFAULT_SESSIONS_DIR.resolve() if clean_dir.lower() == "default" else Path(clean_dir).expanduser().resolve()
+                    from pytae.cli_parsing import normalize_session_path
+                    new_dir = _DEFAULT_SESSIONS_DIR.resolve() if clean_dir.lower() == "default" else normalize_session_path(clean_dir)
                     orig_dir = get_sessions_dir().resolve()
                     if self.session_name and new_dir != orig_dir:
                         src_sess_dir = orig_dir / self.session_name
@@ -3504,7 +3494,8 @@ class PytaeRepl:
                 output_fn(f"sessions_dir = {get_sessions_dir()} (options: <path>, default)")
                 return
             if self.session_name:
-                new_dir = _DEFAULT_SESSIONS_DIR.resolve() if clean_dir.lower() == "default" else Path(clean_dir).expanduser().resolve()
+                from pytae.cli_parsing import normalize_session_path
+                new_dir = _DEFAULT_SESSIONS_DIR.resolve() if clean_dir.lower() == "default" else normalize_session_path(clean_dir)
                 orig_dir = get_sessions_dir().resolve()
                 if new_dir != orig_dir:
                     src_sess_dir = orig_dir / self.session_name
