@@ -1050,25 +1050,40 @@ def main(argv: list[str] | None = None) -> int:
         from pytae.repl import list_saved_sessions
 
         pattern = None
+        target_dir = None
         ready_only = getattr(args, "ready_only", False)
         raw_paths = args.path if isinstance(args.path, list) else ([args.path] if args.path else [])
-        if raw_paths:
-            candidate = str(raw_paths[0]).strip()
-            if candidate.lower() in ("-ready", "--ready", "ready"):
+        for p in raw_paths:
+            cand = str(p).strip()
+            if cand.lower() in ("-ready", "--ready", "ready"):
                 ready_only = True
+            elif "/" in cand or "\\" in cand or cand in (".", "..") or Path(cand).is_dir():
+                target_dir = cand
             else:
-                pattern = candidate
+                pattern = cand
 
         list_saved_sessions(
             print,
             verbose=getattr(args, "verbose", False),
             ready_only=ready_only,
             pattern=pattern,
+            directory=target_dir,
         )
         return 0
 
     if getattr(args, "session", None) is not None:
         args.repl = True
+        sess_arg = str(args.session).strip()
+        if "/" in sess_arg or "\\" in sess_arg:
+            p = Path(sess_arg).expanduser()
+            # If path ends with trailing slash or is existing directory, parent/name resolution
+            from pytae.repl import set_sessions_dir
+            if p.is_dir() and not (p / "checkpoints").exists() and not (p / "session.json").exists():
+                set_sessions_dir(p)
+                args.session = None
+            else:
+                set_sessions_dir(p.parent.resolve())
+                args.session = p.name
 
     has_progress = args.progress is not None
     chunk_size = args.progress or 200_000

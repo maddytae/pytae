@@ -1688,6 +1688,31 @@ def test_cli_session_flags(tmp_path, monkeypatch, capsys):
     captured_err = capsys.readouterr()
     assert "uses double hyphens; pytae uses single hyphen '-sessions'" in captured_err.err
 
+    # Test pytae -sessions <dir_path> lists sessions from specified directory only
+    custom_dir = tmp_path / "custom_location"
+    custom_dir.mkdir(parents=True, exist_ok=True)
+    r_cust = PytaeRepl(session="isolated_lab")
+    from pytae.repl import set_sessions_dir
+    set_sessions_dir(custom_dir)
+    r_cust.session_name = "isolated_lab"
+    r_cust.execute_line("df = sample:tips", output_fn=lambda _: None)
+    r_cust.execute_line("checkpoint cp_tip", output_fn=lambda _: None)
+    r_cust.close()
+
+    # Listing custom_dir specifically
+    ret = cli.main(["-sessions", str(custom_dir)])
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert "isolated_lab" in captured.out
+    assert "analytics" not in captured.out
+
+    # Listing default sess_dir specifically
+    ret = cli.main(["-sessions", str(sess_dir)])
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert "analytics" in captured.out
+    assert "isolated_lab" not in captured.out
+
 
 def test_repl_rm_releases_ram_immediately_without_disk_spill():
     outputs = []
@@ -3794,6 +3819,8 @@ def test_repl_status_subcommands_and_verbose():
 
 def test_repl_set_fork_session_preserves_source(tmp_path, monkeypatch):
     """Verify that 'set session_load = base, session_name = fork_app, sessions_dir = <dir>' creates an independent fork leaving base untouched."""
+    from pytae.repl import set_sessions_dir
+    set_sessions_dir(None)  # Reset module-level override to use env var
     sess_dir = tmp_path / "sessions"
     sess_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("PYTAE_SESSIONS_DIR", str(sess_dir))

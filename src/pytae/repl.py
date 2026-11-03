@@ -291,11 +291,16 @@ def list_saved_sessions(
     verbose: bool = False,
     ready_only: bool = False,
     pattern: str | None = None,
+    directory: Path | str | None = None,
 ) -> None:
-    """List saved persistent Pytae sessions stored on disk, with optional ready-only and pattern filtering."""
+    """List saved persistent Pytae sessions stored on disk, with optional ready-only, pattern, and directory filtering."""
     import fnmatch
 
-    s_dir = get_sessions_dir()
+    if directory is not None:
+        raw_target = str(directory).strip()
+        s_dir = _DEFAULT_SESSIONS_DIR.resolve() if raw_target.lower() == "default" else Path(raw_target).expanduser().resolve()
+    else:
+        s_dir = get_sessions_dir()
     output_fn(f"Sessions Directory: {s_dir}")
     if not s_dir.exists():
         output_fn("No saved sessions found. (Use 'session save <name>' or 'set session_name = <name>' in REPL to persist one.)")

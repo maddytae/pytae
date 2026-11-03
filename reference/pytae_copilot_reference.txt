@@ -25518,8 +25518,11 @@ Saved Sessions (2 found):
     Status:      [Offline / Unreachable] (network share or path not accessible)
 
 # From the command line outside the REPL
-$ pytae -sessions        # Non-verbose: name, path, status
+$ pytae -sessions        # List global sessions (~/.pytae/sessions)
 $ pytae -sessions -v     # Verbose: full checkpoint details and format breakdown
+$ pytae -sessions .      # List local sessions in the current working directory
+$ pytae -sessions /Volumes/ExternalSSD/sessions  # List sessions from a specific target path
+$ pytae -session ./my_project  # Directly boot into a local project session path
 
 # Remove a persistent session from your terminal using OS file commands
 $ rm -rf ~/.pytae/sessions/old_project
