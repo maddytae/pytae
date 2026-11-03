@@ -3648,6 +3648,119 @@ def test_repl_does_not_abort_on_pipeline_errors():
     r.close()
 
 
+def test_sessions_ready_filter_and_pattern_inspection(tmp_path):
+    """Test -ready flag and pattern filtering in session listing across REPL and CLI."""
+    from pytae.repl import PytaeRepl, get_sessions_dir, list_saved_sessions, set_sessions_dir
+    orig_dir = get_sessions_dir()
+    set_sessions_dir(tmp_path)
+    try:
+        # Create 2 healthy sessions
+        r1 = PytaeRepl()
+        r1.execute_line("df = sample:penguins")
+        r1.execute_line("session save finance_audit")
+        r1.execute_line("checkpoint cp1")
+        r1.close()
+
+        r2 = PytaeRepl()
+        r2.execute_line("df = sample:tips")
+        r2.execute_line("session save water_analysis")
+        r2.execute_line("checkpoint cp_water")
+        r2.close()
+
+        # Create an offline/inaccessible session (a non-directory file)
+        offline_file = tmp_path / "offline_sess"
+        offline_file.write_text("broken session")
+
+        # 1. Non-filtered listing displays all 3 (including offline)
+        outputs: list[str] = []
+        list_saved_sessions(outputs.append)
+        all_text = "\n".join(outputs)
+        assert "finance_audit" in all_text
+        assert "water_analysis" in all_text
+        assert "offline_sess" in all_text
+        assert "Status:      [Offline / Unreachable]" in all_text
+
+        # 2. Filter with ready_only=True excludes offline_sess
+        outputs.clear()
+        list_saved_sessions(outputs.append, ready_only=True)
+        ready_text = "\n".join(outputs)
+        assert "finance_audit" in ready_text
+        assert "water_analysis" in ready_text
+        assert "offline_sess" not in ready_text
+        assert "1 offline omitted" in ready_text
+
+        # 3. Pattern filtering
+        outputs.clear()
+        list_saved_sessions(outputs.append, pattern="*audit*")
+        pat_text = "\n".join(outputs)
+        assert "finance_audit" in pat_text
+        assert "water_analysis" not in pat_text
+
+        # 4. Pattern + verbose
+        outputs.clear()
+        list_saved_sessions(outputs.append, pattern="water_analysis", verbose=True)
+        v_pat_text = "\n".join(outputs)
+        assert "water_analysis" in v_pat_text
+        assert "cp_water" in v_pat_text
+        assert "[ipc]" in v_pat_text
+
+        # 5. In-REPL sessions -ready and sessions <pattern>
+        r = PytaeRepl()
+        outputs.clear()
+        r.execute_line("sessions -ready", output_fn=outputs.append)
+        repl_ready = "\n".join(outputs)
+        assert "finance_audit" in repl_ready
+        assert "offline_sess" not in repl_ready
+
+        outputs.clear()
+        r.execute_line("sessions *audit*", output_fn=outputs.append)
+        repl_pat = "\n".join(outputs)
+        assert "finance_audit" in repl_pat
+        assert "water_analysis" not in repl_pat
+
+        # 6. Checkpoints rich output in REPL
+        r.execute_line("session load finance_audit")
+        outputs.clear()
+        r.execute_line("checkpoints", output_fn=outputs.append)
+        cp_out = "\n".join(outputs)
+        assert "cp1" in cp_out
+        assert "[ipc]" in cp_out
+        assert "344 rows x 7 cols" in cp_out
+
+        outputs.clear()
+        r.execute_line("checkpoints -v", output_fn=outputs.append)
+        cp_v_out = "\n".join(outputs)
+        assert "cp1" in cp_v_out
+        assert "df.ipc" in cp_v_out
+        r.close()
+
+        # 7. CLI execution with -sessions -ready and pattern
+        import contextlib
+        import io
+
+        from pytae.cli import main
+
+        stdout_buf = io.StringIO()
+        with contextlib.redirect_stdout(stdout_buf):
+            ret = main(["-sessions", "-ready"])
+        assert ret == 0
+        cli_out = stdout_buf.getvalue()
+        assert "finance_audit" in cli_out
+        assert "offline_sess" not in cli_out
+
+        stdout_buf = io.StringIO()
+        with contextlib.redirect_stdout(stdout_buf):
+            ret = main(["-sessions", "*audit*", "-v"])
+        assert ret == 0
+        cli_v_out = stdout_buf.getvalue()
+        assert "finance_audit" in cli_v_out
+        assert "cp1" in cli_v_out
+        assert "water_analysis" not in cli_v_out
+    finally:
+        set_sessions_dir(orig_dir)
+
+
+
 
 
 

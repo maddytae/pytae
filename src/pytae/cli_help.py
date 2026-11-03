@@ -1205,19 +1205,25 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         options=[
             "NAME : Session directory name (e.g. 'analytics', 'experiment_1').",
             "-sessions : List all saved persistent sessions on disk (non-verbose: name, path, status).",
+            "-sessions -ready : Filter session listing to only ready/healthy sessions.",
             "-sessions -v : List saved sessions with verbose checkpoint details, sizes, formats, and table breakdown.",
+            "-sessions <pattern> [-ready] [-v] : Inspect sessions matching a wildcard pattern (e.g. '*sales*').",
         ],
         examples=[
             "pytae -i -session my_project",
             "pytae -sessions  # List all existing saved sessions",
-            "pytae -sessions -v  # Verbose session breakdown",
+            "pytae -sessions -ready  # List only ready/healthy sessions",
+            "pytae -sessions *sales* -v  # Detailed verbose breakdown for matching sessions",
         ],
-        see_also=["-i", "-sessions"],
+        see_also=["-i", "-sessions", "-ready"],
     ),
 }
 
 # Aliases mapping alternative names to canonical keyword entries
 KEYWORD_ALIASES: dict[str, str] = {
+    "ready": "session",
+    "-ready": "session",
+    "--ready": "session",
     "seed": "sample",
     "-seed": "sample",
     "--seed": "sample",

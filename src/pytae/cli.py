@@ -185,6 +185,7 @@ _CLI_FLAGS = {
     "-i",
     "-session",
     "-sessions",
+    "-ready",
     "-doc",
     "-mcp",
     "-check",
@@ -884,7 +885,14 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         "-sessions",
         dest="list_sessions",
         action="store_true",
-        help="list all saved persistent REPL sessions on disk and exit",
+        help="list all saved persistent REPL sessions on disk and exit (supports filtering: pytae -sessions [-ready] [-v] [pattern])",
+    )
+    parser.add_argument(
+        "-ready",
+        "--ready",
+        dest="ready_only",
+        action="store_true",
+        help="filter session listing to only ready/healthy sessions (e.g. pytae -sessions -ready)",
     )
     parser.add_argument(
         "-v",
@@ -1041,7 +1049,22 @@ def main(argv: list[str] | None = None) -> int:
     if getattr(args, "list_sessions", False):
         from pytae.repl import list_saved_sessions
 
-        list_saved_sessions(print, verbose=getattr(args, "verbose", False))
+        pattern = None
+        ready_only = getattr(args, "ready_only", False)
+        raw_paths = args.path if isinstance(args.path, list) else ([args.path] if args.path else [])
+        if raw_paths:
+            candidate = str(raw_paths[0]).strip()
+            if candidate.lower() in ("-ready", "--ready", "ready"):
+                ready_only = True
+            else:
+                pattern = candidate
+
+        list_saved_sessions(
+            print,
+            verbose=getattr(args, "verbose", False),
+            ready_only=ready_only,
+            pattern=pattern,
+        )
         return 0
 
     if getattr(args, "session", None) is not None:

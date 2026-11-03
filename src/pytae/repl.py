@@ -285,101 +285,146 @@ def _get_saved_session_names() -> list[str]:
         return []
 
 
-def list_saved_sessions(output_fn: Callable[[str], None] = print, *, verbose: bool = False) -> None:
-    """List all saved persistent Pytae sessions stored on disk."""
+def list_saved_sessions(
+    output_fn: Callable[[str], None] = print,
+    *,
+    verbose: bool = False,
+    ready_only: bool = False,
+    pattern: str | None = None,
+) -> None:
+    """List saved persistent Pytae sessions stored on disk, with optional ready-only and pattern filtering."""
+    import fnmatch
+
     s_dir = get_sessions_dir()
     output_fn(f"Sessions Directory: {s_dir}")
     if not s_dir.exists():
         output_fn("No saved sessions found. (Use 'session save <name>' or 'set session_name = <name>' in REPL to persist one.)")
         return
     try:
-        sessions = sorted([p for p in s_dir.iterdir() if not p.name.startswith(".")])
+        raw_sessions = sorted([p for p in s_dir.iterdir() if not p.name.startswith(".")])
     except (OSError, PermissionError) as exc:
         output_fn(f"pytae: could not access sessions directory: {exc}")
         return
 
-    if not sessions:
+    if not raw_sessions:
         output_fn("No saved sessions found. (Use 'session save <name>' or 'set session_name = <name>' in REPL to persist one.)")
         return
 
+    # Check accessibility / readiness of each session
+    session_status: dict[Path, bool] = {}
+    for p in raw_sessions:
+        try:
+            session_status[p] = p.is_dir()
+        except (OSError, PermissionError):
+            session_status[p] = False
+
+    # Filter by pattern if provided
+    sessions = raw_sessions
+    if pattern:
+        sessions = [p for p in sessions if fnmatch.fnmatchcase(p.name, pattern) or p.name == pattern]
+        if not sessions:
+            avail = ", ".join(p.name for p in raw_sessions) if raw_sessions else "none"
+            output_fn(f"pytae: no saved sessions match pattern '{pattern}'. Available sessions: {avail}")
+            return
+
+    # Filter by ready_only if requested
+    if ready_only:
+        ready_sessions = [p for p in sessions if session_status.get(p, False)]
+        offline_count = len(sessions) - len(ready_sessions)
+        if not ready_sessions:
+            if pattern:
+                output_fn(f"pytae: no ready sessions match pattern '{pattern}' ({offline_count} offline omitted).")
+            else:
+                output_fn(f"No ready sessions found ({offline_count} offline omitted).")
+            return
+        sessions = ready_sessions
+
     output_fn("")
-    output_fn(f"Saved Sessions ({len(sessions)} found):")
+    if pattern:
+        ready_tag = " Ready" if ready_only else ""
+        output_fn(f"Saved Sessions matching '{pattern}' ({len(sessions)}{ready_tag} found):")
+    elif ready_only:
+        offline_count = len(raw_sessions) - len(sessions)
+        omitted = f", {offline_count} offline omitted" if offline_count > 0 else ""
+        output_fn(f"Saved Sessions ({len(sessions)} Ready found{omitted}):")
+    else:
+        output_fn(f"Saved Sessions ({len(sessions)} found):")
+
     for s_path in sessions:
         output_fn(f"  - {s_path.name}")
         output_fn(f"    Path:        {s_path}")
+        is_ready = session_status.get(s_path, False)
+        if not is_ready:
+            output_fn("    Status:      [Offline / Unreachable]" if not verbose else "    Status:      [Offline / Unreachable] (path is not accessible or not a directory)")
+            continue
+
+        output_fn("    Status:      Ready")
         if not verbose:
+            continue
+
+        meta_file = s_path / "session.json"
+        meta: dict[str, Any] = {}
+        if meta_file.exists():
             try:
-                if not s_path.is_dir():
-                    output_fn("    Status:      [Offline / Unreachable]")
-                    continue
-                output_fn("    Status:      Ready")
-            except (OSError, PermissionError):
-                output_fn("    Status:      [Offline / Unreachable]")
+                meta = json.loads(meta_file.read_text(encoding="utf-8"))
+            except Exception:
+                meta = {}
+
+        total_bytes = sum(f.stat().st_size for f in s_path.rglob("*") if f.is_file())
+        output_fn(f"    Size:        {_format_bytes(total_bytes)}")
+        up_date = meta.get("updated_at") or meta.get("created_at") or ""
+        if up_date:
+            output_fn(f"    Updated:     {up_date}")
+
+        cp_dir = s_path / "checkpoints"
+        cp_subdirs = sorted([p for p in cp_dir.iterdir() if p.is_dir()]) if cp_dir.exists() else []
+        if not cp_subdirs:
+            output_fn("    Checkpoints: None")
         else:
-            try:
-                if not s_path.is_dir():
-                    output_fn("    Status:      [Offline / Unreachable] (path is not accessible or not a directory)")
-                    continue
-
-                output_fn("    Status:      Ready")
-
-                meta_file = s_path / "session.json"
-                meta: dict[str, Any] = {}
-                if meta_file.exists():
+            output_fn(f"    Checkpoints ({len(cp_subdirs)}):")
+            for cp_folder in cp_subdirs:
+                cp_name = cp_folder.name
+                cp_bytes = sum(f.stat().st_size for f in cp_folder.rglob("*") if f.is_file())
+                m_file = cp_folder / "meta.json"
+                cp_m: dict[str, Any] = {}
+                if m_file.exists():
                     try:
-                        meta = json.loads(meta_file.read_text(encoding="utf-8"))
+                        cp_m = json.loads(m_file.read_text(encoding="utf-8"))
                     except Exception:
-                        meta = {}
+                        cp_m = {}
 
-                total_bytes = sum(f.stat().st_size for f in s_path.rglob("*") if f.is_file())
-                output_fn(f"    Size:        {_format_bytes(total_bytes)}")
-                up_date = meta.get("updated_at") or meta.get("created_at") or ""
-                if up_date:
-                    output_fn(f"    Updated:     {up_date}")
+                cp_fmt = cp_m.get("format")
+                if not cp_fmt:
+                    has_pq = any(f.suffix in (".parquet", ".pq") for f in cp_folder.iterdir() if f.is_file())
+                    cp_fmt = "parquet" if has_pq else "ipc"
 
-                cp_dir = s_path / "checkpoints"
-                cp_subdirs = sorted([p for p in cp_dir.iterdir() if p.is_dir()]) if cp_dir.exists() else []
-                if not cp_subdirs:
-                    output_fn("    Checkpoints: None")
-                else:
-                    output_fn(f"    Checkpoints ({len(cp_subdirs)}):")
-                    for cp_folder in cp_subdirs:
-                        cp_name = cp_folder.name
-                        cp_bytes = sum(f.stat().st_size for f in cp_folder.rglob("*") if f.is_file())
-                        m_file = cp_folder / "meta.json"
-                        cp_m: dict[str, Any] = {}
-                        if m_file.exists():
-                            try:
-                                cp_m = json.loads(m_file.read_text(encoding="utf-8"))
-                            except Exception:
-                                cp_m = {}
+                created_at = cp_m.get("created_at")
+                if not created_at and cp_folder.exists():
+                    try:
+                        created_at = datetime.datetime.fromtimestamp(cp_folder.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+                    except Exception:
+                        created_at = ""
+                time_str = f"  {created_at}" if created_at else ""
 
-                        cp_fmt = cp_m.get("format")
-                        if not cp_fmt:
-                            has_pq = any(f.suffix in (".parquet", ".pq") for f in cp_folder.iterdir() if f.is_file())
-                            cp_fmt = "parquet" if has_pq else "ipc"
+                act = cp_m.get("active_table")
+                active_tag = f" [active: {act}]" if act else ""
+                output_fn(f"      * {cp_name} [{cp_fmt}] ({_format_bytes(cp_bytes)}){time_str}{active_tag}")
 
-                        act = cp_m.get("active_table")
-                        active_tag = f" [active: {act}]" if act else ""
-                        output_fn(f"      * {cp_name} [{cp_fmt}] ({_format_bytes(cp_bytes)}){active_tag}")
-
-                        tbls = cp_m.get("tables", {})
-                        if isinstance(tbls, dict) and tbls:
-                            for tbl_name, tbl_info in tbls.items():
-                                if isinstance(tbl_info, dict):
-                                    f_name = tbl_info.get("file", "")
-                                    s = tbl_info.get("shape", [])
-                                    shape_str = f": {s[0]:,} rows x {s[1]} cols" if len(s) == 2 else ""
-                                    file_tag = f" ({f_name})" if f_name else ""
-                                    output_fn(f"        - {tbl_name}{shape_str}{file_tag}")
-                                else:
-                                    output_fn(f"        - {tbl_name}")
+                tbls = cp_m.get("tables", {})
+                if isinstance(tbls, dict) and tbls:
+                    for tbl_name, tbl_info in tbls.items():
+                        if isinstance(tbl_info, dict):
+                            f_name = tbl_info.get("file", "")
+                            s = tbl_info.get("shape", [])
+                            shape_str = f": {s[0]:,} rows x {s[1]} cols" if len(s) == 2 else ""
+                            file_tag = f" ({f_name})" if f_name else ""
+                            output_fn(f"        - {tbl_name}{shape_str}{file_tag}")
                         else:
-                            for f in sorted(cp_folder.iterdir()):
-                                if f.is_file() and f.name != "meta.json":
-                                    output_fn(f"        - {f.name} ({_format_bytes(f.stat().st_size)})")
-            except (OSError, PermissionError):
-                output_fn("    Status:      [Offline / Unreachable] (network share or path not accessible)")
+                            output_fn(f"        - {tbl_name}")
+                else:
+                    for f in sorted(cp_folder.iterdir()):
+                        if f.is_file() and f.name != "meta.json":
+                            output_fn(f"        - {f.name} ({_format_bytes(f.stat().st_size)})")
 
 
 try:
@@ -1807,9 +1852,15 @@ class PytaeRepl:
             return
 
         if subcmd in ("list", "ls"):
-            verbose = any(t in ("-v", "-verbose", "--verbose", "verbose", "v") for t in tokens[1:])
-            list_saved_sessions(output_fn, verbose=verbose)
-            return
+            verbose = any(t.lower() in ("-v", "-verbose", "--verbose", "verbose", "v") for t in tokens[1:])
+            ready_only = any(t.lower() in ("-ready", "--ready", "ready") for t in tokens[1:])
+            remaining = [
+                t for t in tokens[1:]
+                if t.lower() not in ("-v", "-verbose", "--verbose", "verbose", "v", "-ready", "--ready", "ready")
+            ]
+            pattern = remaining[0] if remaining else None
+            list_saved_sessions(output_fn, verbose=verbose, ready_only=ready_only, pattern=pattern)
+            return True
 
         if subcmd == "rm":
             if len(tokens) < 2:
@@ -2101,8 +2152,14 @@ class PytaeRepl:
 
         # Persistent REPL sessions
         if first_lower == "sessions":
-            verbose = any(t in ("-v", "-verbose", "--verbose", "verbose", "v") for t in tokens[1:])
-            list_saved_sessions(output_fn, verbose=verbose)
+            verbose = any(t.lower() in ("-v", "-verbose", "--verbose", "verbose", "v") for t in tokens[1:])
+            ready_only = any(t.lower() in ("-ready", "--ready", "ready") for t in tokens[1:])
+            remaining = [
+                t for t in tokens[1:]
+                if t.lower() not in ("-v", "-verbose", "--verbose", "verbose", "v", "-ready", "--ready", "ready")
+            ]
+            pattern = remaining[0] if remaining else None
+            list_saved_sessions(output_fn, verbose=verbose, ready_only=ready_only, pattern=pattern)
             return True
 
         if first_lower == "session":
@@ -2426,7 +2483,8 @@ class PytaeRepl:
             return True
 
         if first_lower == "checkpoints":
-            self._cmd_list_checkpoints(output_fn)
+            verbose = any(t in ("-v", "-verbose", "--verbose", "verbose", "v") for t in tokens[1:])
+            self._cmd_list_checkpoints(output_fn, verbose=verbose)
             return True
 
         # Load file as table
@@ -3477,9 +3535,11 @@ class PytaeRepl:
                 "shape": list(self.current_df.shape),
             }
 
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         meta = {
             "dir": str(cp_path),
             "format": fmt,
+            "created_at": now_str,
             "tables": saved_tables,
             "table_sources": dict(self.table_sources),
             "active_table": self.path_str,
@@ -3596,7 +3656,7 @@ class PytaeRepl:
         else:
             output_fn(f"Restored checkpoint '{name}'.")
 
-    def _cmd_list_checkpoints(self, output_fn: Callable[[str], None]) -> None:
+    def _cmd_list_checkpoints(self, output_fn: Callable[[str], None], *, verbose: bool = False) -> None:
         if not self.checkpoints:
             output_fn("No checkpoints saved. Use 'checkpoint <name>' to save one.")
             return
@@ -3604,7 +3664,21 @@ class PytaeRepl:
         for name, snap in self.checkpoints.items():
             if isinstance(snap, dict):
                 tbls = snap.get("tables", {})
-                fmt_tag = f" [{snap['format']}]" if snap.get("format") and snap["format"] != "ipc" else ""
+                fmt = snap.get("format", "ipc")
+                fmt_tag = f" [{fmt}]"
+                cp_path = Path(snap["dir"]) if "dir" in snap else (self._get_cp_dir() / name)
+                size_str = ""
+                created_at = snap.get("created_at")
+                if cp_path.exists():
+                    try:
+                        total_b = sum(f.stat().st_size for f in cp_path.rglob("*") if f.is_file())
+                        size_str = f" ({_format_bytes(total_b)})"
+                        if not created_at:
+                            created_at = datetime.datetime.fromtimestamp(cp_path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+                    except Exception:
+                        pass
+                time_str = f"  {created_at}" if created_at else ""
+
                 if isinstance(tbls, dict):
                     if len(tbls) > 1:
                         parts = []
@@ -3618,24 +3692,36 @@ class PytaeRepl:
                                 parts.append(str(t))
                         summary = ", ".join(parts)
                         active_suffix = f" [active: {snap['active_table']}]" if snap.get("active_table") else ""
-                        output_fn(f"  - {name:<15}: {summary}{active_suffix}{fmt_tag}")
+                        output_fn(f"  - {name:<15}: {summary}{active_suffix}{fmt_tag}{size_str}{time_str}")
                     elif tbls:
                         t_name, val = next(iter(tbls.items()))
                         shape = (
                             val["shape"] if isinstance(val, dict) and "shape" in val else getattr(val, "shape", None)
                         )
                         if shape:
-                            output_fn(f"  - {name:<15}: {shape[0]:,} rows x {shape[1]} cols{fmt_tag}")
+                            output_fn(f"  - {name:<15}: {shape[0]:,} rows x {shape[1]} cols{fmt_tag}{size_str}{time_str}")
                         else:
-                            output_fn(f"  - {name:<15}: 1 table ({t_name}){fmt_tag}")
+                            output_fn(f"  - {name:<15}: 1 table ({t_name}){fmt_tag}{size_str}{time_str}")
                     elif snap.get("current_df_shape") is not None:
                         s = snap["current_df_shape"]
-                        output_fn(f"  - {name:<15}: {s[0]:,} rows x {s[1]} cols{fmt_tag}")
+                        output_fn(f"  - {name:<15}: {s[0]:,} rows x {s[1]} cols{fmt_tag}{size_str}{time_str}")
                     elif snap.get("current_df") is not None:
                         df = snap["current_df"]
-                        output_fn(f"  - {name:<15}: {df.shape[0]:,} rows x {df.shape[1]} cols{fmt_tag}")
+                        output_fn(f"  - {name:<15}: {df.shape[0]:,} rows x {df.shape[1]} cols{fmt_tag}{size_str}{time_str}")
                     else:
-                        output_fn(f"  - {name:<15}: (empty session){fmt_tag}")
+                        output_fn(f"  - {name:<15}: (empty session){fmt_tag}{size_str}{time_str}")
+                else:
+                    output_fn(f"  - {name:<15}: (no tables){fmt_tag}{size_str}{time_str}")
+
+                if verbose and isinstance(tbls, dict) and tbls and cp_path.exists():
+                    for t_name, val in tbls.items():
+                        if isinstance(val, dict):
+                            f_name = val.get("file", "")
+                            s = val.get("shape", [])
+                            shape_info = f": {s[0]:,} rows x {s[1]} cols" if len(s) == 2 else ""
+                            f_path = cp_path / f_name if f_name else None
+                            f_sz = f" ({_format_bytes(f_path.stat().st_size)})" if f_path and f_path.exists() else ""
+                            output_fn(f"      - {t_name}{shape_info} [{f_name}]{f_sz}")
             elif isinstance(snap, pl.DataFrame):
                 output_fn(f"  - {name:<15}: {snap.shape[0]:,} rows x {snap.shape[1]} cols")
 
@@ -4635,9 +4721,22 @@ class PytaeRepl:
             if "sessions_dir" in [t.lower() for t in prefix_tokens] or "save_commands" in [t.lower() for t in prefix_tokens]:
                 return _complete_paths(text)
 
-        # Case 0: 'sessions ' -> complete flags
+        # Case 0: 'sessions ' -> complete flags and session names
         if first_token == "sessions":
+            opts = ["-v", "-verbose", "-ready"] + _get_saved_session_names()
+            return [opt for opt in opts if opt.startswith(text)]
+
+        if first_token == "checkpoints":
             return [opt for opt in ("-v", "-verbose") if opt.startswith(text)]
+
+        if first_token == "session":
+            if last_token == "session":
+                return [sub for sub in ("load", "save", "list", "rm") if sub.startswith(text)]
+            if len(prefix_tokens) >= 2 and prefix_tokens[1].lower() in ("load", "rm"):
+                return [s for s in _get_saved_session_names() if s.startswith(text)]
+            if len(prefix_tokens) >= 2 and prefix_tokens[1].lower() in ("list", "ls"):
+                opts = ["-v", "-verbose", "-ready"] + _get_saved_session_names()
+                return [opt for opt in opts if opt.startswith(text)]
 
         # Case 1: Ingestion / Export / Path completion
         if last_token in ("load", "-o") or last_token.startswith("-o=") or prefix.rstrip().endswith("="):

@@ -27,6 +27,14 @@ All notable changes to this project are documented in this file.
   - Guarantees that only persistent disk file artifacts (`.parquet`, `.csv`, `.feather`, `.jsonl`) and state transformations are written to automated batch scripts, preventing failures or clipboard pollution during headless/CI batch replay while faithfully preserving all inputs in `~/.pytae/history/`.
 
 ### Added
+- **Status & Pattern Filtering for Saved Sessions (`pytae -sessions [-ready] [pattern] [-v]`)**:
+  - Added `-ready` flag to filter session listings across CLI (`pytae -sessions -ready`) and REPL (`sessions -ready`, `session list -ready`) to only healthy, accessible sessions, cleanly reporting any offline/unreachable sessions omitted from the view.
+  - Added glob and wildcard pattern filtering (e.g. `pytae -sessions "*audit*"`, `sessions "*sales*" -ready -v`) to target specific sessions and inspect their checkpoints without wading through unrelated projects.
+  - Added autocompletion support for `-ready` and session names in `sessions <TAB>` and `session list <TAB>`.
+- **Rich In-REPL Checkpoint Details & Timestamps (`checkpoints [-v]`)**:
+  - Checkpoint creation now persists exact ISO timestamps (`created_at`) in `meta.json`.
+  - Upgraded the in-REPL `checkpoints` command to display checkpoint format (`[ipc]` or `[parquet]`), human-readable disk size, creation timestamp, and table shapes.
+  - Added verbose checkpoint inspection (`checkpoints -v`) to break down individual constituent table filenames and exact disk footprints.
 - **Key-Aligned Table Differences in REPL (`-diff [tbl1] tbl2 on=<key>`)**:
   - Enhanced the in-REPL `-diff` command with full primary and composite key alignment support via `on=<key>` or `-on <key>` (e.g. `-diff df1 df2 on=id`, `df1 -diff df2 on=id`, or `-diff "df2,on=id"`).
   - Aligns rows by key prior to cell-by-cell comparison, reporting matched, added, and removed keys alongside schema drift and value differences.
