@@ -11,6 +11,11 @@ All notable changes to this project are documented in this file.
   - Removed the standalone VS Code extension, themes, and syntaxes to streamline repository maintenance and focus exclusively on the core Python package, CLI, REPL, and MCP integrations.
   - Updated release and contribution protocols accordingly.
 
+### Fixed
+- **Exclude Transient Clipboard Exports (`-o clip`) from Replay Scripts (`~/.pytae/commands/`)**:
+  - Tightened `_is_replayable_entry` to inspect `-o` target arguments and ignore transient clipboard copies (`-o clip`, `-o clipboard`, and preview pipelines ending in `-head ... -o clip`).
+  - Guarantees that only persistent disk file artifacts (`.parquet`, `.csv`, `.feather`, `.jsonl`) and state transformations are written to automated batch scripts, preventing failures or clipboard pollution during headless/CI batch replay while faithfully preserving all inputs in `~/.pytae/history/`.
+
 ### Added
 - **Non-Verbose vs. Verbose Session Listing (`pytae -sessions` & `sessions [-v]`)**:
   - Implemented clean dual-mode session inspection across CLI and REPL:

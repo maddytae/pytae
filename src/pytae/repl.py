@@ -1335,9 +1335,20 @@ class PytaeRepl:
             return True
 
         # Export commands: -o <path> or pipeline ending with -o <path>
+        # Must target an actual file on disk; clipboard exports ('clip' / 'clipboard')
+        # are transient interactive actions and excluded from replay scripts.
         tokens = clean.split()
-        if any(t == "-o" or t.startswith("-o=") for t in tokens):
-            return True
+        for i, t in enumerate(tokens):
+            if t == "-o" and i + 1 < len(tokens):
+                target = tokens[i + 1].lower().strip("'\"")
+                if target in ("clip", "clipboard"):
+                    continue
+                return True
+            if t.startswith("-o="):
+                target = t.split("=", 1)[1].lower().strip("'\"")
+                if target in ("clip", "clipboard"):
+                    continue
+                return True
 
         # Explicit reset / restore / table removal or mutation of state
         if clean.startswith("reset") or clean.startswith("restore "):

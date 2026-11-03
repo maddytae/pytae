@@ -3362,6 +3362,15 @@ def test_repl_saved_commands_pure_replayability(tmp_path):
     r.execute_line("df = sample:penguins", output_fn=outputs.append)
     r.execute_line("df_clean = df -filter 'bill_length_mm > 40'", output_fn=outputs.append)
 
+    # Run exploratory previews and transient clipboard exports (MUST NOT be in commands)
+    r.execute_line("-select species,island -head 10 -o clip", output_fn=outputs.append)
+    r.execute_line("df -o clip", output_fn=outputs.append)
+    r.execute_line("-o clip", output_fn=outputs.append)
+    r.execute_line("-head 5", output_fn=outputs.append)
+
+    # Run genuine disk export (MUST be in commands)
+    r.execute_line("-o final_report.parquet", output_fn=outputs.append)
+
     # Run more set commands
     r.execute_line("set comma = on", output_fn=outputs.append)
     r.execute_line("set max_rows = 10", output_fn=outputs.append)
@@ -3373,9 +3382,15 @@ def test_repl_saved_commands_pure_replayability(tmp_path):
     assert export_file.exists()
     content = export_file.read_text(encoding="utf-8")
 
-    # Genuine transformations MUST be present
+    # Genuine transformations and persistent file exports MUST be present
     assert "df = sample:penguins" in content
     assert "df_clean = df -filter 'bill_length_mm > 40'" in content
+    assert "-o final_report.parquet" in content
+
+    # Transient clipboard copies and exploratory previews MUST NOT appear in commands
+    assert "-o clip" not in content
+    assert "-head 10" not in content
+    assert "-head 5" not in content
 
     # NO 'set' commands of any kind should EVER appear in the replay script!
     for line in content.splitlines():
@@ -3383,14 +3398,17 @@ def test_repl_saved_commands_pure_replayability(tmp_path):
         if clean_l and not clean_l.startswith("#"):
             assert not clean_l.startswith("set "), f"Found unexpected set command in replay script: {clean_l}"
             assert not clean_l.startswith("set="), f"Found unexpected set command in replay script: {clean_l}"
+            assert "-o clip" not in clean_l
 
     # Also verify live session_commands_path in ~/.pytae/commands/
     if r.session_commands_path.exists():
         live_content = r.session_commands_path.read_text(encoding="utf-8")
+        assert "-o clip" not in live_content
         for line in live_content.splitlines():
             clean_l = line.strip()
             if clean_l and not clean_l.startswith("#"):
                 assert not clean_l.startswith("set "), f"Found set command in live session commands: {clean_l}"
+                assert "-o clip" not in clean_l
 
     r.close()
 

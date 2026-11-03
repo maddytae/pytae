@@ -865,13 +865,13 @@ Exiting pytae REPL.
 When exporting a replay script, Pytae automatically filters out noise:
 - **Excluded**:
   - Checkpoint commands (`checkpoint <name>`, `restore <name>`) — checkpoints are interactive exploration tools; omitting them avoids redundant disk I/O during batch replay.
-  - Bare exploratory inspection commands (`-head`, `-tail`, `-describe`, `-cols`, bare `-pivot`) that do not assign to a variable or export to a file.
+  - Bare exploratory inspection commands (`-head`, `-tail`, `-describe`, `-cols`, bare `-pivot`, and transient clipboard `-o clip` copies) that do not assign to a variable or export to a persistent file.
   - REPL UI controls and configuration (`tables`, `checkpoints`, `history`, `clear`, `set ...`) — display preferences, timing, and session bindings are never injected into replay scripts, keeping exported pipelines 100% pure and reproducible.
 - **Included**:
   - File ingestion commands (`df = ...`, `load ...`).
   - Variable assignments (`orders_clean = orders -filter ...`).
   - Table removals (`rm df1`, `rm *`) to keep batch memory footprints low.
-  - Output exports (`-o clean.parquet`, `-o clip`).
+  - Persistent output file exports (`-o clean.parquet`, `-o report.csv`) — transient clipboard copies (`-o clip`) are strictly excluded to prevent failures in headless/CI batch execution.
 
 ### Path Canonicalization & Windows UNC Resolution
 Replay scripts must be portable across directories:
