@@ -25930,6 +25930,21 @@ pytae> set session_load = base_template, session_name = client_run1, sessions_di
 - **Fork (`cp -r`)**: Source session `base_template` is preserved untouched.
 - An independent clone `client_run1` is created at `./client_run1/`. Future checkpoints apply strictly to `client_run1`.
 
+#### Q: Can I configure the session directory via an OS environment variable?
+**Yes.** Set `PYTAE_SESSIONS_DIR` in your operating system environment:
+
+```bash
+# Set session base directory to an external drive or shared folder
+export PYTAE_SESSIONS_DIR="/Volumes/ExternalSSD/pytae_sessions"
+pytae -session project_x
+```
+*(On Windows Command Prompt: `set PYTAE_SESSIONS_DIR=C:\pytae_sessions` | PowerShell: `$env:PYTAE_SESSIONS_DIR="C:\pytae_sessions"`)*
+
+**Directory Precedence Order**:
+1. **Explicit In-REPL Setting**: `set sessions_dir = <path>` (highest priority for active session).
+2. **OS Environment Variable**: `PYTAE_SESSIONS_DIR` (used automatically if set).
+3. **Default**: `~/.pytae/sessions/` (used if neither is set).
+
 #### Q: How do I automatically save my pipeline commands to a script upon exit?
 ```text
 pytae> set save_commands = pipeline.txt
