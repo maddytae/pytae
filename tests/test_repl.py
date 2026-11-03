@@ -44,7 +44,7 @@ def test_repl_init_with_path(sample_parquet):
     assert r.path_str == "penguins_sample.parquet"
 
 
-def test_repl_filter_and_undo_and_reset(sample_df):
+def test_repl_filter_and_reset(sample_df):
     outputs = []
     r = PytaeRepl(df=sample_df)
 
@@ -53,40 +53,19 @@ def test_repl_filter_and_undo_and_reset(sample_df):
     assert r.current_df.shape == (5, 3)  # Safe preview, untouched!
     assert any("Gentoo" in o for o in outputs)
 
-    # 2. Assign filter explicitly updates active table and records undo
+    # 2. Assign filter explicitly updates active table
     outputs.clear()
     r.execute_line("df = -filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     assert r.current_df.shape == (2, 3)
-    assert len(r.undo_stack) == 1
 
-    # 3. Undo filter
-    r.execute_line("undo", output_fn=outputs.append)
-    assert r.current_df.shape == (5, 3)
-    assert "Undid:" in outputs[-1]
-
-    # 4. Apply another filter via assignment
-    r.execute_line("df = -filter \"species == 'Adelie'\"", output_fn=outputs.append)
-    assert r.current_df.shape == (2, 3)
-
-    # 5. Reset to original
+    # 3. Reset to original
     r.execute_line("reset", output_fn=outputs.append)
     assert r.current_df.shape == (5, 3)
     assert "Restored" in outputs[-1] and "initial" in outputs[-1]
 
-
-def test_repl_redo(sample_df):
-    outputs = []
-    r = PytaeRepl(df=sample_df)
-
-    r.execute_line("df = -filter \"species == 'Gentoo'\"", output_fn=outputs.append)
+    # 4. Apply another filter via assignment
+    r.execute_line("df = -filter \"species == 'Adelie'\"", output_fn=outputs.append)
     assert r.current_df.shape == (2, 3)
-
-    r.execute_line("undo", output_fn=outputs.append)
-    assert r.current_df.shape == (5, 3)
-
-    r.execute_line("redo", output_fn=outputs.append)
-    assert r.current_df.shape == (2, 3)
-    assert "Redid:" in outputs[-1]
 
 
 def test_repl_checkpoint_and_restore(sample_df):
@@ -119,7 +98,6 @@ def test_repl_non_destructive_inspection(sample_df):
     # -shape
     r.execute_line("-shape", output_fn=outputs.append)
     assert "(5, 3)" in outputs[-1]
-    assert len(r.undo_stack) == 0
 
     # -cols
     r.execute_line("-cols", output_fn=outputs.append)
@@ -138,9 +116,8 @@ def test_repl_non_destructive_inspection(sample_df):
     r.execute_line("-head 2", output_fn=outputs.append)
     r.execute_line("-tail 2", output_fn=outputs.append)
 
-    # None of these should mutate or push to undo stack!
+    # None of these should mutate active dataframe!
     assert r.current_df.shape == (5, 3)
-    assert len(r.undo_stack) == 0
 
 
 def test_repl_sql_query(sample_df):
@@ -160,8 +137,8 @@ def test_repl_sql_query(sample_df):
     assert r.current_df.shape == (3, 2)
     assert "cnt" in r.current_df.columns
 
-    # Can undo SQL query
-    r.execute_line("undo", output_fn=outputs.append)
+    # Reset restores original dataframe
+    r.execute_line("reset", output_fn=outputs.append)
     assert r.current_df.shape == (5, 3)
 
 
@@ -209,7 +186,6 @@ def test_repl_error_handling(sample_df):
     # Invalid column name in filter
     r.execute_line('-filter "non_existent > 10"', output_fn=outputs.append)
     assert r.current_df.shape == (5, 3)  # Intact!
-    assert len(r.undo_stack) == 0
     assert any("error" in o.lower() or "not found" in o.lower() for o in outputs)
 
 
@@ -218,7 +194,7 @@ def test_repl_headless_run(sample_df):
         "df = -filter \"species == 'Gentoo'\"",
         "checkpoint g_only",
         'df = -mutate "mass_kg = body_mass_g / 1000.0"',
-        "undo",
+        "reset",
         "exit",
     ]
     outputs = []
@@ -267,8 +243,8 @@ def test_repl_join_direct_file(tmp_path):
     assert "name" in r.current_df.columns
     assert "Alice" in r.current_df["name"].to_list()
 
-    # Undo join
-    r.execute_line("undo", output_fn=outputs.append)
+    # Reset restores initial dataset
+    r.execute_line("reset", output_fn=outputs.append)
     assert r.current_df.shape == (3, 3)
     assert "name" not in r.current_df.columns
 
@@ -454,7 +430,7 @@ def test_repl_standard_cli_join_and_output(tmp_path):
     assert "name" in saved.columns
 
     # 2. Key-value standard CLI join syntax: left=df1,right=df2,on=cust_id
-    r.execute_line("undo", output_fn=outputs.append)
+    r.execute_line("reset df1", output_fn=outputs.append)
     assert r.current_df.shape == (3, 3)
     r.execute_line("-join left=df1,right=df2,on=cust_id,how=inner", output_fn=outputs.append)
     assert r.current_df.shape == (3, 4)
@@ -674,10 +650,6 @@ def test_repl_disallowed_aliases_and_hyphenated_commands():
         ("--checkpoints", "checkpoints"),
         ("-reset", "reset"),
         ("--reset", "reset"),
-        ("-undo", "undo"),
-        ("--undo", "undo"),
-        ("-redo", "redo"),
-        ("--redo", "redo"),
         ("-history", "history"),
         ("--history", "history"),
         ("-tables", "tables"),
@@ -878,12 +850,6 @@ def test_repl_rm_table(sample_df):
     assert r.path_str == "df2"
     assert "Removed table 'df1'. Switched active dataset to 'df2'." in outputs[-1]
 
-    # rm is non-undoable to ensure immediate RAM release without disk overhead
-    outputs.clear()
-    r.execute_line("undo", output_fn=outputs.append)
-    assert "Nothing to undo." in outputs[-1]
-    assert "df1" not in r.tables
-
     # Remove last table
     r.execute_line("rm df2", output_fn=outputs.append)
     assert len(r.tables) == 0
@@ -1051,12 +1017,6 @@ def test_repl_rm_df_with_loaded_file(sample_parquet):
     assert r.path_str is None
     assert "penguins_sample.parquet" not in r.tables
 
-    # rm is non-undoable
-    outputs.clear()
-    r.execute_line("undo", output_fn=outputs.append)
-    assert "Nothing to undo." in outputs[-1]
-    assert r.current_df is None
-
 
 def test_repl_rm_df_in_memory(sample_df):
     outputs = []
@@ -1067,13 +1027,6 @@ def test_repl_rm_df_in_memory(sample_df):
 
     r.execute_line("rm df", output_fn=outputs.append)
     assert "Removed table 'df'" in outputs[-1]
-    assert r.current_df is None
-    assert not r.tables
-
-    # rm is non-undoable
-    outputs.clear()
-    r.execute_line("undo", output_fn=outputs.append)
-    assert "Nothing to undo." in outputs[-1]
     assert r.current_df is None
     assert not r.tables
 
@@ -1132,12 +1085,6 @@ def test_repl_rm_all_tables(sample_df, tmp_path):
     assert "Removed all 2 loaded tables" in outputs[-1]
     assert not r.tables
     assert r.current_df is None
-
-    # rm is non-undoable
-    outputs.clear()
-    r.execute_line("undo", output_fn=outputs.append)
-    assert "Nothing to undo." in outputs[-1]
-    assert not r.tables
 
 
 def test_repl_table_resolution_targeted_and_use(sample_parquet):
@@ -1347,20 +1294,18 @@ def test_repl_plot_preserves_filter(sample_parquet, monkeypatch):
     assert set(captured[0]["species"]) == {"Gentoo"}
 
 
-def test_repl_checkpoint_disk_storage_and_undo_reset(sample_df):
+def test_repl_checkpoint_disk_storage_and_restore(sample_df):
     outputs = []
     r = PytaeRepl(df=sample_df)
 
-    # 1. Do a transformation to create an undo step
+    # 1. Do a transformation
     r.execute_line("df = -filter \"species == 'Gentoo'\"", output_fn=outputs.append)
-    assert len(r.undo_stack) == 1
+    assert r.current_df.shape == (2, 3)
 
-    # 2. Creating a checkpoint MUST reset undo and save tables to disk IPC
+    # 2. Creating a checkpoint saves tables to disk IPC
     outputs.clear()
     r.execute_line("checkpoint v1", output_fn=outputs.append)
     assert "Saved checkpoint 'v1'" in outputs[-1]
-    assert len(r.undo_stack) == 0
-    assert len(r.redo_stack) == 0
 
     # Verify disk persistence
     cp_info = r.checkpoints["v1"]
@@ -1371,12 +1316,11 @@ def test_repl_checkpoint_disk_storage_and_undo_reset(sample_df):
     # No in-memory polars DataFrame stored in checkpoint dict
     assert not any(isinstance(v, pl.DataFrame) for v in cp_info.values())
 
-    # 3. New mutation after checkpoint can be undone back to checkpoint baseline
+    # 3. New mutation after checkpoint can be reset back to checkpoint baseline
     r.execute_line('df = -mutate "weight_lb = body_mass_g * 0.00220462"', output_fn=outputs.append)
     assert "weight_lb" in r.current_df.columns
-    assert len(r.undo_stack) == 1
 
-    r.execute_line("undo", output_fn=outputs.append)
+    r.execute_line("reset", output_fn=outputs.append)
     assert "weight_lb" not in r.current_df.columns
     assert r.current_df.shape == (2, 3)
 
@@ -1392,7 +1336,6 @@ def test_repl_restore_strictly_isolates_ram_from_post_checkpoint_tables():
     # Load baseline table
     r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
     r.execute_line("checkpoint baseline", output_fn=outputs.append)
-    assert len(r.undo_stack) == 0
 
     # Load multiple post-checkpoint tables and mutate
     r.execute_line("df2 = sample:tips", output_fn=outputs.append)
@@ -1401,7 +1344,7 @@ def test_repl_restore_strictly_isolates_ram_from_post_checkpoint_tables():
     assert "df1" in r.tables and "df2" in r.tables and "df3" in r.tables
     assert len(r.tables) == 3
 
-    # Restore baseline: df2 and df3 MUST be purged, RAM strictly from baseline, undo reset
+    # Restore baseline: df2 and df3 MUST be purged, RAM strictly from baseline
     outputs.clear()
     r.execute_line("restore baseline", output_fn=outputs.append)
     assert "Restored checkpoint 'baseline'" in outputs[-1]
@@ -1410,8 +1353,6 @@ def test_repl_restore_strictly_isolates_ram_from_post_checkpoint_tables():
     assert "df3" not in r.tables
     assert len(r.tables) == 1
     assert "flag" not in r.tables["df1"].columns
-    assert len(r.undo_stack) == 0
-    assert len(r.redo_stack) == 0
 
     r.close()
 
@@ -1485,16 +1426,12 @@ def test_repl_reset_hierarchy_and_disallowed_args():
     assert "df2" not in r.tables  # Post-checkpoint table purged
     assert "flag" not in r.tables["df1"].columns  # Mutate dropped
     assert r.current_df.shape == gentoo_shape
-    assert len(r.undo_stack) == 0  # Undo cleared
-    assert len(r.redo_stack) == 0
 
     # 5. 'reset initial' must revert all the way back to initial file read
     outputs.clear()
     r.execute_line("reset initial", output_fn=outputs.append)
     assert any("Restored initial dataset" in o for o in outputs)
     assert r.tables["df1"].shape == orig_shape
-    assert len(r.undo_stack) == 0
-    assert len(r.redo_stack) == 0
 
     r.close()
 
@@ -1727,10 +1664,6 @@ def test_repl_rm_releases_ram_immediately_without_disk_spill():
     cp_dir = Path(r.checkpoints["abc"]["dir"])
     cp_file_count_before = len(list(cp_dir.glob("*.ipc")))
 
-    # Pre-populate redo stack to verify rm clears it
-    r.redo_stack.append(("fake_redo", pl.DataFrame({"a": [1, 2, 3]})))
-    assert len(r.redo_stack) == 1
-
     # Remove table: must immediately drop table from memory with ZERO disk I/O
     outputs.clear()
     r.execute_line("rm df1", output_fn=outputs.append)
@@ -1743,16 +1676,9 @@ def test_repl_rm_releases_ram_immediately_without_disk_spill():
     assert r.current_df is None
     assert r.orig_df is None
     assert r.initial_df is None
-    assert len(r.redo_stack) == 0  # Redo cleared
-    assert len(r.undo_stack) == 0  # Undo cleared (no pinned DataFrames or disk IPC folders)
 
     # Checkpoint on disk has unchanged files - zero disk files written by rm
     assert len(list(cp_dir.glob("*.ipc"))) == cp_file_count_before
-
-    # rm is non-undoable: undo reports Nothing to undo
-    outputs.clear()
-    r.execute_line("undo", output_fn=outputs.append)
-    assert "Nothing to undo." in outputs[-1]
 
     # Checkpoint 'abc' can be restored safely
     outputs.clear()
@@ -1775,13 +1701,6 @@ def test_repl_rm_wildcard_releases_ram_without_disk_spill():
     assert r.current_df is None
     assert r.orig_df is None
     assert r.initial_df is None
-    assert len(r.undo_stack) == 0
-    assert len(r.redo_stack) == 0
-
-    # Undo reports Nothing to undo
-    outputs.clear()
-    r.execute_line("undo", output_fn=outputs.append)
-    assert "Nothing to undo." in outputs[-1]
     r.close()
 
 
@@ -1806,20 +1725,6 @@ def test_repl_run_recovers_from_unhandled_exception(monkeypatch):
     res = r.run(output_fn=outputs.append)
     assert res is None
     assert any("pytae error: Disk full error (os error 112)" in o for o in outputs)
-    r.close()
-
-
-def test_repl_undo_stack_sliding_window_cap():
-    outputs = []
-    r = PytaeRepl()
-    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
-
-    # Execute 15 mutating operations
-    for i in range(15):
-        r.execute_line(f'df1 = df1 -filter "body_mass_g > {2000 + i * 10}"', output_fn=outputs.append)
-
-    # Undo stack must be capped at max_undo_steps (10), preventing unbounded memory bloat
-    assert len(r.undo_stack) == r.max_undo_steps == 10
     r.close()
 
 
@@ -1984,12 +1889,12 @@ def test_repl_preview_by_default_and_assignment_mutation():
     assert r.current_df.shape == (124, 7)
     assert any("Updated 'df1' (124 rows x 7 cols)" in o for o in outputs)
 
-    # 10. Undo restores df1 to original 344 rows
+    # 10. Reset restores df1 to original 344 rows
     outputs.clear()
-    r.execute_line("undo", output_fn=outputs.append)
+    r.execute_line("reset df1", output_fn=outputs.append)
     assert r.tables["df1"].shape == (344, 7)
     assert r.current_df.shape == (344, 7)
-    assert any("Undid:" in o for o in outputs)
+    assert any("Reset table 'df1'" in o for o in outputs)
 
     r.close()
 

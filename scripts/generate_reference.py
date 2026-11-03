@@ -894,7 +894,7 @@ Launch an interactive Read-Eval-Print Loop (REPL) directly from Python:
 Features:
   - Drops into a stateful, interactive terminal session pre-loaded with the DataFrame.
   - Returns the final transformed DataFrame on exit (Ctrl-D or 'exit' / 'quit').
-  - Full access to pipeline transformations, inspections, undo/redo, snapshots, and SQL.
+  - Full access to pipeline transformations, inspections, checkpoints, and SQL.
 
 
 4.15. pt.clear() / r.clear() — Terminal Screen Clearing
@@ -1101,8 +1101,6 @@ Dataset Ingest & Interactive Workbench:
   - Polars ANSI SQL engine      : `df4 = -sql "SELECT df1.order_id, df2.name FROM df1 JOIN df2 ON df1.cust_id = df2.id"`.
 
 State Management & Rollback Commands:
-  - `undo`                    : Revert the last applied transformation.
-  - `redo`                    : Re-apply the last undone transformation.
   - `reset`                   : Rollback to latest saved checkpoint (or initial dataset read if none).
   - `reset initial`           : Strictly rollback to initial dataset read (bypassing checkpoints).
   - `history`                 : Display session audit log with sequential step numbers and *checkpoint: <name>* banners.
@@ -1125,15 +1123,15 @@ Persistent Sessions (~/.pytae/sessions/<name>/ or $PYTAE_SESSIONS_DIR/<name>/):
   * Note: Only checkpoints are persisted; uncheckpointed scratch tables/columns drop on exit.
 
 Strict Deletion Syntax (Wildcard):
-  - `rm <table_name>` / `rm df`: Remove specific table or active dataset from memory (undoable).
-  - `rm *`                    : Remove all in-memory tables from memory (undoable).
+  - `rm <table_name>` / `rm df`: Remove specific table or active dataset from memory.
+  - `rm *`                    : Remove all in-memory tables from memory.
   - `rm checkpoint <name>`    : Delete a named checkpoint snapshot.
   - `rm checkpoint *`         : Delete all saved checkpoint snapshots.
   * Note: Legacy '-all' or 'all' flags are rejected; use '*' wildcard syntax. Plural 'rm checkpoints' is rejected; use singular 'rm checkpoint'.
 
 Terminal Control & Utilities:
   - `clear`                   : Clear the terminal screen.
-  - `status`                  : Display active dataset name, dimensions, memory usage, undo depth.
+  - `status`                  : Display active dataset name, dimensions, memory usage, checkpoints.
   - `tables`                  : List all loaded tables in memory with shapes and memory footprints.
   - `<cmd> | <sh>`            : Pipe command output to external shell tools (e.g. `-cols | grep bill`).
   - `py <expr>`               : Evaluate arbitrary Python expression with `df` and `pldf` in scope.
@@ -1242,7 +1240,7 @@ Use parenthesized target syntax `[prefix](target_cols)[suffix] = expr` with `_` 
 
 2. Wildcard Deletion `rm *` and `rm checkpoint *`:
    Pytae standardizes on standard wildcard `*` syntax rather than ad-hoc flags (`-all`, `all`):
-   - `rm *` removes all loaded tables from memory (fully undoable via `undo`).
+   - `rm *` removes all loaded tables from memory.
    - `rm checkpoint *` deletes all saved checkpoint snapshots.
    - Singular `rm checkpoint <name>` is enforced strictly; plural `rm checkpoints` is redirected.
 

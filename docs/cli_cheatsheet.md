@@ -374,7 +374,7 @@ pytae customers.csv -mask "email=hash, ssn=encrypt, name=tokenize" -key "SecretK
 
 ## 13. 💬 Interactive REPL Shell (`-i`)
 
-Stateful interactive data manipulation environment with in-memory execution and undo/redo history:
+Stateful interactive data manipulation environment with in-memory execution and checkpoint history:
 
 ```bash
 # Launch interactive REPL workbench
@@ -383,26 +383,24 @@ pytae -i
 # Load dataset inside REPL:
 #   pytae> df = data.parquet
 
-# Launch the interactive REPL shell (in-memory, undo/redo, SQL, checkpoints)
+# Launch the interactive REPL shell (in-memory, SQL, checkpoints)
 pytae -i
 
 # Inspect loaded sessions from inside the REPL
 pytae> sessions
 
 # Inside the REPL prompt:
-# 1. State Management & Undo
+# 1. State Management & Checkpoints
 tables               # List all tables loaded in memory with row/col counts
 use orders           # Switch active dataset cursor to 'orders'
 rename df1 customers # Zero-copy O(1) in-memory table rename
 diff df1 df2         # Compare two tables or active dataset against target (or checkpoint)
-undo                 # Revert last transformation
-redo                 # Re-apply last undone transformation
 reset                # Revert to latest checkpoint (or initial dataset if none)
 reset initial        # Revert strictly to initial dataset read (bypassing checkpoints)
 history              # Show session audit log (all steps auto-logged to ~/.pytae_history/)
 history 5            # Show last 5 steps from current session audit log
 history -s <path>    # Export session history up to this point to named file
-checkpoint v1        # Save disk-backed snapshot (Arrow IPC, 0 RAM overhead, resets undo baseline)
+checkpoint v1        # Save disk-backed snapshot (Arrow IPC, 0 RAM overhead)
 rm checkpoint v1     # Delete a saved checkpoint from disk (or rm checkpoint *)
 restore v1           # Restore workbench to snapshot (RAM strictly from v1, purges post-v1 tables)
 session              # Display active session name, disk path, and saved checkpoints

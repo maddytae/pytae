@@ -871,7 +871,7 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         "-i",
         dest="repl",
         action="store_true",
-        help="launch interactive REPL shell with in-memory state, undo/redo, and instant query iteration",
+        help="launch interactive REPL shell with in-memory state, checkpoints, and instant query iteration",
     )
     parser.add_argument(
         "-session",

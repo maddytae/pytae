@@ -41,7 +41,6 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
   - [Immediate Memory Deallocation & OS Trimming](#immediate-memory-deallocation--os-trimming)
   - [Manual GC & Memory Stats (`gc`, `status`)](#manual-gc--memory-stats-gc-status)
 - [State Navigation & History](#state-navigation--history)
-  - [Undo & Redo (`undo`, `redo`)](#undo--redo-undo-redo)
   - [Reset Hierarchy (`reset`, `reset <tbl>`, `reset initial`)](#reset-hierarchy-reset-reset-tbl-reset-initial)
   - [In-REPL History Audit Log (`history`)](#in-repl-history-audit-log-history)
 - [Checkpoints (Disk-Backed & RAM-Isolated)](#checkpoints-disk-backed--ram-isolated)
@@ -81,7 +80,7 @@ pytae sales.parquet -filter "amount > 100" -head 5
 pytae sales.parquet -by region -agg "total=amount:sum"
 ```
 
-The **Pytae REPL (`pytae -i`)** loads your dataset into memory **once**. All subsequent filters, aggregations, feature mutations, and SQL queries execute in RAM at multithreaded Polars speed. Because Polars tables are immutable Arrow buffers under the hood, rolling back a mistake with `undo` or `reset` is an instantaneous $O(1)$ pointer reassignment.
+The **Pytae REPL (`pytae -i`)** loads your dataset into memory **once**. All subsequent filters, aggregations, feature mutations, and SQL queries execute in RAM at multithreaded Polars speed. Because exploratory pipelines execute non-destructively by default, rolling back a mutated state with `reset` or named checkpoints is instantaneous.
 
 ---
 
@@ -435,7 +434,7 @@ Removed all 3 loaded tables. No tables remain loaded.
 
 ### Immediate Memory Deallocation & OS Trimming
 Unlike standard Python shells that retain memory pages in process heaps:
-1. **Zero Lingering References**: Running `rm <name>` or `rm *` purges the table from `self.tables`, `self.orig_tables`, `self.initial_tables`, and clears the undo/redo stack snapshots.
+1. **Zero Lingering References**: Running `rm <name>` or `rm *` purges the table from `self.tables`, `self.orig_tables`, and `self.initial_tables`.
 2. **OS Memory Trimming**: Pytae automatically triggers [`_release_memory()`](file:///Users/maddy/Documents/my_repos/pytae/src/pytae/repl.py#L92-L131), which calls `gc.collect()` and instructs the OS memory manager to reclaim freed pages:
    - **macOS**: Resident pages trimmed and measured live via `mach_task_basic_info`.
    - **Windows**: `SetProcessWorkingSetSize(-1, -1)` and `K32EmptyWorkingSet` trim unused working set pages back to the Windows kernel.
@@ -450,7 +449,7 @@ Active dataset : df
 Shape          : 344 rows x 7 cols
 Table memory   : 0.02 MB
 Process RAM    : ~129.5 MB
-Undo steps     : 2 / 10
+Checkpoints    : 1 saved
 
 pytae [df: 344x7]> gc
 Garbage collection complete. Process RAM: ~129.2 MB.
@@ -459,21 +458,6 @@ Garbage collection complete. Process RAM: ~129.2 MB.
 ---
 
 ## State Navigation & History
-
-### Undo & Redo (`undo`, `redo`)
-Safely experiment with transformations. Undo and redo operate as $O(1)$ pointer swaps:
-
-```text
-pytae [df: 344x7]> -filter "species == 'Gentoo'"
--> df: 124 rows x 7 cols
-
-pytae [df: 124x7]> undo
-Undid: -filter "species == 'Gentoo'". Active shape: (344, 7)
-
-pytae [df: 344x7]> redo
-Redid: -filter "species == 'Gentoo'". Active shape: (124, 7)
-```
-*Note: The undo stack maintains a sliding window of 10 steps to prevent unbounded memory growth during long sessions.*
 
 ### Reset Hierarchy (`reset`, `reset <tbl>`, `reset initial`)
 * **`reset`**: Reverts all tables in the workbench to the **latest saved checkpoint**. If no checkpoints exist, reverts to the initial file read state.
@@ -490,8 +474,7 @@ Session History:
    1: df = penguins.parquet
    2: checkpoint v1
    3: -filter "species == 'Adelie'"
-   4: undo [-filter "species == 'Adelie'"]
-   5: rm df
+   4: rm df
 
 pytae [df: 344x7]> history 3     # Show only the last 3 commands
 ```
@@ -508,7 +491,7 @@ pytae [orders, cust]> checkpoint baseline
 Saved checkpoint 'baseline' (2 tables: orders, cust).
 ```
 - **Zero RAM Overhead**: Tables are written to disk storage (`.ipc` or `.parquet`). Checkpoints consume **0 MB of active RAM**.
-- **Undo Baseline Established**: Creating a checkpoint clears the undo/redo stacks, freeing intermediate memory while establishing a safe restore point.
+- **Milestone Established**: Creating a checkpoint frees intermediate memory while establishing a safe restore point.
 
 ### Listing & Deleting Checkpoints (`checkpoints`, `rm checkpoint`)
 ```text
@@ -945,12 +928,12 @@ The Pytae REPL provides context-aware autocompletion via standard `readline`:
 | | `rename` | `rename df1 customers` | Zero-copy $O(1)$ in-memory table rename | Yes |
 | | Subject-first | `df1 -head 5`, `df2 -shape` | Execute command directly on named table | Depends |
 | | `rm` | `rm df1`, `rm orders`, `rm *` | Remove table from memory (immediate OS trim) | Yes |
-| **Transform** | `-filter` | `-filter "amount > 100"` | Filter rows by expression | Yes (undoable) |
-| | `-mutate` | `-mutate "tax = amount * 0.1"` | Add or modify columns | Yes (undoable) |
-| | `-select` | `-select "id,name,!notes"` | Column projection and exclusion | Yes (undoable) |
-| | `-arrange` | `-arrange "amount desc"` | Sort rows | Yes (undoable) |
-| | `-by -agg` | `-by cat -agg "total=amt:sum"` | Grouped aggregation | Yes (undoable) |
-| | `-join` | `df1 -join df2 on=cust_id` | Join tables | Yes (undoable) |
+| **Transform** | `-filter` | `-filter "amount > 100"` | Filter rows by expression | Yes |
+| | `-mutate` | `-mutate "tax = amount * 0.1"` | Add or modify columns | Yes |
+| | `-select` | `-select "id,name,!notes"` | Column projection and exclusion | Yes |
+| | `-arrange` | `-arrange "amount desc"` | Sort rows | Yes |
+| | `-by -agg` | `-by cat -agg "total=amt:sum"` | Grouped aggregation | Yes |
+| | `-join` | `df1 -join df2 on=cust_id` | Join tables | Yes |
 | | Assignment | `df3 = df1 -filter "..."` | Assign pipeline result to new variable | Yes |
 | **Inspection** | `-head` / `-tail` | `-head 10`, `-tail 5` | Non-destructive preview of rows | No |
 | | `-sample` | `-sample 10` | Non-destructive random row preview | No |
@@ -961,16 +944,14 @@ The Pytae REPL provides context-aware autocompletion via standard `readline`:
 | | `-glimpse` | `-glimpse` | Transposed schema and preview values | No |
 | | `-describe` | `-describe` | Statistical summary of numeric columns | No |
 | | `-diff` | `-diff df1 df2 [on=id] [-tol 0.01]` | Compare two tables with optional key alignment | No |
-| **SQL & Python** | `-sql` | `-sql "SELECT * FROM df1"` | Run ANSI SQL across loaded tables | Yes (undoable) |
+| **SQL & Python** | `-sql` | `-sql "SELECT * FROM df1"` | Run ANSI SQL across loaded tables | Yes |
 | | SQL Assign | `df4 = -sql "..."` | Create new table from SQL query | Yes |
 | | `py` | `py pldf.columns` | Evaluate Python/Polars expression | No |
-| **State & Undo** | `undo` | `undo` | Revert last transformation step (up to 10) | Yes (undoable) |
-| | `redo` | `redo` | Re-apply last undone transformation step | Yes (undoable) |
-| | `reset` | `reset` | Revert workbench to latest checkpoint | Yes |
+| **State & Navigation** | `reset` | `reset` | Revert workbench to latest checkpoint | Yes |
 | | `reset <tbl>` | `reset df1` | Revert single table to latest checkpoint | Yes |
 | | `reset initial` | `reset initial` | Revert workbench to initial file read state | Yes |
 | | `history` | `history [N]` | Display numbered audit log of session commands | No |
-| **Checkpoints** | `checkpoint` | `checkpoint <name>` | Save snapshot to disk (0 MB RAM, clears undo) | No |
+| **Checkpoints** | `checkpoint` | `checkpoint <name>` | Save snapshot to disk (0 MB RAM) | No |
 | | `restore` | `restore <name>` | Restore workbench to named checkpoint | Yes |
 | | `checkpoints` | `checkpoints` | List all saved checkpoints on disk | No |
 | | `rm checkpoint` | `rm checkpoint <name>`, `rm checkpoint *` | Delete checkpoint(s) from disk | No |
@@ -987,7 +968,7 @@ The Pytae REPL provides context-aware autocompletion via standard `readline`:
 | | `set checkpoint_format`| `set checkpoint_format = parquet` | Set format to `parquet` or `ipc` | No |
 | | `set sessions_dir` | `set sessions_dir = <path>` | Configure persistent sessions base directory | No |
 | **Export & Exit**| `-o` | `-o clean.parquet`, `-o clip` | Export dataset to file or clipboard | No |
-| | `status` | `status` | Display active dataset, RAM, undo depth | No |
+| | `status` | `status` | Display active dataset, RAM, and checkpoints | No |
 | | `gc` | `gc` | Force garbage collection and OS memory trim | No |
 | | `clear` | `clear` | Clear terminal screen | No |
 | | `exit` | `exit [-s [path]]` | Exit REPL (optionally save replay script) | — |

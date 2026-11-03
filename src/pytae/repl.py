@@ -1,4 +1,4 @@
-"""Interactive REPL (Read-Eval-Print Loop) for pytae with in-memory state and undo/redo.
+"""Interactive REPL (Read-Eval-Print Loop) for pytae with in-memory state.
 
 Provides stateful, iterative data manipulation without repeatedly reloading datasets from disk.
 """
@@ -847,9 +847,7 @@ INSPECTION & EXPORT:
   -o <path> / -o clip    : Export table to file (Parquet/CSV/NDJSON) or clipboard
   <cmd> | <shell_cmd>    : Pipe command output to shell tool (e.g. -cols | grep bill)
 
-STATE NAVIGATION (Undoable):
-  undo                   : Revert the last transformation step
-  redo                   : Re-apply the last undone transformation step
+STATE & WORKBENCH:
   reset                  : Revert to latest checkpoint (or initial read if no checkpoints)
   reset initial          : Strictly revert to initial read even if checkpoints exist
   history [N]            : Show numbered audit log of all commands executed in session
@@ -890,10 +888,6 @@ _DISALLOWED_ALIASES: dict[str, str] = {
     "--status": "status",
     "-reset": "reset",
     "--reset": "reset",
-    "-undo": "undo",
-    "--undo": "undo",
-    "-redo": "redo",
-    "--redo": "redo",
     "-history": "history",
     "--history": "history",
     "-tables": "tables",
@@ -1247,9 +1241,6 @@ class PytaeRepl:
             if k not in self.reader_kwargs:
                 self.reader_kwargs[k] = v
 
-        self.max_undo_steps: int = 10
-        self.undo_stack: list[tuple[str, Any]] = []
-        self.redo_stack: list[tuple[str, Any]] = []
         self.tables: dict[str, pl.DataFrame] = {}
         self.orig_tables: dict[str, pl.DataFrame] = {}
         self.initial_tables: dict[str, pl.DataFrame] = {}
@@ -1632,8 +1623,6 @@ class PytaeRepl:
         self.orig_tables.clear()
         self.initial_tables.clear()
         self.table_sources.clear()
-        self.undo_stack.clear()
-        self.redo_stack.clear()
         self.current_df = None
         self.orig_df = None
         self.initial_df = None
@@ -2113,16 +2102,6 @@ class PytaeRepl:
             self._cmd_status(output_fn)
             return True
 
-        # Undo
-        if line.lower() == "undo":
-            self._cmd_undo(output_fn)
-            return True
-
-        # Redo
-        if line.lower() == "redo":
-            self._cmd_redo(output_fn)
-            return True
-
         # Tokenize line
         norm_line = _normalize_unquoted_windows_paths(line)
         tokens = shlex.split(norm_line)
@@ -2255,8 +2234,6 @@ class PytaeRepl:
                 if not self.tables:
                     output_fn("No tables loaded to remove.")
                     return True
-                self.undo_stack.clear()
-                self.redo_stack.clear()
                 count = len(self.tables)
                 self.tables.clear()
                 self.orig_tables.clear()
@@ -2277,8 +2254,6 @@ class PytaeRepl:
 
             resolved = self._resolve_table_name(target)
             if resolved is not None:
-                self.undo_stack.clear()
-                self.redo_stack.clear()
                 del self.tables[resolved]
                 if resolved in self.orig_tables:
                     del self.orig_tables[resolved]
@@ -2352,8 +2327,6 @@ class PytaeRepl:
                 "exit",
                 "quit",
                 "tables",
-                "undo",
-                "redo",
                 "history",
                 "stats",
                 "diff",
@@ -2733,7 +2706,6 @@ class PytaeRepl:
         output_fn(f"Shape         : {n_rows:,} rows x {n_cols} columns")
         output_fn(f"Active table  : ~{mem_mb:.2f} MB")
         output_fn(f"Process RAM   : {rss_str}")
-        output_fn(f"Undo steps    : {len(self.undo_stack)} available")
         output_fn(f"Checkpoints   : {len(self.checkpoints)} saved")
         output_fn(f"Columns ({n_cols}): {', '.join(self.current_df.columns[:10])}{'...' if n_cols > 10 else ''}")
 
@@ -2790,8 +2762,6 @@ class PytaeRepl:
                     self.path_str = table_name
                     self.current_df = cp_df
                     self.orig_df = cp_df
-                self.undo_stack.clear()
-                self.redo_stack.clear()
                 self._record_history(f"reset {table_name}")
                 if self.session_name:
                     self._save_session_metadata()
@@ -2821,8 +2791,6 @@ class PytaeRepl:
             self.orig_df = restored_df
             self.initial_df = restored_df
 
-        self.undo_stack.clear()
-        self.redo_stack.clear()
         self._record_history(f"reset {table_name} initial" if is_explicit_initial else f"reset {table_name}")
         if self.session_name:
             self._save_session_metadata()
@@ -2868,8 +2836,6 @@ class PytaeRepl:
             if self.path_str and self.path_str in self.tables:
                 self.tables[self.path_str] = self.current_df
 
-        self.undo_stack.clear()
-        self.redo_stack.clear()
         _release_memory()
 
         if is_explicit_initial:
@@ -2886,44 +2852,6 @@ class PytaeRepl:
             output_fn(f"Restored {desc}. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})")
         else:
             output_fn(f"Restored {desc}.")
-
-    def _push_undo(self, desc: str, snapshot: Any) -> None:
-        """Push an entry onto undo_stack, enforcing MAX_UNDO_STEPS sliding window."""
-        self.undo_stack.append((desc, snapshot))
-        while len(self.undo_stack) > self.max_undo_steps:
-            self.undo_stack.pop(0)
-
-    def _push_redo(self, desc: str, snapshot: Any) -> None:
-        """Push an entry onto redo_stack, enforcing MAX_UNDO_STEPS sliding window."""
-        self.redo_stack.append((desc, snapshot))
-        while len(self.redo_stack) > self.max_undo_steps:
-            self.redo_stack.pop(0)
-
-    def _cmd_undo(self, output_fn: Callable[[str], None]) -> None:
-        if not self.undo_stack:
-            output_fn("Nothing to undo.")
-            return
-        desc, prev_state = self.undo_stack.pop()
-        self._push_redo(desc, self._capture_session_state())
-        self._apply_session_state(prev_state)
-        self._record_history(f"undo [{desc}]")
-        if self.current_df is not None:
-            output_fn(f"Undid: {desc}. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})")
-        else:
-            output_fn(f"Undid: {desc}.")
-
-    def _cmd_redo(self, output_fn: Callable[[str], None]) -> None:
-        if not self.redo_stack:
-            output_fn("Nothing to redo.")
-            return
-        desc, next_state = self.redo_stack.pop()
-        self._push_undo(desc, self._capture_session_state())
-        self._apply_session_state(next_state)
-        self._record_history(f"redo [{desc}]")
-        if self.current_df is not None:
-            output_fn(f"Redid: {desc}. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})")
-        else:
-            output_fn(f"Redid: {desc}.")
 
     def _cmd_history(self, output_fn: Callable[[str], None], args: list[str] | None = None) -> None:
         if args:
@@ -3554,9 +3482,6 @@ class PytaeRepl:
         if self.session_name:
             self._save_session_metadata()
 
-        # Reset undo and redo stacks upon creating a checkpoint to establish new baseline and free intermediate memory
-        self.undo_stack.clear()
-        self.redo_stack.clear()
         _release_memory()
 
         fmt_tag = f" [{fmt}]" if fmt == "parquet" else ""
@@ -3633,9 +3558,6 @@ class PytaeRepl:
         else:
             self._apply_session_state(snap)
 
-        # Reset undo and redo stacks upon restore to anchor session strictly at the restored milestone
-        self.undo_stack.clear()
-        self.redo_stack.clear()
         if record_history:
             self._record_history(f"restore {name}")
         if self.session_name:
@@ -3946,7 +3868,6 @@ class PytaeRepl:
                         if cp_df is not None:
                             ctx.register(cp_name, cp_df)
                 res = ctx.execute(query).collect()
-                self._push_undo(f'{var_name} = -sql "{query}"', self._capture_session_state())
                 self.tables[var_name] = res
                 self.table_sources[var_name] = f"sql: {query[:30]}"
                 self.current_df = res
@@ -3999,8 +3920,6 @@ class PytaeRepl:
                         if nrows_val is not None:
                             load_opts["nrows"] = nrows_val
                         p, df = self._read_file_to_df(target_path, **load_opts)
-                        self.undo_stack.clear()
-                        self.redo_stack.clear()
                         self.tables[var_name] = df
                         self.orig_tables[var_name] = df
                         self.initial_tables[var_name] = df
@@ -4072,7 +3991,6 @@ class PytaeRepl:
                     pipe_tokens = right_tokens[1:]
                     pipe_line = right_expr[len(first_tok) :].strip()
                     if not pipe_tokens:
-                        self._push_undo(f"{var_name} = {right_expr}", self._capture_session_state())
                         self.tables[var_name] = source_df.clone()
                         self.table_sources[var_name] = f"copy of {first_tok}"
                         self.current_df = self.tables[var_name]
@@ -4106,7 +4024,6 @@ class PytaeRepl:
                     if res_df is None:
                         return
                 was_existing = var_name in self.tables
-                self._push_undo(f"{var_name} = {right_expr}", self._capture_session_state())
                 self.tables[var_name] = res_df
                 self.table_sources[var_name] = f"{source_label} {pipe_line[:20]}"
                 self.current_df = res_df
@@ -4203,8 +4120,6 @@ class PytaeRepl:
         try:
             reader = get_reader(p, **reader_kwargs)
             loaded_df = reader.to_polars(nrows=nrows_val)
-            self.undo_stack.clear()
-            self.redo_stack.clear()
             target_alias = alias or self.path_str or p.stem or p.name
             self.tables[target_alias] = loaded_df
             self.orig_tables[target_alias] = loaded_df
@@ -4353,21 +4268,19 @@ class PytaeRepl:
         # 6. Execute join
         try:
             how_polars = "full" if how in ("outer", "full") else how
-            if how == "cross":
-                joined = left_df.join(right_df, how="cross")
-            else:
-                joined = left_df.join(
+            joined = (
+                left_df.join(right_df, how="cross")
+                if how == "cross"
+                else left_df.join(
                     right_df,
                     left_on=left_col,
                     right_on=right_col,
                     how=how_polars,  # type: ignore[arg-type]
                 )
-            undo_df = self.current_df.clone() if self.current_df is not None else joined.clone()
-            self._push_undo(f"-join {right_name} on={on_key} (how={how})", undo_df)
+            )
             self.current_df = joined
             if self.path_str and self.path_str in self.tables:
                 self.tables[self.path_str] = joined
-            self.redo_stack.clear()
             rec_line = f"-join left={left_name},right={right_name}" + (f",on={on_key}" if on_key else "") + f",how={how}"
             self._record_history(rec_line)
             joined_desc = f"on '{on_key}' " if on_key else ""
@@ -4422,11 +4335,9 @@ class PytaeRepl:
             res = ctx.execute(query).collect()
             output_fn(f"-> {self.path_str or 'df'}: {res.shape[0]:,} rows x {res.shape[1]} cols")
             # Update state with SQL query result
-            self._push_undo(f'-sql "{query[:40]}..."', self.current_df.clone())
             self.current_df = res
             if self.path_str and self.path_str in self.tables:
                 self.tables[self.path_str] = res
-            self.redo_stack.clear()
             self._record_history(f'-sql "{query}"')
         except Exception as exc:
             output_fn(f"pytae SQL Error: {exc}")
@@ -4815,7 +4726,7 @@ class PytaeRepl:
             top_cmds = [
                 "use", "diff", "rename", "rm", "set", "load", "checkpoint", "restore",
                 "reset", "tables", "checkpoints", "history", "session", "sessions", "sql",
-                "python", "undo", "redo", "gc", "free", "exit", "quit", "help", "time",
+                "python", "gc", "free", "exit", "quit", "help", "time",
                 "clear",
                 # Bare verbs
                 "filter", "select", "mutate", "arrange", "group_by", "by", "summarize",

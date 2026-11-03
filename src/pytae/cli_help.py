@@ -1001,15 +1001,13 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         name="repl",
         flag="-i",
         syntax="pytae -i",
-        summary="Launch interactive REPL shell with in-memory state, undo/redo, and instant query iteration.",
+        summary="Launch interactive REPL shell with in-memory state, checkpoints, and instant query iteration.",
         description=(
             "Starts an interactive Read-Eval-Print Loop (REPL) that loads dataset(s) into memory once.\n"
-            "Supports continuous pipeline iteration, undo/redo state history, named checkpoints, and instant reset\n"
+            "Supports continuous pipeline iteration, named checkpoints, persistent sessions, and instant reset\n"
             "without repeatedly re-reading large files from disk."
         ),
         options=[
-            "undo : Revert the last applied transformation step.",
-            "redo : Re-apply the last undone transformation step.",
             "reset : Restore the original dataset as loaded from disk.",
             "history [N] : Show numbered session audit log (or export with 'history -s [path]').",
             "exit [-s [path]] : Exit REPL (optionally save session history to ./history.txt or <path>).",

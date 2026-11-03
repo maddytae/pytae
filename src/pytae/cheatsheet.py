@@ -143,11 +143,10 @@ CHEATSHEET_TEXT = """\
   #   df1 = "parts/*.parquet" Load globbed partitions into single table
   #   history [-s [path]]     Show session audit log or export to named file
   #   exit [-s [path]]        Exit REPL (optionally save session history to file)
-  #   undo / redo             Revert / re-apply last transformation step
   #   reset                   Restore original dataset from disk (instant O(1))
   #   checkpoint <name>       Save named snapshot across all session tables
   #   rm checkpoint <name>    Delete a saved checkpoint
-  #   rm <tbl> / rm df        Remove table or active dataset from memory (undoable)
+  #   rm <tbl> / rm df        Remove table or active dataset from memory
   #   restore <name>          Restore entire workbench to named snapshot
   #   -cols [asc|desc]        List column names (file order or sorted)
   #   <cmd> | <shell_cmd>     Pipe output to shell utility (e.g. -cols | grep mass)

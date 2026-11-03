@@ -30,7 +30,7 @@ SYNONYMS: dict[str, list[str]] = {
     "unmask": ["decrypt", "de-tokenize", "revert masking", "reveal"],
     "join": ["merge", "lookup", "inner join", "left join", "anti join", "semi join", "relational"],
     "concat": ["stack", "union", "append", "vstack", "hstack", "vertical", "horizontal"],
-    "repl": ["interactive", "shell", "undo", "redo", "checkpoint", "session", "history", "reset"],
+    "repl": ["interactive", "shell", "checkpoint", "session", "history", "reset"],
     "plot": ["chart", "graph", "visualization", "histogram", "scatter", "bar chart", "correlation", "heatmap"],
     "clean_columns": ["sanitize headers", "clean names", "snake case", "dedupe columns", "column names"],
 }
@@ -267,11 +267,10 @@ def _extract_doc_chunks() -> list[dict[str, str]]:
             "title": "Interactive REPL Shell: pytae -i / pt.repl()",
             "category": "repl",
             "syntax": "pytae -i / pytae data.parquet -i / pt.repl(df)",
-            "keywords": "repl interactive shell undo redo checkpoint session history cli py export",
+            "keywords": "repl interactive shell checkpoint session history cli py export",
             "content": (
                 "Stateful in-memory exploratory data analysis without reloading files from disk.\n\n"
                 "### Core Commands\n"
-                "- undo / redo: Instant O(1) step rollback and re-apply.\n"
                 "- reset / reset initial: Revert to latest checkpoint or initial file read.\n"
                 "- checkpoint <name> / restore <name>: Freeze and restore memory snapshots.\n"
                 "- session save <name> / session load <name>: Disk-persisted multi-table workbenches.\n"

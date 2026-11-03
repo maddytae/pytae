@@ -10,7 +10,7 @@ Fast, ergonomic tabular data manipulation, feature engineering, and visualizatio
 `pytae` provides **one and only one obvious way** to work with tabular data across three unified modalities:
 
 1. **Unix Pipeline CLI (`pytae`)**: Fast one-shot command-line data processing, format conversion, and terminal visualizations.
-2. **Interactive REPL Shell (`pytae -i`)**: Stateful in-memory workbench with $O(1)$ pointer-reassignment undo/redo, multi-table joins, and ANSI SQL.
+2. **Interactive REPL Shell (`pytae -i`)**: Stateful in-memory workbench with disk-backed checkpoints, multi-table joins, and ANSI SQL.
 3. **Python & Jupyter SDK (`pt.DataFrame` / `df.pt`)**: High-performance Polars-native DataFrame library with `.pt` accessor for pandas/polars DataFrames.
 
 👉 **Quick Links**: [**CLI Cheat Sheet & Cookbook**](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md) | [**Interactive REPL Guide**](https://github.com/maddytae/pytae/blob/master/docs/repl.md) | [**Standalone Binaries (Zero-Python)**](docs/binary_distribution.md) | [**Master Reference & Architecture Hub**](https://github.com/maddytae/pytae/blob/master/docs/pytae.md) | [**vs. Pandas**](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas.md) | [**vs. dplyr**](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_dplyr.md) | [**vs. SAS**](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_sas.md)
@@ -71,8 +71,8 @@ pytae [df1: 188x3]> df2 = sample:tips
 pytae [df1, df2]> df3 = -join "left=df1,right=df2,how=cross"
 pytae [df1, df2, df3]> df4 = -sql "SELECT df1.species, count(*) as n FROM df1 GROUP BY 1"
 
-# Instant $O(1)$ rollback, checkpoints & reproducible history
-pytae> undo                      # Revert last step
+# Instant rollbacks, checkpoints & reproducible history
+pytae> reset                      # Revert to baseline
 pytae> checkpoint baseline       # Save named snapshot
 pytae> restore baseline          # Revert to snapshot
 pytae> exit -s                   # Save self-contained session history to ./history.txt
