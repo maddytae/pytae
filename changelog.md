@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [3.13.2] - 2026-11-03
 
 ### Removed
 - **Retired Bare `diff` in REPL in Favor of Uniform `-diff`**:

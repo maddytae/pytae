@@ -1,6 +1,6 @@
 ================================================================================
 PYTAE COMPREHENSIVE KNOWLEDGE BASE & AGENT TRAINING REFERENCE MANUAL
-RELEASE VERSION: 3.13.1
+RELEASE VERSION: 3.13.2
 ================================================================================
 
 TABLE OF CONTENTS
@@ -189,7 +189,7 @@ RULE 7: THE "TWIN PROOF" RULE (GROUND ON SAMPLE DATASETS)
 
 1. OVERVIEW & CORE PHILOSOPHY
 --------------------------------------------------------------------------------
-Package: pytae (Current Release Version: 3.13.1)
+Package: pytae (Current Release Version: 3.13.2)
 
 `pytae` is an ergonomic, high-performance tabular data manipulation library and 
 command-line tool powered by a 100% native multithreaded SIMD Polars engine with 
@@ -229,8 +229,8 @@ Key principles:
 
 2. PACKAGE ARCHITECTURE & IMPORT PATTERNS
 --------------------------------------------------------------------------------
-Installation (PyPI: https://pypi.org/project/pytae/3.13.1/):
-  pip install pytae==3.13.1
+Installation (PyPI: https://pypi.org/project/pytae/3.13.2/):
+  pip install pytae==3.13.2
   pip install 'pytae[plot]'    # includes matplotlib, scipy
 
 Importing:
@@ -1047,8 +1047,7 @@ pytae penguins.parquet -head -o clip
 Launch the stateful interactive REPL shell from the command line:
   pytae -i                              # Launch interactive multi-table workbench
   pytae -session analysis               # Launch or resume named persistent session
-  pytae -sessions                       # List all saved persistent sessions on disk (non-verbose)
-  pytae -sessions -v                    # List saved sessions with verbose checkpoint details and formats
+  pytae -sessions                       # List all saved persistent sessions on disk
 
 * Note: Passing input files to '-i' (e.g. 'pytae file.parquet -i') is disallowed.
   Run 'pytae -i', then load datasets interactively with '<var> = <path>' (e.g. df = file.parquet).
@@ -24894,7 +24893,7 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
   - [Previews (`-head`, `-tail`, `-sample`)](#previews--head--tail--sample)
   - [Metadata (`-shape`, `-cols`, `-schema`, `-dtype`, `-nulls`)](#metadata--shape--cols--schema--dtype--nulls)
   - [Summaries (`-glimpse`, `-describe`, `-freq`)](#summaries--glimpse--describe--freq)
-  - [Comparing Datasets (`diff <tbl1> <tbl2>`)](#comparing-datasets-diff-tbl1-tbl2)
+  - [Comparing Datasets (`-diff <tbl1> <tbl2>`)](#comparing-datasets--diff-tbl1-tbl2)
 - [SQL & Python Interop](#sql--python-interop)
   - [ANSI SQL across Tables (`-sql`)](#ansi-sql-across-tables--sql)
   - [Explicit Table Names in SQL](#explicit-table-names-in-sql)
@@ -25196,21 +25195,30 @@ pytae> -describe         # Descriptive statistics (mean, std, min, max, quartile
 pytae> -freq species     # Frequency distribution table for column
 ```
 
-### Comparing Datasets (`diff <tbl1> <tbl2>`)
-Compare two in-memory tables, compare the active dataset against another table, or compare against a saved checkpoint:
+### Comparing Datasets (`-diff <tbl1> <tbl2>`)
+Compare two in-memory tables, compare the active dataset against another table, or compare against a saved checkpoint with optional key alignment (`on=...`) and numeric tolerance (`-tol ...`). In alignment with Pytae's CLI standard where all dataset verbs use a leading hyphen, `-diff` requires a single hyphen (bare `diff` is rejected with educational guidance):
 
 ```text
 # Compare active table against orders_backup
-pytae [orders]> diff orders_backup
+pytae [orders]> -diff orders_backup
 
 # Explicitly compare two loaded tables
-pytae> diff df1 df2
+pytae> -diff df1 df2
 
-# Compare with numeric float tolerance
-pytae> diff df1 df2 -tol 0.001
+# Align rows by primary key before comparing values (reports added/removed keys & mismatched cells)
+pytae> -diff df1 df2 on=customer_id
+
+# Target a specific table as left operand
+pytae> df1 -diff df2 on=customer_id
+
+# Composite multi-column keys and numeric tolerance
+pytae> -diff df1 df2 on="store_id, product_id" -tol 0.001
 
 # Compare active table against a saved checkpoint
-pytae [df: 344x7]> diff snap1
+pytae [df: 344x7]> -diff snap1 on=id
+
+# Embedded spec syntax (identical to CLI)
+pytae> -diff df1 "df2,on=customer_id"
 ```
 
 ---
@@ -25444,12 +25452,41 @@ pytae:my_project [df1, df2]>
 pytae [df1]> session load sales_q3
 Switched to session 'sales_q3'. Restored latest checkpoint 'v2'.
 
-# List all persistent sessions saved on disk (includes location, size, and health status)
+# List all persistent sessions saved on disk (non-verbose: name, path, status)
 pytae> sessions
 Sessions Directory: /Users/username/.pytae/sessions
-Saved Sessions:
-  - my_project       : Ready (2 checkpoints (cp1, cp2); 0.05 MB; /Users/username/.pytae/sessions/my_project)
-  - sales_q3         : Ready (3 checkpoints (v1, v2, v3); 4.12 MB; /Users/username/.pytae/sessions/sales_q3)
+
+Saved Sessions (2 found):
+  - my_project
+    Path:        /Users/username/.pytae/sessions/my_project
+    Status:      Ready
+  - sales_q3
+    Path:        /Volumes/ExternalSSD/sales_q3
+    Status:      [Offline / Unreachable]
+
+# Verbose session inspection (detailed checkpoint sizes, formats, and table breakdown)
+pytae> sessions -v
+Sessions Directory: /Users/username/.pytae/sessions
+
+Saved Sessions (2 found):
+  - my_project
+    Path:        /Users/username/.pytae/sessions/my_project
+    Status:      Ready
+    Size:        ~1.2 MB
+    Updated:     2026-11-01 12:00:00
+    Checkpoints (2):
+      * cp1 [ipc] (~640.5 KB)
+        - df: 344 rows x 7 cols (df.ipc)
+      * cp2 [parquet] (~120.2 KB) [active: df2]
+        - df: 344 rows x 7 cols (df.parquet)
+        - df2: 244 rows x 7 cols (df2.parquet)
+  - sales_q3
+    Path:        /Volumes/ExternalSSD/sales_q3
+    Status:      [Offline / Unreachable] (network share or path not accessible)
+
+# From the command line outside the REPL
+$ pytae -sessions        # Non-verbose: name, path, status
+$ pytae -sessions -v     # Verbose: full checkpoint details and format breakdown
 
 # Remove a persistent session and its checkpoints from disk
 pytae> rm session old_project
@@ -25476,6 +25513,10 @@ session_load      = (options: <name>)
 checkpoint_format = ipc (options: ipc, parquet)
 save_commands     = none (options: <path>, none)
 sessions_dir      = /Users/username/.pytae/sessions (options: <path>, default)
+max_rows          = 10 (options: <int>, default)
+max_cols          = all (options: <int>, all, default)
+float_precision   = auto (options: <int>, auto, default)
+comma             = off (options: on, off)
 ```
 
 To query a single setting without modifying it, run `set <key>`:
@@ -25546,24 +25587,39 @@ Configure the base filesystem directory where persistent sessions and their chec
   pytae -session project_x
   ```
 
-### Checkpoint Storage Format (`set checkpoint_format = parquet|ipc`)
+### Checkpoint Storage Format (`set checkpoint_format = parquet|ipc`, `convert = all`)
 
 Control the on-disk serialization format used for session checkpoints:
 
 - **`ipc` (Default)**: Uncompressed Arrow IPC streaming format (`.ipc`). Delivers maximum write and read speed for near-instant `checkpoint` and `restore` operations.
-- **`parquet`**: Compressed columnar Parquet format (`.parquet`). Minimizes disk usage on storage-constrained environments or network drives.
+- **`parquet`**: Compressed columnar Parquet format (`.parquet`). Minimizes disk usage on storage-constrained environments, USB drives, or shared networks.
+
+#### Future-Only by Default (Zero Latency)
+By default, changing the checkpoint format applies instantly to all subsequent checkpoints without blocking or freezing the REPL:
 
 ```text
-# Switch to compressed Parquet format
+# Switch future checkpoints to compressed Parquet format
 pytae> set checkpoint_format = parquet
-Set checkpoint_format = parquet (checkpoints will be saved as compressed Parquet).
-
-# Switch back to fast uncompressed Arrow IPC
-pytae> set checkpoint_format = ipc
-Set checkpoint_format = ipc (checkpoints will be saved as fast uncompressed Arrow IPC).
+Set checkpoint_format = parquet (new checkpoints will be saved as compressed Parquet).
+Note: 2 existing checkpoint(s) remain in IPC format. Run 'set checkpoint_format = parquet, convert = all' to re-encode them.
 ```
 
-*Pytae auto-detects formats on restore, allowing IPC and Parquet checkpoints to be used interchangeably within the same session.*
+*Pytae automatically detects formats during `restore`, allowing IPC and Parquet checkpoints to coexist and be used interchangeably within the same session.*
+
+#### Re-Encoding Existing Checkpoints (`convert = all`)
+To reclaim disk space immediately by converting all prior checkpoints in the active session:
+
+```text
+# Convert all existing checkpoints to Parquet and set future format
+pytae> set checkpoint_format = parquet, convert = all
+Converting 2 existing checkpoint(s) to parquet...
+  - cp1: converted (320.0 MB -> 62.4 MB)
+  - cp2: converted (320.0 MB -> 64.1 MB)
+All 2 checkpoint(s) converted. Set checkpoint_format = parquet.
+
+# Or convert existing checkpoints to the currently active format
+pytae> set convert = all
+```
 
 ### Replay Script Auto-Save (`set save_commands = <path>`)
 
@@ -25580,6 +25636,65 @@ Disabled auto-saving commands on exit.
 ```
 
 When you quit the REPL via `exit` or <kbd>Ctrl+D</kbd>, Pytae automatically writes the clean, executable pipeline script.
+
+### Display Preferences (`set max_rows`, `max_cols`, `float_precision`, `comma`)
+
+Customize how datasets and tables are formatted and displayed during interactive inspection (`-head`, `-tail`, `-sample`, `-describe`, `py <expr>`, and pipeline executions):
+
+- **Row Truncation (`set max_rows = <int>|default`, alias: `rows`)**:
+  Controls the maximum number of rows printed in table previews. Defaults to `10`.
+  ```text
+  pytae> set max_rows = 25
+  Set max_rows = 25.
+
+  pytae> set rows = default
+  Set max_rows = 10 (default).
+  ```
+
+- **Column Truncation (`set max_cols = <int>|all|default`, alias: `cols`)**:
+  Limits the maximum number of columns displayed in wide tables. Defaults to `all` (unconstrained).
+  ```text
+  pytae> set max_cols = 5
+  Set max_cols = 5.
+
+  pytae> set cols = all
+  Set max_cols = all (show all columns).
+  ```
+
+- **Floating-Point Precision (`set float_precision = <int>|auto|default`, alias: `precision`)**:
+  Sets the number of decimal digits rendered for floating-point numbers during terminal table display. Defaults to `auto`.
+  ```text
+  pytae> set float_precision = 2
+  Set float_precision = 2.
+
+  pytae> set precision = auto
+  Set float_precision = auto (default precision).
+  ```
+  > [!NOTE]
+  > `float_precision` is strictly a terminal display preference. It never modifies the underlying DataFrame in memory. Exports to file (`-o result.parquet`, `-o result.csv`) and clipboard (`-o clip`) always retain the full, unrounded IEEE 754 precision.
+
+- **Thousands Comma Separator (`set comma = on|off`)**:
+  Toggles comma grouping separators for large numeric values (both integers and floating-point numbers) during terminal table display. Defaults to `off`.
+  ```text
+  pytae> set comma = on
+  Set comma = on (numeric values will be formatted with thousands comma separators for display).
+
+  pytae> df -head 2
+  shape: (2, 2)
+  ┌───────────┬──────────────┐
+  │ count     ┆ revenue      │
+  │ ---       ┆ ---          │
+  │ i64       ┆ f64          │
+  ╞═══════════╪══════════════╡
+  │ 1,234,567 ┆ 1,234.57     │
+  │ 8,910     ┆ 9,876,543.21 │
+  └───────────┴──────────────┘
+
+  pytae> set comma = off
+  Set comma = off.
+  ```
+  > [!NOTE]
+  > `comma` formatting is strictly for visual display. Numerical columns remain typed `Int64` / `Float64` in memory. Copying via `-o clip` or exporting to file outputs raw unformatted numbers (`1234567`, not `"1,234,567"`), preserving calculation readiness in Excel, Google Sheets, and scripts.
 
 ### Combining Multiple Settings on One Line
 
@@ -25623,13 +25738,13 @@ Exiting pytae REPL.
 When exporting a replay script, Pytae automatically filters out noise:
 - **Excluded**:
   - Checkpoint commands (`checkpoint <name>`, `restore <name>`) — checkpoints are interactive exploration tools; omitting them avoids redundant disk I/O during batch replay.
-  - Bare exploratory inspection commands (`-head`, `-tail`, `-describe`, `-cols`, bare `-pivot`) that do not assign to a variable or export to a file.
-  - REPL UI controls and configuration (`tables`, `checkpoints`, `history`, `clear`, `set ...`).
+  - Bare exploratory inspection commands (`-head`, `-tail`, `-describe`, `-cols`, bare `-pivot`, and transient clipboard `-o clip` copies) that do not assign to a variable or export to a persistent file.
+  - REPL UI controls and configuration (`tables`, `checkpoints`, `history`, `clear`, `set ...`) — display preferences, timing, and session bindings are never injected into replay scripts, keeping exported pipelines 100% pure and reproducible.
 - **Included**:
   - File ingestion commands (`df = ...`, `load ...`).
   - Variable assignments (`orders_clean = orders -filter ...`).
   - Table removals (`rm df1`, `rm *`) to keep batch memory footprints low.
-  - Output exports (`-o clean.parquet`, `-o clip`).
+  - Persistent output file exports (`-o clean.parquet`, `-o report.csv`) — transient clipboard copies (`-o clip`) are strictly excluded to prevent failures in headless/CI batch execution.
 
 ### Path Canonicalization & Windows UNC Resolution
 Replay scripts must be portable across directories:
@@ -25727,19 +25842,14 @@ The Pytae REPL provides context-aware autocompletion via standard `readline`:
 | **Sessions** | `session` | `session` | Display persistent session name and path | No |
 | | `session save` | `session save <name>` | Promote session to persistent disk storage | No |
 | | `session load` | `session load <name>` | Switch session and restore latest checkpoint | Yes |
-| | `sessions` | `sessions [-v]` | List persistent sessions (-v for verbose checkpoint details) | No |
+| | `sessions` | `sessions` | List all persistent sessions on disk | No |
 | | `rm session` | `rm session <name>` | Delete a persistent session from disk | No |
 | **Settings** | `set` | `set` | Inspect all configuration settings | No |
 | | `set session_name` | `set session_name = <name>` | Bind REPL to persistent session | No |
 | | `set session_load` | `set session_load = <name>` | Switch session and restore latest checkpoint | Yes |
 | | `set save_commands` | `set save_commands = pipeline.txt` | Set target replay script path upfront | No |
-| | `set checkpoint_format`| `set checkpoint_format = parquet [, convert=all]` | Set format to `parquet` or `ipc` (opt-in re-encode) | No |
-| | `set convert` | `set convert = all` | Convert all existing checkpoints to active format | No |
+| | `set checkpoint_format`| `set checkpoint_format = parquet` | Set format to `parquet` or `ipc` | No |
 | | `set sessions_dir` | `set sessions_dir = <path>` | Configure persistent sessions base directory | No |
-| | `set max_rows` | `set max_rows = 20` | Max rows displayed in previews (`default`: 10) | No |
-| | `set max_cols` | `set max_cols = 5` | Max columns displayed in previews (`all`, `<int>`) | No |
-| | `set float_precision` | `set float_precision = 2` | Decimals rendered for floats (`auto`, `<int>`) | No |
-| | `set comma` | `set comma = on` | Thousands comma separators for display (`on`/`off`) | No |
 | **Export & Exit**| `-o` | `-o clean.parquet`, `-o clip` | Export dataset to file or clipboard | No |
 | | `status` | `status` | Display active dataset, RAM, undo depth | No |
 | | `gc` | `gc` | Force garbage collection and OS memory trim | No |
@@ -26860,7 +26970,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.13.1"
+version = "3.13.2"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"
