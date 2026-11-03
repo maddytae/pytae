@@ -1693,12 +1693,21 @@ def test_cli_session_flags(tmp_path, monkeypatch, capsys):
     r.execute_line("checkpoint base", output_fn=lambda _: None)
     r.close()
 
-    # Test pytae -sessions lists saved sessions
+    # Test pytae -sessions lists saved sessions (non-verbose: name, path, status)
     ret = cli.main(["-sessions"])
     assert ret == 0
     captured = capsys.readouterr()
     assert "analytics" in captured.out
-    assert "1 checkpoints" in captured.out
+    assert "Status:      Ready" in captured.out
+    assert "Checkpoints (" not in captured.out
+
+    # Test pytae -sessions -v lists saved sessions with verbose checkpoint details
+    ret = cli.main(["-sessions", "-v"])
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert "analytics" in captured.out
+    assert "Checkpoints (1):" in captured.out
+    assert "base" in captured.out
 
     # Test pytae --sessions enforces single hyphen guideline
     with pytest.raises(SystemExit):
@@ -3057,11 +3066,22 @@ def test_list_saved_sessions_output_and_directories(tmp_path, monkeypatch) -> No
         (valid_sess / "session.json").write_text('{"updated_at": "2026-11-01 12:00:00"}', encoding="utf-8")
 
         outputs.clear()
-        list_saved_sessions(outputs.append)
+        # Non-verbose output (default): just session name, path, and status
+        list_saved_sessions(outputs.append, verbose=False)
         assert any(f"Sessions Directory: {custom_sess_dir}" in o for o in outputs)
         assert any("proj_alpha" in o for o in outputs)
         assert any(str(valid_sess) in o for o in outputs)
-        assert any("Ready (1 checkpoints (cp1)" in o for o in outputs)
+        assert any("Status:      Ready" in o for o in outputs)
+        # Should NOT contain checkpoint details in non-verbose
+        assert not any("Checkpoints (1):" in o for o in outputs)
+
+        # Verbose output: detailed checkpoints, format, and size
+        outputs.clear()
+        list_saved_sessions(outputs.append, verbose=True)
+        assert any("Status:      Ready" in o for o in outputs)
+        assert any("Checkpoints (1):" in o for o in outputs)
+        assert any("cp1" in o for o in outputs)
+        assert any("[parquet]" in o for o in outputs)
 
         # Create an unreadable / file entry (simulating offline / inaccessible share)
         offline_sess = custom_sess_dir / "offline_share"
@@ -3512,6 +3532,85 @@ def test_repl_set_checkpoint_format_convert_option(tmp_path):
         r.close()
     finally:
         set_sessions_dir(orig_dir)
+
+
+def test_sessions_cli_and_repl_verbose_modes(tmp_path):
+    """Verify non-verbose vs verbose outputs in both REPL and CLI."""
+    from pytae.cli import main
+    from pytae.repl import PytaeRepl, get_sessions_dir, set_sessions_dir
+
+    orig_dir = get_sessions_dir()
+    sess_dir = tmp_path / "sessions_test"
+    sess_dir.mkdir(parents=True, exist_ok=True)
+    set_sessions_dir(sess_dir)
+
+    try:
+        r = PytaeRepl(session="my_project")
+        outputs: list[str] = []
+        r.execute_line("df = sample:penguins", output_fn=outputs.append)
+        r.execute_line("checkpoint baseline", output_fn=outputs.append)
+        r.close()
+
+        # 1. In-REPL non-verbose 'sessions'
+        r2 = PytaeRepl()
+        outputs.clear()
+        r2.execute_line("sessions", output_fn=outputs.append)
+        nv_text = "\n".join(outputs)
+        assert "my_project" in nv_text
+        assert "Status:      Ready" in nv_text
+        assert "Checkpoints (" not in nv_text
+
+        # 2. In-REPL verbose 'sessions -v'
+        outputs.clear()
+        r2.execute_line("sessions -v", output_fn=outputs.append)
+        v_text = "\n".join(outputs)
+        assert "my_project" in v_text
+        assert "Status:      Ready" in v_text
+        assert "Checkpoints (1):" in v_text
+        assert "baseline" in v_text
+        assert "[ipc]" in v_text
+        assert "df: 344 rows x 7 cols" in v_text
+
+        # 3. In-REPL verbose 'sessions verbose'
+        outputs.clear()
+        r2.execute_line("sessions verbose", output_fn=outputs.append)
+        v_word_text = "\n".join(outputs)
+        assert "Checkpoints (1):" in v_word_text
+
+        # 4. In-REPL 'session list -v'
+        outputs.clear()
+        r2.execute_line("session list -v", output_fn=outputs.append)
+        s_list_text = "\n".join(outputs)
+        assert "Checkpoints (1):" in s_list_text
+
+        r2.close()
+
+        # 5. CLI pytae -sessions (non-verbose)
+        import contextlib
+        import io
+
+        stdout_buf = io.StringIO()
+        with contextlib.redirect_stdout(stdout_buf):
+            ret = main(["-sessions"])
+        assert ret == 0
+        cli_nv = stdout_buf.getvalue()
+        assert "my_project" in cli_nv
+        assert "Status:      Ready" in cli_nv
+        assert "Checkpoints (" not in cli_nv
+
+        # 6. CLI pytae -sessions -v (verbose)
+        stdout_buf = io.StringIO()
+        with contextlib.redirect_stdout(stdout_buf):
+            ret = main(["-sessions", "-v"])
+        assert ret == 0
+        cli_v = stdout_buf.getvalue()
+        assert "my_project" in cli_v
+        assert "Checkpoints (1):" in cli_v
+        assert "baseline" in cli_v
+        assert "[ipc]" in cli_v
+    finally:
+        set_sessions_dir(orig_dir)
+
 
 
 

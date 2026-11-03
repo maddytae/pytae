@@ -10,6 +10,11 @@ All notable changes to this project are documented in this file.
   - Updated release and contribution protocols accordingly.
 
 ### Added
+- **Non-Verbose vs. Verbose Session Listing (`pytae -sessions` & `sessions [-v]`)**:
+  - Implemented clean dual-mode session inspection across CLI and REPL:
+    - **Non-verbose mode** (default `pytae -sessions`, `sessions`, `session list`): Cleanly displays session name, filesystem path, and health status (`Ready` or `[Offline / Unreachable]`) without overwhelming checkpoint clutter.
+    - **Verbose mode** (`pytae -sessions -v`, `pytae -sessions -verbose`, `sessions -v`, `sessions verbose`, `session list -v`): Provides comprehensive breakdown including total session disk footprint, last-updated timestamp, and detailed per-checkpoint inspection (checkpoint name, format `[ipc]` or `[parquet]`, size on disk, active table indicator, and individual constituent tables with shapes and filenames).
+  - Added `-v` and `-verbose` tab-autocompletion for `sessions` and `session list` inside the REPL.
 - **Checkpoint Format Re-Encoding & Future-Only Default (`set checkpoint_format = ... [, convert = all]`)**:
   - `set checkpoint_format = parquet` (or `ipc`) defaults to setting the format for future checkpoints with zero execution latency.
   - Automatically alerts the user if existing checkpoints remain in another format with instructions on how to re-encode them.

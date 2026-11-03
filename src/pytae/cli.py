@@ -117,6 +117,9 @@ def _is_path_like(token: str) -> bool:
 
 _CLI_FLAGS = {
     "-version",
+    "-v",
+    "-verbose",
+    "--verbose",
     "-cheatsheet",
     "-head",
     "-tail",
@@ -883,6 +886,14 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         action="store_true",
         help="list all saved persistent REPL sessions on disk and exit",
     )
+    parser.add_argument(
+        "-v",
+        "-verbose",
+        "--verbose",
+        dest="verbose",
+        action="store_true",
+        help="enable verbose output with detailed checkpoint and format breakdown (e.g. pytae -sessions -v)",
+    )
     return parser
 
 
@@ -1030,7 +1041,7 @@ def main(argv: list[str] | None = None) -> int:
     if getattr(args, "list_sessions", False):
         from pytae.repl import list_saved_sessions
 
-        list_saved_sessions(print)
+        list_saved_sessions(print, verbose=getattr(args, "verbose", False))
         return 0
 
     if getattr(args, "session", None) is not None:

@@ -579,12 +579,41 @@ pytae:my_project [df1, df2]>
 pytae [df1]> session load sales_q3
 Switched to session 'sales_q3'. Restored latest checkpoint 'v2'.
 
-# List all persistent sessions saved on disk (includes location, size, and health status)
+# List all persistent sessions saved on disk (non-verbose: name, path, status)
 pytae> sessions
 Sessions Directory: /Users/username/.pytae/sessions
-Saved Sessions:
-  - my_project       : Ready (2 checkpoints (cp1, cp2); 0.05 MB; /Users/username/.pytae/sessions/my_project)
-  - sales_q3         : Ready (3 checkpoints (v1, v2, v3); 4.12 MB; /Users/username/.pytae/sessions/sales_q3)
+
+Saved Sessions (2 found):
+  - my_project
+    Path:        /Users/username/.pytae/sessions/my_project
+    Status:      Ready
+  - sales_q3
+    Path:        /Volumes/ExternalSSD/sales_q3
+    Status:      [Offline / Unreachable]
+
+# Verbose session inspection (detailed checkpoint sizes, formats, and table breakdown)
+pytae> sessions -v
+Sessions Directory: /Users/username/.pytae/sessions
+
+Saved Sessions (2 found):
+  - my_project
+    Path:        /Users/username/.pytae/sessions/my_project
+    Status:      Ready
+    Size:        ~1.2 MB
+    Updated:     2026-11-01 12:00:00
+    Checkpoints (2):
+      * cp1 [ipc] (~640.5 KB)
+        - df: 344 rows x 7 cols (df.ipc)
+      * cp2 [parquet] (~120.2 KB) [active: df2]
+        - df: 344 rows x 7 cols (df.parquet)
+        - df2: 244 rows x 7 cols (df2.parquet)
+  - sales_q3
+    Path:        /Volumes/ExternalSSD/sales_q3
+    Status:      [Offline / Unreachable] (network share or path not accessible)
+
+# From the command line outside the REPL
+$ pytae -sessions        # Non-verbose: name, path, status
+$ pytae -sessions -v     # Verbose: full checkpoint details and format breakdown
 
 # Remove a persistent session and its checkpoints from disk
 pytae> rm session old_project

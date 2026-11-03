@@ -1047,7 +1047,8 @@ pytae penguins.parquet -head -o clip
 Launch the stateful interactive REPL shell from the command line:
   pytae -i                              # Launch interactive multi-table workbench
   pytae -session analysis               # Launch or resume named persistent session
-  pytae -sessions                       # List all saved persistent sessions on disk
+  pytae -sessions                       # List all saved persistent sessions on disk (non-verbose)
+  pytae -sessions -v                    # List saved sessions with verbose checkpoint details and formats
 
 * Note: Passing input files to '-i' (e.g. 'pytae file.parquet -i') is disallowed.
   Run 'pytae -i', then load datasets interactively with '<var> = <path>' (e.g. df = file.parquet).
@@ -25726,7 +25727,7 @@ The Pytae REPL provides context-aware autocompletion via standard `readline`:
 | **Sessions** | `session` | `session` | Display persistent session name and path | No |
 | | `session save` | `session save <name>` | Promote session to persistent disk storage | No |
 | | `session load` | `session load <name>` | Switch session and restore latest checkpoint | Yes |
-| | `sessions` | `sessions` | List all persistent sessions on disk | No |
+| | `sessions` | `sessions [-v]` | List persistent sessions (-v for verbose checkpoint details) | No |
 | | `rm session` | `rm session <name>` | Delete a persistent session from disk | No |
 | **Settings** | `set` | `set` | Inspect all configuration settings | No |
 | | `set session_name` | `set session_name = <name>` | Bind REPL to persistent session | No |

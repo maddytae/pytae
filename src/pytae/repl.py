@@ -285,7 +285,7 @@ def _get_saved_session_names() -> list[str]:
         return []
 
 
-def list_saved_sessions(output_fn: Callable[[str], None] = print) -> None:
+def list_saved_sessions(output_fn: Callable[[str], None] = print, *, verbose: bool = False) -> None:
     """List all saved persistent Pytae sessions stored on disk."""
     s_dir = get_sessions_dir()
     output_fn(f"Sessions Directory: {s_dir}")
@@ -307,33 +307,79 @@ def list_saved_sessions(output_fn: Callable[[str], None] = print) -> None:
     for s_path in sessions:
         output_fn(f"  - {s_path.name}")
         output_fn(f"    Path:        {s_path}")
-        try:
-            if not s_path.is_dir():
-                output_fn("    Status:      [Offline / Unreachable] (path is not accessible or not a directory)")
-                continue
+        if not verbose:
+            try:
+                if not s_path.is_dir():
+                    output_fn("    Status:      [Offline / Unreachable]")
+                    continue
+                output_fn("    Status:      Ready")
+            except (OSError, PermissionError):
+                output_fn("    Status:      [Offline / Unreachable]")
+        else:
+            try:
+                if not s_path.is_dir():
+                    output_fn("    Status:      [Offline / Unreachable] (path is not accessible or not a directory)")
+                    continue
 
-            meta_file = s_path / "session.json"
-            meta: dict[str, Any] = {}
-            if meta_file.exists():
-                try:
-                    meta = json.loads(meta_file.read_text(encoding="utf-8"))
-                except Exception:
-                    meta = {}
-            cp_dir = s_path / "checkpoints"
-            cps = [p.name for p in cp_dir.iterdir() if p.is_dir()] if cp_dir.exists() else []
-            total_bytes = sum(f.stat().st_size for f in s_path.rglob("*") if f.is_file())
-            if total_bytes >= 1024 * 1024:
-                size_str = f"~{total_bytes / (1024 * 1024):.1f} MB"
-            elif total_bytes >= 1024:
-                size_str = f"~{total_bytes / 1024:.1f} KB"
-            else:
-                size_str = f"{total_bytes} B"
-            up_date = meta.get("updated_at") or meta.get("created_at") or ""
-            date_str = f" | Updated: {up_date}" if up_date else ""
-            cp_str = f"{len(cps)} checkpoints ({', '.join(cps)})" if cps else "0 checkpoints"
-            output_fn(f"    Status:      Ready ({cp_str} | {size_str}{date_str})")
-        except (OSError, PermissionError):
-            output_fn("    Status:      [Offline / Unreachable] (network share or path not accessible)")
+                output_fn("    Status:      Ready")
+
+                meta_file = s_path / "session.json"
+                meta: dict[str, Any] = {}
+                if meta_file.exists():
+                    try:
+                        meta = json.loads(meta_file.read_text(encoding="utf-8"))
+                    except Exception:
+                        meta = {}
+
+                total_bytes = sum(f.stat().st_size for f in s_path.rglob("*") if f.is_file())
+                output_fn(f"    Size:        {_format_bytes(total_bytes)}")
+                up_date = meta.get("updated_at") or meta.get("created_at") or ""
+                if up_date:
+                    output_fn(f"    Updated:     {up_date}")
+
+                cp_dir = s_path / "checkpoints"
+                cp_subdirs = sorted([p for p in cp_dir.iterdir() if p.is_dir()]) if cp_dir.exists() else []
+                if not cp_subdirs:
+                    output_fn("    Checkpoints: None")
+                else:
+                    output_fn(f"    Checkpoints ({len(cp_subdirs)}):")
+                    for cp_folder in cp_subdirs:
+                        cp_name = cp_folder.name
+                        cp_bytes = sum(f.stat().st_size for f in cp_folder.rglob("*") if f.is_file())
+                        m_file = cp_folder / "meta.json"
+                        cp_m: dict[str, Any] = {}
+                        if m_file.exists():
+                            try:
+                                cp_m = json.loads(m_file.read_text(encoding="utf-8"))
+                            except Exception:
+                                cp_m = {}
+
+                        cp_fmt = cp_m.get("format")
+                        if not cp_fmt:
+                            has_pq = any(f.suffix in (".parquet", ".pq") for f in cp_folder.iterdir() if f.is_file())
+                            cp_fmt = "parquet" if has_pq else "ipc"
+
+                        act = cp_m.get("active_table")
+                        active_tag = f" [active: {act}]" if act else ""
+                        output_fn(f"      * {cp_name} [{cp_fmt}] ({_format_bytes(cp_bytes)}){active_tag}")
+
+                        tbls = cp_m.get("tables", {})
+                        if isinstance(tbls, dict) and tbls:
+                            for tbl_name, tbl_info in tbls.items():
+                                if isinstance(tbl_info, dict):
+                                    f_name = tbl_info.get("file", "")
+                                    s = tbl_info.get("shape", [])
+                                    shape_str = f": {s[0]:,} rows x {s[1]} cols" if len(s) == 2 else ""
+                                    file_tag = f" ({f_name})" if f_name else ""
+                                    output_fn(f"        - {tbl_name}{shape_str}{file_tag}")
+                                else:
+                                    output_fn(f"        - {tbl_name}")
+                        else:
+                            for f in sorted(cp_folder.iterdir()):
+                                if f.is_file() and f.name != "meta.json":
+                                    output_fn(f"        - {f.name} ({_format_bytes(f.stat().st_size)})")
+            except (OSError, PermissionError):
+                output_fn("    Status:      [Offline / Unreachable] (network share or path not accessible)")
 
 
 try:
@@ -770,7 +816,7 @@ STATE NAVIGATION (Undoable):
   session                : Show persistent session status
   session save <name>    : Persist workbench checkpoints to ~/.pytae/sessions/<name> (or custom sessions_dir)
   session load <name>    : Load persistent session checkpoints from disk
-  sessions               : List all saved persistent sessions on disk
+  sessions [-v]           : List all saved persistent sessions on disk (-v for checkpoint & format details)
   rm session <name>      : Remove a saved persistent session from disk
   clear                  : Clear the terminal screen
   exit [-s [path]]       : Exit REPL (optionally save session history to ./history.txt or <path>)
@@ -1756,7 +1802,8 @@ class PytaeRepl:
             return
 
         if subcmd in ("list", "ls"):
-            list_saved_sessions(output_fn)
+            verbose = any(t in ("-v", "-verbose", "--verbose", "verbose", "v") for t in tokens[1:])
+            list_saved_sessions(output_fn, verbose=verbose)
             return
 
         if subcmd == "rm":
@@ -2053,7 +2100,8 @@ class PytaeRepl:
 
         # Persistent REPL sessions
         if first_lower == "sessions":
-            list_saved_sessions(output_fn)
+            verbose = any(t in ("-v", "-verbose", "--verbose", "verbose", "v") for t in tokens[1:])
+            list_saved_sessions(output_fn, verbose=verbose)
             return True
 
         if first_lower == "session":
@@ -4606,6 +4654,10 @@ class PytaeRepl:
                 return [opt for opt in ("default", "null", "NA", "-", "NaN") if opt.startswith(text)]
             if "sessions_dir" in [t.lower() for t in prefix_tokens] or "save_commands" in [t.lower() for t in prefix_tokens]:
                 return _complete_paths(text)
+
+        # Case 0: 'sessions ' -> complete flags
+        if first_token == "sessions":
+            return [opt for opt in ("-v", "-verbose") if opt.startswith(text)]
 
         # Case 1: Ingestion / Export / Path completion
         if last_token in ("load", "-o") or last_token.startswith("-o=") or prefix.rstrip().endswith("="):
