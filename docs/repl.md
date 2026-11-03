@@ -731,6 +731,12 @@ Configure the base filesystem directory where persistent sessions and their chec
   pytae:my_project> set sessions_dir = /Volumes/ExternalSSD/pytae_sessions
   Relocated active session 'my_project' to '/Volumes/ExternalSSD/pytae_sessions/my_project' (2 checkpoints moved).
   ```
+- **Project-Local Working Directory (`sessions_dir = .`)**:
+  Store persistent session checkpoints directly alongside your project files in the current working directory:
+  ```text
+  # Configure session storage and auto-save replay script in current directory
+  pytae> set session_name = my_lab, sessions_dir = ., save_commands = pipeline.txt
+  ```
 - **Reset to Default**:
   Pass `default` to restore the standard directory:
   ```text
@@ -860,6 +866,9 @@ Customize how datasets and tables are formatted and displayed during interactive
 Multiple settings can be chained in a single command using comma, semicolon, space, or repeated `set` syntax:
 
 ```text
+# Bind a named session, store checkpoints in current directory, and auto-save replay script
+pytae> set session_name = my_lab, sessions_dir = ., save_commands = pipeline.txt
+
 # Bind a named session and relocate its storage directory simultaneously
 pytae> set session_name = analytics, sessions_dir = /Volumes/Share/sessions
 

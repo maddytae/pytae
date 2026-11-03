@@ -407,6 +407,7 @@ session              # Display active session name, disk path, and saved checkpo
 session save v_done  # Save current session checkpoints under named directory
 session load my_lab  # Switch to persistent session and boot from its latest checkpoint
 set session_name = lab1   # Bind current workbench to persistent session via set
+set session_name = my_lab, sessions_dir = ., save_commands = pipeline.txt # Local WD storage + auto replay script
 set session_load = l1     # Load persistent session by name via set
 sessions             # List all saved persistent sessions on disk
 rm table orders      # Remove specific table from memory and free RAM (or rm table *)
