@@ -1201,7 +1201,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "Preserves history, in-memory tables, active configurations, and checkpoints across restarts.\n"
             "- CLI flag 'pytae -i -session <NAME>': Launch REPL directly into the named persistent session.\n"
             "- 'session save <name>': Promote current ephemeral session or save current state under <name>.\n"
-            "- 'session load <name>': Switch to or reload an existing persistent session from disk.\n"
+            "- 'set session_load = <path>': Load and resume a saved session from disk (path relative to CWD or absolute).\n"
             "- 'session list [-v]': View all saved sessions on disk (paths, readiness, checkpoint count).\n"
             "- 'status session [-v]': Inspect current active session, storage path, and resource health."
         ),
@@ -1209,7 +1209,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "-session NAME : CLI flag to launch REPL directly into persistent session NAME.",
             "-sessions [-ready] [-v] : Shell CLI listing of all saved persistent sessions on disk.",
             "session save <name> : Persist current interactive session and checkpoints under <name>.",
-            "session load <name> : Load and resume a saved session from disk into the REPL.",
+            "set session_load = <path> : Load and resume a saved session from disk (CWD relative or full path).",
             "session list [-v] : List saved persistent sessions and check status from inside REPL.",
             "session rm <name> : Delete a saved session directory from disk.",
             "status session [-v] : Inspect active session state, storage directory, and table inventory.",

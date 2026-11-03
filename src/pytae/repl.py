@@ -2001,10 +2001,7 @@ class PytaeRepl:
             return
 
         if subcmd == "load":
-            if len(tokens) < 2:
-                output_fn("Usage: session load <name>")
-                return
-            self._cmd_session_load(tokens[1], output_fn)
+            output_fn("pytae: 'session load' is not supported. Use 'set session_load = <path>' instead.")
             return
 
         if subcmd in ("list", "ls"):
@@ -2027,7 +2024,7 @@ class PytaeRepl:
 
         output_fn(
             f"pytae: unknown session action '{subcmd}'. "
-            "Usage: session, session save <name>, session load <name>, or sessions"
+            "Usage: session, session save <name>, or sessions (use 'set session_load = <path>' to load a session)"
         )
 
     def _cmd_session_save(self, name: str, output_fn: Callable[[str], None]) -> None:
@@ -3334,45 +3331,62 @@ class PytaeRepl:
         if session_dir_val is None:
             session_dir_val = pair_map.pop("session_dir", None)
 
-        # 1. Handle session_load (loading, relocation, or forking into a new session)
+        # 1. Handle session_load (loading, copying/relocating, or forking into a new session)
         if session_load_val is not None:
-            clean_name = session_load_val.strip("'\"")
-            if not clean_name:
-                output_fn("session_load      = (options: <name>) (e.g. set session_load = my_project)")
-                return
-            if any(c in clean_name for c in ("/", "\\", "..", "\0")):
-                output_fn(f"pytae: invalid session name '{clean_name}'. Session name must not contain path separators.")
+            raw_path = session_load_val.strip("'\"")
+            if not raw_path:
+                output_fn('session_load      = (options: <path>) (e.g. set session_load = rwa_analysis or set session_load = "C:\\path\\to\\rwa_analysis")')
                 return
 
-            target_new_name = session_name_val.strip("'\"") if session_name_val is not None else None
+            p = Path(raw_path).expanduser()
+            if p.is_absolute():
+                src_sess_dir = p.resolve()
+            else:
+                cwd_candidate = (Path.cwd() / p).resolve()
+                if cwd_candidate.exists() and cwd_candidate.is_dir():
+                    src_sess_dir = cwd_candidate
+                else:
+                    conf_candidate = (get_sessions_dir() / p).resolve()
+                    if conf_candidate.exists() and conf_candidate.is_dir():
+                        src_sess_dir = conf_candidate
+                    else:
+                        src_sess_dir = cwd_candidate
 
-            orig_dir = get_sessions_dir().resolve()
-            target_dir = orig_dir
+            clean_name = src_sess_dir.name or src_sess_dir.stem
+
+            if not src_sess_dir.exists() or not src_sess_dir.is_dir():
+                hint_str = ""
+                default_candidate = _DEFAULT_SESSIONS_DIR.resolve() / clean_name
+                if default_candidate.exists() and default_candidate.is_dir() and default_candidate != src_sess_dir:
+                    hint_str = f" (Note: found session with this name in '{default_candidate}'. Pass full path to load it)."
+                output_fn(f"pytae: session directory '{src_sess_dir}' not found.{hint_str}")
+                return
+
+            orig_dir = src_sess_dir.parent.resolve()
+
+            # Target directory (where this session will reside)
             if session_dir_val is not None:
                 clean_dir = session_dir_val.strip("'\"")
                 target_dir = _DEFAULT_SESSIONS_DIR.resolve() if clean_dir.lower() == "default" else Path(clean_dir).expanduser().resolve()
+            else:
+                target_dir = orig_dir
 
-            is_fork = (
-                target_new_name
-                and target_new_name.lower() not in ("none", "off", "false", "0", "")
-                and (target_new_name != clean_name or target_dir != orig_dir)
-            )
+            # Target session name
+            target_new_name = clean_name
+            if session_name_val is not None:
+                clean_target = session_name_val.strip("'\"")
+                if clean_target.lower() not in ("none", "off", "false", "0", ""):
+                    if any(c in clean_target for c in ("/", "\\", "..", "\0")):
+                        output_fn(f"pytae: invalid session name '{clean_target}'. Session name must not contain path separators.")
+                        return
+                    target_new_name = clean_target
+
+            is_fork = (target_dir != orig_dir or target_new_name != clean_name)
 
             if is_fork:
-                if any(c in target_new_name for c in ("/", "\\", "..", "\0")):
-                    output_fn(f"pytae: invalid session name '{target_new_name}'. Session name must not contain path separators.")
-                    return
-
-                src_sess_dir = orig_dir / clean_name
-                if not src_sess_dir.exists():
-                    src_sess_dir = _DEFAULT_SESSIONS_DIR.resolve() / clean_name
-
-                if not src_sess_dir.exists():
-                    output_fn(f"pytae: source session '{clean_name}' not found. Cannot fork to '{target_new_name}'.")
-                    return
-
                 # Load source session into workbench
                 self.close()
+                set_sessions_dir(orig_dir)
                 self.session_name = clean_name
                 self._load_session_from_disk(clean_name, output_fn)
 
@@ -3408,69 +3422,16 @@ class PytaeRepl:
                 self.session_name = target_new_name
                 self._save_session_metadata()
                 output_fn(f"Forked session '{clean_name}' -> '{target_new_name}' at {target_dir}. Original session preserved.")
-                self._record_history(f"set session_load = {clean_name}, session_name = {target_new_name}")
+                self._record_history(f"set session_load = {raw_path}, sessions_dir = {target_dir}")
                 session_name_val = None  # Handled as fork
 
-            elif session_dir_val is not None:
-                clean_dir = session_dir_val.strip("'\"")
-                target_dir = _DEFAULT_SESSIONS_DIR.resolve() if clean_dir.lower() == "default" else Path(clean_dir).expanduser().resolve()
-                orig_dir = get_sessions_dir().resolve()
-                if (target_dir / clean_name).exists():
-                    set_sessions_dir(target_dir)
-                    self.close()
-                    self.session_name = clean_name
-                    self._load_session_from_disk(clean_name, output_fn)
-                    self._record_history(f"set session_load = {clean_name}, sessions_dir = {target_dir}")
-                elif (orig_dir / clean_name).exists():
-                    self.close()
-                    self.session_name = clean_name
-                    self._load_session_from_disk(clean_name, output_fn)
-                    if target_dir != orig_dir:
-                        src_sess_dir = orig_dir / clean_name
-                        dst_sess_dir = target_dir / clean_name
-                        dst_cp_dir = dst_sess_dir / "checkpoints"
-                        dst_cp_dir.mkdir(parents=True, exist_ok=True)
-                        src_cp_dir = src_sess_dir / "checkpoints"
-                        if src_cp_dir.exists():
-                            for cp_name, cp_meta in list(self.checkpoints.items()):
-                                src_sub = src_cp_dir / cp_name
-                                dst_sub = dst_cp_dir / cp_name
-                                if src_sub.exists() and src_sub != dst_sub:
-                                    if dst_sub.exists():
-                                        shutil.rmtree(dst_sub, ignore_errors=True)
-                                    shutil.copytree(src_sub, dst_sub)
-                                    if isinstance(cp_meta, dict):
-                                        cp_meta["dir"] = str(dst_sub)
-                                    m_json = dst_sub / "meta.json"
-                                    if m_json.exists():
-                                        try:
-                                            m_data = json.loads(m_json.read_text(encoding="utf-8"))
-                                            m_data["dir"] = str(dst_sub)
-                                            m_json.write_text(json.dumps(m_data), encoding="utf-8")
-                                        except Exception:
-                                            pass
-                        if src_sess_dir.exists():
-                            for item in src_sess_dir.iterdir():
-                                if item.is_file():
-                                    shutil.copy2(item, dst_sess_dir / item.name)
-                        set_sessions_dir(target_dir)
-                        self._save_session_metadata()
-                        if src_sess_dir.exists() and src_sess_dir != dst_sess_dir:
-                            shutil.rmtree(src_sess_dir, ignore_errors=True)
-                        output_fn(f"Loaded session '{clean_name}' from {orig_dir} and relocated to {target_dir}.")
-                    self._record_history(f"set session_load = {clean_name}, sessions_dir = {target_dir}")
-                else:
-                    output_fn(f"pytae: session '{clean_name}' not found in '{orig_dir}' or '{target_dir}'.")
-                    return
             else:
-                curr_dir = get_sessions_dir()
-                if not (curr_dir / clean_name).exists():
-                    output_fn(f"pytae: session '{clean_name}' not found. Use 'sessions' to list saved sessions.")
-                    return
+                # In-place session load
                 self.close()
+                set_sessions_dir(orig_dir)
                 self.session_name = clean_name
                 self._load_session_from_disk(clean_name, output_fn)
-                self._record_history(f"set session_load = {clean_name}")
+                self._record_history(f"set session_load = {raw_path}")
 
         # 2. Handle session_name (binding/saving)
         elif session_name_val is not None:

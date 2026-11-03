@@ -1649,9 +1649,14 @@ def test_repl_persistent_sessions_lifecycle(tmp_path, monkeypatch):
     assert "Session saved as 'proj_y'" in outputs[-1]
     assert (sess_dir / "proj_y" / "checkpoints" / "v1").exists()
 
-    # Test session load
+    # Verify session load throws error directing to set session_load
     outputs.clear()
     r2.execute_line("session load proj_x", output_fn=outputs.append)
+    assert "'session load' is not supported" in outputs[-1]
+
+    # Test set session_load via path
+    outputs.clear()
+    r2.execute_line(f"set session_load = '{sess_dir / 'proj_x'}'", output_fn=outputs.append)
     assert r2.session_name == "proj_x"
 
     # Verify rm session is disabled with guidance
@@ -1681,6 +1686,8 @@ def test_repl_persistent_sessions_lifecycle(tmp_path, monkeypatch):
 
 
 def test_cli_session_flags(tmp_path, monkeypatch, capsys):
+    from pytae.repl import set_sessions_dir
+    set_sessions_dir(None)
     sess_dir = tmp_path / "pytae_sessions"
     monkeypatch.setenv("PYTAE_SESSIONS_DIR", str(sess_dir))
 
@@ -2215,9 +2222,15 @@ def test_repl_session_copy_and_validation_errors(tmp_path, monkeypatch, sample_d
     r.execute_line("session save work2", output_fn=outputs.append)
     assert r.session_name == "work2"
 
-    # Load first session back
+    # Verify session load throws error
     outputs.clear()
     r.execute_line("session load work1", output_fn=outputs.append)
+    assert "'session load' is not supported" in outputs[-1]
+
+    # Load first session back via set session_load
+    outputs.clear()
+    from pytae.repl import get_sessions_dir
+    r.execute_line(f"set session_load = '{get_sessions_dir() / 'work1'}'", output_fn=outputs.append)
     assert r.session_name == "work1"
     assert "cp1" in r.checkpoints
 
@@ -2861,21 +2874,21 @@ def test_repl_set_session_load_and_sessions_dir(tmp_path):
         assert get_sessions_dir() == custom_dir_1.resolve()
         r.close()
 
-        # 4. session_load must not contain path separators
+        # 4. session_load non-existent path reports error with resolved path
         r2 = PytaeRepl()
         outputs.clear()
-        r2.execute_line("set session_load = bad/path/name", output_fn=outputs.append)
-        assert "invalid session name" in outputs[-1].lower()
+        r2.execute_line("set session_load = non_existent_session", output_fn=outputs.append)
+        assert "not found" in outputs[-1].lower()
 
-        # 5. session_load with sessions_dir relocates to new sessions_dir
+        # 5. session_load with path and sessions_dir forks/copies to target sessions_dir
         outputs.clear()
         r2.execute_line(
-            f"set session_load = project_alpha, sessions_dir = {custom_dir_2}",
+            f'set session_load = "{custom_dir_1 / "project_alpha"}", sessions_dir = "{custom_dir_2}"',
             output_fn=outputs.append,
         )
         assert r2.session_name == "project_alpha"
         assert (custom_dir_2 / "project_alpha" / "checkpoints" / "cp1").exists()
-        assert not (custom_dir_1 / "project_alpha").exists(), "Old session directory in custom_dir_1 should be removed after migration"
+        assert (custom_dir_1 / "project_alpha").exists(), "Original session directory in custom_dir_1 should remain intact"
         assert get_sessions_dir() == custom_dir_2.resolve()
         assert "cp1" in r2.checkpoints
 
@@ -3706,7 +3719,7 @@ def test_sessions_ready_filter_and_pattern_inspection(tmp_path):
         assert "water_analysis" not in repl_pat
 
         # 6. Checkpoints rich output in REPL via status checkpoints
-        r.execute_line("session load finance_audit")
+        r.execute_line(f'set session_load = "{sess_container / "finance_audit"}"')
         outputs.clear()
         r.execute_line("status checkpoints", output_fn=outputs.append)
         cp_out = "\n".join(outputs)
@@ -3951,7 +3964,7 @@ def test_repl_set_copy_session_same_name_to_different_dir_preserves_source(tmp_p
     r2 = PytaeRepl()
     outputs: list[str] = []
     r2.execute_line(
-        f'set session_load = rwa_analysis, session_name = rwa_analysis, sessions_dir = "{dst_dir}"',
+        f'set session_load = "{src_dir / "rwa_analysis"}", session_name = rwa_analysis, sessions_dir = "{dst_dir}"',
         output_fn=outputs.append,
     )
     assert any("Forked session 'rwa_analysis' -> 'rwa_analysis'" in o for o in outputs)
@@ -3962,6 +3975,52 @@ def test_repl_set_copy_session_same_name_to_different_dir_preserves_source(tmp_p
     assert (src_dir / "rwa_analysis" / "checkpoints" / "cp1").exists()
     assert (dst_dir / "rwa_analysis" / "checkpoints" / "cp1").exists()
     r2.close()
+
+
+def test_session_load_cwd_relative_and_hint(tmp_path, monkeypatch):
+    """Verify that bare session_load resolves relative to CWD, and missing sessions give hint if present in default directory."""
+    from pytae.repl import PytaeRepl, _DEFAULT_SESSIONS_DIR, set_sessions_dir
+
+    set_sessions_dir(None)
+    # 1. Create a session in CWD
+    cwd_dir = tmp_path / "my_work"
+    cwd_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(cwd_dir)
+
+    r1 = PytaeRepl()
+    r1.execute_line("df = sample:penguins")
+    r1.execute_line("set sessions_dir = '.', session_name = local_proj")
+    r1.execute_line("checkpoint cp_local")
+    r1.close()
+
+    assert (cwd_dir / "local_proj" / "checkpoints" / "cp_local").exists()
+
+    # 2. In a new REPL session in the same CWD, load by bare name
+    r2 = PytaeRepl()
+    outputs = []
+    r2.execute_line("set session_load = local_proj", output_fn=outputs.append)
+    assert r2.session_name == "local_proj"
+    assert "cp_local" in r2.checkpoints
+    r2.close()
+
+    # 3. Create a session in default directory ~/.pytae/sessions/
+    default_dir = _DEFAULT_SESSIONS_DIR.resolve()
+    mock_default = default_dir / "globally_saved_sess"
+    mock_default.mkdir(parents=True, exist_ok=True)
+    (mock_default / "session.json").write_text('{"name": "globally_saved_sess"}')
+
+    try:
+        r3 = PytaeRepl()
+        outputs.clear()
+        r3.execute_line("set session_load = globally_saved_sess", output_fn=outputs.append)
+        err_msg = "\n".join(outputs)
+        assert "not found" in err_msg
+        assert "Pass full path to load it" in err_msg
+        assert str(mock_default) in err_msg
+        r3.close()
+    finally:
+        import shutil
+        shutil.rmtree(mock_default, ignore_errors=True)
 
 
 def test_session_markers_and_directory_exploration(tmp_path):
