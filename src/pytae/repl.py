@@ -1288,6 +1288,11 @@ def _split_respecting_quotes(s: str, seps: str = ",;") -> list[str]:
 
 
 _SET_KNOWN_KEYS = {
+    "new_session",
+    "load_session",
+    "save_session",
+    "copy_session",
+    "move_session",
     "session_name",
     "session_load",
     "checkpoint_format",
@@ -1295,6 +1300,7 @@ _SET_KNOWN_KEYS = {
     "cp_format",
     "cp_fmt",
     "save_commands",
+    "save_command",
     "sessions_dir",
     "session_dir",
     "convert",
@@ -3649,7 +3655,7 @@ class PytaeRepl:
                         )
                     else:
                         output_fn(f"Set checkpoint_format = {target_fmt} (checkpoints will be saved as {desc_fmt}).")
-            elif k == "save_commands":
+            elif k in ("save_commands", "save_command"):
                 if not val:
                     save_str = self.save_history_file or "none"
                     output_fn(f"save_commands     = {save_str} (options: <path>, none)")
