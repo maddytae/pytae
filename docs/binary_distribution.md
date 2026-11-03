@@ -16,7 +16,7 @@ In enterprise, government, finance, and healthcare IT settings:
 * **No Administrator Rights**: The binary is portable. It does not write to `C:\Program Files` or system directories; it runs directly out of any user folder (e.g. `C:\Users\<username>\tools\`).
 * **Bypasses Proxy & SSL Firewall Roadblocks**: Tools like Zscaler or corporate web gateways frequently break `pip install` with `SSL: CERTIFICATE_VERIFY_FAILED`. Standalone binaries contain the entire Polars engine, PyArrow, and runtime baked inside—requiring **zero network access** to run.
 * **No Python Version Incompatibilities**: Never worry about outdated system Pythons (e.g. Python 3.8 on legacy enterprise laptops).
-* **Automatic User-Space Persistence**: Session metadata and disk-backed Arrow IPC checkpoints are automatically saved inside the user's home folder (`~/.pytae/sessions/`), where users always have full read/write permissions.
+* **Automatic User-Space Persistence**: Session metadata and disk-backed Arrow IPC checkpoints are saved directly in your project workspace or specified target path, while session logs and code exports are stored under `~/.pytae/` where users always have full read/write permissions.
 
 ---
 

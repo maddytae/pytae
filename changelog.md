@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.13.3] - 2026-11-03
+
+### Fixed
+- **Preserve In-Memory Workbench Tables across Session Creation (`set new_session`)**:
+  - `set new_session = <name>` now retains loaded tables (`self.tables`, `self.current_df`) in active memory instead of aggressively wiping RAM.
+  - Starting a new session creates a fresh, isolated checkpoint lineage in the session directory while allowing the user to immediately checkpoint active datasets without reloading them.
+  - Displays workbench table status in confirmation output (e.g. `Started new session 'chamiya' at '...' (1 tables active in workbench)`).
+
+### Changed
+- **Unified Path-First Session Architecture**:
+  - Eliminated the hidden global `~/.pytae/sessions/` directory entirely.
+  - Sessions now default to the user's project working directory (`./<session_name>`), or any explicit path provided (`set new_session = <path>`, `set load_session = <path>`, `set save_session = <path>`).
+  - Simplified session model to standard directories containing `session.json`, `checkpoints/`, and `.pytae_session` marker file.
+- **Migrate User Directory Replay Scripts to `~/.pytae/code/` and Adopt `save_code`**:
+  - Renamed user directory `~/.pytae/commands/` to `~/.pytae/code/` to better reflect clean, reproducible Python and pipeline code generation.
+  - Adopted `save_code` as the primary setting name (e.g. `set save_code = pipeline.txt`), with full backward-compatibility for `save_commands` and `save_command`.
+- **Strict `status session [-v]` Subcommand Convention**:
+  - Unified REPL diagnostic inspection under bare category subcommands (`status session [-v]`, `status table [name] [-v]`, `status tables [-v]`, `status checkpoint [name]`, `status checkpoints [-v]`).
+  - Rejects leading-hyphen subcommands (e.g. `status -session`) with clear guidance directing users to `status session`.
+  - Bare `status` presents an organized category menu.
+
+### Documentation
+- Synchronized CLI cheatsheet (`docs/cli_cheatsheet.md`), interactive REPL guide (`docs/repl.md`), binary distribution guide (`docs/binary_distribution.md`), and reference artifacts (`reference/pytae_copilot_reference.txt`, `reference/pytae_copilot_instructions.txt`, `.github/copilot-instructions.md`, `pytae_docs.db`).
+
 ## [3.13.2] - 2026-11-03
 
 ### Removed

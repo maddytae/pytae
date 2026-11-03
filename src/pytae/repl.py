@@ -2092,7 +2092,6 @@ class PytaeRepl:
             return
 
         if clean_target.lower() in ("none", "off", "false", "0", ""):
-            old_sess = self.session_name
             self.session_name = None
             output_fn("Session detached (reverted to ephemeral in-memory).")
             return
@@ -3089,7 +3088,7 @@ class PytaeRepl:
             mc = getattr(self, "max_cols", "all")
             fp = getattr(self, "float_precision", "auto")
             output_fn(
-                f"Settings      : checkpoint_format={fmt}, save_commands={sc}, max_rows={mr}, max_cols={mc}, float_precision={fp}"
+                f"Settings      : checkpoint_format={fmt}, save_code={sc}, max_rows={mr}, max_cols={mc}, float_precision={fp}"
             )
 
         # Process RAM
@@ -3411,12 +3410,12 @@ class PytaeRepl:
             clean_arg0 = arg0.lower().lstrip("-")
             if clean_arg0 in ("s", "save"):
                 output_fn(
-                    "pytae: 'history -s' is not supported. Use 'set save_commands = <path>' upfront or 'exit -s [path]' on exit."
+                    "pytae: 'history -s' is not supported. Use 'set save_code = <path>' upfront or 'exit -s [path]' on exit."
                 )
                 return
             if arg0.startswith("-s=") or arg0.startswith("-s:"):
                 output_fn(
-                    "pytae: 'history -s' is not supported. Use 'set save_commands = <path>' upfront or 'exit -s [path]' on exit."
+                    "pytae: 'history -s' is not supported. Use 'set save_code = <path>' upfront or 'exit -s [path]' on exit."
                 )
                 return
             if clean_arg0 in ("cli", "sh", "bash", "py", "python"):
@@ -3754,7 +3753,7 @@ class PytaeRepl:
                     output_fn(f"pytae: invalid comma '{val}'. Supported options: on, off.")
             else:
                 output_fn(
-                    f"pytae: unknown setting '{k}'. Supported settings: session_name, session_load, sessions_dir, checkpoint_format, save_commands, max_rows, max_cols, float_precision, comma, convert."
+                    f"pytae: unknown setting '{k}'. Supported settings: new_session, load_session, save_session, save_code, checkpoint_format, max_rows, max_cols, float_precision, comma, convert."
                 )
 
         if convert_val is not None and not handled_cp_fmt:

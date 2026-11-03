@@ -1110,17 +1110,19 @@ State Management & Rollback Commands:
 
 Session-Wide Checkpoints:
   - `checkpoint <name>`       : Freeze snapshot of entire workbench (all tables in session).
-  - `checkpoints`             : List all saved checkpoints and their constituent tables.
+  - `status checkpoints`      : List all saved checkpoints and their constituent tables.
   - `restore <name>`          : Restore entire workbench state back to named snapshot.
 
-Persistent Sessions (~/.pytae/sessions/<name>/ or $PYTAE_SESSIONS_DIR/<name>/):
-  - `session`                 : Display active session name, disk path, and checkpoints.
-  - `session save <name>`     : Save or promote current session checkpoints under <name>.
-  - `session load <name>`     : Switch to persistent session and restore its latest checkpoint.
+Persistent Sessions (./<name>/ or <path>/):
+  - `status session [-v]`     : Display active session name, disk path, checkpoints, and settings.
+  - `set new_session = <name>` : Start/bind persistent session in current working directory or path.
+  - `set load_session = <name>`: Switch to persistent session and restore its latest checkpoint.
+  - `set save_session = <name>`: Snapshot/relocate session directory on disk.
   - `sessions`                : List all saved persistent sessions on disk.
-  * Note: Default location is ~/.pytae/sessions/<name>/. Set the PYTAE_SESSIONS_DIR environment variable to customize session storage location.
+  - `set save_code = <path>`  : Automatically save reproducible pipeline script on exit.
+  * Note: Sessions are path-first and default to the current working directory. Set PYTAE_SESSIONS_DIR to customize session storage location.
   * Note: Only checkpoints are persisted; uncheckpointed scratch tables/columns drop on exit.
-  * Note: Sessions can be deleted from your terminal using OS file commands (e.g. 'rm -rf ~/.pytae/sessions/<name>').
+  * Note: Sessions can be deleted from your terminal using OS file commands (e.g. 'rm -rf ./<name>').
 
 Strict Deletion Syntax (Wildcard):
   - `rm table <table_name>`   : Remove specific in-memory table.
@@ -1131,8 +1133,9 @@ Strict Deletion Syntax (Wildcard):
 
 Terminal Control & Utilities:
   - `clear`                   : Clear the terminal screen.
-  - `status`                  : Display active dataset name, dimensions, memory usage, checkpoints.
-  - `tables`                  : List all loaded tables in memory with shapes and memory footprints.
+  - `status session [-v]`     : Display active session name, dimensions, memory usage, checkpoints.
+  - `status table [name] [-v]`: Inspect active table or specific table schema.
+  - `status tables [-v]`      : List all loaded tables in memory with shapes and memory footprints.
   - `<cmd> | <sh>`            : Pipe command output to external shell tools (e.g. `-cols | grep bill`).
   - `py <expr>`               : Evaluate arbitrary Python expression with `df` and `pldf` in scope.
   - `exit` / `exit -s [path]` : Exit REPL (optionally save session history to ./history.txt or a named file).
@@ -1294,8 +1297,8 @@ In Unix shells (bash, zsh), unquoted strings inside `-filter` expressions are tr
 
 6.18. How do I change where REPL sessions and checkpoints are saved? (PYTAE_SESSIONS_DIR)
 --------------------------------------------------------------------------------
-By default, Pytae saves interactive REPL sessions and checkpoints to `~/.pytae/sessions/<session_name>/`.
-Each checkpoint is saved as an Arrow IPC binary file (`.ipc`) preserving exact Polars SIMD schemas and types.
+By default, Pytae sessions are path-first: a named session is saved in the current working directory (`./<session_name>/`) or at an explicit relative/absolute path passed to `set new_session = <path>`.
+Each checkpoint is saved as an Arrow IPC binary file (`.ipc`) or compressed Parquet (`.parquet`) preserving exact Polars SIMD schemas and types.
 
 To store REPL sessions in a custom directory (e.g. project workspace, shared drive, or scratch volume), set the `PYTAE_SESSIONS_DIR` environment variable:
 
@@ -1326,10 +1329,11 @@ pt.repl()
 ```
 
 Verify in REPL:
-Inside the interactive REPL, run `session` to inspect the active directory:
+Inside the interactive REPL, run `status session` to inspect the active directory:
 ```
-pytae> session
-Active session: 'default' (2 checkpoints; location: /path/to/custom/sessions/default)
+pytae> status session
+=== REPL Session Status ===
+Session Name  : default (storage: /path/to/custom/sessions/default)
 ```
 
 6.19. Error Message Catalog & Troubleshooting Index
@@ -2089,7 +2093,7 @@ CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
 5. INTERACTIVE REPL (`pytae -i`):
    - Verbs require leading hyphens (`-filter`, `-mutate`, `-arrange`, `-head 5`). Inspection (`-head`, `-tail`, `-shape`, `-cols`) is non-destructive preview.
    - Deletion uses wildcard: `rm *` (all tables) or `rm checkpoint *` (all snapshots). Singular: `rm checkpoint <name>`. Never `rm checkpoints`.
-   - Screen clearing is strictly `clear` (never `cls`). Custom session dir via `PYTAE_SESSIONS_DIR`; inspect active path via `session`.
+   - Screen clearing is strictly `clear` (never `cls`). Custom session dir via `PYTAE_SESSIONS_DIR`; inspect active path via `status session`.
 
 6. THE "TWIN PROOF" RULE (GROUND ON SAMPLE DATASETS):
    - When answering complex user questions on custom datasets:

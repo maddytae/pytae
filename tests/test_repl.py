@@ -3985,7 +3985,7 @@ def test_repl_set_copy_session_same_name_to_different_dir_preserves_source(tmp_p
 
 def test_session_load_cwd_relative_and_hint(tmp_path, monkeypatch):
     """Verify that bare session_load resolves relative to CWD, and missing sessions give hint if present in default directory."""
-    from pytae.repl import PytaeRepl, _DEFAULT_SESSIONS_DIR, set_sessions_dir
+    from pytae.repl import _DEFAULT_SESSIONS_DIR, PytaeRepl, set_sessions_dir
 
     set_sessions_dir(None)
     # 1. Create a session in CWD

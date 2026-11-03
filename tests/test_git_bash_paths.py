@@ -39,7 +39,6 @@ def test_normalize_git_bash_path_wsl_and_cygwin_nt() -> None:
 
 def test_normalize_session_path_cross_platform() -> None:
     from pytae.cli_parsing import normalize_session_path
-    from pathlib import Path
 
     # Git Bash path
     p_gb = normalize_session_path("/c/Users/TAF3842/my_projects/pytae_sessions/rwa_analysis", _force_nt=True)

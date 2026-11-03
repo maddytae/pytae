@@ -391,32 +391,26 @@ pytae> sessions
 
 # Inside the REPL prompt:
 # 1. State Management & Checkpoints
-tables               # List all tables loaded in memory with row/col counts
+status tables [-v]   # List all tables loaded in memory with row/col counts (-v for cols & RAM)
 use orders           # Switch active dataset cursor to 'orders'
 rename df1 customers # Zero-copy O(1) in-memory table rename
 diff df1 df2         # Compare two tables or active dataset against target (or checkpoint)
 reset                # Revert to latest checkpoint (or initial dataset if none)
 reset initial        # Revert strictly to initial dataset read (bypassing checkpoints)
-history              # Show session audit log (all steps auto-logged to ~/.pytae_history/)
+history              # Show session audit log (all steps auto-logged to ~/.pytae/history/)
 history 5            # Show last 5 steps from current session audit log
-history -s <path>    # Export session history up to this point to named file
 checkpoint v1        # Save disk-backed snapshot (Arrow IPC, 0 RAM overhead)
 rm checkpoint v1     # Delete a saved checkpoint from disk (or rm checkpoint *)
 restore v1           # Restore workbench to snapshot (RAM strictly from v1, purges post-v1 tables)
-session              # Display active session name, disk path, and saved checkpoints
-session save v_done  # Save current session checkpoints under named directory
-session load my_lab  # Switch to persistent session and boot from its latest checkpoint
-set session_name = lab1   # Bind current workbench to persistent session via set
-set session_name = my_lab, sessions_dir = ., save_commands = pipeline.txt # Local WD storage + auto replay script
-set session_load = l1     # Load persistent session by name via set
-sessions             # List all saved persistent sessions on disk
+status session [-v]  # Display active session name, disk path, and saved checkpoints
+set new_session = lab1 # Start or bind persistent session in current working directory
+set load_session = lab1 # Load persistent session and restore its latest checkpoint
+set save_session = backup # Save/clone session to new directory (optional: move = true)
+set save_code = pipeline.txt # Auto-save clean reproducible pipeline script on exit
+status checkpoints   # List saved checkpoints and snapshots (optional -v for files & disk size)
+status table <name>  # Inspect specific table shape and memory (-v for column dtypes)
 rm table orders      # Remove specific table from memory and free RAM (or rm table *)
 clear                # Clear the terminal screen
-status               # Show active dataset shape, memory, and checkpoints
-status -v            # Show active dataset schema/dtypes and environment
-status tables [-v]   # List loaded tables, shapes, and sources (optional -v for RAM & cols)
-status checkpoints   # List saved checkpoints and snapshots (optional -v for files & disk size)
-status table <name>  # Inspect specific table shape and memory without switching cursor
 [Tab]                # Autocomplete commands, flags, tables, columns, and paths
 
 # 2. Pipeline Execution & Inspection (RAM-speed with zero file re-reads)
