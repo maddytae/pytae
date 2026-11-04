@@ -2092,6 +2092,7 @@ class PytaeRepl:
             return
 
         if clean_target.lower() in ("none", "off", "false", "0", ""):
+
             self.session_name = None
             output_fn("Session detached (reverted to ephemeral in-memory).")
             return
