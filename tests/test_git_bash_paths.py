@@ -87,24 +87,32 @@ def test_normalize_git_bash_path_posix_untouched_when_not_nt() -> None:
 
 
 def test_parse_input_target_git_bash_path() -> None:
+    # Cross-platform test with explicit _force_nt=True
+    target1 = parse_input_target("/c/Users/TAF3842/downloads/final_output.parquet", _force_nt=True)
+    assert target1["alias"] == "final_output"
+    assert target1["path"] == "C:/Users/TAF3842/downloads/final_output.parquet"
+
+    # With alias
+    target2 = parse_input_target("df=/c/Users/TAF3842/downloads/final_output.parquet", _force_nt=True)
+    assert target2["alias"] == "df"
+    assert target2["path"] == "C:/Users/TAF3842/downloads/final_output.parquet"
+
+    # With quotes and spaces
+    target3 = parse_input_target('out="/d/my projects/data.parquet"', _force_nt=True)
+    assert target3["alias"] == "out"
+    assert target3["path"] == "D:/my projects/data.parquet"
+
+    # Also verify under simulated Windows environment
     with patch("os.name", "nt"):
-        # Without alias
-        target1 = parse_input_target("/c/Users/TAF3842/downloads/final_output.parquet")
-        assert target1["alias"] == "final_output"
-        assert target1["path"] == "C:/Users/TAF3842/downloads/final_output.parquet"
-
-        # With alias
-        target2 = parse_input_target("df=/c/Users/TAF3842/downloads/final_output.parquet")
-        assert target2["alias"] == "df"
-        assert target2["path"] == "C:/Users/TAF3842/downloads/final_output.parquet"
-
-        # With quotes and spaces
-        target3 = parse_input_target('out="/d/my projects/data.parquet"')
-        assert target3["alias"] == "out"
-        assert target3["path"] == "D:/my projects/data.parquet"
+        target_nt = parse_input_target("/c/Users/TAF3842/downloads/final_output.parquet")
+        assert target_nt["alias"] == "final_output"
+        assert target_nt["path"] == "C:/Users/TAF3842/downloads/final_output.parquet"
 
 
 def test_reader_source_normalization() -> None:
+    res = _normalize_source("/c/Users/TAF3842/downloads/final_output.parquet", _force_nt=True)
+    assert res == "C:/Users/TAF3842/downloads/final_output.parquet"
+
     with patch("os.name", "nt"):
-        res = _normalize_source("/c/Users/TAF3842/downloads/final_output.parquet")
-        assert res == "C:/Users/TAF3842/downloads/final_output.parquet"
+        res_nt = _normalize_source("/c/Users/TAF3842/downloads/final_output.parquet")
+        assert res_nt == "C:/Users/TAF3842/downloads/final_output.parquet"

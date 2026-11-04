@@ -30,3 +30,4 @@ Gradually type-check core modules (starting with `accessor.py`, `select.py`, `re
 - Total passing tests: **975 tests** across 37 test files.
 - All tests execute in ~34 seconds via `pytest -q`.
 - Two minor `UserWarning` instances related to `FigureCanvasAgg` being non-interactive in headless CI environments (`test_plotter.py` and `test_cli_enhancements.py`).
+

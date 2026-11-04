@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.13.4] - 2026-11-03
+
+### Fixed
+- **Cross-Platform Path Normalization on Python 3.11**:
+  - Replaced eager `pathlib.Path` instantiation in `normalize_git_bash_path` with `os.path.exists()` and `os.path.splitext()` to prevent `NotImplementedError: cannot instantiate 'WindowsPath' on your system` when testing or simulating Windows environments on Linux/POSIX hosts in Python 3.11.
+  - Added explicit `_force_nt=True` keyword support across `parse_input_target` and `_normalize_source`.
+
 ## [3.13.3] - 2026-11-03
 
 ### Fixed

@@ -29,3 +29,4 @@ This report audits the REPL interactive shell, checkpointing mechanism, and the 
    Writing session code to a nested path (`set save_code = path/to/code.txt`) fails if `path/to/` does not exist.
 3. **Session directory renaming**:
    If the working directory is moved while a session is active, relative paths in `session.json` may become stale.
+

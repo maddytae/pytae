@@ -79,3 +79,4 @@ In `src/pytae/repl.py`, setting `set save_code = subfolder/code.txt` and exiting
 
 ### Suggested Fix
 Ensure `Path(path).parent.mkdir(parents=True, exist_ok=True)` is called prior to opening the file.
+

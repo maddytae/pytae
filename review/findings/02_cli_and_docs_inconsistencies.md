@@ -42,3 +42,4 @@ Update the docstrings in `src/pytae/dataframe.py` and comparison guides to expli
 
 ### Expected Parity
 The CLI should match the REPL: if the argument to `-cols` is not in `("file", "asc", "desc")`, treat it as a substring filter.
+

@@ -41,3 +41,4 @@ This report maps the findings from the historical audit documents in `review/` a
 | 3 | Extract shared `_DelimitedReader` base class for `CsvReader` & `TxtReader` | **DONE** (`TxtReader` subclasses `CsvReader`) |
 | 4 | Delete unreachable disk-IPC undo/redo snapshot code in REPL | **DONE** (`_capture_session_state_to_disk` deleted) |
 | 5 | Delete dead/retired CLI functions | **DONE** |
+

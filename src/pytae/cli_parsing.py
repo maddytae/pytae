@@ -727,7 +727,7 @@ def normalize_git_bash_path(path: str, *, _force_nt: bool = False) -> str:
         # WSL: /mnt/c/...
         m_wsl = re.match(r"^/mnt/([a-zA-Z])(/.*)$", unquoted)
         if m_wsl:
-            if not _force_nt and Path(unquoted).exists():
+            if not _force_nt and os.path.exists(unquoted):
                 return path
             drive = m_wsl.group(1).upper()
             converted = f"{drive}:{m_wsl.group(2)}"
@@ -736,7 +736,7 @@ def normalize_git_bash_path(path: str, *, _force_nt: bool = False) -> str:
         # Cygwin: /cygdrive/c/...
         m_cyg = re.match(r"^/cygdrive/([a-zA-Z])(/.*)$", unquoted)
         if m_cyg:
-            if not _force_nt and Path(unquoted).exists():
+            if not _force_nt and os.path.exists(unquoted):
                 return path
             drive = m_cyg.group(1).upper()
             converted = f"{drive}:{m_cyg.group(2)}"
@@ -745,7 +745,7 @@ def normalize_git_bash_path(path: str, *, _force_nt: bool = False) -> str:
         # Git Bash / MSYS: /c/...
         m = re.match(r"^/([a-zA-Z])(/.*)$", unquoted)
         if m:
-            if not _force_nt and Path(unquoted).exists():
+            if not _force_nt and os.path.exists(unquoted):
                 return path
             drive = m.group(1).upper()
             converted = f"{drive}:{m.group(2)}"
@@ -813,7 +813,7 @@ def normalize_session_path(
     return cwd_candidate
 
 
-def parse_input_target(token: str) -> dict[str, Any]:
+def parse_input_target(token: str, *, _force_nt: bool = False) -> dict[str, Any]:
     """Parse a positional input target into (alias, path_str).
 
     Supported forms:
@@ -833,7 +833,7 @@ def parse_input_target(token: str) -> dict[str, Any]:
         alias = lhs.strip()
         rest = rhs.strip()
 
-    rest = normalize_git_bash_path(rest)
+    rest = normalize_git_bash_path(rest, _force_nt=_force_nt)
 
     # Guard against mistaken colon sheet syntax (e.g. data.xlsx:Sheet1)
     if ":" in rest and not rest.startswith("sample:"):
@@ -853,7 +853,8 @@ def parse_input_target(token: str) -> dict[str, Any]:
         if path_str.startswith("sample:"):
             alias = path_str[7:].removesuffix(".parquet")
         else:
-            alias = Path(path_str).stem
+            clean_base = os.path.basename(path_str.replace("\\", "/"))
+            alias = os.path.splitext(clean_base)[0]
 
     return {"alias": alias, "path": path_str}
 

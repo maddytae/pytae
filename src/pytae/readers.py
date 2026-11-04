@@ -1017,12 +1017,12 @@ _TXT_DEFAULT_SEP = {".txt": "\t", ".dat": "|"}
 _TXT_DEFAULT_ENCODING = {".dat": "latin-1"}
 
 
-def _normalize_source(source: Any) -> Any:
+def _normalize_source(source: Any, *, _force_nt: bool = False) -> Any:
     """Normalize Git Bash / MSYS paths on Windows when source is a path string or Path."""
     if isinstance(source, (str, Path)):
         from pytae.cli_parsing import normalize_git_bash_path
 
-        return normalize_git_bash_path(str(source))
+        return normalize_git_bash_path(str(source), _force_nt=_force_nt)
     return source
 
 

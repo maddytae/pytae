@@ -43,3 +43,4 @@ Other aliases were deprecated across the project (e.g. `-unique` -> `-distinct`,
 
 ### Recommendation
 Standardize on `dropna` as the single canonical verb, and emit helpful hints for `drop_nulls` / `drop_na`.
+
