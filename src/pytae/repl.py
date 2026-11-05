@@ -6,6 +6,7 @@ Provides stateful, iterative data manipulation without repeatedly reloading data
 from __future__ import annotations
 
 import argparse
+import ast
 import atexit
 import datetime
 import gc
@@ -1036,6 +1037,7 @@ STATE & WORKBENCH:
   checkpoints            : List saved checkpoints and their tables
   rm table <name>        : Delete an in-memory table (or 'rm table *')
   rm checkpoint <name>   : Delete a saved checkpoint (or 'rm checkpoint *')
+  rm var <name>          : Delete a session variable (or 'rm var *')
   set [key [= value]]    : Configure session & display settings (e.g. set session_name = proj, max_rows = 20, comma = on)
   session                : Show persistent session status
   session save <name>    : Persist workbench checkpoints to ~/.pytae/sessions/<name> (or custom sessions_dir)
@@ -1043,6 +1045,13 @@ STATE & WORKBENCH:
   sessions [-v]          : List all saved persistent sessions on disk (-v for checkpoint & format details)
   clear                  : Clear the terminal screen
   exit [-s [path]]       : Exit REPL (optionally save session history to ./history.txt or <path>)
+
+VARIABLES & PARAMETERS:
+  <name> = <literal>     : Define scalar, list, or dict variable (e.g. min_mass = 3500, cfg = {"a": 1})
+  @<name>                : Print value of variable (e.g. @min_mass, @cfg.a)
+  @<name> in expressions : Reference variable in -filter / -mutate / -sql (e.g. -filter "mass > @min_mass")
+  status vars [-v]       : List all session variables and constants
+  rm var <name>          : Delete a session variable (or 'rm var *')
 
 QUERY & PYTHON EXPRESSIONS:
   -sql "<query>"         : Run ANSI SQL across loaded tables (e.g. -sql "SELECT * FROM df1 JOIN df2 ON ...")
@@ -1211,6 +1220,84 @@ _BARE_PIPELINE_VERBS = frozenset(
         "time",
     )
 )
+
+_RESERVED_VARIABLE_NAMES = _BARE_PIPELINE_VERBS | frozenset(
+    (
+        "help",
+        "exit",
+        "quit",
+        "status",
+        "set",
+        "checkpoint",
+        "restore",
+        "reset",
+        "rm",
+        "clear",
+        "history",
+        "load",
+        "save",
+        "tables",
+        "table",
+        "use",
+        "diff",
+        "quick_start",
+        "cheatsheet",
+        "var",
+        "vars",
+        "variables",
+        "variable",
+    )
+)
+
+_VAR_REF_PATTERN = re.compile(
+    r'(?<![a-zA-Z0-9_])@([a-zA-Z_][a-zA-Z0-9_]*(?:(?:\.[a-zA-Z_][a-zA-Z0-9_]*)|(?:\[(?:\'[^\']+\'|\"[^\"]+\"|[0-9]+)\]))*)'
+)
+
+
+def _eval_var_reference(expr_str: str, variables: dict[str, Any]) -> Any:
+    """Evaluate a variable path like 'min_mass', 'cfg.island', 'target[0]', 'cfg[\"a\"]' against variables."""
+    tokens = re.findall(r"([a-zA-Z_][a-zA-Z0-9_]*)|\[\'([^\']+)\'\]|\[\"([^\"]+)\"\]|\[([0-9]+)\]", expr_str)
+    parts: list[str | int] = []
+    for t in tokens:
+        if t[0]:
+            parts.append(t[0])
+        elif t[1]:
+            parts.append(t[1])
+        elif t[2]:
+            parts.append(t[2])
+        elif t[3]:
+            parts.append(int(t[3]))
+
+    if not parts:
+        raise KeyError(f"invalid variable reference '@{expr_str}'")
+
+    base = str(parts[0])
+    if base not in variables:
+        raise KeyError(f"variable '@{base}' is not defined. Use 'status vars' to view defined variables.")
+
+    val = variables[base]
+    for p in parts[1:]:
+        if isinstance(val, dict) and str(p) in val:
+            val = val[str(p)]
+        elif isinstance(val, (list, tuple)) and isinstance(p, int) and 0 <= p < len(val):
+            val = val[p]
+        else:
+            raise KeyError(f"cannot access '{p}' on '@{base}' (type: {type(val).__name__})")
+
+    return val
+
+
+def _substitute_variables(text: str, variables: dict[str, Any]) -> str:
+    """Substitute @var, @var.key, @var['key'], and @var[idx] with their literal representations."""
+    if not variables or "@" not in text:
+        return text
+
+    def repl(match: re.Match[str]) -> str:
+        expr_str = match.group(1)
+        val = _eval_var_reference(expr_str, variables)
+        return repr(val)
+
+    return _VAR_REF_PATTERN.sub(repl, text)
 
 
 def _parse_reader_options(tokens: list[str]) -> tuple[list[str], dict[str, Any], int | None]:
@@ -1409,6 +1496,7 @@ class PytaeRepl:
         chunk_size: int | None = None,
         reader_kwargs: dict[str, Any] | None = None,
         session: str | None = None,
+        variables: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
         self.prompt = prompt
@@ -1442,6 +1530,8 @@ class PytaeRepl:
         self.history: list[str] = []
         self._raw_history: list[str] = _load_history_from_file()
         self._history_cursor: int | None = None
+        self.variables: dict[str, Any] = dict(variables or {})
+        self.initial_variables: dict[str, Any] = dict(self.variables)
 
         self.path: Path | None = None
         self.path_str: str | None = None
@@ -1613,6 +1703,14 @@ class PytaeRepl:
     def _record_history(self, entry: str) -> None:
         self.history.append(entry)
         self._log_session_line(entry)
+
+    def _substitute_variables(self, text: str) -> str:
+        """Substitute session variables into text."""
+        return _substitute_variables(text, self.variables)
+
+    def _eval_var_expr(self, expr_str: str) -> Any:
+        """Evaluate a variable expression against session variables."""
+        return _eval_var_reference(expr_str, self.variables)
 
     def _export_session_history(self, target_path_str: str, output_fn: Callable[[str], None]) -> bool:
         """Export session commands to a named file.
@@ -1923,6 +2021,7 @@ class PytaeRepl:
             "checkpoint_format": self.checkpoint_format,
             "checkpoints": list(self.checkpoints.keys()),
             "latest_checkpoint": list(self.checkpoints.keys())[-1] if self.checkpoints else None,
+            "variables": self.variables,
         }
         meta_file = s_dir / "session.json"
         if not meta_file.exists():
@@ -1934,6 +2033,13 @@ class PytaeRepl:
             except Exception:
                 meta["created_at"] = now_str
         meta_file.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+        if self.variables:
+            (s_dir / "vars.json").write_text(json.dumps(self.variables, indent=2), encoding="utf-8")
+        elif (s_dir / "vars.json").exists():
+            try:
+                (s_dir / "vars.json").unlink()
+            except Exception:
+                pass
         (s_dir / ".pytae_session").touch(exist_ok=True)
         (s_dir / "history.json").write_text(json.dumps(self.history, indent=2), encoding="utf-8")
 
@@ -1968,6 +2074,15 @@ class PytaeRepl:
                     cp_order = s_meta.get("checkpoints", [])
                     if s_meta.get("checkpoint_format"):
                         self.checkpoint_format = str(s_meta["checkpoint_format"]).lower()
+                    if isinstance(s_meta.get("variables"), dict):
+                        self.variables = dict(s_meta["variables"])
+                except Exception:
+                    pass
+
+            vars_file = s_dir / "vars.json"
+            if vars_file.exists():
+                try:
+                    self.variables = json.loads(vars_file.read_text(encoding="utf-8"))
                 except Exception:
                     pass
 
@@ -2325,6 +2440,17 @@ class PytaeRepl:
             self._cmd_clear(output_fn)
             return True
 
+        # Bare variable inspection: `@min_mass` or `@cfg.island`
+        clean_strip = line.strip()
+        if clean_strip.startswith("@") and "=" not in clean_strip and not clean_strip.startswith(("-", "!", "?")):
+            try:
+                val = self._eval_var_expr(clean_strip[1:])
+                output_fn(f"{clean_strip} = {repr(val)} ({type(val).__name__})")
+                return True
+            except KeyError as exc:
+                output_fn(f"pytae: {exc}")
+                return True
+
         # Tokenize line
         norm_line = _normalize_unquoted_windows_paths(line)
         tokens = shlex.split(norm_line)
@@ -2402,7 +2528,10 @@ class PytaeRepl:
             return True
 
         # Reject bare pipeline verbs and suggest hyphenated CLI flag
-        if first_lower in _BARE_PIPELINE_VERBS:
+        is_assign_attempt = (tokens and "=" in tokens[0] and not tokens[0].startswith("-")) or (
+            len(tokens) >= 2 and tokens[1] == "="
+        )
+        if first_lower in _BARE_PIPELINE_VERBS and not is_assign_attempt:
             output_fn(f"pytae: bare '{first_lower}' is not recognized; use '-{first_lower}' (matching CLI syntax).")
             return True
 
@@ -2420,7 +2549,7 @@ class PytaeRepl:
                 output_fn(f"Usage: use <table_name> (available: {avail})")
             return True
 
-        # Remove entity: `rm table <name>`, `rm table *`, `rm checkpoint <name>`, `rm checkpoint *`
+        # Remove entity: `rm table <name>`, `rm table *`, `rm checkpoint <name>`, `rm checkpoint *`, `rm var <name>`, `rm var *`
         if first_lower == "rm":
             if len(tokens) < 2:
                 output_fn(
@@ -2428,11 +2557,40 @@ class PytaeRepl:
                     "  rm table <name>        : Remove in-memory table\n"
                     "  rm table *             : Remove all in-memory tables\n"
                     "  rm checkpoint <name>   : Remove saved checkpoint\n"
-                    "  rm checkpoint *        : Remove all saved checkpoints"
+                    "  rm checkpoint *        : Remove all saved checkpoints\n"
+                    "  rm var <name>          : Remove session variable\n"
+                    "  rm var *               : Remove all session variables"
                 )
                 return True
 
             category = tokens[1].lower()
+
+            if category in ("var", "vars", "variable", "variables"):
+                if len(tokens) < 3:
+                    output_fn("Usage: rm var <name> or rm var *")
+                    return True
+                target = tokens[2].lstrip("@")
+                if target == "*":
+                    if not self.variables:
+                        output_fn("No variables defined to remove.")
+                        return True
+                    count = len(self.variables)
+                    self.variables.clear()
+                    self._record_history("rm var *")
+                    if self.session_name:
+                        self._save_session_metadata()
+                    output_fn(f"Removed all session variables ({count} removed).")
+                    return True
+                if target in self.variables:
+                    del self.variables[target]
+                    self._record_history(f"rm var {target}")
+                    if self.session_name:
+                        self._save_session_metadata()
+                    output_fn(f"Removed variable '@{target}'.")
+                    return True
+                avail = ", ".join(f"@{k}" for k in self.variables) if self.variables else "none"
+                output_fn(f"pytae: variable '@{target}' not found. Available: {avail}")
+                return True
 
             if category in ("session", "sessions"):
                 output_fn(
@@ -2576,14 +2734,24 @@ class PytaeRepl:
                 output_fn(f"pytae: 'rm {tokens[1]}' requires explicit category; use 'rm checkpoint {tokens[1]}'.")
                 return True
 
-            output_fn(f"pytae: unrecognized rm category '{tokens[1]}'. Use 'rm table <name>' or 'rm checkpoint <name>'.")
+            if tokens[1].lstrip("@") in self.variables:
+                output_fn(f"pytae: 'rm {tokens[1]}' requires explicit category; use 'rm var {tokens[1].lstrip('@')}'.")
+                return True
+
+            output_fn(f"pytae: unrecognized rm category '{tokens[1]}'. Use 'rm table <name>', 'rm checkpoint <name>', or 'rm var <name>'.")
             return True
 
-        # Variable Assignment: `df1 = orders.parquet` or `df3 = df1 -filter "..."` or `df3 = -sql ...`
+        # Variable Assignment: `df1 = orders.parquet` or `df3 = df1 -filter "..."` or `df3 = -sql ...` or `min_mass = 3500`
         if "=" in line and not line.startswith("-"):
             left_part, right_part = line.split("=", 1)
             var_name = left_part.strip()
-            if var_name.isidentifier() and var_name.lower() not in _BARE_PIPELINE_VERBS:
+            if var_name.startswith("@"):
+                var_name = var_name[1:].strip()
+            if (
+                var_name.isidentifier()
+                and not right_part.startswith("=")
+                and not (left_part and left_part[-1] in "<>!+-*/")
+            ):
                 self._cmd_assign(var_name, right_part.strip(), output_fn)
                 return True
 
@@ -2837,6 +3005,12 @@ class PytaeRepl:
         """Handle fast single-flag inspection commands on `df`. Returns True if handled."""
         if not tokens:
             return False
+        if any("@" in t for t in tokens):
+            try:
+                tokens = [self._substitute_variables(t) for t in tokens]
+            except KeyError as exc:
+                output_fn(f"pytae: {exc}")
+                return True
         first_lower = tokens[0].lower()
         is_inspect = (
             first_lower in ("-shape", "-schema", "-glimpse", "-describe", "-head", "-tail")
@@ -3201,6 +3375,7 @@ class PytaeRepl:
             output_fn("  - status tables [-v]         : View inventory of all loaded in-memory tables")
             output_fn("  - status checkpoint [name]   : Inspect checkpoint snapshot and frozen tables")
             output_fn("  - status checkpoints [-v]    : View inventory of all saved checkpoints")
+            output_fn("  - status vars [-v]           : View session variables, parameters and constants")
             return
 
         raw_cat = target_args[0].lower()
@@ -3256,9 +3431,43 @@ class PytaeRepl:
             self._show_single_checkpoint_status(cp_name, output_fn, verbose=verbose)
             return
 
+        if cat in ("vars", "var", "variables", "variable"):
+            if len(target_args) == 1:
+                if not self.variables:
+                    output_fn("No variables defined in session workbench. Define one with '<name> = <val>' (e.g. min_mass = 3500).")
+                else:
+                    output_fn(f"Session Variables ({len(self.variables)}):")
+                    for k, v in self.variables.items():
+                        v_repr = repr(v)
+                        if not verbose and len(v_repr) > 50:
+                            v_repr = v_repr[:47] + "..."
+                        output_fn(f"  * @{k:<16} : {v_repr} ({type(v).__name__})")
+                    if verbose:
+                        output_fn("\nRaw JSON:")
+                        output_fn(json.dumps(self.variables, indent=2))
+                return
+            var_name = target_args[1].lstrip("@")
+            if var_name in self.variables:
+                v = self.variables[var_name]
+                output_fn(f"Variable '@{var_name}':")
+                output_fn(f"  Type  : {type(v).__name__}")
+                if isinstance(v, (dict, list)):
+                    output_fn(f"  Length: {len(v)}")
+                    try:
+                        val_str = json.dumps(v, indent=2)
+                    except Exception:
+                        val_str = repr(v)
+                    output_fn(f"  Value :\n{val_str}")
+                else:
+                    output_fn(f"  Value : {repr(v)}")
+            else:
+                avail = ", ".join(f"@{k}" for k in self.variables) if self.variables else "none"
+                output_fn(f"pytae: variable '@{var_name}' not found. Available variables: {avail}")
+            return
+
         output_fn(
             f"pytae: unrecognized status category '{target_args[0]}'. "
-            "Use 'status session [-v]', 'status table [name] [-v]', 'status tables [-v]', or 'status checkpoints [-v]'."
+            "Use 'status session [-v]', 'status table [name] [-v]', 'status tables [-v]', 'status checkpoints [-v]', or 'status vars [-v]'."
         )
 
     def _cmd_reset(self, args: list[str], output_fn: Callable[[str], None]) -> None:
@@ -3388,6 +3597,7 @@ class PytaeRepl:
             if self.path_str and self.path_str in self.tables:
                 self.tables[self.path_str] = self.current_df
 
+        self.variables = dict(self.initial_variables)
         _release_memory()
 
         if is_explicit_initial:
@@ -3882,8 +4092,8 @@ class PytaeRepl:
         return converted_count
 
     def _cmd_checkpoint(self, name: str, output_fn: Callable[[str], None]) -> None:
-        if not self.tables and self.current_df is None:
-            output_fn("pytae: no dataset loaded to checkpoint.")
+        if not self.tables and self.current_df is None and not self.variables:
+            output_fn("pytae: no dataset or variables loaded to checkpoint.")
             return
 
         # Prepare checkpoint directory on disk
@@ -3930,8 +4140,11 @@ class PytaeRepl:
             "active_table": self.path_str,
             "has_current_df": self.current_df is not None,
             "current_df_shape": list(self.current_df.shape) if self.current_df is not None else None,
+            "variables": self.variables,
         }
-        (cp_path / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+        (cp_path / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+        if self.variables:
+            (cp_path / "vars.json").write_text(json.dumps(self.variables, indent=2), encoding="utf-8")
         self.checkpoints[name] = meta
 
         # Record checkpoint banner in history
@@ -3942,15 +4155,17 @@ class PytaeRepl:
         _release_memory()
 
         fmt_tag = f" [{fmt}]" if fmt == "parquet" else ""
+        parts_saved = []
         if len(self.tables) > 1:
             table_names = ", ".join(self.tables.keys())
-            output_fn(f"Saved checkpoint '{name}'{fmt_tag} ({len(self.tables)} tables: {table_names}).")
+            parts_saved.append(f"{len(self.tables)} tables: {table_names}")
         elif self.current_df is not None:
-            output_fn(
-                f"Saved checkpoint '{name}'{fmt_tag} ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols)."
-            )
-        else:
-            output_fn(f"Saved checkpoint '{name}'{fmt_tag}.")
+            parts_saved.append(f"{self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols")
+        if self.variables:
+            var_names = ", ".join(f"@{k}" for k in self.variables.keys())
+            parts_saved.append(f"{len(self.variables)} variables: {var_names}")
+        detail_tag = f" ({', '.join(parts_saved)})" if parts_saved else ""
+        output_fn(f"Saved checkpoint '{name}'{fmt_tag}{detail_tag}.")
 
     def _cmd_restore(self, name: str, output_fn: Callable[[str], None], record_history: bool = True) -> None:
         if name not in self.checkpoints:
@@ -3964,6 +4179,7 @@ class PytaeRepl:
         self.tables.clear()
         self.orig_tables.clear()
         self.table_sources.clear()
+        self.variables.clear()
         self.current_df = None
         self.orig_df = None
         self.path_str = None
@@ -3975,6 +4191,16 @@ class PytaeRepl:
 
             self.table_sources = dict(meta.get("table_sources", {}))
             self.path_str = meta.get("active_table")
+
+            # Restore variables from vars.json or meta
+            vars_file = cp_dir / "vars.json"
+            if vars_file.exists():
+                try:
+                    self.variables = json.loads(vars_file.read_text(encoding="utf-8"))
+                except Exception:
+                    pass
+            elif isinstance(meta.get("variables"), dict):
+                self.variables = dict(meta["variables"])
 
             tbl_meta = meta.get("tables", {})
             for tbl_name, tbl_info in tbl_meta.items():
@@ -4023,17 +4249,16 @@ class PytaeRepl:
         # Explicitly release any memory held by pre-restore intermediate tables
         _release_memory()
 
+        parts_restored = []
         if len(self.tables) > 1:
             active_info = f"; active: {self.path_str}" if self.path_str else ""
-            output_fn(
-                f"Restored checkpoint '{name}' ({len(self.tables)} tables: {', '.join(self.tables.keys())}{active_info})."
-            )
+            parts_restored.append(f"{len(self.tables)} tables: {', '.join(self.tables.keys())}{active_info}")
         elif self.current_df is not None:
-            output_fn(
-                f"Restored checkpoint '{name}'. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})"
-            )
-        else:
-            output_fn(f"Restored checkpoint '{name}'.")
+            parts_restored.append(f"active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})")
+        if self.variables:
+            parts_restored.append(f"{len(self.variables)} variables: {', '.join(f'@{k}' for k in self.variables.keys())}")
+        restored_desc = f" ({', '.join(parts_restored)})" if parts_restored else ""
+        output_fn(f"Restored checkpoint '{name}'{restored_desc}.")
 
     def _cmd_list_checkpoints(self, output_fn: Callable[[str], None], *, verbose: bool = False) -> None:
         if not self.checkpoints:
@@ -4148,6 +4373,16 @@ class PytaeRepl:
 
         if not new_name.isidentifier() or new_name.lower() in _BARE_PIPELINE_VERBS:
             output_fn(f"pytae: invalid table name '{new_name}'. Must be a valid Python identifier.")
+            return
+
+        if new_name.lower() in _RESERVED_VARIABLE_NAMES:
+            output_fn(f"pytae: table name '{new_name}' is reserved; choose a different name.")
+            return
+
+        if new_name in self.variables:
+            output_fn(
+                f"pytae: '{new_name}' is already a session variable; cannot rename table to a variable name. Use 'rm var {new_name}' first."
+            )
             return
 
         if new_name in self.tables and new_name != resolved_old:
@@ -4326,9 +4561,23 @@ class PytaeRepl:
         )
 
     def _cmd_assign(self, var_name: str, right_expr: str, output_fn: Callable[[str], None]) -> None:
+        if var_name.lower() in _RESERVED_VARIABLE_NAMES:
+            output_fn(f"pytae: '{var_name}' is a reserved command or verb; choose a different variable name.")
+            return
+
         # 1. SQL query assignment: `df3 = -sql "<query>"`
         if right_expr.startswith(("-sql ", "-sql=")):
+            if var_name in self.variables:
+                output_fn(
+                    f"pytae: '{var_name}' is already a session variable; cannot assign as a table. Use 'rm var {var_name}' first."
+                )
+                return
             query = right_expr[4:].lstrip(" =").strip().strip("\"'")
+            try:
+                query = self._substitute_variables(query)
+            except KeyError as exc:
+                output_fn(f"pytae: {exc}")
+                return
             try:
                 ctx = pl.SQLContext()
                 for tbl_name, tbl_df in self.tables.items():
@@ -4339,6 +4588,7 @@ class PytaeRepl:
                         if cp_df is not None:
                             ctx.register(cp_name, cp_df)
                 res = ctx.execute(query).collect()
+                self.variables.pop(var_name, None)
                 self.tables[var_name] = res
                 self.table_sources[var_name] = f"sql: {query[:30]}"
                 self.current_df = res
@@ -4355,6 +4605,27 @@ class PytaeRepl:
         if right_expr.lower().startswith("sql "):
             output_fn("pytae: bare 'sql' is not recognized; use '-sql \"<query>\"' (matching CLI syntax).")
             return
+
+        # 1b. Literal collection assignment: `species = ['Gentoo', 'Adelie']` or `cfg = {'a': 1}`
+        if right_expr.lstrip().startswith(("[", "{")):
+            if var_name in self.tables:
+                output_fn(
+                    f"pytae: '{var_name}' is already an active table; cannot assign as a variable. Use 'rm table {var_name}' first."
+                )
+                return
+            try:
+                subbed_val_str = self._substitute_variables(right_expr)
+                val = ast.literal_eval(subbed_val_str)
+                json.dumps(val)
+                self.variables[var_name] = val
+                self._record_history(f"{var_name} = {right_expr}")
+                output_fn(f"Set @{var_name} = {val!r}")
+                return
+            except KeyError as exc:
+                output_fn(f"pytae: {exc}")
+                return
+            except Exception:
+                pass
 
         # 2. File path assignment: `df1 = orders.parquet` or `df1 = data.csv -encoding latin1 -dlim ";"`
         # Normalize unquoted Windows backslash paths (e.g. C:\Users\... -> C:/Users/...) so shlex does not eat backslashes
@@ -4381,11 +4652,23 @@ class PytaeRepl:
                 target_path = target["path"]
                 p = Path(target_path).expanduser()
                 is_sample = target_path.startswith("sample:")
+                import glob
+
                 from pytae import DATA_PATH
 
-                is_file = (p.exists() and not p.is_dir()) or (p.exists() and p.is_dir()) or any(ch in target_path for ch in "*?[")
+                has_glob = any(ch in target_path for ch in "*?[")
+                is_file = (
+                    (p.exists() and not p.is_dir())
+                    or (p.exists() and p.is_dir())
+                    or (has_glob and bool(glob.glob(target_path)))
+                )
                 is_data_cand = (DATA_PATH / p.name).exists() or (DATA_PATH / f"{p.stem}.parquet").exists()
                 if is_sample or is_file or is_data_cand:
+                    if var_name in self.variables:
+                        output_fn(
+                            f"pytae: '{var_name}' is already a session variable; cannot assign as a table. Use 'rm var {var_name}' first."
+                        )
+                        return
                     try:
                         load_opts = dict(reader_kwargs)
                         if nrows_val is not None:
@@ -4462,6 +4745,11 @@ class PytaeRepl:
                     pipe_tokens = right_tokens[1:]
                     pipe_line = right_expr[len(first_tok) :].strip()
                     if not pipe_tokens:
+                        if var_name in self.variables:
+                            output_fn(
+                                f"pytae: '{var_name}' is already a session variable; cannot assign as a table. Use 'rm var {var_name}' first."
+                            )
+                            return
                         self.tables[var_name] = source_df.clone()
                         self.table_sources[var_name] = f"copy of {first_tok}"
                         self.current_df = self.tables[var_name]
@@ -4475,6 +4763,11 @@ class PytaeRepl:
                         return
 
             if source_df is not None:
+                if var_name in self.variables:
+                    output_fn(
+                        f"pytae: '{var_name}' is already a session variable; cannot assign as a table. Use 'rm var {var_name}' first."
+                    )
+                    return
                 first_pipe = pipe_tokens[0].lower()
                 if first_pipe in _DISALLOWED_ALIASES:
                     canonical = _DISALLOWED_ALIASES[first_pipe]
@@ -4514,7 +4807,33 @@ class PytaeRepl:
                 output_fn(f"{action} '{var_name}' ({res_df.shape[0]:,} rows x {res_df.shape[1]} cols){timing_str}.")
                 return
 
-        output_fn(f"pytae: could not assign '{var_name}'. '{clean_path}' is not an existing file or table.")
+        # 4. Variable literal assignment (scalars, lists, dicts)
+        if var_name in self.tables:
+            output_fn(
+                f"pytae: '{var_name}' is already an active table; cannot assign as a variable. Use 'rm table {var_name}' first."
+            )
+            return
+
+        try:
+            subbed_val_str = self._substitute_variables(right_expr)
+            val = ast.literal_eval(subbed_val_str)
+            if isinstance(val, tuple):
+                val = list(val)
+            # Verify JSON serializability
+            json.dumps(val)
+            self.variables[var_name] = val
+            self._record_history(f"{var_name} = {right_expr}")
+            output_fn(f"Set @{var_name} = {val!r}")
+            return
+        except KeyError as exc:
+            output_fn(f"pytae: {exc}")
+            return
+        except (ValueError, SyntaxError, TypeError):
+            pass
+
+        output_fn(
+            f"pytae: could not assign '{var_name}'. '{right_expr}' is not an existing file or table, or valid literal."
+        )
 
     def _cmd_targeted_pipeline(self, table_name: str, sub_line: str, output_fn: Callable[[str], None]) -> None:
         target_df = self.tables[table_name]
@@ -4575,6 +4894,15 @@ class PytaeRepl:
         alias: str | None = None
         if len(cleaned_tokens) >= 4 and cleaned_tokens[2].lower() == "as":
             alias = cleaned_tokens[3]
+
+        if alias and alias.lower() in _RESERVED_VARIABLE_NAMES:
+            output_fn(f"pytae: '{alias}' is a reserved command or verb; choose a different alias.")
+            return
+        if alias and alias in self.variables:
+            output_fn(
+                f"pytae: '{alias}' is already a session variable; cannot assign as a table. Use 'rm var {alias}' first."
+            )
+            return
 
         p = Path(path_str).expanduser()
         if not path_str.startswith("sample:") and not p.exists() and not any(ch in path_str for ch in "*?["):
@@ -4795,6 +5123,11 @@ class PytaeRepl:
             output_fn('Usage: -sql "<query>" (e.g. -sql "SELECT species, COUNT(*) FROM df GROUP BY 1")')
             return
         try:
+            query = self._substitute_variables(query)
+        except KeyError as exc:
+            output_fn(f"pytae: {exc}")
+            return
+        try:
             ctx = pl.SQLContext()
             for tbl_name, tbl_df in self.tables.items():
                 ctx.register(tbl_name, tbl_df)
@@ -4832,6 +5165,9 @@ class PytaeRepl:
                     cp_df = self._get_checkpoint_df(cp_name)
                     if cp_df is not None:
                         local_scope[cp_name] = PytaeDataFrame(cp_df)
+            for var_name, var_val in self.variables.items():
+                if var_name not in local_scope:
+                    local_scope[var_name] = var_val
             res = eval(expr, {}, local_scope)
             if isinstance(res, (pl.DataFrame, PytaeDataFrame)):
                 output_fn(self._format_table(res))
@@ -4859,7 +5195,14 @@ class PytaeRepl:
             parse_select_spec,
         )
 
-        exec_argv = _normalize_cli_args(["<memory>"] + tokens)
+        try:
+            subbed_tokens = [self._substitute_variables(t) for t in tokens]
+        except KeyError as exc:
+            if not quiet:
+                output_fn(f"pytae: {exc}")
+            return None, None, True
+
+        exec_argv = _normalize_cli_args(["<memory>"] + subbed_tokens)
         parser = build_parser(exit_on_error=False)
         try:
             args, extras = parser.parse_known_args(exec_argv)
@@ -5073,6 +5416,10 @@ class PytaeRepl:
         first_token = prefix_tokens[0].lower() if prefix_tokens else ""
         last_token = prefix_tokens[-1].lower() if prefix_tokens else ""
 
+        # Variable reference completion (@var)
+        if text.startswith("@"):
+            return [f"@{v}" for v in self.variables.keys() if f"@{v}".startswith(text)]
+
         # Case: 'set ' configuration keys and values
         if first_token == "set":
             if last_token == "set":
@@ -5155,19 +5502,35 @@ class PytaeRepl:
         if last_token == "restore":
             return [c for c in self.checkpoints if c.startswith(text)]
 
-        # Case 5: 'rm ' -> complete categories: table, checkpoint
+        # Case 5: 'rm ' -> complete categories: table, checkpoint, var
         if last_token == "rm":
-            return [opt for opt in ("table", "checkpoint") if opt.startswith(text)]
+            return [opt for opt in ("table", "checkpoint", "var") if opt.startswith(text)]
         if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "rm" and prefix_tokens[-1].lower() == "table":
             options = ["*"] + list(self.tables.keys())
             return [t for t in options if t.startswith(text)]
         if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "rm" and prefix_tokens[-1].lower() == "checkpoint":
             options = ["*"] + list(self.checkpoints.keys())
             return [c for c in options if c.startswith(text)]
+        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "rm" and prefix_tokens[-1].lower() in ("var", "vars"):
+            options = ["*"] + list(self.variables.keys())
+            return [v for v in options if v.startswith(text)]
 
-        # Case 5b: 'status ' -> complete subcommands: session, tables, table, checkpoints, checkpoint, -v
+        # Case 5b: 'status ' -> complete subcommands: session, tables, table, checkpoints, checkpoint, vars, var, -v
         if last_token == "status":
-            return [opt for opt in ("session", "table", "tables", "checkpoint", "checkpoints", "-v") if opt.startswith(text)]
+            return [
+                opt
+                for opt in (
+                    "session",
+                    "table",
+                    "tables",
+                    "checkpoint",
+                    "checkpoints",
+                    "vars",
+                    "var",
+                    "-v",
+                )
+                if opt.startswith(text)
+            ]
         if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "status" and prefix_tokens[-1].lower() in ("session", "sessions"):
             return [opt for opt in ("-v", "-verbose") if opt.startswith(text)]
         if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "status" and prefix_tokens[-1].lower() in ("table", "tables"):
@@ -5176,6 +5539,9 @@ class PytaeRepl:
         if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "status" and prefix_tokens[-1].lower() in ("checkpoint", "checkpoints"):
             options = list(self.checkpoints.keys()) + ["-v"]
             return [c for c in options if c.startswith(text)]
+        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "status" and prefix_tokens[-1].lower() in ("var", "vars"):
+            options = list(self.variables.keys()) + ["-v"]
+            return [v for v in options if v.startswith(text)]
 
         # Case 6: '-diff ' -> complete table names, checkpoint names, flags, or on= columns
         if first_token == "-diff":
