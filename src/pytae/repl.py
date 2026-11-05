@@ -2235,7 +2235,10 @@ class PytaeRepl:
             "checkpoint_format": self.checkpoint_format,
             "checkpoints": list(self.checkpoints.keys()),
             "latest_checkpoint": list(self.checkpoints.keys())[-1] if self.checkpoints else None,
-            "variables": self.variables,
+            "variables": {
+                "count": len(self.variables),
+                "names": list(self.variables.keys()),
+            },
         }
         meta_file = s_dir / "session.json"
         if not meta_file.exists():
@@ -2288,8 +2291,9 @@ class PytaeRepl:
                     cp_order = s_meta.get("checkpoints", [])
                     if s_meta.get("checkpoint_format"):
                         self.checkpoint_format = str(s_meta["checkpoint_format"]).lower()
-                    if isinstance(s_meta.get("variables"), dict):
-                        self.variables = dict(s_meta["variables"])
+                    legacy_vars = s_meta.get("variables")
+                    if isinstance(legacy_vars, dict) and "count" not in legacy_vars and "names" not in legacy_vars:
+                        self.variables = dict(legacy_vars)
                 except Exception:
                     pass
 
@@ -3449,9 +3453,7 @@ class PytaeRepl:
                 output_fn(f"  {col_name:<20}: {dtype}")
 
     def _get_checkpoint_vars(self, snap: dict, cp_path: Path | None) -> dict[str, Any]:
-        """Retrieve variables dictionary from checkpoint metadata or vars.json file."""
-        if isinstance(snap.get("variables"), dict) and snap["variables"]:
-            return snap["variables"]
+        """Retrieve variables dictionary from vars.json file (or fallback to legacy meta)."""
         if cp_path and cp_path.exists():
             v_file = cp_path / "vars.json"
             if v_file.exists():
@@ -3459,15 +3461,40 @@ class PytaeRepl:
                     return json.loads(v_file.read_text(encoding="utf-8"))
                 except Exception:
                     pass
+        # Fallback for legacy checkpoints where values were stored directly in meta["variables"]
+        vars_meta = snap.get("variables")
+        if isinstance(vars_meta, dict) and "names" not in vars_meta and "count" not in vars_meta:
+            return vars_meta
+        if cp_path and cp_path.exists():
             m_file = cp_path / "meta.json"
             if m_file.exists():
                 try:
                     data = json.loads(m_file.read_text(encoding="utf-8"))
-                    if isinstance(data.get("variables"), dict):
-                        return data["variables"]
+                    legacy_vars = data.get("variables")
+                    if isinstance(legacy_vars, dict) and "names" not in legacy_vars and "count" not in legacy_vars:
+                        return legacy_vars
                 except Exception:
                     pass
         return {}
+
+    def _get_checkpoint_var_summary(self, snap: dict, cp_path: Path | None) -> tuple[int, list[str]]:
+        """Return (count, names) of variables in checkpoint from metadata or vars.json."""
+        vars_meta = snap.get("variables")
+        if isinstance(vars_meta, dict):
+            if "names" in vars_meta and "count" in vars_meta:
+                return vars_meta.get("count", len(vars_meta["names"])), list(vars_meta.get("names", []))
+            # Legacy format: variables was a dict of key-value pairs
+            return len(vars_meta), list(vars_meta.keys())
+        if cp_path and cp_path.exists():
+            v_file = cp_path / "vars.json"
+            if v_file.exists():
+                try:
+                    data = json.loads(v_file.read_text(encoding="utf-8"))
+                    if isinstance(data, dict):
+                        return len(data), list(data.keys())
+                except Exception:
+                    pass
+        return 0, []
 
     def _show_single_checkpoint_status(
         self, cp_name: str, output_fn: Callable[[str], None], verbose: bool = False
@@ -3669,26 +3696,35 @@ class PytaeRepl:
 
         # Variables in external session
         vars_dict: dict[str, Any] = {}
+        vars_names: list[str] = []
         vars_file = s_path / "vars.json"
         if vars_file.exists():
             try:
                 vars_dict = json.loads(vars_file.read_text(encoding="utf-8"))
+                vars_names = list(vars_dict.keys())
             except Exception:
                 pass
         elif isinstance(s_meta.get("variables"), dict):
-            vars_dict = s_meta["variables"]
+            v_meta = s_meta["variables"]
+            if "names" in v_meta:
+                vars_names = list(v_meta.get("names", []))
+            else:
+                vars_dict = v_meta
+                vars_names = list(vars_dict.keys())
 
-        if not vars_dict:
+        if not vars_names and not vars_dict:
             output_fn("Variables     : 0 defined")
-        elif len(vars_dict) == 1:
-            v_name = next(iter(vars_dict.keys()))
-            v_val = vars_dict[v_name]
-            v_repr = repr(v_val)
-            if not verbose and len(v_repr) > 40:
-                v_repr = v_repr[:37] + "..."
-            output_fn(f"Variables     : 1 defined [@{v_name} = {v_repr}]")
+        elif len(vars_names) == 1:
+            v_name = vars_names[0]
+            if v_name in vars_dict:
+                v_repr = repr(vars_dict[v_name])
+                if not verbose and len(v_repr) > 40:
+                    v_repr = v_repr[:37] + "..."
+                output_fn(f"Variables     : 1 defined [@{v_name} = {v_repr}]")
+            else:
+                output_fn(f"Variables     : 1 defined [@{v_name}]")
         else:
-            output_fn(f"Variables     : {len(vars_dict)} defined [{', '.join(f'@{k}' for k in vars_dict.keys())}]")
+            output_fn(f"Variables     : {len(vars_names)} defined [{', '.join(f'@{k}' for k in vars_names)}]")
 
         if verbose and vars_dict:
             for v_name, v_val in vars_dict.items():
@@ -3707,13 +3743,13 @@ class PytaeRepl:
                 created_str = f" created {created}" if created else ""
                 tables = cp_meta.get("tables", {})
                 sub_cp_dir = cp_dir / cp_name
-                cp_vars = self._get_checkpoint_vars(cp_meta, sub_cp_dir)
+                var_count, var_names = self._get_checkpoint_var_summary(cp_meta, sub_cp_dir)
 
                 summary_parts: list[str] = []
                 if tables:
                     summary_parts.append(f"{len(tables)} table{'s' if len(tables) != 1 else ''} [{', '.join(tables.keys())}]")
-                if cp_vars:
-                    summary_parts.append(f"{len(cp_vars)} var{'s' if len(cp_vars) != 1 else ''} [{', '.join(f'@{k}' for k in cp_vars.keys())}]")
+                if var_count > 0:
+                    summary_parts.append(f"{var_count} var{'s' if var_count != 1 else ''} [{', '.join(f'@{k}' for k in var_names)}]")
                 t_str = f" ({', '.join(summary_parts)})" if summary_parts else ""
                 output_fn(f"  - {cp_name:<14}: [{fmt}]{t_str}{created_str}")
 
@@ -3731,6 +3767,7 @@ class PytaeRepl:
                             if cols:
                                 col_preview = ", ".join(cols[:8]) + ("..." if len(cols) > 8 else "")
                                 output_fn(f"          columns: [{col_preview}]")
+                cp_vars = self._get_checkpoint_vars(cp_meta, sub_cp_dir)
                 if cp_vars:
                     for v_n, v_v in cp_vars.items():
                         v_repr = repr(v_v)
@@ -4574,7 +4611,10 @@ class PytaeRepl:
             "active_table": self.path_str,
             "has_current_df": self.current_df is not None,
             "current_df_shape": list(self.current_df.shape) if self.current_df is not None else None,
-            "variables": self.variables,
+            "variables": {
+                "count": len(self.variables),
+                "names": list(self.variables.keys()),
+            },
         }
         (cp_path / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
         if self.variables:
@@ -4626,7 +4666,7 @@ class PytaeRepl:
             self.table_sources = dict(meta.get("table_sources", {}))
             self.path_str = meta.get("active_table")
 
-            # Restore variables from vars.json or meta
+            # Restore variables from vars.json (single source of truth) or legacy meta
             vars_file = cp_dir / "vars.json"
             if vars_file.exists():
                 try:
@@ -4634,7 +4674,9 @@ class PytaeRepl:
                 except Exception:
                     pass
             elif isinstance(meta.get("variables"), dict):
-                self.variables = dict(meta["variables"])
+                legacy_vars = meta["variables"]
+                if "count" not in legacy_vars and "names" not in legacy_vars:
+                    self.variables = dict(legacy_vars)
 
             tbl_meta = meta.get("tables", {})
             for tbl_name, tbl_info in tbl_meta.items():
@@ -4717,7 +4759,7 @@ class PytaeRepl:
                         pass
                 time_str = f"  {created_at}" if created_at else ""
 
-                cp_vars = self._get_checkpoint_vars(snap, cp_path)
+                var_count, var_names = self._get_checkpoint_var_summary(snap, cp_path)
 
                 summary_parts: list[str] = []
                 if isinstance(tbls, dict) and tbls:
@@ -4737,9 +4779,9 @@ class PytaeRepl:
                     else:
                         summary_parts.append(f"[active: {snap['active_table']}]")
 
-                if cp_vars:
-                    v_names = ", ".join(f"@{k}" for k in cp_vars.keys())
-                    summary_parts.append(f"{len(cp_vars)} var{'s' if len(cp_vars) != 1 else ''} [{v_names}]")
+                if var_count > 0:
+                    v_names = ", ".join(f"@{k}" for k in var_names)
+                    summary_parts.append(f"{var_count} var{'s' if var_count != 1 else ''} [{v_names}]")
 
                 summary = ", ".join(summary_parts) if summary_parts else "(empty checkpoint)"
                 output_fn(f"  - {name:<15}: {summary}{fmt_tag}{size_str}{time_str}")
@@ -4761,6 +4803,7 @@ class PytaeRepl:
                     output_fn(f"      - df: {s[0]:,} rows x {s[1]} cols")
 
                 # Variables under checkpoint
+                cp_vars = self._get_checkpoint_vars(snap, cp_path)
                 if cp_vars:
                     for v_name, v_val in cp_vars.items():
                         v_repr = repr(v_val)

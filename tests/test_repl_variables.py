@@ -331,6 +331,23 @@ def test_repl_status_checkpoint_and_session_display_variables(tmp_path: Path):
         assert "Checkpoints (1):" in ext_sess_out
         assert "@min_mass" in ext_sess_out and "3500" in ext_sess_out
         r2.close()
+
+        # 5. Option A verification: meta.json has lightweight summary, vars.json has payload
+        import json
+
+        cp_dir = sess_container / "audit_sess" / "checkpoints" / "cp1"
+        assert (cp_dir / "vars.json").exists()
+        assert (cp_dir / "meta.json").exists()
+
+        vars_data = json.loads((cp_dir / "vars.json").read_text(encoding="utf-8"))
+        assert vars_data == {"min_mass": 3500, "project_tag": "q4_audit"}
+
+        meta_data = json.loads((cp_dir / "meta.json").read_text(encoding="utf-8"))
+        assert meta_data["variables"] == {"count": 2, "names": ["min_mass", "project_tag"]}
+        assert "3500" not in str(meta_data["variables"])  # Payload NOT duplicated in meta
+
+        sess_data = json.loads((sess_container / "audit_sess" / "session.json").read_text(encoding="utf-8"))
+        assert sess_data["variables"] == {"count": 2, "names": ["min_mass", "project_tag"]}
     finally:
-        set_sessions_dir(orig_dir)
+        set_sessions_dir(None)
 
