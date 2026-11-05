@@ -148,6 +148,63 @@ def _release_memory() -> None:
             pass
 
 
+def _safe_rmtree(path: Path | str) -> None:
+    """Robustly and recursively delete a directory tree, handling read-only files,
+    OS file locks, and retrying if necessary."""
+    p = Path(path)
+    if not p.exists():
+        return
+    import stat
+    import time
+
+    gc.collect()
+    _release_memory()
+
+    def _handle_error(func, target_path, exc_info):
+        try:
+            os.chmod(target_path, stat.S_IWRITE | stat.S_IWUSR)
+            func(target_path)
+        except Exception:
+            pass
+
+    for attempt in range(5):
+        try:
+            if sys.version_info >= (3, 12):
+                shutil.rmtree(p, onexc=lambda func, target_path, exc: _handle_error(func, target_path, None))
+            else:
+                shutil.rmtree(p, onerror=_handle_error)
+        except Exception:
+            pass
+        if not p.exists():
+            return
+        gc.collect()
+        _release_memory()
+        time.sleep(0.02 * (attempt + 1))
+
+    # If top dir or any lingering child dirs still exist, walk bottom-up and remove manually
+    if p.exists():
+        for root, dirs, files in os.walk(str(p), topdown=False):
+            for f in files:
+                fp = os.path.join(root, f)
+                try:
+                    os.chmod(fp, stat.S_IWRITE | stat.S_IWUSR)
+                    os.unlink(fp)
+                except Exception:
+                    pass
+            for d in dirs:
+                dp = os.path.join(root, d)
+                try:
+                    os.chmod(dp, stat.S_IWRITE | stat.S_IWUSR)
+                    os.rmdir(dp)
+                except Exception:
+                    pass
+        try:
+            os.chmod(str(p), stat.S_IWRITE | stat.S_IWUSR)
+            os.rmdir(str(p))
+        except Exception:
+            pass
+
+
 def _get_process_rss_mb() -> float | None:
     """Return the current process RSS / Working Set size in megabytes."""
     if sys.platform == "win32":
@@ -2001,7 +2058,7 @@ class PytaeRepl:
             return False
         snap = self.checkpoints.pop(name)
         if isinstance(snap, dict) and "dir" in snap:
-            shutil.rmtree(snap["dir"], ignore_errors=True)
+            _safe_rmtree(snap["dir"])
         if self.session_name:
             self._save_session_metadata()
         return True
@@ -2403,24 +2460,52 @@ class PytaeRepl:
                     f"Use 'set load_session = {clean_target}' to resume it, or 'set new_session = {clean_target}, overwrite = true' to start fresh."
                 )
                 return False
-            # Clean out checkpoints and manifest
+
+            # Start clean checkpoint history and decouple in-memory tables before deleting disk files
+            if self.session_name is None:
+                self._cleanup_cp_dir()
+            self.checkpoints.clear()
+            self.history.clear()
+
+            if self.tables:
+                self.tables = {k: v.clone() for k, v in self.tables.items()}
+                self.orig_tables = {k: v.clone() for k, v in self.orig_tables.items()}
+            if self.current_df is not None:
+                self.current_df = self.current_df.clone()
+            if self.orig_df is not None:
+                self.orig_df = self.orig_df.clone()
+            _release_memory()
+
+            # Clean out checkpoints and all existing session files completely
             if target_cp_dir.exists():
-                shutil.rmtree(target_cp_dir, ignore_errors=True)
-            for fname in ("session.json", "vars.json", ".pytae_session"):
-                fpath = dst_sess_dir / fname
-                if fpath.exists():
+                _safe_rmtree(target_cp_dir)
+
+            for item in list(dst_sess_dir.iterdir()):
+                if item == target_cp_dir:
+                    continue
+                if item.is_dir():
+                    _safe_rmtree(item)
+                else:
                     try:
-                        fpath.unlink()
+                        item.unlink()
                     except Exception:
                         pass
+        else:
+            if self.session_name is None:
+                self._cleanup_cp_dir()
+            self.checkpoints.clear()
+            self.history.clear()
 
         target_cp_dir.mkdir(parents=True, exist_ok=True)
-
-        # Start clean checkpoint history for the new session while preserving in-memory tables
-        if self.session_name is None:
-            self._cleanup_cp_dir()
-        self.checkpoints.clear()
-        self.history.clear()
+        # Ensure target_cp_dir is completely empty with NO lingering checkpoint subdirectories
+        for child in list(target_cp_dir.iterdir()):
+            if child.is_dir():
+                _safe_rmtree(child)
+            else:
+                try:
+                    child.unlink()
+                except Exception:
+                    pass
 
         set_sessions_dir(dst_sess_dir.parent.resolve())
         self.session_name = target_name
@@ -2472,12 +2557,15 @@ class PytaeRepl:
             # Overwrite requested: clean out checkpoints and session metadata
             was_overwritten = True
             if target_cp_dir.exists():
-                shutil.rmtree(target_cp_dir, ignore_errors=True)
-            for fname in ("session.json", "vars.json", ".pytae_session"):
-                fpath = dst_sess_dir / fname
-                if fpath.exists():
+                _safe_rmtree(target_cp_dir)
+            for item in list(dst_sess_dir.iterdir()):
+                if item == target_cp_dir:
+                    continue
+                if item.is_dir():
+                    _safe_rmtree(item)
+                else:
                     try:
-                        fpath.unlink()
+                        item.unlink()
                     except Exception:
                         pass
 
@@ -2490,7 +2578,7 @@ class PytaeRepl:
                 dst_sub = target_cp_dir / cp_name
                 if src_sub.exists() and src_sub != dst_sub:
                     if dst_sub.exists():
-                        shutil.rmtree(dst_sub, ignore_errors=True)
+                        _safe_rmtree(dst_sub)
                     shutil.copytree(src_sub, dst_sub)
                     if isinstance(cp_meta, dict):
                         cp_meta["dir"] = str(dst_sub)
@@ -2511,7 +2599,7 @@ class PytaeRepl:
                     dst_sub = target_cp_dir / cp_name
                     if src_sub.exists() and src_sub != dst_sub:
                         if dst_sub.exists():
-                            shutil.rmtree(dst_sub, ignore_errors=True)
+                            _safe_rmtree(dst_sub)
                         shutil.copytree(src_sub, dst_sub)
                         if isinstance(cp_meta, dict):
                             cp_meta["dir"] = str(dst_sub)
@@ -2530,16 +2618,16 @@ class PytaeRepl:
 
         # Prune any stale checkpoints in destination that are not in current self.checkpoints
         if target_cp_dir.exists():
-            for existing_sub in target_cp_dir.iterdir():
+            for existing_sub in list(target_cp_dir.iterdir()):
                 if existing_sub.is_dir() and existing_sub.name not in self.checkpoints:
-                    shutil.rmtree(existing_sub, ignore_errors=True)
+                    _safe_rmtree(existing_sub)
 
         set_sessions_dir(dst_sess_dir.parent.resolve())
         self.session_name = target_name
         self._save_session_metadata()
 
         if is_move and src_sess_dir and src_sess_dir.exists() and src_sess_dir != dst_sess_dir:
-            shutil.rmtree(src_sess_dir, ignore_errors=True)
+            _safe_rmtree(src_sess_dir)
             output_fn(
                 f"Moved session '{target_name}' to '{dst_sess_dir}' ({len(self.checkpoints)} checkpoints moved). Old directory removed."
             )
@@ -4570,7 +4658,7 @@ class PytaeRepl:
         # Prepare checkpoint directory on disk
         cp_path = self._get_cp_dir() / name
         if cp_path.exists():
-            shutil.rmtree(cp_path, ignore_errors=True)
+            _safe_rmtree(cp_path)
         cp_path.mkdir(parents=True, exist_ok=True)
 
         fmt = self.checkpoint_format.lower()

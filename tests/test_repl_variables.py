@@ -264,9 +264,8 @@ def test_repl_variable_autocompletion():
 
 
 def test_repl_status_checkpoint_and_session_display_variables(tmp_path: Path):
-    from pytae.repl import get_sessions_dir, set_sessions_dir
+    from pytae.repl import set_sessions_dir
 
-    orig_dir = get_sessions_dir()
     sess_container = tmp_path / "sessions"
     sess_container.mkdir(parents=True, exist_ok=True)
     set_sessions_dir(sess_container)

@@ -4616,6 +4616,81 @@ def test_repl_no_undo_redo_commands():
     r.close()
 
 
+def test_repl_new_session_overwrite_clears_checkpoint_folders(tmp_path, monkeypatch):
+    """Verify that 'set new_session = <name>, overwrite = true' completely deletes
+    all old checkpoint subdirectories and files so no empty checkpoint folders linger."""
+    from pytae.repl import PytaeRepl, set_sessions_dir
+
+    set_sessions_dir(None)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("PYTAE_SESSIONS_DIR", raising=False)
+
+    outputs: list[str] = []
+    r1 = PytaeRepl()
+    r1.execute_line("set new_session = old_analysis", output_fn=outputs.append)
+    r1.execute_line("df = sample:penguins", output_fn=outputs.append)
+    r1.execute_line("@threshold = 42", output_fn=outputs.append)
+    r1.execute_line("checkpoint cp1", output_fn=outputs.append)
+    r1.execute_line("checkpoint cp2", output_fn=outputs.append)
+    r1.close()
+
+    cp_dir = tmp_path / "old_analysis" / "checkpoints"
+    assert (cp_dir / "cp1").is_dir()
+    assert (cp_dir / "cp2").is_dir()
+    assert (cp_dir / "cp1" / "meta.json").exists()
+    assert (cp_dir / "cp1" / "vars.json").exists()
+
+    # Now in another session (or same), run set new_session = old_analysis, overwrite = true
+    r2 = PytaeRepl()
+    outputs.clear()
+    r2.execute_line("set new_session = old_analysis, overwrite = true", output_fn=outputs.append)
+    assert any("Overwrote and started new" in o for o in outputs)
+    assert r2.session_name == "old_analysis"
+    assert len(r2.checkpoints) == 0
+
+    # Inside checkpoints/, there MUST be NO child directories (cp1 and cp2 must NOT linger!)
+    assert cp_dir.exists()
+    lingering_items = list(cp_dir.iterdir())
+    assert len(lingering_items) == 0, f"Expected 0 lingering items in checkpoints, got: {lingering_items}"
+    r2.close()
+
+
+def test_repl_new_session_overwrite_same_session_in_place(tmp_path, monkeypatch):
+    """Verify that overwriting the active session in-place in the same REPL cleanly wipes
+    checkpoint folders on disk while preserving active in-memory tables."""
+    from pytae.repl import PytaeRepl, set_sessions_dir
+
+    set_sessions_dir(None)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("PYTAE_SESSIONS_DIR", raising=False)
+
+    outputs: list[str] = []
+    r = PytaeRepl()
+    r.execute_line("set new_session = live_sess", output_fn=outputs.append)
+    r.execute_line("df = sample:penguins", output_fn=outputs.append)
+    r.execute_line("checkpoint snap1", output_fn=outputs.append)
+    r.execute_line("checkpoint snap2", output_fn=outputs.append)
+
+    cp_dir = tmp_path / "live_sess" / "checkpoints"
+    assert (cp_dir / "snap1").is_dir()
+    assert (cp_dir / "snap2").is_dir()
+
+    # Overwrite in-place
+    outputs.clear()
+    r.execute_line("set new_session = live_sess, overwrite = true", output_fn=outputs.append)
+    assert any("Overwrote and started new" in o for o in outputs)
+    assert r.session_name == "live_sess"
+    assert len(r.checkpoints) == 0
+    assert "df" in r.tables  # Tables preserved in workbench memory
+
+    # Verify snap1 and snap2 folders are deleted
+    assert cp_dir.exists()
+    assert len(list(cp_dir.iterdir())) == 0
+    r.close()
+
+
+
+
 
 
 
