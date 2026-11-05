@@ -1605,17 +1605,15 @@ def _parse_set_pairs(line: str) -> list[tuple[str, str]]:
             k = k[4:].strip()
         return [(k.strip(), v.strip())]
 
-    tokens = line.split(None, 1)
+    clean_line = line
+    if clean_line.lower().startswith("set "):
+        clean_line = clean_line[4:].strip()
+
+    tokens = clean_line.split(None, 1)
     if len(tokens) == 2:
-        k = tokens[0].strip()
-        if k.lower().startswith("set "):
-            k = k[4:].strip()
-        return [(k, tokens[1].strip())]
+        return [(tokens[0].strip(), tokens[1].strip())]
     if len(tokens) == 1:
-        k = tokens[0].strip()
-        if k.lower().startswith("set "):
-            k = k[4:].strip()
-        return [(k, "")]
+        return [(tokens[0].strip(), "")]
     return []
 
 
@@ -4101,8 +4099,8 @@ class PytaeRepl:
             prec_str = str(self.float_precision) if self.float_precision is not None else "auto"
             comma_str = "on" if self.comma else "off"
 
-            output_fn("new_session       = (options: <name>, <path>) (e.g. set new_session = rwa_analysis)")
-            output_fn("load_session      = (options: <name>, <path>) (e.g. set load_session = rwa_analysis)")
+            output_fn("new_session       = none (options: <name>, <path>, overwrite = true) (e.g. set new_session = rwa_analysis)")
+            output_fn("load_session      = none (options: <name>, <path>) (e.g. set load_session = rwa_analysis)")
             output_fn(f"save_session      = {sess_name} (options: <name>, <path>, move = true, overwrite = true)")
             output_fn(f"checkpoint_format = {self.checkpoint_format} (options: ipc, parquet)")
             output_fn(f"save_code         = {save_cmd_str} (options: <path>, none)")
@@ -4125,12 +4123,18 @@ class PytaeRepl:
             pair_map[k.lower().replace("-", "_")] = v
 
         new_session_val = pair_map.pop("new_session", None)
-        load_session_val = pair_map.pop("load_session", None) or pair_map.pop("session_load", None)
-        save_session_val = (
-            pair_map.pop("save_session", None)
-            or pair_map.pop("session_save", None)
-            or pair_map.pop("session_name", None)
-        )
+
+        load_session_val = None
+        for k_load in ("load_session", "session_load"):
+            if k_load in pair_map:
+                load_session_val = pair_map.pop(k_load)
+                break
+
+        save_session_val = None
+        for k_save in ("save_session", "session_save", "session_name"):
+            if k_save in pair_map:
+                save_session_val = pair_map.pop(k_save)
+                break
         copy_session_val = pair_map.pop("copy_session", None) or pair_map.pop("session_copy", None)
         move_session_val = pair_map.pop("move_session", None) or pair_map.pop("session_move", None)
 
@@ -4158,15 +4162,23 @@ class PytaeRepl:
 
         # 1. Handle new_session
         if new_session_val is not None:
+            clean_new = new_session_val.strip().strip("'\"")
+            if not clean_new:
+                output_fn(
+                    "new_session       = none (options: <name>, <path>, overwrite = true) (e.g. set new_session = rwa_analysis)"
+                )
+                return
             if self._cmd_new_session(new_session_val, output_fn, overwrite=is_overwrite_flag):
                 rec = f"set new_session = {new_session_val}" + (", overwrite = true" if is_overwrite_flag else "")
                 self._record_history(rec)
 
         # 2. Handle load_session (loading existing session in-place from CWD or path)
         elif load_session_val is not None:
-            raw_path = load_session_val.strip("'\"")
+            raw_path = load_session_val.strip().strip("'\"")
             if not raw_path:
-                output_fn('load_session      = (options: <name>, <path>) (e.g. set load_session = rwa_analysis)')
+                output_fn(
+                    "load_session      = none (options: <name>, <path>) (e.g. set load_session = rwa_analysis)"
+                )
                 return
 
             from pytae.cli_parsing import normalize_session_path
@@ -4209,7 +4221,13 @@ class PytaeRepl:
 
         # 3. Handle save_session / copy_session / move_session alone
         elif save_session_val is not None or copy_session_val is not None or move_session_val is not None:
-            target_save = save_session_val or copy_session_val or move_session_val
+            target_save = (save_session_val or copy_session_val or move_session_val or "").strip().strip("'\"")
+            if not target_save:
+                sess_name = self.session_name or "none"
+                output_fn(
+                    f"save_session      = {sess_name} (options: <name>, <path>, move = true, overwrite = true)"
+                )
+                return
             is_move = is_move_flag or (move_session_val is not None)
             if session_dir_val is not None and target_dir:
                 target_save = str(target_dir / target_save)

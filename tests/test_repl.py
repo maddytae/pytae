@@ -3240,9 +3240,9 @@ def test_repl_set_display_and_custom_settings():
     # 1. Bare 'set' lists all new proposal settings
     r.execute_line("set", output_fn=outputs.append)
     set_text = "\n".join(outputs)
-    assert "new_session       =" in set_text
-    assert "load_session      =" in set_text
-    assert "save_session      =" in set_text
+    assert "new_session       = none (options: <name>, <path>, overwrite = true)" in set_text
+    assert "load_session      = none (options: <name>, <path>)" in set_text
+    assert "save_session      = none (options: <name>, <path>, move = true, overwrite = true)" in set_text
     assert "checkpoint_format =" in set_text
     assert "save_code         =" in set_text
     assert "max_rows          = 10" in set_text
