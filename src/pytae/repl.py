@@ -578,22 +578,70 @@ def _win_console_input(
     sys.stdout.write(prompt_text)
     sys.stdout.flush()
 
+    import shutil
+
     line_chars: list[str] = []
     cursor_pos = 0
     hist_idx = len(history)
     draft = ""
-    last_rendered_len = 0
+    prev_c_row = 0
+    prev_total_rows = 0
+
+    def calc_pos(prompt: str, chars: list[str], cur_pos: int, width: int) -> tuple[int, int, int, int]:
+        clean_prompt = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", prompt)
+        full = clean_prompt + "".join(chars)
+        target_idx = len(clean_prompt) + cur_pos
+        row = 0
+        col = 0
+        c_row = 0
+        c_col = 0
+        for i, ch_item in enumerate(full):
+            if i == target_idx:
+                c_row = row
+                c_col = col
+            if ch_item == "\n":
+                row += 1
+                col = 0
+            else:
+                col += 1
+                if col >= width:
+                    row += 1
+                    col = 0
+        if target_idx >= len(full):
+            c_row = row
+            c_col = col
+        return c_row, c_col, row, col
 
     def render() -> None:
-        nonlocal last_rendered_len
+        nonlocal prev_c_row, prev_total_rows
+        width = max(20, shutil.get_terminal_size((80, 24)).columns or 80)
         text = "".join(line_chars)
-        pad = max(0, last_rendered_len - len(text))
-        sys.stdout.write("\r" + prompt_text + text + (" " * pad))
-        backtrack = pad + (len(text) - cursor_pos)
-        if backtrack > 0:
-            sys.stdout.write("\b" * backtrack)
+        c_row, c_col, total_rows, _ = calc_pos(prompt_text, line_chars, cursor_pos, width)
+
+        # Move cursor from previous cursor row back to prompt start (Row 0, Col 0)
+        if prev_c_row > 0:
+            sys.stdout.write(f"\x1b[{prev_c_row}A\r")
+        else:
+            sys.stdout.write("\r")
+
+        # Write prompt and text
+        sys.stdout.write(prompt_text + text)
+
+        # Clear remaining screen if previous text occupied more rows or trailing cols
+        if prev_total_rows > total_rows:
+            sys.stdout.write("\x1b[J")
+        else:
+            sys.stdout.write("\x1b[K")
+
+        # Move cursor from bottom (total_rows) up to target row (c_row) and column (c_col)
+        row_up = total_rows - c_row
+        if row_up > 0:
+            sys.stdout.write(f"\x1b[{row_up}A")
+        sys.stdout.write(f"\x1b[{c_col + 1}G")
         sys.stdout.flush()
-        last_rendered_len = len(text)
+
+        prev_c_row = c_row
+        prev_total_rows = total_rows
 
     while True:
         try:
@@ -612,68 +660,6 @@ def _win_console_input(
         elif ch == "\x1b":
             # ANSI escape sequence from terminal emulators (e.g. Git Bash, Windows Terminal)
             seq = ""
-            try:
-                import time
-
-                if has_input_fn is not None:
-                    for _ in range(8):
-                        if has_input_fn():
-                            seq += read_char_fn()
-                            if seq in (
-                                "[A",
-                                "OA",
-                                "[B",
-                                "OB",
-                                "[C",
-                                "OC",
-                                "[D",
-                                "OD",
-                                "[H",
-                                "OH",
-                                "[F",
-                                "OF",
-                                "[3~",
-                                "[1~",
-                                "[4~",
-                                "[7~",
-                                "[8~",
-                            ):
-                                break
-                        else:
-                            time.sleep(0.002)
-                            if has_input_fn():
-                                seq += read_char_fn()
-                            else:
-                                break
-                else:
-                    for _ in range(4):
-                        try:
-                            seq += read_char_fn()
-                            if seq in (
-                                "[A",
-                                "OA",
-                                "[B",
-                                "OB",
-                                "[C",
-                                "OC",
-                                "[D",
-                                "OD",
-                                "[H",
-                                "OH",
-                                "[F",
-                                "OF",
-                                "[3~",
-                                "[1~",
-                                "[4~",
-                                "[7~",
-                                "[8~",
-                            ):
-                                break
-                        except Exception:
-                            break
-            except Exception:
-                pass
-
             ansi_map = {
                 "[A": "H",
                 "OA": "H",  # Up arrow
@@ -687,10 +673,14 @@ def _win_console_input(
                 "OH": "G",
                 "[1~": "G",
                 "[7~": "G",  # Home
+                "[1;5H": "G",
+                "[1;3H": "G",
                 "[F": "O",
                 "OF": "O",
                 "[4~": "O",
                 "[8~": "O",  # End
+                "[1;5F": "O",
+                "[1;3F": "O",
                 "[3~": "S",  # Delete
                 "[1;5D": "word_prev",
                 "[1;3D": "word_prev",
@@ -699,6 +689,34 @@ def _win_console_input(
                 "[1;3C": "word_next",
                 "[5C": "word_next",
             }
+            try:
+                import time
+
+                if has_input_fn is not None:
+                    for _ in range(8):
+                        if has_input_fn():
+                            seq += read_char_fn()
+                            if seq in ansi_map:
+                                break
+                        else:
+                            time.sleep(0.002)
+                            if has_input_fn():
+                                seq += read_char_fn()
+                                if seq in ansi_map:
+                                    break
+                            else:
+                                break
+                else:
+                    for _ in range(8):
+                        try:
+                            seq += read_char_fn()
+                            if seq in ansi_map:
+                                break
+                        except Exception:
+                            break
+            except Exception:
+                pass
+
             if seq in ansi_map:
                 code = ansi_map[seq]
             elif not seq:
@@ -732,13 +750,11 @@ def _win_console_input(
             elif code == "K":  # Left arrow
                 if cursor_pos > 0:
                     cursor_pos -= 1
-                    sys.stdout.write("\b")
-                    sys.stdout.flush()
+                    render()
             elif code == "M":  # Right arrow
                 if cursor_pos < len(line_chars):
-                    sys.stdout.write(line_chars[cursor_pos])
                     cursor_pos += 1
-                    sys.stdout.flush()
+                    render()
             elif code == "G":  # Home
                 if cursor_pos > 0:
                     cursor_pos = 0
@@ -768,6 +784,9 @@ def _win_console_input(
                         cursor_pos += 1
                     render()
         elif ch in ("\r", "\n"):
+            row_down = prev_total_rows - prev_c_row
+            if row_down > 0:
+                sys.stdout.write(f"\x1b[{row_down}B")
             sys.stdout.write("\n")
             sys.stdout.flush()
             return "".join(line_chars)
@@ -805,10 +824,16 @@ def _win_console_input(
                 line_chars.pop(cursor_pos)
                 render()
         elif ch == "\x03":  # Ctrl+C
+            row_down = prev_total_rows - prev_c_row
+            if row_down > 0:
+                sys.stdout.write(f"\x1b[{row_down}B")
             sys.stdout.write("\n")
             sys.stdout.flush()
             raise KeyboardInterrupt
         elif ch in ("\x04", "\x1a"):  # Ctrl+D or Ctrl+Z
+            row_down = prev_total_rows - prev_c_row
+            if row_down > 0:
+                sys.stdout.write(f"\x1b[{row_down}B")
             sys.stdout.write("\n")
             sys.stdout.flush()
             if not line_chars:
@@ -877,7 +902,8 @@ def _win_console_input(
                         sys.stdout.write("  " + "".join(m.ljust(col_width) for m in row_items).rstrip() + "\n")
                     if len(matches) > 40:
                         sys.stdout.write(f"  ... and {len(matches) - 40} more\n")
-                    last_rendered_len = 0
+                    prev_c_row = 0
+                    prev_total_rows = 0
                     render()
         elif ch >= " ":  # Printable character
             line_chars.insert(cursor_pos, ch)
