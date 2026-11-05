@@ -25736,7 +25736,7 @@ Running `set` with no arguments displays all current configuration values and av
 pytae> set
 new_session       = (options: <name>, <path>) (e.g. set new_session = rwa_analysis)
 load_session      = (options: <name>, <path>) (e.g. set load_session = rwa_analysis)
-save_session      = none (options: <name>, <path>, move = true)
+save_session      = none (options: <name>, <path>, move = true, overwrite = true)
 checkpoint_format = ipc (options: ipc, parquet)
 save_code         = none (options: <path>, none)
 max_rows          = 10 (options: <int>, default)
@@ -25798,7 +25798,14 @@ Saved session 'my_lab' to '/Users/username/my_analysis/my_lab_backup'.
 # Relocate (move) active session directory to new path
 pytae:my_lab> set save_session = /Volumes/ExternalSSD/my_lab, move = true
 Relocated session to '/Volumes/ExternalSSD/my_lab'.
+
+# Safely replace an existing session directory with a clean slate
+pytae:my_lab> set save_session = my_lab_backup, overwrite = true
+Overwrote existing session 'my_lab_backup' at '/Users/username/my_analysis/my_lab_backup'.
 ```
+
+> [!NOTE]
+> If the destination session already exists at that path, Pytae requires `overwrite = true` (or `session save <name> -overwrite`) to prevent accidental destruction of existing session work. Overwriting completely clears stale ghost checkpoints from the destination. Saving within the current active session does not require `overwrite = true`.
 
 ### Checkpoint Storage Format (`set checkpoint_format = parquet|ipc`, `convert = all`)
 

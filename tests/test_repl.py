@@ -4485,6 +4485,74 @@ def test_repl_new_session_preserves_loaded_tables(tmp_path, monkeypatch):
     r.close()
 
 
+def test_repl_save_session_overwrite_protection(tmp_path, monkeypatch):
+    """Verify that saving to an existing different session requires overwrite = true and purges ghost checkpoints."""
+    from pytae.repl import PytaeRepl, set_sessions_dir
+
+    set_sessions_dir(None)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("PYTAE_SESSIONS_DIR", raising=False)
+
+    outputs: list[str] = []
+    r1 = PytaeRepl()
+    r1.execute_line("set new_session = target_sess", output_fn=outputs.append)
+    r1.execute_line("df = sample:penguins", output_fn=outputs.append)
+    r1.execute_line("checkpoint cp_old1", output_fn=outputs.append)
+    r1.execute_line("checkpoint cp_old2", output_fn=outputs.append)
+    r1.close()
+
+    assert (tmp_path / "target_sess" / "checkpoints" / "cp_old1").exists()
+    assert (tmp_path / "target_sess" / "checkpoints" / "cp_old2").exists()
+
+    # Now in another ephemeral session, try to save to target_sess without overwrite
+    r2 = PytaeRepl()
+    r2.execute_line("df = sample:tips", output_fn=outputs.append)
+    r2.execute_line("checkpoint cp_new", output_fn=outputs.append)
+
+    outputs.clear()
+    r2.execute_line("set save_session = target_sess", output_fn=outputs.append)
+    # MUST reject with collision warning!
+    assert any("already exists" in o for o in outputs)
+    assert any("overwrite = true" in o for o in outputs)
+    assert r2.session_name is None  # Not switched because save was rejected
+
+    # Now with overwrite = true
+    outputs.clear()
+    r2.execute_line("set save_session = target_sess, overwrite = true", output_fn=outputs.append)
+    assert any("Overwrote existing session 'target_sess'" in o for o in outputs)
+    assert r2.session_name == "target_sess"
+
+    # Ghost checkpoints cp_old1 and cp_old2 MUST be gone!
+    assert not (tmp_path / "target_sess" / "checkpoints" / "cp_old1").exists()
+    assert not (tmp_path / "target_sess" / "checkpoints" / "cp_old2").exists()
+    # New checkpoint cp_new MUST be present!
+    assert (tmp_path / "target_sess" / "checkpoints" / "cp_new").exists()
+
+    # Saving within current active session does NOT require overwrite = true
+    outputs.clear()
+    r2.execute_line("checkpoint cp_new2", output_fn=outputs.append)
+    r2.execute_line("set save_session = target_sess", output_fn=outputs.append)
+    assert any("Session saved as 'target_sess'" in o for o in outputs)
+    assert (tmp_path / "target_sess" / "checkpoints" / "cp_new2").exists()
+    r2.close()
+
+    # Test session save -overwrite CLI flag syntax
+    r3 = PytaeRepl()
+    r3.execute_line("df = sample:iris", output_fn=outputs.append)
+    r3.execute_line("checkpoint cp_iris", output_fn=outputs.append)
+    outputs.clear()
+    r3.execute_line("session save target_sess", output_fn=outputs.append)
+    assert any("already exists" in o for o in outputs)
+
+    outputs.clear()
+    r3.execute_line("session save target_sess -overwrite", output_fn=outputs.append)
+    assert any("Overwrote existing session 'target_sess'" in o for o in outputs)
+    assert (tmp_path / "target_sess" / "checkpoints" / "cp_iris").exists()
+    assert not (tmp_path / "target_sess" / "checkpoints" / "cp_new").exists()
+    r3.close()
+
+
+
 
 
 
