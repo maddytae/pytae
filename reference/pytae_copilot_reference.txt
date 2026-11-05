@@ -24788,7 +24788,7 @@ pytae> sessions
 
 # Inside the REPL prompt:
 # 1. State Management & Checkpoints
-status tables [-v]   # List all tables loaded in memory with row/col counts (-v for cols & RAM)
+status table [-v]    # Inspect active table and list all loaded tables (-v for cols & RAM)
 use orders           # Switch active dataset cursor to 'orders'
 rename df1 customers # Zero-copy O(1) in-memory table rename
 diff df1 df2         # Compare two tables or active dataset against target (or checkpoint)
@@ -24804,7 +24804,7 @@ set new_session = lab1 # Start or bind persistent session in current working dir
 set load_session = lab1 # Load persistent session and restore its latest checkpoint
 set save_session = backup # Save/clone session to new directory (optional: move = true)
 set save_code = pipeline.txt # Auto-save clean reproducible pipeline script on exit
-status checkpoints   # List saved checkpoints and snapshots (optional -v for files & disk size)
+status checkpoint    # List saved checkpoints and snapshots (optional -v for files & disk size)
 status table <name>  # Inspect specific table shape and memory (-v for column dtypes)
 rm table orders      # Remove specific table from memory and free RAM (or rm table *)
 clear                # Clear the terminal screen
@@ -24878,7 +24878,7 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
   - [Glob Ingestion](#glob-ingestion)
   - [Sample Datasets (`sample:<name>`)](#sample-datasets-samplename)
 - [Multi-Table Workbench Operations](#multi-table-workbench-operations)
-  - [Listing Tables (`status tables`)](#listing-tables-status-tables-status-tables--v)
+  - [Listing Tables (`status table`)](#listing-tables-status-table-status-table--v)
   - [Switching Active Tables (`use <name>`)](#switching-active-tables-use-name)
   - [Renaming Tables (`rename <old> <new>`)](#renaming-tables-rename-old-new)
   - [Subject-First Execution (`<tbl> -<cmd>`)](#subject-first-execution-tbl--cmd)
@@ -24902,7 +24902,7 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
   - [Supported Types & Safety Guarantees](#supported-types--safety-guarantees)
   - [Inspection & Key Traversal (`@var`, `@var.key`, `@var[idx]`)](#inspection--key-traversal-var-varkey-varidx)
   - [Using Variables in Pipelines (`-filter`, `-mutate`, `-sql`)](#using-variables-in-pipelines--filter--mutate--sql)
-  - [Inspecting and Removing Variables (`status vars`, `rm var`)](#inspecting-and-removing-variables-status-vars-rm-var)
+  - [Inspecting and Removing Variables (`status var`, `rm var`)](#inspecting-and-removing-variables-status-var-rm-var)
   - [Checkpoint & Session Persistence (`vars.json`)](#checkpoint--session-persistence-varsjson)
   - [Namespace Isolation & Collision Prevention](#namespace-isolation--collision-prevention)
 - [Tab Autocompletion & Navigation](#tab-autocompletion--navigation)
@@ -24915,7 +24915,7 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
   - [In-REPL History Audit Log (`history`)](#in-repl-history-audit-log-history)
 - [Checkpoints (Disk-Backed & RAM-Isolated)](#checkpoints-disk-backed--ram-isolated)
   - [Saving Checkpoints (`checkpoint <name>`)](#saving-checkpoints-checkpoint-name)
-  - [Listing & Deleting Checkpoints (`status checkpoints`, `rm checkpoint`)](#listing--deleting-checkpoints-status-checkpoints-rm-checkpoint)
+  - [Listing & Deleting Checkpoints (`status checkpoint`, `rm checkpoint`)](#listing--deleting-checkpoints-status-checkpoint-rm-checkpoint)
   - [Restoring Entire Workbench (`restore <name>`)](#restoring-entire-workbench-restore-name)
   - [Reloading After `rm *` via `restore <name>`](#reloading-after-rm--via-restore-name)
 - [Persistent REPL Sessions](#persistent-repl-sessions)
@@ -25051,19 +25051,24 @@ Available bundled samples: `penguins`, `iris`, `tips`, `titanic`, `diamonds`, `f
 
 ## Multi-Table Workbench Operations
 
-### Listing Tables (`status tables`, `status tables -v`)
-View all active datasets in memory, their shapes, and source files:
+### Listing Tables (`status table`, `status table -v`)
+View active dataset details and all loaded tables in memory, their shapes, and source files:
 
 ```text
-pytae [orders, cust]> status tables
+pytae [orders, cust]> status table
+Table          : orders (orders.parquet) [active]
+Shape          : 100,000 rows x 6 columns
+Table memory   : ~14.20 MB
+Status         : active
+
 Loaded Tables (2):
  * orders      : 100,000 rows x 6 cols (orders.parquet) [active]
    cust        : 15,000 rows x 5 cols (customers.csv)
 ```
 
-Use `status tables -v` to inspect column lists and per-table memory footprint:
+Use `status table -v` to inspect column lists and per-table memory footprint:
 ```text
-pytae [orders, cust]> status tables -v
+pytae [orders, cust]> status table -v
 Loaded Tables (2):
  * orders      : 100,000 rows x 6 cols (~14.20 MB) (orders.parquet) [active]
        Columns (6): order_id, customer_id, order_date, amount, status, items
@@ -25073,7 +25078,7 @@ Total Tables: ~15.32 MB | Process RAM: ~128.5 MB
 ```
 
 > [!NOTE]
-> Bare `tables` is disabled in favor of the unified `status tables` hierarchy.
+> Bare `tables` is disabled in favor of the singular `status table` command.
 
 ### Switching Active Tables (`use <name>`)
 Switch the active cursor to another table using `use <name>` (e.g. `use orders`, `use df`, `use cust`):
@@ -25359,7 +25364,7 @@ pytae> @cfg.limits.depth
 If an undefined variable or key is referenced, Pytae prints an informative error:
 ```text
 pytae> @unknown
-pytae: variable '@unknown' is not defined. Use 'status vars' to view defined variables.
+pytae: variable '@unknown' is not defined. Use 'status var' to view defined variables.
 ```
 
 ### Using Variables in Pipelines (`-filter`, `-mutate`, `-sql`)
@@ -25383,20 +25388,20 @@ pytae [df: 344x7]> df = -mutate "kg = body_mass_g / @factor"
 pytae [df: 344x7]> -sql "SELECT species, AVG(body_mass_g) as avg_mass FROM df WHERE body_mass_g > @min_mass GROUP BY 1"
 ```
 
-### Inspecting and Removing Variables (`status vars`, `rm var`)
+### Inspecting and Removing Variables (`status var`, `rm var`)
 
-#### Listing Variables (`status vars`)
+#### Listing Variables (`status var`)
 ```text
-pytae> status vars
+pytae> status var
 Session Variables (3):
   * @min_mass         : 3500 (int)
   * @target_species   : ['Gentoo', 'Adelie'] (list)
   * @cfg              : {'min_mass': 3200, 'island': 'Biscoe'} (dict)
 ```
 
-Use `status vars -v` for verbose metadata including the raw formatted JSON output:
+Use `status var -v` for verbose metadata including the raw formatted JSON output:
 ```text
-pytae> status vars -v
+pytae> status var -v
 Session Variables (3):
   * @min_mass         : 3500 (int)
   * @target_species   : ['Gentoo', 'Adelie'] (list)
@@ -25507,10 +25512,9 @@ Running bare `status` lists the available inspection categories:
 pytae> status
 pytae: please specify a status category to inspect:
   - status session [path] [-v] : Inspect active session or a session on disk
-  - status table [name] [-v]   : Inspect active table or a specific table schema
-  - status tables [-v]         : View inventory of all loaded in-memory tables
-  - status checkpoint [name]   : Inspect checkpoint snapshot and frozen tables
-  - status checkpoints [-v]    : View inventory of all saved checkpoints
+  - status table [name] [-v]   : Inspect active table schema or loaded table inventory
+  - status checkpoint [name]   : Inspect saved checkpoints or checkpoint details
+  - status var [name] [-v]     : Inspect session variables, parameters and constants
 ```
 
 Inspect active table dimensions, memory footprint, and process status:
@@ -25605,7 +25609,7 @@ Saved checkpoint 'baseline' (2 tables: orders, cust).
 - **Default Storage Location (Ephemeral Mode)**:
   When running `pytae -i` without binding to a named session, checkpoints are written to an isolated, secure OS temporary folder (e.g. `/tmp/pytae_cp_xxxxxx/` or `$TMPDIR/pytae_cp_xxxxxx/` on macOS/Linux, `%TEMP%\pytae_cp_xxxxxx\` on Windows).
   - **Automatic Cleanup**: When you exit or close the REPL, the temporary checkpoint folder is automatically purged from disk, leaving zero lingering files on your machine.
-  - **Inspect Location**: Run `status checkpoints -v` anytime to inspect the exact temporary directory path and on-disk byte sizes.
+  - **Inspect Location**: Run `status checkpoint -v` anytime to inspect the exact temporary directory path and on-disk byte sizes.
 - **Mid-Session Promotion**:
   If you start in ephemeral mode, save several checkpoints, and decide you want to keep them permanently, simply bind a session name:
   ```text
@@ -25614,16 +25618,16 @@ Saved checkpoint 'baseline' (2 tables: orders, cust).
   Pytae immediately promotes all existing temporary checkpoints into `./my_permanent_project/` (or your target path) while keeping all in-memory tables loaded.
 - **Milestone Established**: Creating a checkpoint frees intermediate memory while establishing a safe restore point.
 
-### Listing & Deleting Checkpoints (`status checkpoints`, `rm checkpoint`)
+### Listing & Deleting Checkpoints (`status checkpoint`, `rm checkpoint`)
 ```text
 # List all checkpoints and their constituent tables
-pytae> status checkpoints
+pytae> status checkpoint
 Saved Checkpoints (2):
   - baseline       : orders (100,000x6), cust (15,000x5) [active: cust]
   - cleaned        : orders (82,000x6) [active: orders] [parquet]
 
 # Detailed snapshot file listing
-pytae> status checkpoints -v
+pytae> status checkpoint -v
 
 # Delete a single checkpoint from disk
 pytae> rm checkpoint cleaned
@@ -26028,7 +26032,7 @@ The Pytae REPL provides context-aware autocompletion via standard `readline`:
 | **Ingestion** | Assignment | `df1 = orders.parquet [-nrows 1000]` | Load file into named table variable | Yes |
 | | `load` | `load sales.csv as df2 -dlim ";"` | Load file with alias and reader options | Yes |
 | | Samples | `df = sample:penguins` | Load bundled sample dataset | Yes |
-| **Tables** | `status tables` | `status tables [-v]` | List loaded tables, shapes, and sources | No |
+| **Tables** | `status table` | `status table [-v]` | List loaded tables, shapes, and sources | No |
 | | Bare name | `df1` | Display table dimensions without switching cursor | No |
 | | `use` | `use df1` | Switch active dataset | Yes (active) |
 | | `rename` | `rename df1 customers` | Zero-copy $O(1)$ in-memory table rename | Yes |
@@ -26059,7 +26063,7 @@ The Pytae REPL provides context-aware autocompletion via standard `readline`:
 | | `history` | `history [N]` | Display numbered audit log of session commands | No |
 | **Checkpoints** | `checkpoint` | `checkpoint <name>` | Save snapshot to disk (0 MB RAM) | No |
 | | `restore` | `restore <name>` | Restore workbench to named checkpoint | Yes |
-| | `status checkpoints` | `status checkpoints [-v]` | List all saved checkpoints on disk | No |
+| | `status checkpoint` | `status checkpoint [-v]` | List all saved checkpoints on disk | No |
 | | `rm checkpoint` | `rm checkpoint <name>`, `rm checkpoint *` | Delete checkpoint(s) from disk | No |
 | | `set` | `set checkpoint_format = parquet` | Set format to `parquet` or `ipc` | No |
 | **Sessions** | `status session` | `status session [-v]` | Display persistent session name and path | No |
@@ -26144,12 +26148,13 @@ pytae> set save_code = pipeline.txt
 - **`status session`**: Displays active session name, disk path, number of checkpoints, session logs, and process RAM. Add `-v` for configuration flags.
 - **`status table`**: Displays the active dataset, dimensions, memory footprint, and active status. Add `-v` to show column schema and data types.
 
-#### Q: Why are bare `tables` and `checkpoints` rejected?
-In accordance with Pytae's *"One Obvious Way"* philosophy:
+#### Q: Why are bare `tables`, `checkpoints`, and `vars` rejected?
+In accordance with Pytae's *"One Obvious Way"* philosophy and strict singular category hierarchy:
 - Inspection is unified under the `status` command family:
-  - `status tables` (or `status tables -v` for columns and RAM totals).
-  - `status checkpoints` (or `status checkpoints -v` for disk bytes and file paths).
+  - `status table` (or `status table -v` for loaded table inventory, columns, and RAM totals).
+  - `status checkpoint` (or `status checkpoint -v` for saved checkpoints, disk bytes, and file paths).
   - `status table df1` (or `status table df1 -v` for schema).
+  - `status var` (or `status var -v` for variables, parameters, and constants).
   - `status session` (or `status session -v` for logs and settings).
 
 ---

@@ -968,7 +968,7 @@ To inspect specific commands or flags, type '-help <topic>' (e.g. -help restore,
 Quick Start:
   df = sample:penguins           Load built-in sample (penguins, tips, titanic)
   df = orders.parquet            Load local dataset (Parquet, CSV, IPC, Excel)
-  status tables                  List all loaded tables in memory and RAM footprint
+  status table                   List all loaded tables in memory and RAM footprint
   exit                           Exit REPL (or 'exit -s' to save session commands)
 
 Tip: Press [Tab] to autocomplete table names, columns, commands, and flags.
@@ -984,7 +984,7 @@ To inspect specific commands or flags, type '-help <topic>' (e.g. -help restore,
 
 Quick Start:
   -head 10                       Preview active dataset
-  status tables                  List all loaded tables in memory and RAM footprint
+  status table                   List all loaded tables in memory and RAM footprint
   exit                           Exit REPL (or 'exit -s' to save session commands)
 
 Tip: Press [Tab] to autocomplete table names, columns, commands, and flags.
@@ -998,7 +998,7 @@ REPL_HELP = """\
 DATASET INGEST & MANAGEMENT:
   <var> = <path> [options]: Load dataset into named table (e.g. df = data.parquet)
   load <path> as <var>... : Load dataset with alias and options (-encoding, -dlim, -nrows)
-  status tables [-v]     : List all loaded datasets in memory with row/col counts and RAM
+  status table [name] [-v] : Inspect active table or loaded table inventory with RAM
   use <name>             : Switch active dataset (e.g. use df, use orders)
   rename <old> <new>     : Rename in-memory table (zero-copy alias reassignment)
   rm table <table_name>  : Remove in-memory table (e.g. rm table df1, or rm table *)
@@ -1034,14 +1034,15 @@ STATE & WORKBENCH:
   history [N]            : Show numbered audit log of all commands executed in session
   checkpoint <name>      : Save snapshot of entire workbench (all tables in session)
   restore <name>         : Restore entire workbench to saved checkpoint
-  checkpoints            : List saved checkpoints and their tables
+  status checkpoint [name] : Inspect checkpoint snapshot or list all saved checkpoints
   rm table <name>        : Delete an in-memory table (or 'rm table *')
   rm checkpoint <name>   : Delete a saved checkpoint (or 'rm checkpoint *')
   rm var <name>          : Delete a session variable (or 'rm var *')
-  set [key [= value]]    : Configure session & display settings (e.g. set session_name = proj, max_rows = 20, comma = on)
-  session                : Show persistent session status
-  session save <name>    : Persist workbench checkpoints to ~/.pytae/sessions/<name> (or custom sessions_dir)
-  session load <name>    : Load persistent session checkpoints from disk
+  set [key [= value]]    : Configure session & display settings (e.g. set save_session = proj, max_rows = 20, comma = on)
+  status session [path]  : Show persistent session status (or inspect external session)
+  set new_session = <nm> : Start a fresh persistent session from scratch
+  set save_session = <nm>: Persist active session checkpoints to disk (move=true, overwrite=true)
+  set load_session = <nm>: Load persistent session checkpoints from disk
   sessions [-v]          : List all saved persistent sessions on disk (-v for checkpoint & format details)
   clear                  : Clear the terminal screen
   exit [-s [path]]       : Exit REPL (optionally save session history to ./history.txt or <path>)
@@ -1050,7 +1051,7 @@ VARIABLES & PARAMETERS:
   <name> = <literal>     : Define scalar, list, or dict variable (e.g. min_mass = 3500, cfg = {"a": 1})
   @<name>                : Print value of variable (e.g. @min_mass, @cfg.a)
   @<name> in expressions : Reference variable in -filter / -mutate / -sql (e.g. -filter "mass > @min_mass")
-  status vars [-v]       : List all session variables and constants
+  status var [name] [-v] : List all session variables and constants (or inspect specific variable)
   rm var <name>          : Delete a session variable (or 'rm var *')
 
 QUERY & PYTHON EXPRESSIONS:
@@ -1273,7 +1274,7 @@ def _eval_var_reference(expr_str: str, variables: dict[str, Any]) -> Any:
 
     base = str(parts[0])
     if base not in variables:
-        raise KeyError(f"variable '@{base}' is not defined. Use 'status vars' to view defined variables.")
+        raise KeyError(f"variable '@{base}' is not defined. Use 'status var' to view defined variables.")
 
     val = variables[base]
     for p in parts[1:]:
@@ -2139,18 +2140,7 @@ class PytaeRepl:
 
         subcmd = tokens[0].lower()
         if subcmd == "save":
-            if len(tokens) < 2:
-                output_fn("Usage: session save <name> [-overwrite]")
-                return
-            target_tok = tokens[1].strip()
-            if any(c in target_tok for c in ("..", "\0")):
-                output_fn("pytae: invalid session name. Use alphanumeric characters, dashes, and underscores.")
-                return
-            overwrite = any(
-                t.lower() in ("-f", "--force", "-overwrite", "--overwrite", "overwrite=true", "force=true")
-                for t in tokens[2:]
-            )
-            self._cmd_session_save(tokens[1], output_fn, overwrite=overwrite)
+            output_fn("pytae: 'session save' is not supported. Use 'set save_session = <name|path>' instead.")
             return
 
         if subcmd == "load":
@@ -2177,7 +2167,7 @@ class PytaeRepl:
 
         output_fn(
             f"pytae: unknown session action '{subcmd}'. "
-            "Usage: session, session save <name>, or sessions (use 'set load_session = <path>' to load a session)"
+            "Usage: session or sessions (use 'set new_session = <name>', 'set save_session = <name>', or 'set load_session = <path>')"
         )
 
     def _cmd_new_session(self, target: str, output_fn: Callable[[str], None], overwrite: bool = False) -> bool:
@@ -2611,9 +2601,14 @@ class PytaeRepl:
             output_fn(f"pytae: bare '{first_lower}' is not recognized; use '-{first_lower}' (matching CLI syntax).")
             return True
 
-        # Tables list (disabled bare tables -> guide to status tables)
+        # Tables list (disabled bare tables -> guide to status table)
         if first_lower == "tables":
-            output_fn("pytae: bare 'tables' is not recognized; use 'status tables' (or 'status tables -v').")
+            output_fn("pytae: bare 'tables' is not recognized; use 'status table' (or 'status table -v').")
+            return True
+
+        # Variables list (disabled bare vars -> guide to status var)
+        if first_lower in ("vars", "variables"):
+            output_fn("pytae: bare 'vars' is not recognized; use 'status var' (or 'status var -v').")
             return True
 
         # Switch active dataset (`use <name>`)
@@ -2641,7 +2636,11 @@ class PytaeRepl:
 
             category = tokens[1].lower()
 
-            if category in ("var", "vars", "variable", "variables"):
+            if category in ("vars", "variables"):
+                output_fn("pytae: plural 'vars' is not recognized; use 'rm var <name>' or 'rm var *'.")
+                return True
+
+            if category == "var":
                 if len(tokens) < 3:
                     output_fn("Usage: rm var <name> or rm var *")
                     return True
@@ -2788,7 +2787,7 @@ class PytaeRepl:
 
             # If user entered bare `rm <target>` or `rm *` without category
             if category == "*":
-                output_fn("pytae: 'rm *' requires a category; use 'rm table *' to remove all tables or 'rm checkpoint *'.")
+                output_fn("pytae: 'rm *' requires a category; use 'rm table *', 'rm checkpoint *', or 'rm var *'.")
                 return True
 
             if self._resolve_table_name(tokens[1]) is not None or tokens[1] in self.tables:
@@ -2968,7 +2967,7 @@ class PytaeRepl:
             return True
 
         if first_lower == "checkpoints":
-            output_fn("pytae: bare 'checkpoints' is not recognized; use 'status checkpoints' (or 'status checkpoints -v').")
+            output_fn("pytae: bare 'checkpoints' is not recognized; use 'status checkpoint' (or 'status checkpoint -v').")
             return True
 
         # Load file as table
@@ -3436,11 +3435,9 @@ class PytaeRepl:
         if not target_args:
             output_fn("pytae: please specify a status category to inspect:")
             output_fn("  - status session [path] [-v] : Inspect active session or a session on disk")
-            output_fn("  - status table [name] [-v]   : Inspect active table or a specific table schema")
-            output_fn("  - status tables [-v]         : View inventory of all loaded in-memory tables")
-            output_fn("  - status checkpoint [name]   : Inspect checkpoint snapshot and frozen tables")
-            output_fn("  - status checkpoints [-v]    : View inventory of all saved checkpoints")
-            output_fn("  - status vars [-v]           : View session variables, parameters and constants")
+            output_fn("  - status table [name] [-v]   : Inspect active table schema or loaded table inventory")
+            output_fn("  - status checkpoint [name]   : Inspect saved checkpoints or checkpoint details")
+            output_fn("  - status var [name] [-v]     : Inspect session variables, parameters and constants")
             return
 
         raw_cat = target_args[0].lower()
@@ -3453,21 +3450,42 @@ class PytaeRepl:
             return
 
         cat = raw_cat
-        if cat in ("session", "sessions"):
+        if cat in ("tables",):
+            output_fn("pytae: plural 'tables' is not recognized; use 'status table' instead.")
+            return
+
+        if cat in ("checkpoints",):
+            output_fn("pytae: plural 'checkpoints' is not recognized; use 'status checkpoint' instead.")
+            return
+
+        if cat in ("vars", "variables"):
+            output_fn("pytae: plural 'vars' is not recognized; use 'status var' instead.")
+            return
+
+        if cat in ("sessions",):
+            output_fn("pytae: plural 'sessions' is not recognized; use 'status session' instead.")
+            return
+
+        if cat == "session":
             if len(target_args) > 1:
                 self._show_external_session_status(target_args[1], output_fn, verbose=verbose)
             else:
                 self._show_session_status(output_fn, verbose=verbose)
             return
 
-        if cat in ("tables", "table"):
+        if cat == "table":
             if len(target_args) == 1:
-                if cat == "table" and (self.current_df is not None or self.tables):
-                    target_tbl = self.path_str or (next(iter(self.tables.keys())) if self.tables else None)
-                    if target_tbl and target_tbl in self.tables:
-                        self._show_single_table_status(target_tbl, output_fn, verbose=verbose)
-                        return
-                self._cmd_list_tables(output_fn, verbose=verbose)
+                if not self.tables:
+                    output_fn(
+                        "No tables loaded in memory. Use '<var> = <path.parquet>' (e.g. df1 = orders.parquet) to load a table."
+                    )
+                    return
+                target_tbl = self.path_str or (next(iter(self.tables.keys())) if self.tables else None)
+                if target_tbl and target_tbl in self.tables:
+                    self._show_single_table_status(target_tbl, output_fn, verbose=verbose)
+                if len(self.tables) > 1:
+                    output_fn("")
+                    self._cmd_list_tables(output_fn, verbose=verbose)
                 return
             # Specific table: `status table <name>`
             tbl_name = target_args[1]
@@ -3479,12 +3497,8 @@ class PytaeRepl:
             self._show_single_table_status(resolved, output_fn, verbose=verbose)
             return
 
-        if cat in ("checkpoints", "checkpoint"):
+        if cat == "checkpoint":
             if len(target_args) == 1:
-                if cat == "checkpoint" and len(self.checkpoints) == 1:
-                    cp_name = next(iter(self.checkpoints.keys()))
-                    self._show_single_checkpoint_status(cp_name, output_fn, verbose=verbose)
-                    return
                 self._cmd_list_checkpoints(output_fn, verbose=verbose)
                 return
             # Specific checkpoint: `status checkpoint <name>`
@@ -3496,7 +3510,7 @@ class PytaeRepl:
             self._show_single_checkpoint_status(cp_name, output_fn, verbose=verbose)
             return
 
-        if cat in ("vars", "var", "variables", "variable"):
+        if cat == "var":
             if len(target_args) == 1:
                 if not self.variables:
                     output_fn("No variables defined in session workbench. Define one with '<name> = <val>' (e.g. min_mass = 3500).")
@@ -3532,7 +3546,7 @@ class PytaeRepl:
 
         output_fn(
             f"pytae: unrecognized status category '{target_args[0]}'. "
-            "Use 'status session [-v]', 'status table [name] [-v]', 'status tables [-v]', 'status checkpoints [-v]', or 'status vars [-v]'."
+            "Use 'status session [-v]', 'status table [name] [-v]', 'status checkpoint [name] [-v]', or 'status var [name] [-v]'."
         )
 
     def _cmd_reset(self, args: list[str], output_fn: Callable[[str], None]) -> None:
@@ -5549,12 +5563,9 @@ class PytaeRepl:
             opts = ["-v", "-verbose", "-ready"] + _get_saved_session_names()
             return [opt for opt in opts if opt.startswith(text)]
 
-        if first_token == "checkpoints":
-            return [opt for opt in ("-v", "-verbose") if opt.startswith(text)]
-
         if first_token == "session":
             if last_token == "session":
-                return [sub for sub in ("save", "list") if sub.startswith(text)]
+                return [sub for sub in ("list",) if sub.startswith(text)]
             if len(prefix_tokens) >= 2 and prefix_tokens[1].lower() in ("list", "ls"):
                 opts = ["-v", "-verbose", "-ready"] + _get_saved_session_names()
                 return [opt for opt in opts if opt.startswith(text)]
@@ -5593,35 +5604,32 @@ class PytaeRepl:
         if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "rm" and prefix_tokens[-1].lower() == "checkpoint":
             options = ["*"] + list(self.checkpoints.keys())
             return [c for c in options if c.startswith(text)]
-        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "rm" and prefix_tokens[-1].lower() in ("var", "vars"):
+        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "rm" and prefix_tokens[-1].lower() == "var":
             options = ["*"] + list(self.variables.keys())
             return [v for v in options if v.startswith(text)]
 
-        # Case 5b: 'status ' -> complete subcommands: session, tables, table, checkpoints, checkpoint, vars, var, -v
+        # Case 5b: 'status ' -> complete subcommands: session, table, checkpoint, var, -v
         if last_token == "status":
             return [
                 opt
                 for opt in (
                     "session",
                     "table",
-                    "tables",
                     "checkpoint",
-                    "checkpoints",
-                    "vars",
                     "var",
                     "-v",
                 )
                 if opt.startswith(text)
             ]
-        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "status" and prefix_tokens[-1].lower() in ("session", "sessions"):
+        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "status" and prefix_tokens[-1].lower() == "session":
             return [opt for opt in ("-v", "-verbose") if opt.startswith(text)]
-        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "status" and prefix_tokens[-1].lower() in ("table", "tables"):
+        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "status" and prefix_tokens[-1].lower() == "table":
             options = list(self.tables.keys()) + ["-v"]
             return [t for t in options if t.startswith(text)]
-        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "status" and prefix_tokens[-1].lower() in ("checkpoint", "checkpoints"):
+        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "status" and prefix_tokens[-1].lower() == "checkpoint":
             options = list(self.checkpoints.keys()) + ["-v"]
             return [c for c in options if c.startswith(text)]
-        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "status" and prefix_tokens[-1].lower() in ("var", "vars"):
+        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "status" and prefix_tokens[-1].lower() == "var":
             options = list(self.variables.keys()) + ["-v"]
             return [v for v in options if v.startswith(text)]
 

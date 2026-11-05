@@ -1245,8 +1245,8 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "set checkpoint_format = <ipc | parquet> : Set format for new checkpoints ('ipc' default, or 'parquet').",
             "set checkpoint_format = <fmt>, convert = all : Convert all existing session snapshots to <fmt>.",
             "restore <name> : Restore entire workbench to this checkpoint snapshot.",
+            "status checkpoint [-v] : List all saved checkpoints with timestamp and format.",
             "status checkpoint <name> [-v] : Inspect snapshot metadata, format, files, and frozen tables.",
-            "status checkpoints [-v] : List all saved checkpoints with timestamp and format.",
             "rm checkpoint <name> : Delete an individual checkpoint (or 'rm checkpoint *').",
         ],
         examples=[
@@ -1303,24 +1303,22 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     "status": KeywordHelp(
         name="status",
         flag="status <category> [-v]",
-        syntax="status [session [path] | table [name] | tables | checkpoint [name] | checkpoints] [-v]",
-        summary="Inspect REPL session status, storage location, loaded tables, or saved checkpoints.",
+        syntax="status [session [path] | table [name] | checkpoint [name] | var [name]] [-v]",
+        summary="Inspect REPL session status, storage location, loaded tables, checkpoints, or variables.",
         description=(
             "Central inspection command for REPL session and workbench state:\n"
             "- Bare 'status' or 'status -v': Directs to specific inspection categories.\n"
             "- 'status session [path] [-v]': Shows active session state, or inspects an external session directory on disk without loading it into memory.\n"
-            "- 'status table [name] [-v]': Displays table schema, shape, source, dtypes, and memory footprint.\n"
-            "- 'status tables [-v]': Displays inventory of all in-memory tables and their memory footprint.\n"
-            "- 'status checkpoint [name] [-v]': Displays snapshot metadata, storage formats, disk bytes, and frozen tables.\n"
-            "- 'status checkpoints [-v]': Lists all saved checkpoints."
+            "- 'status table [name] [-v]': Displays active table schema or inventory of all in-memory tables and memory footprint.\n"
+            "- 'status checkpoint [name] [-v]': Displays snapshot metadata, storage formats, disk bytes, or list of all saved checkpoints.\n"
+            "- 'status var [name] [-v]': Displays session variables, parameters, constants, and JSON breakdown."
         ),
         options=[
-            "status : Directs to specific status categories (session, table, checkpoints).",
+            "status : Directs to specific status categories (session, table, checkpoint, var).",
             "status session [path] [-v] : Current REPL session state or inspect an external session directory on disk.",
-            "status table [name] [-v] : Diagnostics and schema for active or named table.",
-            "status tables [-v] : Table inventory and per-table RAM consumption.",
-            "status checkpoints [-v] : Checkpoint history and format breakdown.",
-            "status checkpoint <name> [-v] : Details for a specific checkpoint snapshot.",
+            "status table [name] [-v] : Diagnostics, schema, and inventory of loaded tables.",
+            "status checkpoint [name] [-v] : Checkpoint history, format breakdown, and snapshot details.",
+            "status var [name] [-v] : Session variables inventory and value inspection.",
         ],
         examples=[
             "pytae -i  # Inside REPL: status session",
@@ -1441,7 +1439,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         examples=[
             "pytae -i  # Inside REPL: use df2",
-            "pytae -i  # Inside REPL: status tables",
+            "pytae -i  # Inside REPL: status table",
         ],
         see_also=["status", "load", "tables"],
     ),

@@ -391,7 +391,7 @@ pytae> sessions
 
 # Inside the REPL prompt:
 # 1. State Management & Checkpoints
-status tables [-v]   # List all tables loaded in memory with row/col counts (-v for cols & RAM)
+status table [-v]    # Inspect active table and list all loaded tables (-v for cols & RAM)
 use orders           # Switch active dataset cursor to 'orders'
 rename df1 customers # Zero-copy O(1) in-memory table rename
 diff df1 df2         # Compare two tables or active dataset against target (or checkpoint)
@@ -407,7 +407,7 @@ set new_session = lab1 # Start or bind persistent session in current working dir
 set load_session = lab1 # Load persistent session and restore its latest checkpoint
 set save_session = backup # Save/clone session to new directory (optional: move = true)
 set save_code = pipeline.txt # Auto-save clean reproducible pipeline script on exit
-status checkpoints   # List saved checkpoints and snapshots (optional -v for files & disk size)
+status checkpoint    # List saved checkpoints and snapshots (optional -v for files & disk size)
 status table <name>  # Inspect specific table shape and memory (-v for column dtypes)
 rm table orders      # Remove specific table from memory and free RAM (or rm table *)
 clear                # Clear the terminal screen

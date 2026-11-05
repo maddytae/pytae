@@ -143,8 +143,14 @@ def test_repl_status_vars_and_rm_var():
     r.execute_line("b = 'test'", output_fn=outputs.append)
     r.execute_line("c = [1, 2, 3]", output_fn=outputs.append)
 
+    # status vars is rejected (no plurals under the hood)
     outputs.clear()
     r.execute_line("status vars", output_fn=outputs.append)
+    assert "plural 'vars' is not recognized; use 'status var' instead" in outputs[-1]
+
+    # status var lists all session variables
+    outputs.clear()
+    r.execute_line("status var", output_fn=outputs.append)
     out_text = "\n".join(outputs)
     assert "@a" in out_text
     assert "@b" in out_text
@@ -157,9 +163,9 @@ def test_repl_status_vars_and_rm_var():
     assert "@a" in st_var_text
     assert "10" in st_var_text
 
-    # status vars -v
+    # status var -v
     outputs.clear()
-    r.execute_line("status vars -v", output_fn=outputs.append)
+    r.execute_line("status var -v", output_fn=outputs.append)
     out_v = "\n".join(outputs)
     assert '"a": 10' in out_v
 

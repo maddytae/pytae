@@ -636,21 +636,21 @@ def test_repl_strict_checkpoints_vs_tables_separation():
     # Bare 'checkpoints' and 'tables' are rejected with guidance
     outputs.clear()
     r.execute_line("checkpoints", output_fn=outputs.append)
-    assert "bare 'checkpoints' is not recognized; use 'status checkpoints'" in outputs[-1]
+    assert "bare 'checkpoints' is not recognized; use 'status checkpoint'" in outputs[-1]
 
     outputs.clear()
     r.execute_line("tables", output_fn=outputs.append)
-    assert "bare 'tables' is not recognized; use 'status tables'" in outputs[-1]
+    assert "bare 'tables' is not recognized; use 'status table'" in outputs[-1]
 
-    # 'status checkpoints' command lists ONLY saved checkpoints ('maddy'), not separate checkpoint entries for df1 or df2
+    # 'status checkpoint' command lists ONLY saved checkpoints ('maddy'), not separate checkpoint entries for df1 or df2
     outputs.clear()
-    r.execute_line("status checkpoints", output_fn=outputs.append)
+    r.execute_line("status checkpoint", output_fn=outputs.append)
     cp_text = "\n".join(outputs)
     assert "maddy" in cp_text
     assert "df1 (344x7)" in cp_text  # Shows the table summary inside checkpoint 'maddy'
-    # And 'maddy' is not a table in 'status tables' command
+    # And 'maddy' is not a table in 'status table' command
     outputs.clear()
-    r.execute_line("status tables", output_fn=outputs.append)
+    r.execute_line("status table", output_fn=outputs.append)
     tbl_text = "\n".join(outputs)
     assert "df1" in tbl_text
     assert "df2" in tbl_text
@@ -752,9 +752,9 @@ def test_repl_multi_table_session_and_checkpoints():
     assert "Loaded tips.parquet as 'df2' (244 rows x 7 cols)." in outputs[-1]
     assert repl._build_prompt() == "pytae [df1, df2]> "
 
-    # 3. List tables via status tables
+    # 3. List tables via status table
     outputs.clear()
-    repl.execute_line("status tables", output_fn=outputs.append)
+    repl.execute_line("status table", output_fn=outputs.append)
     tables_out = "\n".join(outputs)
     assert "Loaded Tables" in tables_out
     assert "df1" in tables_out and "(penguins.parquet)" in tables_out
@@ -767,9 +767,9 @@ def test_repl_multi_table_session_and_checkpoints():
     # Checkpoint should not change table prompt
     assert repl._build_prompt() == "pytae [df1, df2]> "
 
-    # 5. List checkpoints via status checkpoints
+    # 5. List checkpoints via status checkpoint
     outputs.clear()
-    repl.execute_line("status checkpoints", output_fn=outputs.append)
+    repl.execute_line("status checkpoint", output_fn=outputs.append)
     cps_out = "\n".join(outputs)
     assert "Saved Checkpoints" in cps_out
     assert "maddy" in cps_out and "df1 (344x7), df2 (244x7)" in cps_out
@@ -1643,9 +1643,14 @@ def test_repl_persistent_sessions_lifecycle(tmp_path, monkeypatch):
     r2.execute_line("sessions", output_fn=outputs.append)
     assert any("proj_x" in o for o in outputs)
 
-    # Test session save as another name (clone / fork)
+    # Verify session save throws error directing to set save_session
     outputs.clear()
     r2.execute_line("session save proj_y", output_fn=outputs.append)
+    assert "'session save' is not supported" in outputs[-1]
+
+    # Test set save_session as another name (clone / fork)
+    outputs.clear()
+    r2.execute_line("set save_session = proj_y", output_fn=outputs.append)
     assert "Session saved as 'proj_y'" in outputs[-1]
     assert (sess_dir / "proj_y" / "checkpoints" / "v1").exists()
 
@@ -2196,15 +2201,18 @@ def test_repl_session_copy_and_validation_errors(tmp_path, monkeypatch, sample_d
     r.execute_line("session", output_fn=outputs.append)
     assert any("No active session (ephemeral)" in o for o in outputs)
 
-    # Invalid session name rejected
+    # session save rejected with guidance (all session saving must be via set save_session)
+    outputs.clear()
+    r.execute_line("session save work1", output_fn=outputs.append)
+    assert any("'session save' is not supported" in o for o in outputs)
     outputs.clear()
     r.execute_line("session save ../bad", output_fn=outputs.append)
-    assert any("invalid session name" in o for o in outputs)
+    assert any("'session save' is not supported" in o for o in outputs)
 
     # Create checkpoint and save session
     r.execute_line("checkpoint cp1", output_fn=outputs.append)
     outputs.clear()
-    r.execute_line("session save work1", output_fn=outputs.append)
+    r.execute_line("set save_session = work1", output_fn=outputs.append)
     assert r.session_name == "work1"
     assert any("Session saved as 'work1'" in o for o in outputs)
 
@@ -2219,7 +2227,7 @@ def test_repl_session_copy_and_validation_errors(tmp_path, monkeypatch, sample_d
 
     # Save under a second session name (copies existing session checkpoints)
     outputs.clear()
-    r.execute_line("session save work2", output_fn=outputs.append)
+    r.execute_line("set save_session = work2", output_fn=outputs.append)
     assert r.session_name == "work2"
 
     # Verify session load throws error
@@ -2495,9 +2503,9 @@ def test_repl_set_checkpoint_format_parquet_and_ipc(tmp_path, monkeypatch):
     df1_pq = pl.read_parquet(pq_dir / "df1.parquet")
     assert df1_pq.shape == r.tables["df1"].shape
 
-    # 7. Check checkpoints listing displays format via status checkpoints
+    # 7. Check checkpoints listing displays format via status checkpoint
     outputs.clear()
-    r.execute_line("status checkpoints", output_fn=outputs.append)
+    r.execute_line("status checkpoint", output_fn=outputs.append)
     cps_text = "\n".join(outputs)
     assert "cp_ipc" in cps_text
     assert "cp_pq" in cps_text
@@ -3663,13 +3671,13 @@ def test_sessions_ready_filter_and_pattern_inspection(tmp_path):
         # Create 2 healthy sessions
         r1 = PytaeRepl()
         r1.execute_line("df = sample:penguins")
-        r1.execute_line("session save finance_audit")
+        r1.execute_line("set save_session = finance_audit")
         r1.execute_line("checkpoint cp1")
         r1.close()
 
         r2 = PytaeRepl()
         r2.execute_line("df = sample:tips")
-        r2.execute_line("session save water_analysis")
+        r2.execute_line("set save_session = water_analysis")
         r2.execute_line("checkpoint cp_water")
         r2.close()
 
@@ -3724,17 +3732,17 @@ def test_sessions_ready_filter_and_pattern_inspection(tmp_path):
         assert "finance_audit" in repl_pat
         assert "water_analysis" not in repl_pat
 
-        # 6. Checkpoints rich output in REPL via status checkpoints
+        # 6. Checkpoints rich output in REPL via status checkpoint
         r.execute_line(f'set session_load = "{sess_container / "finance_audit"}"')
         outputs.clear()
-        r.execute_line("status checkpoints", output_fn=outputs.append)
+        r.execute_line("status checkpoint", output_fn=outputs.append)
         cp_out = "\n".join(outputs)
         assert "cp1" in cp_out
         assert "[ipc]" in cp_out
         assert "344 rows x 7 cols" in cp_out
 
         outputs.clear()
-        r.execute_line("status checkpoints -v", output_fn=outputs.append)
+        r.execute_line("status checkpoint -v", output_fn=outputs.append)
         cp_v_out = "\n".join(outputs)
         assert "cp1" in cp_v_out
         assert "df.ipc" in cp_v_out
@@ -3829,26 +3837,25 @@ def test_repl_status_subcommands_and_verbose():
     assert "Settings      :" in st_v
     assert "Columns (" not in st_v  # Table columns belong to 'status table [name] -v'
 
-    # 4b. status table (with no name: shows active table df2 details)
+    # 4b. status table (with no name: shows active table df2 details and loaded tables inventory)
     outputs.clear()
     r.execute_line("status table", output_fn=outputs.append)
     st_act_tbl = "\n".join(outputs)
     assert "Table          : df2" in st_act_tbl
     assert "Shape          : 244 rows x 7 columns" in st_act_tbl
     assert "Status         : active" in st_act_tbl
+    assert "Loaded Tables (2):" in st_act_tbl
+    assert "df1" in st_act_tbl
+    assert "* df2" in st_act_tbl
 
-    # 5. status tables (shows table names, shapes, sources) - no column names
+    # 5. status tables is rejected (no plurals under the hood)
     outputs.clear()
     r.execute_line("status tables", output_fn=outputs.append)
-    st_tbl = "\n".join(outputs)
-    assert "Loaded Tables (2):" in st_tbl
-    assert "df1" in st_tbl
-    assert "* df2" in st_tbl
-    assert "Columns (" not in st_tbl
+    assert "plural 'tables' is not recognized; use 'status table' instead" in outputs[-1]
 
-    # 6. status tables -v (shows per-table columns and RAM totals)
+    # 6. status table -v (shows per-table columns and RAM totals)
     outputs.clear()
-    r.execute_line("status tables -v", output_fn=outputs.append)
+    r.execute_line("status table -v", output_fn=outputs.append)
     st_tbl_v = "\n".join(outputs)
     assert "Loaded Tables (2):" in st_tbl_v
     assert "Columns (7):" in st_tbl_v
@@ -3873,9 +3880,13 @@ def test_repl_status_subcommands_and_verbose():
     assert "species" in st_df1_v
     assert "island" in st_df1_v
 
-    # 9. status checkpoints
+    # 9. status checkpoints is rejected; status checkpoint lists checkpoints
     outputs.clear()
     r.execute_line("status checkpoints", output_fn=outputs.append)
+    assert "plural 'checkpoints' is not recognized; use 'status checkpoint' instead" in outputs[-1]
+
+    outputs.clear()
+    r.execute_line("status checkpoint", output_fn=outputs.append)
     st_cp = "\n".join(outputs)
     assert "Saved Checkpoints (1):" in st_cp
     assert "cp1" in st_cp
@@ -3898,11 +3909,11 @@ def test_repl_status_subcommands_and_verbose():
     # 12. Bare tables & checkpoints rejected with guidance
     outputs.clear()
     r.execute_line("tables", output_fn=outputs.append)
-    assert "bare 'tables' is not recognized; use 'status tables'" in outputs[-1]
+    assert "bare 'tables' is not recognized; use 'status table'" in outputs[-1]
 
     outputs.clear()
     r.execute_line("checkpoints", output_fn=outputs.append)
-    assert "bare 'checkpoints' is not recognized; use 'status checkpoints'" in outputs[-1]
+    assert "bare 'checkpoints' is not recognized; use 'status checkpoint'" in outputs[-1]
 
     r.close()
 
@@ -4536,16 +4547,16 @@ def test_repl_save_session_overwrite_protection(tmp_path, monkeypatch):
     assert (tmp_path / "target_sess" / "checkpoints" / "cp_new2").exists()
     r2.close()
 
-    # Test session save -overwrite CLI flag syntax
+    # Test session save rejection and set save_session overwrite
     r3 = PytaeRepl()
     r3.execute_line("df = sample:iris", output_fn=outputs.append)
     r3.execute_line("checkpoint cp_iris", output_fn=outputs.append)
     outputs.clear()
     r3.execute_line("session save target_sess", output_fn=outputs.append)
-    assert any("already exists" in o for o in outputs)
+    assert any("'session save' is not supported" in o for o in outputs)
 
     outputs.clear()
-    r3.execute_line("session save target_sess -overwrite", output_fn=outputs.append)
+    r3.execute_line("set save_session = target_sess, overwrite = true", output_fn=outputs.append)
     assert any("Overwrote existing session 'target_sess'" in o for o in outputs)
     assert (tmp_path / "target_sess" / "checkpoints" / "cp_iris").exists()
     assert not (tmp_path / "target_sess" / "checkpoints" / "cp_new").exists()
