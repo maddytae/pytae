@@ -1898,7 +1898,7 @@ def test_repl_sample_does_not_modify_original_df():
     r.close()
 
 
-def test_cli_rejects_dash_s_and_accepts_session(tmp_path, monkeypatch, capsys):
+def test_cli_rejects_dash_s_and_session_cli_flags(tmp_path, monkeypatch, capsys):
     sess_dir = tmp_path / "sessions"
     monkeypatch.setenv("PYTAE_SESSIONS_DIR", str(sess_dir))
 
@@ -1906,14 +1906,13 @@ def test_cli_rejects_dash_s_and_accepts_session(tmp_path, monkeypatch, capsys):
     with pytest.raises(SystemExit):
         cli.main(["-s", "analysis"])
     captured_err = capsys.readouterr()
-    assert "'-s' is not recognized; use '-session <name>' instead" in captured_err.err
+    assert "'-s' is not recognized; start REPL with 'pytae -i' and use 'set load_session = <name>' inside" in captured_err.err
 
-    # Test pytae -session is recognized and accepted
-    # Using -h alongside -session exits cleanly before entering REPL loop
+    # Test pytae -session is rejected directing to pytae -i
     with pytest.raises(SystemExit):
-        cli.main(["-session", "analysis", "-h"])
-    captured_out = capsys.readouterr()
-    assert "persistent REPL session name" in captured_out.out
+        cli.main(["-session", "analysis"])
+    captured_err = capsys.readouterr()
+    assert "'-session' has been removed; start REPL with 'pytae -i' and use 'set load_session = <name>' inside" in captured_err.err
 
 
 def test_repl_preview_by_default_and_assignment_mutation():

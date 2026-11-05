@@ -35,7 +35,6 @@ from pytae.readers import (
     scan_ndjson,
     scan_parquet,
 )
-from pytae.repl import repl
 from pytae.select import everything
 from pytae.validation import (
     DSLDiagnostic,
@@ -542,7 +541,6 @@ __all__ = [
     "clean_columns",
     "mask",
     "unmask",
-    "repl",
     "clear",
     "doc",
     "everything",

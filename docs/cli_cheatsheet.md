@@ -421,6 +421,9 @@ pytae> -select "species,island,mass_kg"
 pytae> -arrange "mass_kg desc"
 pytae> -cols asc                                             # Column names sorted alphabetically
 pytae> -cols | grep mass                                     # Pipe command output to shell utility
+# Multi-line continuation: pipelines with '\', SQL with quotes, dicts/lists with brackets, bare 'py' for blocks
+pytae> df = -filter "species == 'Gentoo'" \
+...   -mutate "kg = body_mass_g / 1000.0"
 
 # 3. Direct Query Engines & Export
 pytae> -sql "SELECT species, AVG(body_mass_g) FROM df GROUP BY 1" # Query loaded tables directly by name

@@ -185,7 +185,6 @@ _CLI_FLAGS = {
     "-plot",
     "-finalize",
     "-i",
-    "-session",
     "-sessions",
     "-ready",
     "-doc",
@@ -878,14 +877,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         help="launch interactive REPL shell with in-memory state, checkpoints, and instant query iteration",
     )
     parser.add_argument(
-        "-session",
-        dest="session",
-        type=str,
-        default=None,
-        metavar="NAME",
-        help="persistent REPL session name (saves checkpoints across restarts in ~/.pytae/sessions/<name> or configured sessions_dir)",
-    )
-    parser.add_argument(
         "-sessions",
         dest="list_sessions",
         action="store_true",
@@ -1021,7 +1012,11 @@ def main(argv: list[str] | None = None) -> int:
             ("-replace_values",),
             "'-replace_values' has been removed; use '-mutate' with map() or .str.replace() instead",
         ),
-        (("-s",), "'-s' is not recognized; use '-session <name>' instead"),
+        (
+            ("-session", "--session"),
+            "'-session' has been removed; start REPL with 'pytae -i' and use 'set load_session = <name>' inside",
+        ),
+        (("-s",), "'-s' is not recognized; start REPL with 'pytae -i' and use 'set load_session = <name>' inside"),
         (("-opt",), "'-opt' is not recognized; use '-opts' instead"),
     ]
     for aliases, msg in retired_redirects:
@@ -1138,7 +1133,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         from pytae.repl import repl
 
-        repl(session=getattr(args, "session", None))
+        repl()
         return 0
 
     if not raw_paths:

@@ -137,8 +137,8 @@ CHEATSHEET_TEXT = """\
 13. 💬 INTERACTIVE REPL SHELL (-i)
 --------------------------------------------------------------------------------
   pytae -i                                                        # Launch interactive REPL workbench
-  pytae -i -session my_session                                    # Launch persistent named session
   # Inside REPL session:
+  #   set load_session = name Load persistent named session
   #   df = data.parquet       Load dataset into active table
   #   df1 = "parts/*.parquet" Load globbed partitions into single table
   #   history [-s [path]]     Show session audit log or export to named file

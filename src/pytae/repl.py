@@ -1484,6 +1484,83 @@ def _parse_set_pairs(line: str) -> list[tuple[str, str]]:
     return []
 
 
+def _is_multiline_complete(buffer: str) -> bool:
+    """Return True if the accumulated input buffer is syntactically complete.
+
+    A buffer is considered incomplete (requiring continuation with prompt '... ') if:
+    1. The last non-whitespace character is a trailing backslash '\\'.
+    2. It contains an unclosed string quote (single, double, or triple quotes).
+    3. It contains unclosed brackets '()', '[]', or '{}'.
+    """
+    stripped = buffer.rstrip()
+    if not stripped:
+        return True
+
+    # 1. Trailing backslash means explicit line continuation
+    if stripped.endswith("\\"):
+        return False
+
+    # 2. Track quotes and brackets
+    in_single_quote = False
+    in_double_quote = False
+    in_triple_single = False
+    in_triple_double = False
+    escaped = False
+    bracket_depth = 0
+
+    i = 0
+    n = len(buffer)
+    while i < n:
+        c = buffer[i]
+        if escaped:
+            escaped = False
+            i += 1
+            continue
+
+        if c == "\\":
+            escaped = True
+            i += 1
+            continue
+
+        # Check for triple quotes if not already inside single/double quotes
+        if not (in_single_quote or in_double_quote):
+            if buffer[i : i + 3] == '"""':
+                in_triple_double = not in_triple_double
+                i += 3
+                continue
+            if buffer[i : i + 3] == "'''":
+                in_triple_single = not in_triple_single
+                i += 3
+                continue
+
+        if in_triple_double or in_triple_single:
+            i += 1
+            continue
+
+        if c == '"' and not in_single_quote:
+            in_double_quote = not in_double_quote
+            i += 1
+            continue
+        if c == "'" and not in_double_quote:
+            in_single_quote = not in_single_quote
+            i += 1
+            continue
+
+        if not (in_single_quote or in_double_quote):
+            if c in "([{":
+                bracket_depth += 1
+            elif c in ")]}":
+                bracket_depth = max(0, bracket_depth - 1)
+        i += 1
+
+    if in_single_quote or in_double_quote or in_triple_single or in_triple_double:
+        return False
+    if bracket_depth > 0:
+        return False
+
+    return True
+
+
 class PytaeRepl:
     """Stateful interactive REPL environment for pytae."""
 
@@ -2379,6 +2456,9 @@ class PytaeRepl:
 
     def _execute_line_core(self, line: str, output_fn: Callable[[str], None] = print) -> bool:
         """Core dispatch logic for one REPL command line."""
+        # Collapse multi-line line continuations (trailing backslash followed by newline)
+        if "\\" in line:
+            line = re.sub(r"\\\s*\n\s*", " ", line)
         # Handle ANSI arrow keys sent directly via Git Bash / MinTTY terminal pipe
         ansi_up_count = line.count("\x1b[A") + line.count("\x1bOA") + line.count("^[[A") + line.count("^[OA")
         ansi_down_count = line.count("\x1b[B") + line.count("\x1bOB") + line.count("^[[B") + line.count("^[OB")
@@ -4660,7 +4740,7 @@ class PytaeRepl:
             return
 
         # 1. SQL query assignment: `df3 = -sql "<query>"`
-        if right_expr.startswith(("-sql ", "-sql=")):
+        if right_expr.startswith(("-sql ", "-sql=", "-sql\n", "-sql\t")):
             if var_name in self.variables:
                 output_fn(
                     f"pytae: '{var_name}' is already a session variable; cannot assign as a table. Use 'rm var {var_name}' first."
@@ -5242,7 +5322,7 @@ class PytaeRepl:
 
     def _cmd_py(self, expr: str, output_fn: Callable[[str], None]) -> None:
         if not expr:
-            output_fn("Usage: py <expression> (e.g. py df.columns or py pldf.shape)")
+            output_fn("Usage: py <expression> (or enter 'py' on an empty line for multi-line block mode)")
             return
         try:
             from pytae.dataframe import DataFrame as PytaeDataFrame
@@ -5262,11 +5342,23 @@ class PytaeRepl:
             for var_name, var_val in self.variables.items():
                 if var_name not in local_scope:
                     local_scope[var_name] = var_val
-            res = eval(expr, {}, local_scope)
-            if isinstance(res, (pl.DataFrame, PytaeDataFrame)):
-                output_fn(self._format_table(res))
-            else:
-                output_fn(repr(res))
+
+            try:
+                res = eval(expr, {}, local_scope)
+                if isinstance(res, (pl.DataFrame, PytaeDataFrame)):
+                    output_fn(self._format_table(res))
+                elif res is not None:
+                    output_fn(repr(res))
+            except SyntaxError:
+                import contextlib
+                import io
+
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    exec(expr, {}, local_scope)
+                out_val = buf.getvalue().rstrip()
+                if out_val:
+                    output_fn(out_val)
         except Exception as exc:
             output_fn(f"pytae Python Error: {exc}")
 
@@ -5863,12 +5955,21 @@ class PytaeRepl:
                         pass
             return input(effective_prompt)
 
+        multi_buffer: list[str] = []
+        in_py_block = False
+
         try:
             while True:
-                prompt = self._build_prompt()
+                if in_py_block or multi_buffer:
+                    prompt = "... "
+                else:
+                    prompt = self._build_prompt()
+
                 try:
                     line = _get_input(prompt)
                 except KeyboardInterrupt:
+                    multi_buffer.clear()
+                    in_py_block = False
                     output_fn("\n(KeyboardInterrupt - command cancelled)")
                     continue
                 except EOFError:
@@ -5877,21 +5978,54 @@ class PytaeRepl:
                     output_fn("\nExiting pytae REPL.")
                     break
 
-                try:
-                    should_continue = self.execute_line(line, output_fn=output_fn)
-                    if not should_continue:
-                        break
-                except KeyboardInterrupt:
-                    output_fn("\n(KeyboardInterrupt - command cancelled)")
-                except (Exception, SystemExit) as exc:
-                    if isinstance(exc, SystemExit) and exc.code in (0, None):
-                        break
-                    msg = str(exc)
-                    if msg:
-                        if msg.startswith("-") or msg.startswith("pytae") or msg.startswith("invalid"):
-                            output_fn(msg)
-                        else:
-                            output_fn(f"pytae error: {msg}")
+                # 1. Check if entering Python block mode (bare 'py' on empty buffer)
+                if not multi_buffer and not in_py_block and line.strip() == "py":
+                    in_py_block = True
+                    continue
+
+                # 2. Inside Python block mode
+                if in_py_block:
+                    if line == "":
+                        full_code = "\n".join(multi_buffer)
+                        multi_buffer.clear()
+                        in_py_block = False
+                        if full_code.strip():
+                            try:
+                                should_continue = self.execute_line(f"py\n{full_code}", output_fn=output_fn)
+                                if not should_continue:
+                                    break
+                            except KeyboardInterrupt:
+                                output_fn("\n(KeyboardInterrupt - command cancelled)")
+                            except (Exception, SystemExit) as exc:
+                                if isinstance(exc, SystemExit) and exc.code in (0, None):
+                                    break
+                                msg = str(exc)
+                                if msg:
+                                    output_fn(f"pytae error: {msg}")
+                        continue
+                    multi_buffer.append(line)
+                    continue
+
+                # 3. Standard CLI multi-line buffer
+                multi_buffer.append(line)
+                accumulated = "\n".join(multi_buffer)
+                if _is_multiline_complete(accumulated):
+                    multi_buffer.clear()
+                    try:
+                        should_continue = self.execute_line(accumulated, output_fn=output_fn)
+                        if not should_continue:
+                            break
+                    except KeyboardInterrupt:
+                        output_fn("\n(KeyboardInterrupt - command cancelled)")
+                    except (Exception, SystemExit) as exc:
+                        if isinstance(exc, SystemExit) and exc.code in (0, None):
+                            break
+                        msg = str(exc)
+                        if msg:
+                            if msg.startswith("-") or msg.startswith("pytae") or msg.startswith("invalid"):
+                                output_fn(msg)
+                            else:
+                                output_fn(f"pytae error: {msg}")
         finally:
             _restore_git_bash()
             if getattr(self, "session_cmd_count", 0) == 0 and getattr(self, "session_commands_path", None) is not None:

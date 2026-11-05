@@ -35,6 +35,12 @@ Stateful, iterative in-memory data manipulation and exploratory data analysis wi
   - [Explicit Table Names in SQL](#explicit-table-names-in-sql)
   - [SQL Variable Assignment (`df3 = -sql "..."`)](#sql-variable-assignment-df3---sql-)
   - [Fluent Python Execution (`py <expr>`)](#fluent-python-execution-py-expr)
+- [Multi-Line Input & Continuation](#multi-line-input--continuation)
+  - [Pipeline Line Continuation (`\`)](#pipeline-line-continuation-)
+  - [Multi-Line SQL Queries](#multi-line-sql-queries)
+  - [Multi-Line Variables & Data Structures](#multi-line-variables--data-structures)
+  - [Bare `py` Python Block Mode](#bare-py-python-block-mode)
+  - [Aborting Multi-Line Buffers (`Ctrl+C`)](#aborting-multi-line-buffers-ctrlc)
 - [Session Variables & Parameters (`@var`)](#session-variables--parameters-var)
   - [Defining Variables (`<name> = <literal>`)](#defining-variables-name--literal)
   - [Supported Types & Safety Guarantees](#supported-types--safety-guarantees)
@@ -438,6 +444,69 @@ shape: (3, 2)
 │ Chinstrap ┆ 68  │
 └───────────┴─────┘
 ```
+
+---
+
+## Multi-Line Input & Continuation
+
+The REPL supports multi-line inputs across pipelines, SQL queries, session variables, and bare Python blocks. When input is incomplete, the prompt switches to a clean `... ` continuation prompt:
+
+### Pipeline Line Continuation (`\`)
+Long analytical pipelines can be split across multiple lines using a trailing backslash `\`:
+
+```text
+pytae [df: 344x7]> df = -filter "species == 'Gentoo'" \
+...   -mutate "kg = body_mass_g / 1000.0" \
+...   -select "species, island, kg" \
+...   -arrange "kg desc"
+Updated 'df' (124 rows x 3 cols).
+```
+
+### Multi-Line SQL Queries
+Complex ANSI SQL queries can span multiple lines using unclosed double or single quotes:
+
+```text
+pytae [df: 344x7]> -sql "
+...   SELECT
+...     species,
+...     island,
+...     AVG(body_mass_g) AS avg_mass,
+...     COUNT(*) AS n
+...   FROM df
+...   GROUP BY species, island
+...   ORDER BY avg_mass DESC
+... "
+```
+This syntax also works for SQL table assignment (`summary = -sql "..."`).
+
+### Multi-Line Variables & Data Structures
+Dictionaries and lists can be authored across multiple lines using unclosed brackets or braces:
+
+```text
+pytae> cfg = {
+...   "min_mass": 3200,
+...   "island": "Biscoe",
+...   "species": ["Gentoo", "Adelie"]
+... }
+Assigned variable @cfg = {'min_mass': 3200, 'island': 'Biscoe', 'species': ['Gentoo', 'Adelie']}
+```
+
+### Bare `py` Python Block Mode
+Entering bare `py` initiates Python block mode. You can write multi-line Python code, loops, functions, and statements, terminating the block with an empty line (pressing Enter on an empty line):
+
+```text
+pytae [df: 344x7]> py
+... for species, sub_df in pldf.group_by("species"):
+...     print(f"Species: {species[0]} has {len(sub_df)} records")
+... 
+Species: Adelie has 152 records
+Species: Gentoo has 124 records
+Species: Chinstrap has 68 records
+```
+Any standard outputs (`print(...)`) are captured and displayed directly in the REPL.
+
+### Aborting Multi-Line Buffers (`Ctrl+C`)
+Pressing `Ctrl+C` while in a multi-line continuation prompt immediately cancels the current input buffer, prints `^C`, and returns to the active single-line REPL prompt (`pytae> `) without executing any partial code.
 
 ---
 
@@ -855,7 +924,7 @@ Saved Sessions (2 found):
     Status:      [Offline / Unreachable]
 
 # From the command line outside the REPL
-$ pytae -session ./my_project  # Boot directly into local project session path
+$ pytae -i                      # Start REPL (inside run: set load_session = ./my_project)
 $ pytae -sessions              # List sessions in current working directory
 $ pytae -sessions -v           # Verbose breakdown of checkpoints and formats
 $ pytae -sessions /Volumes/ExternalSSD/sessions  # Scan target path for sessions
@@ -1245,7 +1314,7 @@ pytae> set save_session = ./client_run1
 ```bash
 # Set session base directory to an external drive or shared folder
 export PYTAE_SESSIONS_DIR="/Volumes/ExternalSSD/pytae_sessions"
-pytae -session project_x
+pytae -i  # Inside REPL: set load_session = project_x
 ```
 *(On Windows Command Prompt: `set PYTAE_SESSIONS_DIR=C:\pytae_sessions` | PowerShell: `$env:PYTAE_SESSIONS_DIR="C:\pytae_sessions"`)*
 
