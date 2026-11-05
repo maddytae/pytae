@@ -692,6 +692,12 @@ def _win_console_input(
                 "[4~": "O",
                 "[8~": "O",  # End
                 "[3~": "S",  # Delete
+                "[1;5D": "word_prev",
+                "[1;3D": "word_prev",
+                "[5D": "word_prev",
+                "[1;5C": "word_next",
+                "[1;3C": "word_next",
+                "[5C": "word_next",
             }
             if seq in ansi_map:
                 code = ansi_map[seq]
@@ -745,10 +751,54 @@ def _win_console_input(
                 if cursor_pos < len(line_chars):
                     line_chars.pop(cursor_pos)
                     render()
+            elif code == "word_prev":
+                if cursor_pos > 0:
+                    delims = " \t\n\"'=(),;[]"
+                    while cursor_pos > 0 and line_chars[cursor_pos - 1] in delims:
+                        cursor_pos -= 1
+                    while cursor_pos > 0 and line_chars[cursor_pos - 1] not in delims:
+                        cursor_pos -= 1
+                    render()
+            elif code == "word_next":
+                if cursor_pos < len(line_chars):
+                    delims = " \t\n\"'=(),;[]"
+                    while cursor_pos < len(line_chars) and line_chars[cursor_pos] not in delims:
+                        cursor_pos += 1
+                    while cursor_pos < len(line_chars) and line_chars[cursor_pos] in delims:
+                        cursor_pos += 1
+                    render()
         elif ch in ("\r", "\n"):
             sys.stdout.write("\n")
             sys.stdout.flush()
             return "".join(line_chars)
+        elif ch == "\x01":  # Ctrl+A: beginning of line
+            if cursor_pos > 0:
+                cursor_pos = 0
+                render()
+        elif ch == "\x05":  # Ctrl+E: end of line
+            if cursor_pos < len(line_chars):
+                cursor_pos = len(line_chars)
+                render()
+        elif ch == "\x17":  # Ctrl+W: delete previous word
+            if cursor_pos > 0:
+                delims = " \t\n\"'=(),;[]"
+                new_pos = cursor_pos
+                while new_pos > 0 and line_chars[new_pos - 1] in delims:
+                    new_pos -= 1
+                while new_pos > 0 and line_chars[new_pos - 1] not in delims:
+                    new_pos -= 1
+                del line_chars[new_pos:cursor_pos]
+                cursor_pos = new_pos
+                render()
+        elif ch == "\x0b":  # Ctrl+K: kill to end of line
+            if cursor_pos < len(line_chars):
+                del line_chars[cursor_pos:]
+                render()
+        elif ch == "\x15":  # Ctrl+U: kill to beginning of line
+            if cursor_pos > 0:
+                del line_chars[:cursor_pos]
+                cursor_pos = 0
+                render()
         elif ch in ("\x08", "\x7f"):  # Backspace (0x08 on CMD/conhost, 0x7f on MinTTY/xterm)
             if cursor_pos > 0:
                 cursor_pos -= 1
@@ -874,10 +924,43 @@ def _init_readline(completer_fn: Callable[[str, int], str | None] | None = None)
     if "libedit" in doc:
         try:
             readline.parse_and_bind("bind -e")
-            readline.parse_and_bind(r"bind '\e[A' ed-prev-history")
-            readline.parse_and_bind(r"bind '\e[B' ed-next-history")
-            readline.parse_and_bind(r"bind '\eOA' ed-prev-history")
-            readline.parse_and_bind(r"bind '\eOB' ed-next-history")
+            # History navigation
+            readline.parse_and_bind(r'bind "\e[A" ed-prev-history')
+            readline.parse_and_bind(r'bind "\e[B" ed-next-history')
+            readline.parse_and_bind(r'bind "\eOA" ed-prev-history')
+            readline.parse_and_bind(r'bind "\eOB" ed-next-history')
+            # Character motion (Left / Right)
+            readline.parse_and_bind(r'bind "\e[C" ed-next-char')
+            readline.parse_and_bind(r'bind "\e[D" ed-prev-char')
+            readline.parse_and_bind(r'bind "\eOC" ed-next-char')
+            readline.parse_and_bind(r'bind "\eOD" ed-prev-char')
+            # Line beginning: Home, Cmd+Left, Fn+Left, Ctrl+A
+            readline.parse_and_bind(r'bind "\e[H" ed-move-to-beg')
+            readline.parse_and_bind(r'bind "\e[F" ed-move-to-end')
+            readline.parse_and_bind(r'bind "\e[1~" ed-move-to-beg')
+            readline.parse_and_bind(r'bind "\e[4~" ed-move-to-end')
+            readline.parse_and_bind(r'bind "\e[7~" ed-move-to-beg')
+            readline.parse_and_bind(r'bind "\e[8~" ed-move-to-end')
+            readline.parse_and_bind(r'bind "\eOH" ed-move-to-beg')
+            readline.parse_and_bind(r'bind "\eOF" ed-move-to-end')
+            readline.parse_and_bind(r'bind "\C-a" ed-move-to-beg')
+            readline.parse_and_bind(r'bind "\C-e" ed-move-to-end')
+            # Word motion: Option+Left / Option+Right / Ctrl+Left / Ctrl+Right
+            readline.parse_and_bind(r'bind "\eb" ed-prev-word')
+            readline.parse_and_bind(r'bind "\ef" em-next-word')
+            readline.parse_and_bind(r'bind "\e[1;3D" ed-prev-word')
+            readline.parse_and_bind(r'bind "\e[1;3C" em-next-word')
+            readline.parse_and_bind(r'bind "\e[1;5D" ed-prev-word')
+            readline.parse_and_bind(r'bind "\e[1;5C" em-next-word')
+            readline.parse_and_bind(r'bind "\e[5D" ed-prev-word')
+            readline.parse_and_bind(r'bind "\e[5C" em-next-word')
+            readline.parse_and_bind(r'bind "\e\e[D" ed-prev-word')
+            readline.parse_and_bind(r'bind "\e\e[C" em-next-word')
+            # Deletions: Delete key, Option+Backspace, Ctrl+W, Ctrl+K, Ctrl+U
+            readline.parse_and_bind(r'bind "\e[3~" ed-delete-next-char')
+            readline.parse_and_bind(r'bind "\C-w" ed-delete-prev-word')
+            readline.parse_and_bind(r'bind "\C-k" ed-kill-line')
+            readline.parse_and_bind(r'bind "\C-u" vi-kill-line-prev')
             readline.parse_and_bind("bind ^I rl_complete")
         except Exception:
             pass
@@ -893,6 +976,28 @@ def _init_readline(completer_fn: Callable[[str, int], str | None] | None = None)
             readline.parse_and_bind(r'"\eOD": backward-char')
             readline.parse_and_bind(r'"\e[H": beginning-of-line')
             readline.parse_and_bind(r'"\e[F": end-of-line')
+            readline.parse_and_bind(r'"\e[1~": beginning-of-line')
+            readline.parse_and_bind(r'"\e[4~": end-of-line')
+            readline.parse_and_bind(r'"\e[7~": beginning-of-line')
+            readline.parse_and_bind(r'"\e[8~": end-of-line')
+            readline.parse_and_bind(r'"\eOH": beginning-of-line')
+            readline.parse_and_bind(r'"\eOF": end-of-line')
+            readline.parse_and_bind(r'"\C-a": beginning-of-line')
+            readline.parse_and_bind(r'"\C-e": end-of-line')
+            readline.parse_and_bind(r'"\e[3~": delete-char')
+            readline.parse_and_bind(r'"\eb": backward-word')
+            readline.parse_and_bind(r'"\ef": forward-word')
+            readline.parse_and_bind(r'"\e[1;3D": backward-word')
+            readline.parse_and_bind(r'"\e[1;3C": forward-word')
+            readline.parse_and_bind(r'"\e[1;5D": backward-word')
+            readline.parse_and_bind(r'"\e[1;5C": forward-word')
+            readline.parse_and_bind(r'"\e[5D": backward-word')
+            readline.parse_and_bind(r'"\e[5C": forward-word')
+            readline.parse_and_bind(r'"\e\e[D": backward-word')
+            readline.parse_and_bind(r'"\e\e[C": forward-word')
+            readline.parse_and_bind(r'"\C-w": backward-kill-word')
+            readline.parse_and_bind(r'"\C-k": kill-line')
+            readline.parse_and_bind(r'"\C-u": unix-line-discard')
             readline.parse_and_bind("tab: complete")
             readline.parse_and_bind("Tab: complete")
             readline.parse_and_bind(r'"\t": complete')
@@ -2449,7 +2554,7 @@ class PytaeRepl:
         """Core dispatch logic for one REPL command line."""
         # Collapse multi-line line continuations (trailing backslash followed by newline)
         if "\\" in line:
-            line = re.sub(r"\\\s*\n\s*", " ", line)
+            line = re.sub(r"\s*\\\s*\n\s*", " ", line)
         # Handle ANSI arrow keys sent directly via Git Bash / MinTTY terminal pipe
         ansi_up_count = line.count("\x1b[A") + line.count("\x1bOA") + line.count("^[[A") + line.count("^[OA")
         ansi_down_count = line.count("\x1b[B") + line.count("\x1bOB") + line.count("^[[B") + line.count("^[OB")
@@ -2478,14 +2583,20 @@ class PytaeRepl:
 
         self._history_cursor = None
 
-        if not self._raw_history or self._raw_history[-1] != line:
-            self._raw_history.append(line)
+        hist_line = line
+        if not line.startswith("py\n") and not line.startswith("py "):
+            hist_line = re.sub(r"\s*\\\s*\n\s*", " ", hist_line)
+            if "\n" in hist_line:
+                hist_line = re.sub(r"\s*\n\s*", " ", hist_line).strip()
+
+        if not self._raw_history or self._raw_history[-1] != hist_line:
+            self._raw_history.append(hist_line)
 
         if readline is not None:
             try:
                 cur_len = readline.get_current_history_length()
-                if cur_len == 0 or readline.get_history_item(cur_len) != line:
-                    readline.add_history(line)
+                if cur_len == 0 or readline.get_history_item(cur_len) != hist_line:
+                    readline.add_history(hist_line)
             except Exception:
                 pass
 
@@ -5960,7 +6071,21 @@ class PytaeRepl:
 
                 try:
                     line = _get_input(prompt)
+                    if (in_py_block or multi_buffer) and readline is not None and hasattr(readline, "remove_history_item"):
+                        try:
+                            cur_len = readline.get_current_history_length()
+                            if cur_len > 0:
+                                readline.remove_history_item(cur_len - 1)
+                        except Exception:
+                            pass
                 except KeyboardInterrupt:
+                    if multi_buffer and readline is not None and hasattr(readline, "remove_history_item"):
+                        try:
+                            cur_len = readline.get_current_history_length()
+                            if cur_len > 0:
+                                readline.remove_history_item(cur_len - 1)
+                        except Exception:
+                            pass
                     multi_buffer.clear()
                     in_py_block = False
                     output_fn("\n(KeyboardInterrupt - command cancelled)")
@@ -5974,6 +6099,13 @@ class PytaeRepl:
                 # 1. Check if entering Python block mode (bare 'py' on empty buffer)
                 if not multi_buffer and not in_py_block and line.strip() == "py":
                     in_py_block = True
+                    if readline is not None and hasattr(readline, "remove_history_item"):
+                        try:
+                            cur_len = readline.get_current_history_length()
+                            if cur_len > 0:
+                                readline.remove_history_item(cur_len - 1)
+                        except Exception:
+                            pass
                     continue
 
                 # 2. Inside Python block mode
@@ -6003,6 +6135,13 @@ class PytaeRepl:
                 multi_buffer.append(line)
                 accumulated = "\n".join(multi_buffer)
                 if _is_multiline_complete(accumulated):
+                    if len(multi_buffer) > 1 and readline is not None and hasattr(readline, "remove_history_item"):
+                        try:
+                            cur_len = readline.get_current_history_length()
+                            if cur_len > 0:
+                                readline.remove_history_item(cur_len - 1)
+                        except Exception:
+                            pass
                     multi_buffer.clear()
                     try:
                         should_continue = self.execute_line(accumulated, output_fn=output_fn)

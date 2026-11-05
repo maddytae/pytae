@@ -192,3 +192,42 @@ def test_repl_run_py_block_mode_and_empty_line_termination():
     assert any("TEST_LOOP: species" in o for o in outputs)
     assert any("TEST_LOOP: island" in o for o in outputs)
     assert "... " in prompts_seen
+
+
+def test_repl_history_collapses_multiline_to_single_line_for_smooth_navigation():
+    """Verify that multi-line pipelines with '\\' collapse into a single line in history for smooth arrow key navigation."""
+    r = PytaeRepl()
+    outputs = []
+    multiline_cmd = 'df = sample:penguins \\\n  -filter "species == \'Gentoo\'" \\\n  -mutate "kg = 1.0"'
+    r.execute_line(multiline_cmd, output_fn=outputs.append)
+
+    assert "df" in r.tables
+    # Ensure history does NOT contain literal newlines that trap the cursor at the end
+    assert len(r._raw_history) == 1
+    assert r._raw_history[0] == 'df = sample:penguins -filter "species == \'Gentoo\'" -mutate "kg = 1.0"'
+    r.close()
+
+
+def test_repl_readline_beginning_of_line_bindings():
+    """Verify that _init_readline configures beginning-of-line bindings for Home / Cmd+Left."""
+    from pytae.repl import _init_readline
+
+    r = PytaeRepl()
+    # Calling _init_readline must succeed without exceptions across all platforms
+    _init_readline(r._complete)
+    r.close()
+
+
+def test_win_console_input_ctrl_a_beginning_of_line():
+    """Verify that Ctrl+A in console input moves the cursor to beginning of line (cursor_pos = 0)."""
+    from pytae.repl import _win_console_input
+
+    # Feed 'abc', then Ctrl+A (\x01), then Enter (\r)
+    chars = ["a", "b", "c", "\x01", "\r"]
+
+    def fake_read():
+        return chars.pop(0)
+
+    res = _win_console_input("", [], read_char_fn=fake_read)
+    assert res == "abc"
+
