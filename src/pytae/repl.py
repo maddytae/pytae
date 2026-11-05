@@ -3450,6 +3450,27 @@ class PytaeRepl:
             for col_name, dtype in zip(tbl_df.columns, tbl_df.dtypes, strict=False):
                 output_fn(f"  {col_name:<20}: {dtype}")
 
+    def _get_checkpoint_vars(self, snap: dict, cp_path: Path | None) -> dict[str, Any]:
+        """Retrieve variables dictionary from checkpoint metadata or vars.json file."""
+        if isinstance(snap.get("variables"), dict) and snap["variables"]:
+            return snap["variables"]
+        if cp_path and cp_path.exists():
+            v_file = cp_path / "vars.json"
+            if v_file.exists():
+                try:
+                    return json.loads(v_file.read_text(encoding="utf-8"))
+                except Exception:
+                    pass
+            m_file = cp_path / "meta.json"
+            if m_file.exists():
+                try:
+                    data = json.loads(m_file.read_text(encoding="utf-8"))
+                    if isinstance(data.get("variables"), dict):
+                        return data["variables"]
+                except Exception:
+                    pass
+        return {}
+
     def _show_single_checkpoint_status(
         self, cp_name: str, output_fn: Callable[[str], None], verbose: bool = False
     ) -> None:
@@ -3479,6 +3500,17 @@ class PytaeRepl:
                     output_fn(f"  - {t_name:<14}: {shape_str} [{f_name}]{f_sz}")
                 else:
                     output_fn(f"  - {t_name:<14}: {shape_str}")
+
+        vars_dict = self._get_checkpoint_vars(snap, cp_path)
+        if vars_dict:
+            output_fn(f"Variables ({len(vars_dict)}):")
+            for var_name, var_val in vars_dict.items():
+                v_repr = repr(var_val)
+                if not verbose and len(v_repr) > 50:
+                    v_repr = v_repr[:47] + "..."
+                output_fn(f"  * @{var_name:<14}: {v_repr} ({type(var_val).__name__})")
+        elif verbose:
+            output_fn("Variables      : 0 defined")
 
     def _show_session_status(self, output_fn: Callable[[str], None], verbose: bool = False) -> None:
         """Display REPL session status, storage directory, tables overview, and resource health."""
@@ -3525,6 +3557,27 @@ class PytaeRepl:
                 src_info = f" (source: {src})" if src else ""
                 output_fn(f"  - {t_name}{is_act:<9}: {r_c:,} rows x {c_c} cols (~{mb:.2f} MB){src_info}")
 
+        # Variables
+        if not self.variables:
+            output_fn("Variables     : 0 defined")
+        elif len(self.variables) == 1:
+            v_name = next(iter(self.variables.keys()))
+            v_val = self.variables[v_name]
+            v_repr = repr(v_val)
+            if not verbose and len(v_repr) > 40:
+                v_repr = v_repr[:37] + "..."
+            output_fn(f"Variables     : 1 defined [@{v_name} = {v_repr}]")
+        else:
+            v_list = [f"@{k}" for k in self.variables.keys()]
+            output_fn(f"Variables     : {len(self.variables)} defined [{', '.join(v_list)}]")
+
+        if verbose and self.variables:
+            for v_name, v_val in self.variables.items():
+                v_repr = repr(v_val)
+                if len(v_repr) > 60:
+                    v_repr = v_repr[:57] + "..."
+                output_fn(f"  * @{v_name:<14}: {v_repr} ({type(v_val).__name__})")
+
         # Checkpoints
         if not self.checkpoints:
             output_fn("Checkpoints   : 0 saved")
@@ -3558,7 +3611,9 @@ class PytaeRepl:
 
         # Footer tip
         output_fn("-" * 60)
-        output_fn("(Tip: Use 'status table [name]' for table details, 'status checkpoint [name]' for checkpoints)")
+        output_fn(
+            "(Tip: Use 'status table [name]' for table details, 'status checkpoint [name]' for checkpoints, 'status var [name]' for variables)"
+        )
 
     def _show_external_session_status(self, path_or_name: str, output_fn: Callable[[str], None], verbose: bool = False) -> None:
         """Inspect a saved session directory on disk without loading it into active memory."""
@@ -3614,6 +3669,36 @@ class PytaeRepl:
         if created_at != "unknown":
             output_fn(f"Created       : {created_at}")
 
+        # Variables in external session
+        vars_dict: dict[str, Any] = {}
+        vars_file = s_path / "vars.json"
+        if vars_file.exists():
+            try:
+                vars_dict = json.loads(vars_file.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        elif isinstance(s_meta.get("variables"), dict):
+            vars_dict = s_meta["variables"]
+
+        if not vars_dict:
+            output_fn("Variables     : 0 defined")
+        elif len(vars_dict) == 1:
+            v_name = next(iter(vars_dict.keys()))
+            v_val = vars_dict[v_name]
+            v_repr = repr(v_val)
+            if not verbose and len(v_repr) > 40:
+                v_repr = v_repr[:37] + "..."
+            output_fn(f"Variables     : 1 defined [@{v_name} = {v_repr}]")
+        else:
+            output_fn(f"Variables     : {len(vars_dict)} defined [{', '.join(f'@{k}' for k in vars_dict.keys())}]")
+
+        if verbose and vars_dict:
+            for v_name, v_val in vars_dict.items():
+                v_repr = repr(v_val)
+                if len(v_repr) > 60:
+                    v_repr = v_repr[:57] + "..."
+                output_fn(f"  * @{v_name:<14}: {v_repr} ({type(v_val).__name__})")
+
         if not checkpoints_info:
             output_fn("Checkpoints   : 0 saved")
         else:
@@ -3623,23 +3708,37 @@ class PytaeRepl:
                 created = cp_meta.get("created_at", "")
                 created_str = f" created {created}" if created else ""
                 tables = cp_meta.get("tables", {})
+                sub_cp_dir = cp_dir / cp_name
+                cp_vars = self._get_checkpoint_vars(cp_meta, sub_cp_dir)
+
+                summary_parts: list[str] = []
                 if tables:
-                    t_descs = []
+                    summary_parts.append(f"{len(tables)} table{'s' if len(tables) != 1 else ''} [{', '.join(tables.keys())}]")
+                if cp_vars:
+                    summary_parts.append(f"{len(cp_vars)} var{'s' if len(cp_vars) != 1 else ''} [{', '.join(f'@{k}' for k in cp_vars.keys())}]")
+                t_str = f" ({', '.join(summary_parts)})" if summary_parts else ""
+                output_fn(f"  - {cp_name:<14}: [{fmt}]{t_str}{created_str}")
+
+                if tables:
                     for t_n, t_info in tables.items():
                         r = t_info.get("rows", "?")
                         c = t_info.get("cols", "?")
-                        t_descs.append(f"{t_n} [{r} rows x {c} cols]")
-                    t_str = f" ({', '.join(t_descs)})"
-                else:
-                    t_str = ""
-                output_fn(f"  - {cp_name:<14}: [{fmt}]{t_str}{created_str}")
-
-                if verbose and tables:
-                    for t_n, t_info in tables.items():
-                        cols = t_info.get("columns", [])
-                        if cols:
-                            col_preview = ", ".join(cols[:8]) + ("..." if len(cols) > 8 else "")
-                            output_fn(f"      columns: [{col_preview}]")
+                        shape_desc = f"{r} rows x {c} cols" if r != "?" else ""
+                        if not shape_desc and "shape" in t_info and len(t_info["shape"]) == 2:
+                            shape_desc = f"{t_info['shape'][0]:,} rows x {t_info['shape'][1]} cols"
+                        shape_tag = f": {shape_desc}" if shape_desc else ""
+                        output_fn(f"      - {t_n}{shape_tag}")
+                        if verbose:
+                            cols = t_info.get("columns", [])
+                            if cols:
+                                col_preview = ", ".join(cols[:8]) + ("..." if len(cols) > 8 else "")
+                                output_fn(f"          columns: [{col_preview}]")
+                if cp_vars:
+                    for v_n, v_v in cp_vars.items():
+                        v_repr = repr(v_v)
+                        if not verbose and len(v_repr) > 40:
+                            v_repr = v_repr[:37] + "..."
+                        output_fn(f"      * @{v_n}: {v_repr} ({type(v_v).__name__})")
 
         hist_file = s_path / "history.json"
         if hist_file.exists():
@@ -4600,51 +4699,59 @@ class PytaeRepl:
                         pass
                 time_str = f"  {created_at}" if created_at else ""
 
-                if isinstance(tbls, dict):
-                    if len(tbls) > 1:
-                        parts = []
-                        for t, val in tbls.items():
-                            if isinstance(val, dict) and "shape" in val:
-                                s = val["shape"]
-                                parts.append(f"{t} ({s[0]:,}x{s[1]})")
-                            elif isinstance(val, pl.DataFrame):
-                                parts.append(f"{t} ({val.shape[0]:,}x{val.shape[1]})")
-                            else:
-                                parts.append(str(t))
-                        summary = ", ".join(parts)
-                        active_suffix = f" [active: {snap['active_table']}]" if snap.get("active_table") else ""
-                        output_fn(f"  - {name:<15}: {summary}{active_suffix}{fmt_tag}{size_str}{time_str}")
-                    elif tbls:
-                        t_name, val = next(iter(tbls.items()))
-                        shape = (
-                            val["shape"] if isinstance(val, dict) and "shape" in val else getattr(val, "shape", None)
-                        )
-                        if shape:
-                            output_fn(f"  - {name:<15}: {shape[0]:,} rows x {shape[1]} cols{fmt_tag}{size_str}{time_str}")
-                        else:
-                            output_fn(f"  - {name:<15}: 1 table ({t_name}){fmt_tag}{size_str}{time_str}")
-                    elif snap.get("current_df_shape") is not None:
-                        s = snap["current_df_shape"]
-                        output_fn(f"  - {name:<15}: {s[0]:,} rows x {s[1]} cols{fmt_tag}{size_str}{time_str}")
-                    elif snap.get("current_df") is not None:
-                        df = snap["current_df"]
-                        output_fn(f"  - {name:<15}: {df.shape[0]:,} rows x {df.shape[1]} cols{fmt_tag}{size_str}{time_str}")
-                    else:
-                        output_fn(f"  - {name:<15}: (empty session){fmt_tag}{size_str}{time_str}")
-                else:
-                    output_fn(f"  - {name:<15}: (no tables){fmt_tag}{size_str}{time_str}")
+                cp_vars = self._get_checkpoint_vars(snap, cp_path)
 
-                if verbose and isinstance(tbls, dict) and tbls and cp_path.exists():
+                summary_parts: list[str] = []
+                if isinstance(tbls, dict) and tbls:
+                    if len(tbls) == 1:
+                        t_name = next(iter(tbls.keys()))
+                        summary_parts.append(f"1 table [{t_name}]")
+                    else:
+                        summary_parts.append(f"{len(tbls)} tables [{', '.join(tbls.keys())}]")
+                elif snap.get("current_df_shape") is not None or snap.get("current_df") is not None:
+                    summary_parts.append("1 table [df]")
+                else:
+                    summary_parts.append("0 tables")
+
+                if snap.get("active_table"):
+                    if summary_parts:
+                        summary_parts[-1] += f" [active: {snap['active_table']}]"
+                    else:
+                        summary_parts.append(f"[active: {snap['active_table']}]")
+
+                if cp_vars:
+                    v_names = ", ".join(f"@{k}" for k in cp_vars.keys())
+                    summary_parts.append(f"{len(cp_vars)} var{'s' if len(cp_vars) != 1 else ''} [{v_names}]")
+
+                summary = ", ".join(summary_parts) if summary_parts else "(empty checkpoint)"
+                output_fn(f"  - {name:<15}: {summary}{fmt_tag}{size_str}{time_str}")
+
+                # Tables under checkpoint
+                if isinstance(tbls, dict) and tbls:
                     for t_name, val in tbls.items():
-                        if isinstance(val, dict):
+                        s = val.get("shape", []) if isinstance(val, dict) else getattr(val, "shape", [])
+                        shape_info = f": {s[0]:,} rows x {s[1]} cols" if len(s) == 2 else ""
+                        if verbose and isinstance(val, dict) and cp_path.exists():
                             f_name = val.get("file", "")
-                            s = val.get("shape", [])
-                            shape_info = f": {s[0]:,} rows x {s[1]} cols" if len(s) == 2 else ""
                             f_path = cp_path / f_name if f_name else None
                             f_sz = f" ({_format_bytes(f_path.stat().st_size)})" if f_path and f_path.exists() else ""
                             output_fn(f"      - {t_name}{shape_info} [{f_name}]{f_sz}")
+                        else:
+                            output_fn(f"      - {t_name}{shape_info}")
+                elif snap.get("current_df_shape") is not None:
+                    s = snap["current_df_shape"]
+                    output_fn(f"      - df: {s[0]:,} rows x {s[1]} cols")
+
+                # Variables under checkpoint
+                if cp_vars:
+                    for v_name, v_val in cp_vars.items():
+                        v_repr = repr(v_val)
+                        if not verbose and len(v_repr) > 40:
+                            v_repr = v_repr[:37] + "..."
+                        output_fn(f"      * @{v_name}: {v_repr} ({type(v_val).__name__})")
             elif isinstance(snap, pl.DataFrame):
-                output_fn(f"  - {name:<15}: {snap.shape[0]:,} rows x {snap.shape[1]} cols")
+                output_fn(f"  - {name:<15}: 1 table [df] (in-memory)")
+                output_fn(f"      - df: {snap.shape[0]:,} rows x {snap.shape[1]} cols ({snap.shape[0]:,}x{snap.shape[1]})")
 
     def _cmd_list_tables(self, output_fn: Callable[[str], None], *, verbose: bool = False) -> None:
         if not self.tables:

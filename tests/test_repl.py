@@ -647,7 +647,7 @@ def test_repl_strict_checkpoints_vs_tables_separation():
     r.execute_line("status checkpoint", output_fn=outputs.append)
     cp_text = "\n".join(outputs)
     assert "maddy" in cp_text
-    assert "df1 (344x7)" in cp_text  # Shows the table summary inside checkpoint 'maddy'
+    assert "df1: 344 rows x 7 cols" in cp_text  # Shows the table summary under checkpoint 'maddy'
     # And 'maddy' is not a table in 'status table' command
     outputs.clear()
     r.execute_line("status table", output_fn=outputs.append)
@@ -772,7 +772,8 @@ def test_repl_multi_table_session_and_checkpoints():
     repl.execute_line("status checkpoint", output_fn=outputs.append)
     cps_out = "\n".join(outputs)
     assert "Saved Checkpoints" in cps_out
-    assert "maddy" in cps_out and "df1 (344x7), df2 (244x7)" in cps_out
+    assert "maddy" in cps_out
+    assert "df1: 344 rows x 7 cols" in cps_out and "df2: 244 rows x 7 cols" in cps_out
     assert repl._build_prompt() == "pytae [df1, df2]> "
 
     # 6. Mutate and add a 3rd table df3

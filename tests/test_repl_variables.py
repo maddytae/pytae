@@ -261,3 +261,76 @@ def test_repl_variable_autocompletion():
     # status var completion
     st_opts = r._get_completions("c", line_buf="status var ")
     assert "cfg" in st_opts
+
+
+def test_repl_status_checkpoint_and_session_display_variables(tmp_path: Path):
+    from pytae.repl import get_sessions_dir, set_sessions_dir
+
+    orig_dir = get_sessions_dir()
+    sess_container = tmp_path / "sessions"
+    sess_container.mkdir(parents=True, exist_ok=True)
+    set_sessions_dir(sess_container)
+
+    try:
+        r = PytaeRepl()
+        r.execute_line("df = sample:penguins")
+        r.execute_line("min_mass = 3500")
+        r.execute_line('project_tag = "q4_audit"')
+        r.execute_line("set save_session = audit_sess")
+        r.execute_line("checkpoint cp1")
+
+        # 1. status checkpoint: Checkpoint line has container info, NOT rows x cols in front of cp1
+        outputs: list[str] = []
+        r.execute_line("status checkpoint", output_fn=outputs.append)
+        cp_out = "\n".join(outputs)
+
+        # Checkpoint header line does NOT have "344 rows x 7 cols" in front of cp1
+        cp_header = [line for line in outputs if "cp1" in line][0]
+        assert "1 table [df]" in cp_header
+        assert "2 vars" in cp_header
+        assert "344 rows x 7 cols" not in cp_header
+
+        # Indented tables under cp1 show dimensions
+        assert "df: 344 rows x 7 cols" in cp_out
+        # Indented variables under cp1 show variable details
+        assert "@min_mass: 3500 (int)" in cp_out
+        assert "@project_tag: 'q4_audit' (str)" in cp_out
+
+        # 2. status checkpoint cp1: specific checkpoint status shows tables and variables
+        outputs.clear()
+        r.execute_line("status checkpoint cp1", output_fn=outputs.append)
+        single_cp_out = "\n".join(outputs)
+        assert "Checkpoint     : cp1" in single_cp_out
+        assert "Tables (1):" in single_cp_out
+        assert "df            : 344 rows x 7 cols" in single_cp_out
+        assert "Variables (2):" in single_cp_out
+        assert "@min_mass" in single_cp_out and "3500" in single_cp_out
+        assert "@project_tag" in single_cp_out and "'q4_audit'" in single_cp_out
+
+        # 3. status session: active session status shows variables
+        outputs.clear()
+        r.execute_line("status session", output_fn=outputs.append)
+        sess_out = "\n".join(outputs)
+        assert "Variables     : 2 defined [@min_mass, @project_tag]" in sess_out
+
+        # status session -v: verbose active session lists each variable
+        outputs.clear()
+        r.execute_line("status session -v", output_fn=outputs.append)
+        sess_v_out = "\n".join(outputs)
+        assert "@min_mass" in sess_v_out and "3500" in sess_v_out
+        assert "@project_tag" in sess_v_out and "'q4_audit'" in sess_v_out
+
+        # 4. External session inspection: status session audit_sess
+        r.close()
+        r2 = PytaeRepl()
+        outputs.clear()
+        r2.execute_line("status session audit_sess", output_fn=outputs.append)
+        ext_sess_out = "\n".join(outputs)
+        assert "Session Inspection: audit_sess" in ext_sess_out
+        assert "Variables     : 2 defined [@min_mass, @project_tag]" in ext_sess_out
+        assert "Checkpoints (1):" in ext_sess_out
+        assert "@min_mass" in ext_sess_out and "3500" in ext_sess_out
+        r2.close()
+    finally:
+        set_sessions_dir(orig_dir)
+
