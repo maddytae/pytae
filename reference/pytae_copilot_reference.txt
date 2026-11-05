@@ -24828,7 +24828,7 @@ pytae> py df.shape
 pytae> -o clean.parquet
 pytae> -o clip                                               # Copy active table to system clipboard
 pytae> exit -s run.txt                                       # Exit and export session history to file
-# Up / Down arrow keys recall persistent command history (~/.pytae_history)
+# Up / Down arrow keys recall command history from current session
 ```
 
 ---

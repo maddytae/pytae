@@ -152,7 +152,7 @@ CHEATSHEET_TEXT = """\
   #   <cmd> | <shell_cmd>     Pipe output to shell utility (e.g. -cols | grep mass)
   #   -sql "<query>"          Run ANSI SQL across loaded tables
   #   -o <path|clip>          Export active dataset to file or clipboard
-  #   Up / Down arrow keys    Recall persistent command history (~/.pytae/history)
+  #   Up / Down arrow keys    Recall command history from current session
   #   -filter, -mutate, etc.  Standard pytae pipeline flags executed in RAM!
 
 14. 📖 DOCUMENTATION SEARCH & MCP SERVER (-doc, -mcp)

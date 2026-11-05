@@ -907,26 +907,17 @@ def _init_readline(completer_fn: Callable[[str, int], str | None] | None = None)
                 readline.set_completer_delims(" \t\n\"'=(),;[]")
         except Exception:
             pass
-    hist_file = _get_readline_hist_file()
-    if hist_file.exists():
+    # Clear any previous session history so arrow keys only replay current session commands
+    if hasattr(readline, "clear_history"):
         try:
-            readline.read_history_file(str(hist_file))
+            readline.clear_history()
         except Exception:
             pass
-    import atexit
-
-    atexit.register(_save_readline_history)
 
 
 def _save_readline_history() -> None:
-    """Persist readline history to disk."""
-    if readline is not None:
-        try:
-            readline.set_history_length(1000)
-            hist_file = _get_readline_hist_file()
-            readline.write_history_file(str(hist_file))
-        except Exception:
-            pass
+    """Persist readline history to disk (no-op: interactive arrow history is strictly per-session)."""
+    pass
 
 
 def _split_repl_pipe(raw: str) -> tuple[str, str] | None:
@@ -1609,7 +1600,7 @@ class PytaeRepl:
         self._cp_temp_dir: tempfile.TemporaryDirectory[str] | None = None
         self.table_sources: dict[str, str] = {}
         self.history: list[str] = []
-        self._raw_history: list[str] = _load_history_from_file()
+        self._raw_history: list[str] = []
         self._history_cursor: int | None = None
         self.variables: dict[str, Any] = dict(variables or {})
         self.initial_variables: dict[str, Any] = dict(self.variables)
@@ -2492,7 +2483,9 @@ class PytaeRepl:
 
         if readline is not None:
             try:
-                readline.add_history(line)
+                cur_len = readline.get_current_history_length()
+                if cur_len == 0 or readline.get_history_item(cur_len) != line:
+                    readline.add_history(line)
             except Exception:
                 pass
 
@@ -6040,8 +6033,7 @@ class PytaeRepl:
                         self.session_history_path.unlink()
                     except Exception:
                         pass
-            _save_readline_history()
-            _save_raw_history(self._raw_history)
+            # Interactive arrow history is strictly per-session; no cross-session replay
             self._cleanup_cp_dir()
             _release_memory()
         return self.current_df

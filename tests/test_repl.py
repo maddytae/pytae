@@ -2603,7 +2603,7 @@ def test_repl_rm_memory_deallocation_weakref():
     ref_df1_init = weakref.ref(r.tables["df1"])
     ref_df2_init = weakref.ref(r.tables["df2"])
 
-    # 2. Mutate df1 (creates undo snapshot) and create derived table df3 (switches active table)
+    # 2. Mutate df1 (mutates table) and create derived table df3 (switches active table)
     r.execute_line("df1 = df1 -filter \"species == 'Adelie'\"", output_fn=outputs.append)
     ref_df1_mut = weakref.ref(r.tables["df1"])
     r.execute_line("df3 = df2 -head 10", output_fn=outputs.append)
@@ -4560,6 +4560,59 @@ def test_repl_save_session_overwrite_protection(tmp_path, monkeypatch):
     assert (tmp_path / "target_sess" / "checkpoints" / "cp_iris").exists()
     assert not (tmp_path / "target_sess" / "checkpoints" / "cp_new").exists()
     r3.close()
+
+
+def test_repl_history_arrow_navigation_strictly_per_session():
+    import readline
+
+    from pytae.repl import PytaeRepl, _init_readline
+
+    # Simulate dirty readline state from a "previous session"
+    if readline is not None:
+        try:
+            readline.add_history("previous_session_cmd")
+        except Exception:
+            pass
+
+    # Initialize REPL for new session
+    r = PytaeRepl()
+    assert r._raw_history == []
+
+    _init_readline(r._complete)
+    if readline is not None and hasattr(readline, "get_current_history_length"):
+        assert readline.get_current_history_length() == 0
+
+    outputs = []
+    # No history yet
+    r.execute_line("\x1b[A", output_fn=outputs.append)
+    assert any("no previous commands in history" in o for o in outputs)
+
+    # Run command in current session
+    outputs.clear()
+    r.execute_line("df = sample:penguins", output_fn=outputs.append)
+    assert r._raw_history == ["df = sample:penguins"]
+
+    # Now arrow up recalls the current session command
+    outputs.clear()
+    r.execute_line("\x1b[A", output_fn=outputs.append)
+    assert any("recalled from history: df = sample:penguins" in o for o in outputs)
+    r.close()
+
+
+def test_repl_no_undo_redo_commands():
+    from pytae.repl import PytaeRepl
+
+    r = PytaeRepl()
+    outputs = []
+    r.execute_line("undo", output_fn=outputs.append)
+    # undo is not a recognized command
+    assert any("unrecognized" in o.lower() or "not found" in o.lower() or "error" in o.lower() or "pytae:" in o.lower() for o in outputs)
+
+    outputs.clear()
+    r.execute_line("redo", output_fn=outputs.append)
+    # redo is not a recognized command
+    assert any("unrecognized" in o.lower() or "not found" in o.lower() or "error" in o.lower() or "pytae:" in o.lower() for o in outputs)
+    r.close()
 
 
 
