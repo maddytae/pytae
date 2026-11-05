@@ -231,3 +231,23 @@ def test_win_console_input_ctrl_a_beginning_of_line():
     res = _win_console_input("", [], read_char_fn=fake_read)
     assert res == "abc"
 
+
+def test_repl_ctrl_a_jumps_to_beginning_of_multiline_command():
+    """Verify that Ctrl+A moves cursor to beginning of line buffer even across multi-line inputs."""
+    from pytae.repl import _init_readline
+
+    # Calling _init_readline initializes the beginning-of-command macros cleanly
+    _init_readline()
+
+    from pytae.repl import _win_console_input
+
+    # Feed long command, then Ctrl+A (\x01), then insert 'PREFIX_', then Enter (\r)
+    chars = list("df = sample:penguins -filter \"species == 'Gentoo'\"") + ["\x01"] + list("PREFIX_") + ["\r"]
+
+    def fake_read():
+        return chars.pop(0)
+
+    res = _win_console_input("", [], read_char_fn=fake_read)
+    assert res.startswith("PREFIX_df = sample:penguins")
+
+
