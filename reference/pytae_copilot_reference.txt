@@ -1,6 +1,6 @@
 ================================================================================
 PYTAE COMPREHENSIVE KNOWLEDGE BASE & AGENT TRAINING REFERENCE MANUAL
-RELEASE VERSION: 3.13.4
+RELEASE VERSION: 3.13.5
 ================================================================================
 
 TABLE OF CONTENTS
@@ -189,7 +189,7 @@ RULE 7: THE "TWIN PROOF" RULE (GROUND ON SAMPLE DATASETS)
 
 1. OVERVIEW & CORE PHILOSOPHY
 --------------------------------------------------------------------------------
-Package: pytae (Current Release Version: 3.13.4)
+Package: pytae (Current Release Version: 3.13.5)
 
 `pytae` is an ergonomic, high-performance tabular data manipulation library and 
 command-line tool powered by a 100% native multithreaded SIMD Polars engine with 
@@ -229,8 +229,8 @@ Key principles:
 
 2. PACKAGE ARCHITECTURE & IMPORT PATTERNS
 --------------------------------------------------------------------------------
-Installation (PyPI: https://pypi.org/project/pytae/3.13.4/):
-  pip install pytae==3.13.4
+Installation (PyPI: https://pypi.org/project/pytae/3.13.5/):
+  pip install pytae==3.13.5
   pip install 'pytae[plot]'    # includes matplotlib, scipy
 
 Importing:
@@ -8384,6 +8384,33 @@ pytae -help head
 pytae -help distinct
 ```
 
+---
+
+## Static Verification, Documentation Search & MCP
+
+### Static DSL Syntax Verification (`-check`)
+Validate command syntax, expressions, and pipeline flags statically without loading large datasets:
+```bash
+# Verify all pytae commands in a shell script
+pytae -check pipeline.sh
+
+# Verify one or more command strings directly
+pytae -check "pytae data.parquet -filter 'amount > 0' -select id,amount"
+```
+
+### Documentation Full-Text Search (`-doc`)
+Query Pytae's SQLite FTS5 search index for syntax, concepts, and recipes:
+```bash
+pytae -doc explode
+pytae -doc "schema drift"
+```
+
+### Model Context Protocol (MCP) Server (`-mcp`)
+Run the stdio JSON-RPC MCP server providing tools (`pytae_search_docs`, `pytae_cli_help`, `pytae_check_dsl`) to LLM coding assistants:
+```bash
+pytae -mcp
+```
+
 # FILE: docs/detailed_docs/cli/other_utilities.md
 ################################################################################
 # CLI Feature Guide: Other Utilities & Miscellaneous Commands
@@ -8663,6 +8690,33 @@ pytae -help reshape
 pytae -help arrange
 pytae -help head
 pytae -help distinct
+```
+
+---
+
+## Static Verification, Documentation Search & MCP
+
+### Static DSL Syntax Verification (`-check`)
+Validate command syntax, expressions, and pipeline flags statically without loading large datasets:
+```bash
+# Verify all pytae commands in a shell script
+pytae -check pipeline.sh
+
+# Verify one or more command strings directly
+pytae -check "pytae data.parquet -filter 'amount > 0' -select id,amount"
+```
+
+### Documentation Full-Text Search (`-doc`)
+Query Pytae's SQLite FTS5 search index for syntax, concepts, and recipes:
+```bash
+pytae -doc explode
+pytae -doc "schema drift"
+```
+
+### Model Context Protocol (MCP) Server (`-mcp`)
+Run the stdio JSON-RPC MCP server providing tools (`pytae_search_docs`, `pytae_cli_help`, `pytae_check_dsl`) to LLM coding assistants:
+```bash
+pytae -mcp
 ```
 
 ################################################################################
@@ -24017,7 +24071,7 @@ In Python, the Zen of Python famously asserts:
 Yet for over a decade, tabular data engineering and data science have drifted far from this ideal:
 
 - **Pandas** offers four to six competing ways to accomplish nearly every basic operation:
-  - Row filtering can be done via boolean masks `df[df['a'] > 1]`, `.loc[...]`, `.iloc[...]`, `.query(...)`, or `.filter()`.
+  - Row filtering can be done via boolean masks `df[df['a'] > 1]`, `.loc[...]`, `.iloc[...]`, or `.filter()` (whereas legacy `df.query()` has been strictly retired in Pytae).
   - Column derivations require choosing between bracket assignment `df['c'] = ...`, `.assign()`, `.apply()`, or `transform()`.
   - Index management demands constant, defensive ceremony: `.reset_index()`, `.set_index()`, `.rename_axis(None)`, and unpacking nested `MultiIndex` tuples after every aggregation.
   - Silent data loss traps abound: `df.groupby(..., dropna=True)` silently discards rows with missing group keys, while `df.dropna()` defaults to `how='any'`, wiping out valuable records missing even a single optional column.
@@ -24127,10 +24181,10 @@ Pytae carefully chooses concise, intention-revealing names that eliminate ambigu
 - **Intuitive Defaults**: `count()` automatically sorts descending by count (`sort=True`) with output column `name="n"`. Pass `sort=False` to preserve original encounter order, or `name="total"` to rename the tally.
 - **Natural Grammar in `agg()`**: Inside `agg()`, `count` (or `count()`) is the canonical counting function (`total_penguins="count"`, `avg_mass="body_mass_g:mean"`). In `avg_mass="body_mass_g:mean"`, `mean` is the function; therefore, `total_penguins="count"` makes `count` the consistent, intention-revealing function name, eliminating the awkward `n="n"` parameter tautology while preserving `"n"` as an alias for backward compatibility.
 
-### 8. Visualization: "Compute in Polars, Visualize in Pandas"
-- **Why Pandas for plotting?** Polars delivers unmatched multithreaded SIMD vector speed for data ingestion, filtering, and aggregation. However, the Pandas and Matplotlib ecosystem remains the most mature, flexible, and feature-rich visualization standard in Python.
-- **Zero-Friction Bridge**: Calling `.plot()` automatically converts the prepared dataset to Pandas (`.to_pandas()`) and delegates directly to `pandas.DataFrame.plot`. Users get 100% compatibility with all standard plot kinds (`bar`, `barh`, `line`, `area`, `scatter`, `hexbin`, `heatmap`, `hist`, `box`, `kde`, `density`, `pie`), Matplotlib colormaps, secondary axes (`^`), and subplot mosaics without writing conversion boilerplate.
-- **Clean Separation of Concerns**: Aggregation belongs in Polars (`.by().agg()`); visualization belongs in Pandas (`.plot()`). Pytae strictly prohibits implicit in-plot aggregation, keeping your pipelines predictable and high-performance.
+### 8. Visualization: "Compute in Polars, Visualize with Pytae Plotter"
+- **High-Performance Visualizer**: Polars delivers unmatched multithreaded SIMD vector speed for data ingestion, filtering, and aggregation. Visualizations are rendered via Pytae's native `Plotter` engine (`pytae.plotting.Plotter`), offering full integration with Matplotlib and Seaborn.
+- **Zero-Friction Bridge**: Calling `.plot()` routes directly through `Plotter`. Users get multi-panel facet grids (`col`, `ncols`, `facet=True`), subplot mosaics (`mosaic="..."`), secondary axes (`^`), automatic legend consolidation, and publication themes, with seamless `.finalize().save('out.png')` chaining without writing conversion boilerplate.
+- **Clean Separation of Concerns**: Aggregation belongs in Polars (`.by().agg()`); visualization belongs in Plotter (`.plot()`). Pytae strictly prohibits implicit in-plot aggregation, keeping your pipelines predictable and high-performance.
 - 👉 **Interactive Plotting Notebook**: [detailed_docs/plotting/plotting.ipynb](detailed_docs/plotting/plotting.ipynb)
 
 ---
@@ -24783,6 +24837,11 @@ pytae -i
 # Launch the interactive REPL shell (in-memory, SQL, checkpoints)
 pytae -i
 
+# List persistent REPL sessions on disk from the shell
+pytae -sessions              # List all saved sessions
+pytae -sessions -ready       # Filter to ready/healthy sessions only
+pytae -sessions -v           # Verbose session view (disk size, format, checkpoints)
+
 # Inspect loaded sessions from inside the REPL
 pytae> sessions
 
@@ -24850,6 +24909,10 @@ pytae -doc "grouped percentiles"
 
 # Launch Model Context Protocol (MCP) server for Copilot, Cursor, or VS Code
 pytae -mcp
+
+# Static DSL syntax check (validates pipeline flags and expressions without loading data)
+pytae -check pipeline.sh
+pytae -check "pytae data.parquet -filter 'amount > 0' -select id,amount"
 ```
 
 ---
@@ -27362,7 +27425,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.13.4"
+version = "3.13.5"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"

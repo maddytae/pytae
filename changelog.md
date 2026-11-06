@@ -2,6 +2,34 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.13.5] - 2026-11-06
+
+### Fixed
+- **Grouped Sorting Respects Descending Order (`GroupedDataFrame.arrange`)**:
+  - Extracted directional sort flags for `self._by` keys so `df.by('species').arrange('species desc')` faithfully sorts group columns descending instead of hardcoding ascending order.
+- **Grouped Count Multi-Column Support (`GroupedDataFrame.count`)**:
+  - Added `*cols` parameter to `GroupedDataFrame.count` so `df.by('species').count('island')` counts across both grouping and additional columns, eliminating the signature mismatch that previously bound column strings to truthy `sort=True`.
+- **Grouped Projection Key Desynchronization**:
+  - `GroupedDataFrame.__getattr__` now validates that all `self._by` columns remain in the resulting DataFrame. Operations projecting away group keys (such as `df.by('species').select('val')`) cleanly return flat DataFrames instead of returning broken GroupedDataFrames that fail on subsequent verbs.
+- **Multi-Column Struct Tie-Breaking Validation (`with_ties=True`)**:
+  - Added validation raising a clear `ValueError` when `with_ties=True` is combined with multiple sort columns having conflicting ascending/descending directions.
+- **CLI Flag Strictness (`pytae -h`)**:
+  - Removed `--ready` and `--verbose` from parser argument registration and `_CLI_FLAGS` to ensure 100% single-hyphen consistency across help output (`-ready`, `-v`, `-verbose`) and runtime argument parsing.
+- **Suppress Non-Interactive Canvas Warnings in `Plotter.show()`**:
+  - Guarded `plt.show()` against non-interactive Matplotlib backends (`agg`, `pdf`, `svg`, `cairo`), preventing `FigureCanvasAgg is non-interactive` warnings in headless test environments.
+
+### Added
+- **MCP Server Unit Tests (`tests/test_mcp_server.py`)**:
+  - Added automated test coverage for the stdio Model Context Protocol (MCP) JSON-RPC 2.0 server (`initialize`, `ping`, `tools/list`, and `tools/call`).
+- **Comprehensive Audit Test Suite (`tests/test_audit_v3135_fixes.py`)**:
+  - Added dedicated unit tests covering grouped arrange descending keys, multi-column grouped count, projection safety, CLI flag registration, and tie-breaking validations.
+
+### Documentation
+- **Architecture & Plotting Documentation**:
+  - Updated `docs/pytae.md` to document Pytae's native `Plotter` engine (`pytae.plotting.Plotter`), Seaborn integration, multi-panel facet grids, and mosaic layouts.
+  - Clarified that `df.query()` is retired in Pytae in favor of `df.filter()`.
+  - Added documentation for static DSL syntax verification (`pytae -check`), full-text search (`pytae -doc`), and persistent session management (`pytae -sessions`) in `docs/cli_cheatsheet.md` and `docs/detailed_docs/cli/other_utilities.md`.
+
 ## [3.13.4] - 2026-11-03
 
 ### Fixed
