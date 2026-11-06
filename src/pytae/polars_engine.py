@@ -1698,10 +1698,7 @@ def _ast_to_polars_expr(
             elif isinstance(arg_type, pl.Datetime) or arg_type == pl.Datetime:
                 expr = args[0].dt.date()
             else:
-                expr = pl.coalesce(
-                    args[0].str.to_date(strict=False),
-                    args[0].str.to_datetime(strict=False).dt.date(),
-                )
+                expr = args[0].str.to_datetime(strict=False).dt.date()
             return expr.over(by) if by else expr
         if func_name in ("datetime", "timestamp") and len(args) >= 1:
             arg_type = schema.get(node.args[0].id) if schema and isinstance(node.args[0], ast.Name) else None
@@ -1712,10 +1709,7 @@ def _ast_to_polars_expr(
             elif arg_type == pl.Date:
                 expr = args[0].cast(pl.Datetime())
             else:
-                expr = pl.coalesce(
-                    args[0].str.to_datetime(strict=False),
-                    args[0].str.to_date(strict=False).cast(pl.Datetime()),
-                )
+                expr = args[0].str.to_datetime(strict=False)
             return expr.over(by) if by else expr
         if func_name in _DTYPE_MAP and len(args) == 1:
             expr = args[0].cast(_DTYPE_MAP[func_name])
@@ -2091,10 +2085,35 @@ def wide_polars(
             "Rename the column or index before resetting."
         )
 
+    if not r_cols:
+        if df[c].n_unique() != len(df):
+            raise ValueError(
+                f"wide() encountered duplicate entries for row 'r' [] and column '{c}'. "
+                "wide() is strictly for 1-to-1 reshaping without aggregation. "
+                "Use pt.pivot() / -pivot to summarize or aggregate duplicate entries."
+            )
+        dummy_col = "_wide_synth_idx_"
+        while dummy_col in df.columns:
+            dummy_col += "_"
+        df_with_idx = df.with_columns(pl.lit(0).alias(dummy_col))
+        try:
+            return df_with_idx.pivot(
+                on=c,
+                index=dummy_col,
+                values=v,
+                sort_columns=True,
+            ).drop(dummy_col)
+        except Exception as exc:
+            raise ValueError(
+                f"wide() encountered duplicate entries for row 'r' [] and column '{c}'. "
+                "wide() is strictly for 1-to-1 reshaping without aggregation. "
+                "Use pt.pivot() / -pivot to summarize or aggregate duplicate entries."
+            ) from exc
+
     try:
         res = df.pivot(
             on=c,
-            index=r_cols if r_cols else None,
+            index=r_cols,
             values=v,
             sort_columns=True,
         )

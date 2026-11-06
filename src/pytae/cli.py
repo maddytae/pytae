@@ -292,7 +292,14 @@ class _CheatsheetAction(argparse.Action):
     ) -> None:
         from pytae.cheatsheet import CHEATSHEET_TEXT
 
-        sys.stdout.write(CHEATSHEET_TEXT)
+        try:
+            sys.stdout.write(CHEATSHEET_TEXT)
+        except UnicodeEncodeError:
+            encoding = getattr(sys.stdout, "encoding", None) or "ascii"
+            if hasattr(sys.stdout, "buffer"):
+                sys.stdout.buffer.write(CHEATSHEET_TEXT.encode(encoding, errors="replace"))
+            else:
+                sys.stdout.write(CHEATSHEET_TEXT.encode(encoding, errors="replace").decode(encoding))
         parser.exit(0)
 
 
@@ -1417,8 +1424,14 @@ def main(argv: list[str] | None = None) -> int:
                     rename_specs=rename_specs,
                     reader_opts=opts,
                 )
-            except UnicodeError as exc:
+            except UnicodeDecodeError as exc:
                 failed = _fail(parser, batch, _encoding_error_message(path, args.encoding, exc))
+            except UnicodeEncodeError as exc:
+                failed = _fail(
+                    parser,
+                    batch,
+                    f"pytae: console encoding error: cannot display Unicode characters with encoding '{getattr(sys.stdout, 'encoding', 'unknown')}'; please set PYTHONUTF8=1 or use a UTF-8 console: {exc}",
+                )
             if failed:
                 code = 1
         return code

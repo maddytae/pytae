@@ -627,6 +627,9 @@ def bar(
         cat_col = None
     else:
         # Bare -bar: auto-detect
+        if "Distribution" in cols and "Count" in cols:
+            # Already formatted by freq() with inline bars
+            return DataFrame(pldf)
         if len(cols) == 2:
             num_cols = [c for c in cols if pldf[c].dtype.is_numeric()]
             non_num_cols = [c for c in cols if not pldf[c].dtype.is_numeric()]

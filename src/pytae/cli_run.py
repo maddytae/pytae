@@ -236,7 +236,14 @@ def _output_text(text: str, args: argparse.Namespace) -> None:
 
         pydoc.pager(text)
     else:
-        print(text)
+        try:
+            print(text)
+        except UnicodeEncodeError:
+            encoding = getattr(sys.stdout, "encoding", None) or "ascii"
+            if hasattr(sys.stdout, "buffer"):
+                sys.stdout.buffer.write((text + "\n").encode(encoding, errors="replace"))
+            else:
+                print(text.encode(encoding, errors="replace").decode(encoding))
 
 
 def _format_bytes(num: int | float) -> str:

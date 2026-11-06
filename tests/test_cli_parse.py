@@ -43,7 +43,7 @@ def test_cli_keyword_help(capsys):
     assert code == 0
     out = capsys.readouterr().out
     assert "PYTAE CLI KEYWORD HELP: -sql" in out
-    assert "FLAG:     -sql, --sql QUERY" in out
+    assert "FLAG:     -sql QUERY" in out
     assert "select species" in out
 
     # test `pytae -h mutate`

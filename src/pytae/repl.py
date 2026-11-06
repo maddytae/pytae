@@ -2771,10 +2771,11 @@ class PytaeRepl:
             output_fn("Exiting pytae REPL.")
             return False
 
+        norm_exit_line = _normalize_unquoted_windows_paths(line)
         try:
-            exit_tokens = shlex.split(line)
+            exit_tokens = shlex.split(norm_exit_line)
         except Exception:
-            exit_tokens = line.split()
+            exit_tokens = norm_exit_line.split()
 
         if exit_tokens and exit_tokens[0].lower() == "exit":
             if len(exit_tokens) >= 3 and exit_tokens[1] in ("-s", "-save", "save"):
@@ -3234,7 +3235,7 @@ class PytaeRepl:
             if len(tokens) > 1 and tokens[1].lower() == "-diff":
                 self._cmd_diff([resolved_table] + tokens[2:], output_fn)
                 return True
-            self._cmd_targeted_pipeline(resolved_table, line[len(tokens[0]) :].strip(), output_fn)
+            self._cmd_targeted_pipeline(resolved_table, norm_line[len(tokens[0]) :].strip(), output_fn)
             return True
 
         # Bare checkpoint name hint
@@ -5415,7 +5416,8 @@ class PytaeRepl:
         self.current_df = target_df
         self.path_str = table_name
 
-        sub_tokens = shlex.split(sub_line)
+        norm_sub = _normalize_unquoted_windows_paths(sub_line)
+        sub_tokens = shlex.split(norm_sub)
         first_sub = sub_tokens[0].lower() if sub_tokens else ""
 
         if first_sub in _DISALLOWED_ALIASES:
@@ -5427,7 +5429,7 @@ class PytaeRepl:
 
         has_time = any(t == "-time" or t.startswith("-time=") for t in sub_tokens)
         if has_time:
-            self._cmd_pipeline(sub_line, sub_tokens, output_fn)
+            self._cmd_pipeline(norm_sub, sub_tokens, output_fn)
             self.current_df = old_active
             self.path_str = old_path
             return
@@ -5449,11 +5451,11 @@ class PytaeRepl:
         elif first_sub == "-join":
             self._cmd_join(sub_tokens[1:], output_fn)
         elif first_sub == "-sql":
-            raw_query = sub_line[4:].strip()
+            raw_query = norm_sub[4:].strip()
             query = raw_query.strip("\"'")
             self._cmd_sql(query, output_fn)
         else:
-            self._cmd_pipeline(sub_line, sub_tokens, output_fn)
+            self._cmd_pipeline(norm_sub, sub_tokens, output_fn)
 
         self.current_df = old_active
         self.path_str = old_path

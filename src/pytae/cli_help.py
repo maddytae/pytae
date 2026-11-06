@@ -20,7 +20,7 @@ class KeywordHelp(NamedTuple):
 KEYWORD_DOCS: dict[str, KeywordHelp] = {
     "sql": KeywordHelp(
         name="sql",
-        flag="-sql, --sql QUERY",
+        flag="-sql QUERY",
         syntax='pytae <path> -sql "<QUERY>" [other flags...]',
         summary="Run full analytical SQL queries via Polars SQLContext directly against data.",
         description=(
@@ -47,7 +47,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "filter": KeywordHelp(
         name="filter",
-        flag="-filter, --filter CONDITIONS",
+        flag="-filter CONDITIONS",
         syntax='pytae <path> -filter "<CONDITIONS>"',
         summary="Filter DataFrame rows using expressions, interval bounds, and string checks.",
         description=(
@@ -73,7 +73,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "select": KeywordHelp(
         name="select",
-        flag="-select, --select SPEC",
+        flag="-select SPEC",
         syntax='pytae <path> -select "<SPEC>"',
         summary="Select, reorder, slice, or exclude columns.",
         description=(
@@ -104,7 +104,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "mutate": KeywordHelp(
         name="mutate",
-        flag="-mutate, --mutate SPEC",
+        flag="-mutate SPEC",
         syntax='pytae <path> -mutate "<col1 = expr1, (colA, colB) = _ * 2>"',
         summary="Create, modify, or engineer columns using vectorized expressions, multi-column transforms, or grouped window transforms.",
         description=(
@@ -133,7 +133,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "arrange": KeywordHelp(
         name="arrange",
-        flag="-arrange, --arrange SPEC",
+        flag="-arrange SPEC",
         syntax='pytae <path> -arrange "<col1 [desc], -col2, ...>"',
         summary="Sort rows by one or more columns with inline ascending or descending directions.",
         description=(
@@ -173,7 +173,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "agg": KeywordHelp(
         name="agg",
-        flag="-agg, --agg [AGGFUNC]",
+        flag="-agg [AGGFUNC]",
         syntax="pytae <path> [-by <cols>] -agg [AGGFUNC]",
         summary="Aggregate numeric columns grouped by -by (or whole-table summary without -by).",
         description=(
@@ -201,7 +201,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "pivot": KeywordHelp(
         name="pivot",
-        flag="-pivot, --pivot [KEY=VALUE,...]",
+        flag="-pivot [KEY=VALUE,...]",
         syntax='pytae <path> -pivot "r=rows,c=cols,v=values,a=func,f_v=val"',
         summary="Create 2D Excel-style contingency tables and pivot matrices.",
         description=(
@@ -231,7 +231,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "long": KeywordHelp(
         name="long",
-        flag="-long, --long [KEY=VALUE,...]",
+        flag="-long [KEY=VALUE,...]",
         syntax="pytae <path> -long [r=id_cols,c=var,v=val,cols=cols]",
         summary="Melt wide tables to tall format (pure 1-to-1 unpivoting without aggregation).",
         description=(
@@ -254,7 +254,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "wide": KeywordHelp(
         name="wide",
-        flag="-wide, --wide [KEY=VALUE,...]",
+        flag="-wide [KEY=VALUE,...]",
         syntax="pytae <path> -wide [c=var,v=val,r=id_cols]",
         summary="Spread tall rows into wide headers (pure 1-to-1 reshaping, reverse of -long).",
         description=(
@@ -275,7 +275,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "by": KeywordHelp(
         name="by",
-        flag="-by, --by COLUMNS",
+        flag="-by COLUMNS",
         syntax="pytae <path> -by <COLUMNS> [operation]",
         summary="Set grouping columns for subsequent group-aware operations (-agg, -mutate, -head, -tail).",
         description=(
@@ -297,7 +297,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "clean_columns": KeywordHelp(
         name="clean_columns",
-        flag="-clean_columns, --clean_columns SPEC",
+        flag="-clean_columns SPEC",
         syntax='pytae <path> -clean_columns "<KEY=VALUE,...>"',
         summary="Systematically sanitize, normalize, and rename messy column headers.",
         description=(
@@ -320,7 +320,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "rename": KeywordHelp(
         name="rename",
-        flag="-rename, --rename SPEC",
+        flag="-rename SPEC",
         syntax='pytae <path> -rename "old1:new1,old2:new2"',
         summary="Rename one or more columns.",
         description=(
@@ -338,7 +338,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "opts": KeywordHelp(
         name="opts",
-        flag="-opts, --opts OPTS",
+        flag="-opts OPTS",
         syntax='pytae <path> -opts "key=value, ..."',
         summary="Pass reader-specific options (Excel sheet name, skiprows, headers, encodings).",
         description=(
@@ -377,7 +377,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "join": KeywordHelp(
         name="join",
-        flag="-join, --join KEY=VALUE,...",
+        flag="-join KEY=VALUE,...",
         syntax='pytae alias1=file1 alias2=file2 -join "on=key[,how=inner]"',
         summary="Join two datasets in the pipeline using Polars SIMD multithreading.",
         description=(
@@ -400,7 +400,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "concat": KeywordHelp(
         name="concat",
-        flag="-concat, --concat [KEY=VALUE,...]",
+        flag="-concat [KEY=VALUE,...]",
         syntax="pytae f1=jan.csv f2=feb.csv -concat",
         summary="Stack multiple datasets vertically row-wise into one pipeline DataFrame.",
         description=(
@@ -418,7 +418,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "output": KeywordHelp(
         name="output",
-        flag="-o, --output TARGET",
+        flag="-o TARGET",
         syntax="pytae <path> [operations] -o <TARGET> [-out_dir <DIR>]",
         summary="Export result to a file, batch format conversion, or clipboard.",
         description=(
@@ -440,7 +440,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "freq": KeywordHelp(
         name="freq",
-        flag="-freq, --freq COLUMN",
+        flag="-freq COLUMN",
         syntax="pytae <path> -freq <COLUMN>",
         summary="Render in-terminal horizontal frequency bars with counts and percentages.",
         description=("Displays a text-based distribution chart for categorical columns directly in your terminal."),
@@ -455,7 +455,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "hist": KeywordHelp(
         name="hist",
-        flag="-hist, --hist COLUMN[:BINS]",
+        flag="-hist COLUMN[:BINS]",
         syntax="pytae <path> -hist <COLUMN[:BINS]>",
         summary="Render in-terminal distribution histogram for numeric columns.",
         description=("Displays ASCII bar distribution and bin counts for numeric columns."),
@@ -472,7 +472,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "bar": KeywordHelp(
         name="bar",
-        flag="-bar, --bar [SPEC]",
+        flag="-bar [SPEC]",
         syntax='pytae <path> -bar [COLUMN | "CAT:VAL" | "VAL,limit=(min,max),pct=true,width=N"]',
         summary="Render in-terminal horizontal bars for metric values across categories.",
         description=(
@@ -497,7 +497,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "scatter": KeywordHelp(
         name="scatter",
-        flag="-scatter, --scatter [SPEC]",
+        flag="-scatter [SPEC]",
         syntax='pytae <path> -scatter ["X:Y" | "X:Y,width=W,height=H,limit_x=(min,max),limit_y=(min,max)"]',
         summary="Render in-terminal 2D Unicode Braille scatter plot for bivariate data.",
         description=(
@@ -521,7 +521,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "corr": KeywordHelp(
         name="corr",
-        flag="-corr, --corr [SPEC]",
+        flag="-corr [SPEC]",
         syntax='pytae <path> -corr [pairs | "target=COLUMN" | "method=spearman"]',
         summary="Render pairwise correlation matrix or ranked pairs for numeric columns.",
         description=(
@@ -544,7 +544,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "meta": KeywordHelp(
         name="meta",
-        flag="-meta, --meta",
+        flag="-meta",
         syntax="pytae <file.parquet> -meta",
         summary="Display Parquet metadata (row groups, column statistics, compression, schema) without loading data.",
         description=(
@@ -559,7 +559,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "diff": KeywordHelp(
         name="diff",
-        flag="-diff, --diff SPEC [-tol N]",
+        flag="-diff SPEC [-tol N]",
         syntax='pytae <file1> -diff <file2> [-tol N]  OR  pytae <file1> -diff "<file2>,on=<key>[,tol=N]"',
         summary="Compare schema and values between two tabular datasets.",
         description=(
@@ -603,7 +603,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "head": KeywordHelp(
         name="head",
-        flag="-head, --head [LIMIT]",
+        flag="-head [LIMIT]",
         syntax="pytae <path> [-by <cols>] -head [LIMIT]",
         summary="Print the first N rows or proportion (default: 5), group-aware with -by.",
         description=(
@@ -628,7 +628,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "tail": KeywordHelp(
         name="tail",
-        flag="-tail, --tail [LIMIT]",
+        flag="-tail [LIMIT]",
         syntax="pytae <path> [-by <cols>] -tail [LIMIT]",
         summary="Print the last N rows or proportion (default: 5), group-aware with -by.",
         description=(
@@ -652,7 +652,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "shape": KeywordHelp(
         name="shape",
-        flag="-shape, --shape",
+        flag="-shape",
         syntax="pytae <path> -shape",
         summary="Print dataset dimensions as (rows, cols).",
         description="Prints (rows, cols) dimensions. For Parquet files, reads metadata instantly without loading rows into RAM.",
@@ -665,7 +665,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "cols": KeywordHelp(
         name="cols",
-        flag="-cols, --cols [ORDER]",
+        flag="-cols [ORDER]",
         syntax="pytae <path> -cols [asc|desc]",
         summary="Print column header names.",
         description="Prints column headers in file order (default) or sorted alphabetically (asc|desc).",
@@ -681,7 +681,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "dtype": KeywordHelp(
         name="dtype",
-        flag="-dtype, --dtype [ORDER]",
+        flag="-dtype [ORDER]",
         syntax="pytae <path> -dtype [asc|desc]",
         summary="Print column datatypes.",
         description="Prints column names and their pandas datatypes.",
@@ -694,7 +694,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "nulls": KeywordHelp(
         name="nulls",
-        flag="-nulls, --nulls [ORDER]",
+        flag="-nulls [ORDER]",
         syntax="pytae <path> -nulls [asc|desc]",
         summary="Print count and percentage of missing (NaN/null) values per column.",
         description="Counts nulls per column to quickly spot missing data.",
@@ -707,7 +707,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "schema": KeywordHelp(
         name="schema",
-        flag="-schema, --schema",
+        flag="-schema",
         syntax="pytae <path> -schema",
         summary="Print concise schema summary: columns, dtypes, null counts/percentages, and cardinality.",
         description=(
@@ -723,7 +723,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "sample": KeywordHelp(
         name="sample",
-        flag="-sample, --sample [SPEC]",
+        flag="-sample [SPEC]",
         syntax="pytae <path> -sample [N|P%|P] [-seed S]",
         summary="Sample rows by count, fraction, or percentage with optional random seed.",
         description=(
@@ -748,7 +748,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "dropna": KeywordHelp(
         name="dropna",
-        flag="-dropna, --dropna [COLS]",
+        flag="-dropna [COLS]",
         syntax='pytae <path> -dropna ["col1,col2"]',
         summary="Drop rows containing missing (NaN) values.",
         description="Bare -dropna drops rows with any missing value; -dropna 'col1,col2' checks only specified columns.",
@@ -764,7 +764,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "fillna": KeywordHelp(
         name="fillna",
-        flag="-fillna, --fillna SPEC",
+        flag="-fillna SPEC",
         syntax='pytae <path> -fillna "<SPEC>"',
         summary="Fill missing values with a scalar, column mapping, or column subset.",
         description=(
@@ -788,7 +788,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "distinct": KeywordHelp(
         name="distinct",
-        flag="-distinct, --distinct [SPEC]",
+        flag="-distinct [SPEC]",
         syntax='pytae <path> -distinct ["col1,col2[,keep=first|last|false]"]',
         summary="Drop duplicate rows (across all or specific columns, with keep control).",
         description="Drops duplicate records, with configurable duplicate retention (first, last, or drop all).",
@@ -809,7 +809,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "count": KeywordHelp(
         name="count",
-        flag="-count, --count [SPEC]",
+        flag="-count [SPEC]",
         syntax='pytae <path> -count ["col1,col2[,sort=true|false][,name=n]"]',
         summary="Count occurrences of unique combinations of columns (or total rows).",
         description=(
@@ -837,7 +837,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "pretty": KeywordHelp(
         name="pretty",
-        flag="-pretty, --pretty",
+        flag="-pretty",
         syntax="pytae <path> [operations] -pretty",
         summary="[Deprecated] Table formatting is automatically detected.",
         description="Deprecated. Table formatting is now automatically detected: boxed UTF-8 tables for interactive terminals and clean unbordered bare tables when piped or redirected.",
@@ -849,7 +849,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "pager": KeywordHelp(
         name="pager",
-        flag="-pager, --pager",
+        flag="-pager",
         syntax="pytae <path> [operations] -pager",
         summary="Pipe output through system pager ($PAGER or less).",
         description="Pipes wide or long output through the terminal pager for comfortable scrolling.",
@@ -862,7 +862,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "round": KeywordHelp(
         name="round",
-        flag="-round, --round N",
+        flag="-round N",
         syntax="pytae <path> [operations] -round <N>",
         summary="Round numeric columns to N decimal places before printing.",
         description="Rounds numeric float columns to N decimal places; non-numeric columns remain untouched.",
@@ -875,7 +875,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "time": KeywordHelp(
         name="time",
-        flag="-time, --time [N]",
+        flag="-time [N]",
         syntax="pytae <path> [operations] -time [N]",
         summary="Measure and print pipeline execution time over 1 or N runs.",
         description=(
@@ -896,7 +896,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "check": KeywordHelp(
         name="check",
-        flag="-check, --check [PATHS...]",
+        flag="-check [PATHS...]",
         syntax="pytae -check [PATH...]",
         summary="Statically inspect Python files and check pytae DSL expressions for syntax errors.",
         description=(
@@ -917,7 +917,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "doc": KeywordHelp(
         name="doc",
-        flag="-doc, --doc QUERY",
+        flag="-doc QUERY",
         syntax="pytae -doc <keyword or query>",
         summary="Search documentation, guides, and Python API using SQLite FTS5 (BM25).",
         description=(
@@ -936,7 +936,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "mcp": KeywordHelp(
         name="mcp",
-        flag="-mcp, --mcp",
+        flag="-mcp",
         syntax="pytae -mcp",
         summary="Launch Model Context Protocol (MCP) stdio server for AI agents.",
         description=(
@@ -951,7 +951,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "mask": KeywordHelp(
         name="mask",
-        flag="-mask, --mask SPEC",
+        flag="-mask SPEC",
         syntax='pytae <path> -mask "<SPEC>" [-key <KEY>] [-salt <SALT>] [-vault <PATH>]',
         summary="Mask sensitive columns using hashing, redaction, key-based encryption, or tokenization.",
         description=(
@@ -978,7 +978,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "unmask": KeywordHelp(
         name="unmask",
-        flag="-unmask, --unmask COLS",
+        flag="-unmask COLS",
         syntax='pytae <path> -unmask "<COLS>" [-key <KEY>] [-vault <PATH>]',
         summary="Unmask, decrypt, or de-tokenize columns previously protected with -mask.",
         description=(
@@ -1067,7 +1067,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "describe": KeywordHelp(
         name="describe",
-        flag="-describe, --describe",
+        flag="-describe",
         syntax="pytae <path> [operations] -describe",
         summary="Compute summary statistics for all numeric and categorical columns.",
         description=(
@@ -1083,7 +1083,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "glimpse": KeywordHelp(
         name="glimpse",
-        flag="-glimpse, --glimpse",
+        flag="-glimpse",
         syntax="pytae <path> [operations] -glimpse",
         summary="Transposed overview of columns, data types, and sample head values.",
         description=(
@@ -1099,7 +1099,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "nrows": KeywordHelp(
         name="nrows",
-        flag="-nrows, --nrows N",
+        flag="-nrows N",
         syntax="pytae <path> -nrows <N>",
         summary="Limit the number of rows read from the source dataset file.",
         description=(
@@ -1117,7 +1117,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "dlim": KeywordHelp(
         name="dlim",
-        flag="-dlim, --dlim CHAR",
+        flag="-dlim CHAR",
         syntax="pytae <path> -dlim <CHAR>",
         summary="Specify custom column delimiter character for delimited text files.",
         description=(
@@ -1135,7 +1135,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "encoding": KeywordHelp(
         name="encoding",
-        flag="-encoding, --encoding CODEC",
+        flag="-encoding CODEC",
         syntax="pytae <path> -encoding <CODEC>",
         summary="Specify text character encoding for reading or writing text files.",
         description=(
@@ -1153,7 +1153,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "fmt": KeywordHelp(
         name="fmt",
-        flag="-fmt, --fmt FORMAT",
+        flag="-fmt FORMAT",
         syntax="pytae <path> -fmt <FORMAT>",
         summary="Explicitly specify input file format when piping from stdin or using extensionless files.",
         description=(
@@ -1170,7 +1170,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "plot": KeywordHelp(
         name="plot",
-        flag="-plot, --plot SPEC",
+        flag="-plot SPEC",
         syntax='pytae <path> -plot "kind=<type>, x=<col>[, y=<col>]"',
         summary="Generate terminal-rendered or graphical plots (histogram, bar, scatter, line, box, etc.).",
         description=(
