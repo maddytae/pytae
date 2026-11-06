@@ -18,3 +18,9 @@ These instructions apply persistently to all Antigravity/Gemini interactions wit
     - Regenerate references via `python scripts/generate_reference.py`.
     - Ensure `reference/pytae_copilot_reference.txt`, `reference/pytae_copilot_instructions.txt`, and `reference/pytae_docs.db` are up to date.
     - Run the test suite (`uv run --with pytest --with matplotlib --with scipy pytest`) and linter (`uv run --with ruff ruff check src tests scripts`).
+
+## 4. Cache Cleanup
+- **Regular Cache Cleanup**: Regularly clean up and delete all caches before committing changes:
+  - Remove Python bytecode and cache directories: `__pycache__`, `*.pyc`, `*.pyo`.
+  - Remove test/linter/typecheck caches: `.pytest_cache`, `.mypy_cache`, `.ruff_cache`.
+  - Remove OS metadata and stray artifacts: `.DS_Store`, leftover test output files.
