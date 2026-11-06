@@ -1106,7 +1106,9 @@ class Plotter:
                     self.fig.set_canvas(new_manager.canvas)
         except Exception:
             pass
-        plt.show()
+        backend = plt.get_backend().lower()
+        if backend not in ("agg", "pdf", "ps", "svg", "cairo"):
+            plt.show()
         return self
 
     def save(self, path, **kwargs):

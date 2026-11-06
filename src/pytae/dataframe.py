@@ -1516,14 +1516,18 @@ class GroupedDataFrame:
             def wrapper(*args: Any, **kwargs: Any) -> Any:
                 res = attr(*args, **kwargs)
                 if isinstance(res, DataFrame):
-                    return GroupedDataFrame(
-                        res._df,
-                        by_cols=self._by,
-                        orig_col_map=res._orig_col_map,
-                        orig_index=res._orig_index,
-                        _last_sort_cols=res._last_sort_cols,
-                        _last_sort_desc=res._last_sort_desc,
-                    )
+                    res_cols = set(res.columns)
+                    valid_by = [c for c in self._by if c in res_cols]
+                    if valid_by:
+                        return GroupedDataFrame(
+                            res._df,
+                            by_cols=valid_by,
+                            orig_col_map=res._orig_col_map,
+                            orig_index=res._orig_index,
+                            _last_sort_cols=res._last_sort_cols,
+                            _last_sort_desc=res._last_sort_desc,
+                        )
+                    return res
                 return res
 
             return wrapper
@@ -1534,8 +1538,11 @@ class GroupedDataFrame:
         spec_str = ",".join(specs)
         cols, asc = _extract_arrange_specs((spec_str,), available_cols=set(_df_columns(self._df)))
         descending = [not a for a in asc]
-        all_cols = self._by + [c for c in cols if c not in self._by]
-        all_desc = [False] * len(self._by) + [descending[cols.index(c)] for c in all_cols[len(self._by) :]]
+        by_desc = [descending[cols.index(c)] if c in cols else False for c in self._by]
+        rest_cols = [c for c in cols if c not in self._by]
+        rest_desc = [descending[cols.index(c)] for c in rest_cols]
+        all_cols = self._by + rest_cols
+        all_desc = by_desc + rest_desc
         sorted_df = self._df.sort(all_cols, descending=all_desc, nulls_last=na_last)
         return GroupedDataFrame(
             sorted_df,
@@ -1659,9 +1666,19 @@ class GroupedDataFrame:
             )
         return DataFrame(agg_polars(self._df, *specs, by=self._by, a=a, dropna=dropna, **kwargs))
 
-    def count(self, sort: bool = True, name: str = "n") -> DataFrame:
-        """Count occurrences per group for the established grouping keys."""
-        return DataFrame(count_polars(self._df, cols=self._by, sort=sort, name=name))
+    def count(self, *cols: Any, sort: bool = True, name: str = "n") -> DataFrame:
+        """Count occurrences per group for the established grouping keys, optionally partitioned by additional columns."""
+        if cols and isinstance(cols[0], bool) and len(cols) == 1:
+            sort = cols[0]
+            cols = ()
+        for c in cols:
+            if isinstance(c, (list, tuple, set)):
+                raise TypeError(
+                    f"count() takes column names as positional arguments, e.g. count('a', 'b'). "
+                    f"Lists are not accepted, got {type(c).__name__}."
+                )
+        resolved_cols = self._by + [str(c) for c in cols if str(c) not in self._by]
+        return DataFrame(count_polars(self._df, cols=resolved_cols, sort=sort, name=name))
 
     def rename(self, *args: Any, columns: dict[str, str] | None = None, **kwargs: Any) -> DataFrame:
         """Rename columns using string mapping, dict, or keyword arguments."""

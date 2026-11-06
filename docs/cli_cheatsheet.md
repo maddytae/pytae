@@ -386,6 +386,11 @@ pytae -i
 # Launch the interactive REPL shell (in-memory, SQL, checkpoints)
 pytae -i
 
+# List persistent REPL sessions on disk from the shell
+pytae -sessions              # List all saved sessions
+pytae -sessions -ready       # Filter to ready/healthy sessions only
+pytae -sessions -v           # Verbose session view (disk size, format, checkpoints)
+
 # Inspect loaded sessions from inside the REPL
 pytae> sessions
 
@@ -453,6 +458,10 @@ pytae -doc "grouped percentiles"
 
 # Launch Model Context Protocol (MCP) server for Copilot, Cursor, or VS Code
 pytae -mcp
+
+# Static DSL syntax check (validates pipeline flags and expressions without loading data)
+pytae -check pipeline.sh
+pytae -check "pytae data.parquet -filter 'amount > 0' -select id,amount"
 ```
 
 ---

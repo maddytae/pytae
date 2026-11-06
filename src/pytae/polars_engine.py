@@ -1887,6 +1887,11 @@ def _slice_bound_polars(
     if with_ties:
         assert sort_cols is not None
         assert sort_desc is not None
+        if len(sort_cols) > 1 and len(set(sort_desc)) > 1:
+            raise ValueError(
+                "with_ties=True across multiple sort columns requires all sort columns to have the "
+                "same direction (all ascending or all descending)."
+            )
         if len(sort_cols) == 1:
             target = pl.col(sort_cols[0])
             desc = sort_desc[0] if is_head else not sort_desc[0]

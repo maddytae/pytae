@@ -12,7 +12,7 @@ In Python, the Zen of Python famously asserts:
 Yet for over a decade, tabular data engineering and data science have drifted far from this ideal:
 
 - **Pandas** offers four to six competing ways to accomplish nearly every basic operation:
-  - Row filtering can be done via boolean masks `df[df['a'] > 1]`, `.loc[...]`, `.iloc[...]`, `.query(...)`, or `.filter()`.
+  - Row filtering can be done via boolean masks `df[df['a'] > 1]`, `.loc[...]`, `.iloc[...]`, or `.filter()` (whereas legacy `df.query()` has been strictly retired in Pytae).
   - Column derivations require choosing between bracket assignment `df['c'] = ...`, `.assign()`, `.apply()`, or `transform()`.
   - Index management demands constant, defensive ceremony: `.reset_index()`, `.set_index()`, `.rename_axis(None)`, and unpacking nested `MultiIndex` tuples after every aggregation.
   - Silent data loss traps abound: `df.groupby(..., dropna=True)` silently discards rows with missing group keys, while `df.dropna()` defaults to `how='any'`, wiping out valuable records missing even a single optional column.
@@ -122,10 +122,10 @@ Pytae carefully chooses concise, intention-revealing names that eliminate ambigu
 - **Intuitive Defaults**: `count()` automatically sorts descending by count (`sort=True`) with output column `name="n"`. Pass `sort=False` to preserve original encounter order, or `name="total"` to rename the tally.
 - **Natural Grammar in `agg()`**: Inside `agg()`, `count` (or `count()`) is the canonical counting function (`total_penguins="count"`, `avg_mass="body_mass_g:mean"`). In `avg_mass="body_mass_g:mean"`, `mean` is the function; therefore, `total_penguins="count"` makes `count` the consistent, intention-revealing function name, eliminating the awkward `n="n"` parameter tautology while preserving `"n"` as an alias for backward compatibility.
 
-### 8. Visualization: "Compute in Polars, Visualize in Pandas"
-- **Why Pandas for plotting?** Polars delivers unmatched multithreaded SIMD vector speed for data ingestion, filtering, and aggregation. However, the Pandas and Matplotlib ecosystem remains the most mature, flexible, and feature-rich visualization standard in Python.
-- **Zero-Friction Bridge**: Calling `.plot()` automatically converts the prepared dataset to Pandas (`.to_pandas()`) and delegates directly to `pandas.DataFrame.plot`. Users get 100% compatibility with all standard plot kinds (`bar`, `barh`, `line`, `area`, `scatter`, `hexbin`, `heatmap`, `hist`, `box`, `kde`, `density`, `pie`), Matplotlib colormaps, secondary axes (`^`), and subplot mosaics without writing conversion boilerplate.
-- **Clean Separation of Concerns**: Aggregation belongs in Polars (`.by().agg()`); visualization belongs in Pandas (`.plot()`). Pytae strictly prohibits implicit in-plot aggregation, keeping your pipelines predictable and high-performance.
+### 8. Visualization: "Compute in Polars, Visualize with Pytae Plotter"
+- **High-Performance Visualizer**: Polars delivers unmatched multithreaded SIMD vector speed for data ingestion, filtering, and aggregation. Visualizations are rendered via Pytae's native `Plotter` engine (`pytae.plotting.Plotter`), offering full integration with Matplotlib and Seaborn.
+- **Zero-Friction Bridge**: Calling `.plot()` routes directly through `Plotter`. Users get multi-panel facet grids (`col`, `ncols`, `facet=True`), subplot mosaics (`mosaic="..."`), secondary axes (`^`), automatic legend consolidation, and publication themes, with seamless `.finalize().save('out.png')` chaining without writing conversion boilerplate.
+- **Clean Separation of Concerns**: Aggregation belongs in Polars (`.by().agg()`); visualization belongs in Plotter (`.plot()`). Pytae strictly prohibits implicit in-plot aggregation, keeping your pipelines predictable and high-performance.
 - 👉 **Interactive Plotting Notebook**: [detailed_docs/plotting/plotting.ipynb](detailed_docs/plotting/plotting.ipynb)
 
 ---

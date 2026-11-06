@@ -277,4 +277,32 @@ pytae -help head
 pytae -help distinct
 ```
 
+---
+
+## Static Verification, Documentation Search & MCP
+
+### Static DSL Syntax Verification (`-check`)
+Validate command syntax, expressions, and pipeline flags statically without loading large datasets:
+```bash
+# Verify all pytae commands in a shell script
+pytae -check pipeline.sh
+
+# Verify one or more command strings directly
+pytae -check "pytae data.parquet -filter 'amount > 0' -select id,amount"
+```
+
+### Documentation Full-Text Search (`-doc`)
+Query Pytae's SQLite FTS5 search index for syntax, concepts, and recipes:
+```bash
+pytae -doc explode
+pytae -doc "schema drift"
+```
+
+### Model Context Protocol (MCP) Server (`-mcp`)
+Run the stdio JSON-RPC MCP server providing tools (`pytae_search_docs`, `pytae_cli_help`, `pytae_check_dsl`) to LLM coding assistants:
+```bash
+pytae -mcp
+```
+
+
 

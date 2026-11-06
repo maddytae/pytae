@@ -119,7 +119,6 @@ _CLI_FLAGS = {
     "-version",
     "-v",
     "-verbose",
-    "--verbose",
     "-cheatsheet",
     "-quick_start",
     "-quickstart",
@@ -891,7 +890,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-ready",
-        "--ready",
         dest="ready_only",
         action="store_true",
         help="filter session listing to only ready/healthy sessions (e.g. pytae -sessions -ready)",
@@ -899,7 +897,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     parser.add_argument(
         "-v",
         "-verbose",
-        "--verbose",
         dest="verbose",
         action="store_true",
         help="enable verbose output with detailed checkpoint and format breakdown (e.g. pytae -sessions -v)",
