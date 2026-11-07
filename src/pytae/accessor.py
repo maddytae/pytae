@@ -275,6 +275,9 @@ class _BasePtAccessor:
     def to_polars(self) -> Any:
         return DataFrame(self._obj).to_polars()
 
+    def to_pytae(self) -> DataFrame:
+        return DataFrame(self._obj)
+
     def plot(self, *args: Any, **kwargs: Any) -> Any:
         return _plot_impl(self._obj, *args, **kwargs)
 
@@ -305,3 +308,15 @@ class PandasPtAccessor(_BasePtAccessor):
 
     def to_pandas(self) -> pd.DataFrame:
         return self._obj
+
+
+def _to_pytae(self: Any) -> DataFrame:
+    return DataFrame(self)
+
+
+if not hasattr(pd.DataFrame, "to_pytae"):
+    pd.DataFrame.to_pytae = _to_pytae
+if not hasattr(pl.DataFrame, "to_pytae"):
+    pl.DataFrame.to_pytae = _to_pytae
+if not hasattr(pl.LazyFrame, "to_pytae"):
+    pl.LazyFrame.to_pytae = _to_pytae

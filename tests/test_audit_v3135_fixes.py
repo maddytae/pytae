@@ -170,7 +170,13 @@ def test_repl_py_model_a_explicit_registration_and_cleanup():
     assert "m" in r.tables
     assert any("Registered table 'm'" in o for o in outs)
 
-    # 4. Updating active df explicitly with .pt: updates active table
+    # 4. Converted using .to_pytae() method: registered into self.tables
+    outs.clear()
+    r.execute_line("py p = df.to_pandas().to_pytae()", output_fn=outs.append)
+    assert "p" in r.tables
+    assert any("Registered table 'p'" in o for o in outs)
+
+    # 5. Updating active df explicitly with .pt: updates active table
     outs.clear()
     r.execute_line("py df = df.filter('x > 10')", output_fn=outs.append)
     assert any("Updated active table 'df'" in o for o in outs)
