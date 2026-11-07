@@ -319,8 +319,9 @@ Loaded orders.parquet as 'orders' (10,000 rows x 6 cols).
 pytae [orders]> cust = customers.csv
 Loaded customers.csv as 'cust' (1,200 rows x 4 cols).
 
-# 2. Define session variables
-pytae [orders, cust]> @min_spend = 50.0
+# 2. Define session variables (defined bare as 'name = val'; referenced with @name)
+pytae [orders, cust]> min_spend = 50.0
+Set @min_spend = 50.0
 
 # 3. Checkpoint pre-join state
 pytae [orders, cust]> checkpoint pre_join
@@ -371,7 +372,7 @@ Generated `session.pt`:
 
 orders = orders.parquet
 cust = customers.csv
-@min_spend = 50.0
+min_spend = 50.0
 orders = -filter "amount >= @min_spend"
 orders = -join cust on=customer_id
 ```
