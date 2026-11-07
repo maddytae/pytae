@@ -338,6 +338,11 @@ def _get_pytae_home() -> Path:
     return Path.home() / ".pytae"
 
 
+def _get_config_path() -> Path:
+    """Return path to persistent REPL configuration file (~/.pytae/config.json)."""
+    return _get_pytae_home() / "config.json"
+
+
 def _get_history_dir(create: bool = True) -> Path:
     """Return directory for session history transcripts (default: ~/.pytae/history)."""
     custom = os.environ.get("PYTAE_HISTORY_DIR")
@@ -2262,6 +2267,7 @@ class PytaeRepl:
         self.max_cols: int | None = None
         self.float_precision: int | None = None
         self.comma: bool = False
+        self._load_config()
         self.table_sources: dict[str, str] = {}
         self.history: list[str] = []
         self._raw_history: list[str] = []
@@ -4296,6 +4302,85 @@ class PytaeRepl:
                 self.current_df = None
                 self.orig_df = None
                 self.initial_df = None
+
+    def _load_config(self) -> None:
+        """Load persistent REPL configuration from ~/.pytae/config.json if present."""
+        cfg_path = _get_config_path()
+        if not cfg_path.exists():
+            return
+        try:
+            with open(cfg_path, encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                return
+            # 1. max_rows: <int> or "default" (default 10)
+            if "max_rows" in data:
+                val = data["max_rows"]
+                if val == "default":
+                    self.max_rows = 10
+                elif isinstance(val, int) and val > 0:
+                    self.max_rows = val
+                elif isinstance(val, str):
+                    clean_v = val.lower().strip()
+                    if clean_v == "default":
+                        self.max_rows = 10
+                    elif clean_v.isdigit() and int(clean_v) > 0:
+                        self.max_rows = int(clean_v)
+
+            # 2. max_cols: <int>, "all", "default"
+            if "max_cols" in data:
+                val = data["max_cols"]
+                if val in ("all", "default", None) or str(val).lower() in ("all", "default", "none"):
+                    self.max_cols = None
+                elif isinstance(val, int) and val > 0:
+                    self.max_cols = val
+                elif isinstance(val, str):
+                    clean_v = val.lower().strip()
+                    if clean_v in ("all", "default", "none"):
+                        self.max_cols = None
+                    elif clean_v.isdigit() and int(clean_v) > 0:
+                        self.max_cols = int(clean_v)
+
+            # 3. float_precision: <int>, "auto", "default"
+            if "float_precision" in data:
+                val = data["float_precision"]
+                if val in ("auto", "default", None) or str(val).lower() in ("auto", "default", "none"):
+                    self.float_precision = None
+                elif isinstance(val, int) and val >= 0:
+                    self.float_precision = val
+                elif isinstance(val, str):
+                    clean_v = val.lower().strip()
+                    if clean_v in ("auto", "default", "none"):
+                        self.float_precision = None
+                    elif clean_v.isdigit() and int(clean_v) >= 0:
+                        self.float_precision = int(clean_v)
+
+            # 4. comma: "on", "off" (or boolean)
+            if "comma" in data:
+                val = data["comma"]
+                if isinstance(val, bool):
+                    self.comma = val
+                elif str(val).lower() in ("on", "true", "1", "yes"):
+                    self.comma = True
+                elif str(val).lower() in ("off", "false", "0", "no"):
+                    self.comma = False
+        except Exception:
+            pass
+
+    def _save_config(self) -> None:
+        """Save current REPL settings to ~/.pytae/config.json."""
+        cfg_path = _get_config_path()
+        cfg_path.parent.mkdir(parents=True, exist_ok=True)
+        max_cols_val: Any = self.max_cols if self.max_cols is not None else "all"
+        prec_val: Any = self.float_precision if self.float_precision is not None else "auto"
+        comma_val = "on" if self.comma else "off"
+        data = {
+            "max_rows": self.max_rows,
+            "max_cols": max_cols_val,
+            "float_precision": prec_val,
+            "comma": comma_val,
+        }
+        cfg_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
     def _cmd_set(self, args: list[str], output_fn: Callable[[str], None], raw_line: str = "") -> None:
         """Handle REPL configuration settings (max_rows, max_cols, float_precision, comma)."""

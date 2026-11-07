@@ -4268,3 +4268,100 @@ def test_repl_zero_disk_footprint_on_empty_exit(tmp_path, monkeypatch):
     r2.close()
     assert not (fake_home / ".pytae").exists(), "REPL run() loop empty exit must clean up ~/.pytae completely"
 
+
+def test_repl_load_config_json_on_startup(tmp_path, monkeypatch):
+    """Verify that PytaeRepl loads set options from ~/.pytae/config.json on startup."""
+    import json
+
+    from pytae.repl import PytaeRepl
+
+    fake_home = tmp_path / "fake_home"
+    pytae_dir = fake_home / ".pytae"
+    pytae_dir.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.delenv("PYTAE_HOME", raising=False)
+    monkeypatch.delenv("PYTAE_HISTORY_DIR", raising=False)
+
+    cfg_file = pytae_dir / "config.json"
+    cfg_file.write_text(
+        json.dumps(
+            {
+                "max_rows": 25,
+                "max_cols": 8,
+                "float_precision": 3,
+                "comma": "on",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    r = PytaeRepl()
+    assert r.max_rows == 25
+    assert r.max_cols == 8
+    assert r.float_precision == 3
+    assert r.comma is True
+
+    outputs = []
+    r.execute_line("set", output_fn=outputs.append)
+    out_text = "\n".join(outputs)
+    assert "max_rows        = 25 (options: <int>, default)" in out_text
+    assert "max_cols        = 8 (options: <int>, all, default)" in out_text
+    assert "float_precision = 3 (options: <int>, auto, default)" in out_text
+    assert "comma           = on (options: on, off)" in out_text
+    r.close()
+
+
+def test_repl_config_json_defaults_and_saving(tmp_path, monkeypatch):
+    """Verify string variants in config.json and 'set save' functionality."""
+    import json
+
+    from pytae.repl import PytaeRepl
+
+    fake_home = tmp_path / "fake_home2"
+    pytae_dir = fake_home / ".pytae"
+    pytae_dir.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.delenv("PYTAE_HOME", raising=False)
+
+    # 1. Test string options: default, all, auto, off
+    cfg_file = pytae_dir / "config.json"
+    cfg_file.write_text(
+        json.dumps(
+            {
+                "max_rows": "default",
+                "max_cols": "all",
+                "float_precision": "auto",
+                "comma": "off",
+            }
+        ),
+        encoding="utf-8",
+    )
+    r = PytaeRepl()
+    assert r.max_rows == 10
+    assert r.max_cols is None
+    assert r.float_precision is None
+    assert r.comma is False
+
+    # 2. Mutate settings and save via _save_config()
+    r.execute_line("set max_rows = 50")
+    r.execute_line("set comma = on")
+    r.execute_line("set float_precision = 4")
+    r.execute_line("set max_cols = 12")
+    r._save_config()
+
+    saved_data = json.loads(cfg_file.read_text(encoding="utf-8"))
+    assert saved_data["max_rows"] == 50
+    assert saved_data["comma"] == "on"
+    assert saved_data["float_precision"] == 4
+    assert saved_data["max_cols"] == 12
+    r.close()
+
+    # 3. New REPL session reloads the updated config
+    r_new = PytaeRepl()
+    assert r_new.max_rows == 50
+    assert r_new.comma is True
+    assert r_new.float_precision == 4
+    assert r_new.max_cols == 12
+    r_new.close()
+
+
