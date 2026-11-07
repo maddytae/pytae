@@ -1716,11 +1716,38 @@ def _transpile_pipeline_tokens_to_python(tokens: list[str]) -> str:
     return "".join(calls)
 
 
+def _prune_rolled_back_entries(entries: list[str]) -> list[str]:
+    """Prune commands that were rolled back between 'checkpoint <name>' and 'restore <name>'."""
+    cp_indices: dict[str, int] = {}
+    result: list[str] = []
+    for entry in entries:
+        clean = entry.strip()
+        if clean.startswith("checkpoint "):
+            toks = clean.split()
+            if len(toks) >= 2:
+                cp_name = toks[1]
+                cp_indices[cp_name] = len(result)
+            continue
+        elif clean.startswith("restore "):
+            toks = clean.split()
+            if len(toks) >= 2:
+                cp_name = toks[1]
+                if cp_name in cp_indices:
+                    idx = cp_indices[cp_name]
+                    result = result[:idx]
+                    continue
+            continue
+        result.append(entry)
+    return result
+
+
 def _compile_history_to_python(entries: list[str], table_sources: dict[str, str] | None = None) -> str:
     """Compile replayable REPL history into a standalone, executable Python script."""
     import ast
     import shlex
     from datetime import datetime
+
+    entries = _prune_rolled_back_entries(entries)
 
     lines: list[str] = [
         '"""Auto-generated standalone Python pipeline script from pytae REPL session."""',
@@ -1830,6 +1857,8 @@ def _compile_history_to_pt(entries: list[str], filename: str = "pipeline.pt") ->
     """Compile replayable REPL history into a clean, replayable Pytae script."""
     from datetime import datetime
 
+    entries = _prune_rolled_back_entries(entries)
+
     lines: list[str] = [
         f"# Pytae Script: {filename}",
         f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
@@ -1855,7 +1884,7 @@ def _is_replayable_entry_static(entry: str) -> bool:
         return False
     if clean.startswith("*checkpoint:") and clean.endswith("*"):
         return False
-    if clean.startswith("checkpoint "):
+    if clean.startswith(("checkpoint ", "restore ")):
         return False
     if clean.startswith("history") or clean in ("tables", "checkpoints", "session", "sessions", "status", "clear", "help"):
         return False
@@ -1955,7 +1984,7 @@ def run_cli_export(argv: list[str]) -> int:
         print(f"pytae error: history file '{history_file_str}' not found.")
         return 1
 
-    lines = hist_p.read_text(encoding="utf-8").splitlines()
+    lines = _prune_rolled_back_entries(hist_p.read_text(encoding="utf-8").splitlines())
     replayable = [item.strip() for item in lines if _is_replayable_entry_static(item)]
 
     if not replayable:
@@ -2197,7 +2226,8 @@ class PytaeRepl:
         clean_path = normalize_git_bash_path(target_path_str.strip("'\""))
         target_path = Path(os.path.expanduser(clean_path)).resolve()
 
-        replayable = [e for e in self.history if self._is_replayable_entry(e)]
+        pruned_history = _prune_rolled_back_entries(self.history)
+        replayable = [e for e in pruned_history if self._is_replayable_entry(e)]
         if not replayable:
             output_fn(f"pytae: No state-mutating commands executed; '{target_path.name}' not created.")
             return False
@@ -2230,7 +2260,8 @@ class PytaeRepl:
         target_path = Path(os.path.expanduser(target_path_str)).resolve()
         try:
             target_path.parent.mkdir(parents=True, exist_ok=True)
-            replayable = [e for e in self.history if self._is_replayable_entry(e)]
+            pruned_history = _prune_rolled_back_entries(self.history)
+            replayable = [e for e in pruned_history if self._is_replayable_entry(e)]
             if target_path.suffix.lower() == ".py":
                 content = _compile_history_to_python(replayable, self.table_sources)
             else:

@@ -3905,6 +3905,52 @@ def test_export_script_pt_and_py_e2e(tmp_path, monkeypatch):
     assert res2 == 0
 
 
+def test_export_script_prunes_rolled_back_branches(tmp_path, monkeypatch):
+    """Verify that export script (.pt and .py) prunes commands in branches that were rolled back by restore."""
+    import ast
+
+    from pytae.repl import PytaeRepl
+
+    monkeypatch.chdir(tmp_path)
+    r = PytaeRepl()
+    r.execute_line("orders = sample:tips")
+    r.execute_line("checkpoint baseline")
+    # Failed experiment / mutation:
+    r.execute_line("orders = orders -filter \"day == 'Sat'\"")
+    r.execute_line("orders = orders -mutate \"bad_col = 999\"")
+    # Undo / rollback:
+    r.execute_line("restore baseline")
+    # Valid subsequent pipeline:
+    r.execute_line("orders = orders -filter \"tip > 5.0\" -mutate \"tip_pct = (tip / total_bill) * 100\"")
+    r.execute_line("high_tips = orders -arrange tip_pct")
+    r.execute_line("high_tips -o vip_tips.parquet")
+
+    pt_file = tmp_path / "clean_pipeline.pt"
+    r.execute_line(f"export script {pt_file.name}")
+    assert pt_file.exists()
+    pt_content = pt_file.read_text(encoding="utf-8")
+    assert "orders = sample:tips" in pt_content
+    assert "tip > 5.0" in pt_content
+    assert "high_tips = orders -arrange tip_pct" in pt_content
+    assert "high_tips -o vip_tips.parquet" in pt_content
+    # Undone commands MUST be pruned!
+    assert "bad_col" not in pt_content
+    assert "day == 'Sat'" not in pt_content
+    assert "checkpoint" not in pt_content
+    assert "restore" not in pt_content
+
+    py_file = tmp_path / "clean_pipeline.py"
+    r.execute_line(f"export script {py_file.name}")
+    assert py_file.exists()
+    py_content = py_file.read_text(encoding="utf-8")
+    ast.parse(py_content)
+    assert "pt.sample('tips')" in py_content or 'pt.sample("tips")' in py_content
+    assert "tip > 5.0" in py_content
+    assert "bad_col" not in py_content
+    assert "day == 'Sat'" not in py_content
+    r.close()
+
+
 
 
 
