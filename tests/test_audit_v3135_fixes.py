@@ -138,3 +138,44 @@ def test_repl_unregistered_bare_word_not_recognized():
         "is not recognized as a command, table, or flag" in o for o in outs
     ), f"Expected clean rejection message, got: {outs}"
 
+
+def test_repl_py_model_a_explicit_registration_and_cleanup():
+    """Verify Model A: only dataframes explicitly converted to Pytae DataFrame are registered; RAM is cleaned."""
+    import polars as pl
+
+    from pytae.repl import PytaeRepl
+
+    r = PytaeRepl(df=pl.DataFrame({"x": [10, 20, 30], "y": ["a", "b", "c"]}))
+    outs: list[str] = []
+
+    # 1. Unconverted pandas dataframe: not registered, gone from RAM
+    r.execute_line("py temp_pd = df.to_pandas()", output_fn=outs.append)
+    assert "temp_pd" not in r.tables
+    outs.clear()
+    r.execute_line("py temp_pd", output_fn=outs.append)
+    assert any("name 'temp_pd' is not defined" in o for o in outs)
+
+    # 2. Converted using pt(k): registered into self.tables and accessible at REPL prompt
+    outs.clear()
+    r.execute_line("py k = pt(df.to_pandas())", output_fn=outs.append)
+    assert "k" in r.tables
+    assert any("Registered table 'k'" in o for o in outs)
+    outs.clear()
+    r.execute_line("k -cols", output_fn=outs.append)
+    assert "x\ny" in outs[-1]
+
+    # 3. Converted using .pt accessor: registered into self.tables
+    outs.clear()
+    r.execute_line("py m = df.to_pandas().pt", output_fn=outs.append)
+    assert "m" in r.tables
+    assert any("Registered table 'm'" in o for o in outs)
+
+    # 4. Updating active df explicitly with .pt: updates active table
+    outs.clear()
+    r.execute_line("py df = df.filter('x > 10')", output_fn=outs.append)
+    assert any("Updated active table 'df'" in o for o in outs)
+    assert r.current_df.shape == (2, 2)
+
+    r.close()
+
+

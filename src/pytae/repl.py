@@ -5730,16 +5730,26 @@ class PytaeRepl:
         if not expr:
             output_fn("Usage: py <expression> (or enter 'py' on an empty line for multi-line block mode)")
             return
+        local_scope: dict[str, Any] = {}
         try:
+            import pytae as pt
+            from pytae.accessor import _BasePtAccessor
             from pytae.dataframe import DataFrame as PytaeDataFrame
+            from pytae.dataframe import GroupedDataFrame as PytaeGroupedDataFrame
 
             local_scope = {
                 "df": PytaeDataFrame(self.current_df) if self.current_df is not None else None,
                 "pldf": self.current_df,
                 "pl": pl,
+                "pt": pt,
+                "DataFrame": PytaeDataFrame,
             }
+            orig_table_instances: dict[str, Any] = {}
             for tbl_name, tbl_df in self.tables.items():
-                local_scope[tbl_name] = PytaeDataFrame(tbl_df)
+                inst = PytaeDataFrame(tbl_df)
+                local_scope[tbl_name] = inst
+                orig_table_instances[tbl_name] = inst
+
             for cp_name in self.checkpoints:
                 if cp_name not in local_scope:
                     cp_df = self._get_checkpoint_df(cp_name)
@@ -5748,6 +5758,8 @@ class PytaeRepl:
             for var_name, var_val in self.variables.items():
                 if var_name not in local_scope:
                     local_scope[var_name] = var_val
+
+            orig_df_obj = local_scope.get("df")
 
             try:
                 res = eval(expr, {}, local_scope)
@@ -5765,8 +5777,59 @@ class PytaeRepl:
                 out_val = buf.getvalue().rstrip()
                 if out_val:
                     output_fn(out_val)
+
+            # Model A registration: Only keep dataframes explicitly converted to Pytae DataFrame / GroupedDataFrame
+            # 1. Active table update: check if 'df' was modified or reassigned to a PytaeDataFrame
+            current_df_val = local_scope.get("df")
+            if isinstance(current_df_val, _BasePtAccessor):
+                current_df_val = PytaeDataFrame(current_df_val._obj)
+            if (
+                isinstance(current_df_val, (PytaeDataFrame, PytaeGroupedDataFrame))
+                and current_df_val is not orig_df_obj
+            ):
+                new_pl = (
+                    current_df_val._eager_df()
+                    if hasattr(current_df_val, "_eager_df")
+                    else current_df_val._df
+                )
+                if isinstance(new_pl, pl.LazyFrame):
+                    new_pl = new_pl.collect()
+                self.current_df = new_pl
+                target_key = self.path_str or "df"
+                self.tables[target_key] = new_pl
+                output_fn(f"Updated active table '{target_key}' ({new_pl.shape[0]:,} rows x {new_pl.shape[1]} cols).")
+
+            # 2. Check for newly assigned or updated variables in local_scope
+            for k, val in list(local_scope.items()):
+                if k in ("df", "pldf", "pl", "pt", "DataFrame", "__builtins__"):
+                    continue
+                if isinstance(val, _BasePtAccessor):
+                    val = PytaeDataFrame(val._obj)
+                if isinstance(val, (PytaeDataFrame, PytaeGroupedDataFrame)):
+                    if k in orig_table_instances and val is orig_table_instances[k]:
+                        continue
+                    new_pl = (
+                        val._eager_df()
+                        if hasattr(val, "_eager_df")
+                        else val._df
+                    )
+                    if isinstance(new_pl, pl.LazyFrame):
+                        new_pl = new_pl.collect()
+                    self.variables.pop(k, None)
+                    self.tables[k] = new_pl
+                    self.table_sources[k] = "python"
+                    action_word = "Updated" if k in orig_table_instances else "Registered"
+                    output_fn(f"{action_word} table '{k}' ({new_pl.shape[0]:,} rows x {new_pl.shape[1]} cols).")
+
         except Exception as exc:
             output_fn(f"pytae Python Error: {exc}")
+        finally:
+            # Model A: Immediately remove everything associated from RAM
+            local_scope.clear()
+            del local_scope
+            import gc
+
+            gc.collect()
 
     def _run_pipeline_on_df(
         self,
