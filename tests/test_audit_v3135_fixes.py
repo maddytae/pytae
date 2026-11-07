@@ -253,6 +253,9 @@ def test_repl_ephemeral_ipc_checkpoint_and_switch():
     assert len(ipc_files) >= 2  # at least t1 and t2
     for f in ipc_files:
         assert f.stat().st_size > 0
+    vars_file = r._cp_dir / "v1__vars.json"
+    assert vars_file.exists()
+    assert "val_limit" in vars_file.read_text(encoding="utf-8")
 
     # 4. Status checkpoint shows disk size and 0 MB RAM
     outs.clear()

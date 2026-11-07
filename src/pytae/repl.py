@@ -4549,6 +4549,16 @@ class PytaeRepl:
                     total_bytes += sz
                     cur_df_path = str(p)
 
+        vars_path = None
+        if self.variables:
+            p_vars = cp_dir / f"{name}__vars.json"
+            try:
+                p_vars.write_text(json.dumps(self.variables, indent=2, default=str), encoding="utf-8")
+                total_bytes += p_vars.stat().st_size
+                vars_path = str(p_vars)
+            except Exception:
+                pass
+
         self.checkpoints[name] = {
             "tables": snap_tables,
             "orig_tables": snap_orig_tables,
@@ -4558,6 +4568,7 @@ class PytaeRepl:
             "current_df_path": cur_df_path,
             "current_df_shape": cur_df_shape,
             "variables": dict(self.variables),
+            "variables_path": vars_path,
             "created_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "size_bytes": total_bytes,
         }
@@ -4648,7 +4659,15 @@ class PytaeRepl:
 
             self.orig_df = self.orig_tables.get(self.path_str, self.current_df)
             self.initial_df = self.initial_tables.get(self.path_str, self.orig_df)
-            self.variables = dict(snap.get("variables", {}))
+            if "variables" in snap and isinstance(snap["variables"], dict):
+                self.variables = dict(snap["variables"])
+            elif snap.get("variables_path") and Path(snap["variables_path"]).exists():
+                try:
+                    self.variables = json.loads(Path(snap["variables_path"]).read_text(encoding="utf-8"))
+                except Exception:
+                    self.variables = {}
+            else:
+                self.variables = {}
 
         elif isinstance(snap, pl.DataFrame):
             self.current_df = snap.clone()
