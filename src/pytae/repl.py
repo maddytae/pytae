@@ -330,23 +330,29 @@ def _get_process_rss_mb() -> float | None:
     return None
 
 
-_DEFAULT_CODE_DIR = Path.home() / ".pytae" / "code"
-_DEFAULT_COMMANDS_DIR = _DEFAULT_CODE_DIR
-_DEFAULT_SESSIONS_DIR = Path.home() / ".pytae" / "sessions"
-_CONFIGURED_SESSIONS_DIR: Path | None = None
+def _get_pytae_home() -> Path:
+    """Return the base Pytae configuration and state directory (default: ~/.pytae)."""
+    env_home = os.environ.get("PYTAE_HOME")
+    if env_home:
+        return Path(env_home).expanduser().resolve()
+    return Path.home() / ".pytae"
+
+
+def _get_history_dir(create: bool = True) -> Path:
+    """Return directory for session history transcripts (default: ~/.pytae/history)."""
+    custom = os.environ.get("PYTAE_HISTORY_DIR")
+    if custom:
+        d = Path(custom).expanduser().resolve()
+    else:
+        d = _get_pytae_home() / "history"
+    if create:
+        d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
 def get_code_dir() -> Path:
-    """Return default directory for auto-saved Pytae code scripts (~/.pytae/code)."""
-    p = _DEFAULT_CODE_DIR
-    legacy = Path.home() / ".pytae" / "commands"
-    if legacy.exists() and legacy.is_dir() and not p.exists():
-        try:
-            legacy.rename(p)
-        except Exception:
-            pass
-    p.mkdir(parents=True, exist_ok=True)
-    return p
+    """Return directory for session command logs (unified under history directory)."""
+    return _get_history_dir()
 
 
 def get_commands_dir() -> Path:
@@ -455,15 +461,6 @@ except ImportError:
                 from _pyrepl import readline  # Python 3.13+ standard library
             except ImportError:
                 readline = None
-
-def _get_history_dir() -> Path:
-    custom = os.environ.get("PYTAE_HISTORY_DIR")
-    if custom:
-        d = Path(custom).expanduser().resolve()
-    else:
-        d = Path.home() / ".pytae" / "history"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
 
 
 _HIST_FILE: Path | None = None
@@ -1006,11 +1003,6 @@ def _init_readline(
                 readline.add_history(item)
             except Exception:
                 pass
-
-
-def _save_readline_history() -> None:
-    """Persist readline history to disk (no-op: interactive arrow history is strictly per-session)."""
-    pass
 
 
 def _split_repl_pipe(raw: str) -> tuple[str, str] | None:
@@ -2330,8 +2322,8 @@ class PytaeRepl:
         self._session_start_time = datetime.datetime.now()
         timestamp_str = self._session_start_time.strftime("%Y_%m_%d_%H_%M_%S")
         self.session_history_path: Path = _get_history_dir() / f"history_{timestamp_str}.txt"
-        self.session_code_path: Path = get_code_dir() / f"code_{timestamp_str}.txt"
-        self.session_commands_path: Path = self.session_code_path
+        self.session_commands_path: Path = _get_history_dir() / f"commands_{timestamp_str}.txt"
+        self.session_code_path: Path = self.session_commands_path
         self.session_log_path: Path = self.session_history_path
         self.session_raw_cmd_count: int = 0
         self.session_cmd_count: int = 0
@@ -2398,7 +2390,8 @@ class PytaeRepl:
         clean = raw_line.strip()
         if not clean:
             return
-        self.session_raw_cmd_count += 1
+        if clean.lower() not in ("exit", "quit", "q") and not clean.lower().startswith("exit "):
+            self.session_raw_cmd_count += 1
         try:
             with open(self.session_history_path, "a", encoding="utf-8") as f:
                 f.write(f"{clean}\n")
@@ -2571,8 +2564,36 @@ class PytaeRepl:
                     return val.clone() if hasattr(val, "clone") else val
         return None
 
+    def _cleanup_empty_session_dirs(self) -> None:
+        if getattr(self, "session_cmd_count", 0) == 0 and getattr(self, "session_commands_path", None) is not None:
+            if self.session_commands_path.exists():
+                try:
+                    self.session_commands_path.unlink()
+                except Exception:
+                    pass
+        if getattr(self, "session_raw_cmd_count", 0) == 0 and getattr(self, "session_history_path", None) is not None:
+            if self.session_history_path.exists():
+                try:
+                    self.session_history_path.unlink()
+                except Exception:
+                    pass
+        if getattr(self, "session_raw_cmd_count", 0) == 0:
+            try:
+                hist_dir = _get_history_dir(create=False)
+                if hist_dir.exists() and not any(hist_dir.iterdir()):
+                    hist_dir.rmdir()
+            except Exception:
+                pass
+            try:
+                pytae_home = _get_pytae_home()
+                if pytae_home.exists() and not any(pytae_home.iterdir()):
+                    pytae_home.rmdir()
+            except Exception:
+                pass
+
     def close(self) -> None:
         """Release all in-memory tables and checkpoints."""
+        self._cleanup_empty_session_dirs()
         self._clear_all_checkpoints()
         self.tables.clear()
         self.orig_tables.clear()
@@ -6374,18 +6395,7 @@ class PytaeRepl:
                                 output_fn(f"pytae error: {msg}")
         finally:
             _restore_git_bash()
-            if getattr(self, "session_cmd_count", 0) == 0 and getattr(self, "session_commands_path", None) is not None:
-                if self.session_commands_path.exists():
-                    try:
-                        self.session_commands_path.unlink()
-                    except Exception:
-                        pass
-            if getattr(self, "session_raw_cmd_count", 0) == 0 and getattr(self, "session_history_path", None) is not None:
-                if self.session_history_path.exists():
-                    try:
-                        self.session_history_path.unlink()
-                    except Exception:
-                        pass
+            self._cleanup_empty_session_dirs()
             # Release in-memory resources
             _release_memory()
         return self.current_df
