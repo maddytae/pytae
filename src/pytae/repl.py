@@ -3841,8 +3841,6 @@ class PytaeRepl:
         rss_str = f"~{rss:.1f} MB (PID {os.getpid()})" if rss is not None else f"PID {os.getpid()}"
 
         output_fn("=== REPL Session Status ===")
-        output_fn("Session Name  : <none> (in-memory workbench)")
-        output_fn("Storage       : in-memory (zero disk footprint)")
 
         # Active Table
         if self.current_df is not None:

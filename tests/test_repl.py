@@ -3251,7 +3251,6 @@ def test_repl_status_subcommands_and_verbose():
     r.execute_line("status session", output_fn=outputs.append)
     st_sess_none = "\n".join(outputs)
     assert "=== REPL Session Status ===" in st_sess_none
-    assert "Session Name  : <none>" in st_sess_none
     assert "Active Table  : (none)" in st_sess_none
     assert "Loaded Tables : 0 tables loaded" in st_sess_none
 
@@ -3276,7 +3275,6 @@ def test_repl_status_subcommands_and_verbose():
     r.execute_line("status session", output_fn=outputs.append)
     st = "\n".join(outputs)
     assert "=== REPL Session Status ===" in st
-    assert "Session Name  : <none>" in st
     assert "Active Table  : df2 (244 rows x 7 cols" in st
     assert "Loaded Tables : 2 tables" in st
     assert "Process RAM   :" in st
@@ -3648,7 +3646,7 @@ def test_repl_named_session_status(tmp_path):
     r.execute_line("status session", output_fn=outputs.append)
     st = "\n".join(outputs)
     assert "=== REPL Session Status ===" in st
-    assert "in-memory workbench" in st
+    assert "Active Table  : (none)" in st
     r.close()
 
 
