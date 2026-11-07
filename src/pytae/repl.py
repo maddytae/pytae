@@ -2476,7 +2476,7 @@ class PytaeRepl:
         self._cleanup_cp_dir()
         return count
 
-    def _get_checkpoint_df(self, name: str) -> pl.DataFrame | None:
+    def _get_checkpoint_df(self, name: str, prefer_table: str | None = None) -> pl.DataFrame | None:
         """Retrieve a DataFrame from a checkpoint (reading from ephemeral IPC disk)."""
         if name not in self.checkpoints:
             return None
@@ -2486,6 +2486,13 @@ class PytaeRepl:
         if isinstance(snap, dict):
             # Check ephemeral disk IPC tables
             tbls = snap.get("tables", {})
+            if prefer_table:
+                for k, val in tbls.items():
+                    if k == prefer_table or k.lower() == prefer_table.lower():
+                        if isinstance(val, pl.DataFrame):
+                            return val
+                        if isinstance(val, dict) and "path" in val and Path(val["path"]).exists():
+                            return pl.read_ipc(val["path"])
             act = snap.get("active_table")
             if act and act in tbls:
                 val = tbls[act]
@@ -3904,13 +3911,17 @@ class PytaeRepl:
             output_fn("Checkpoints   : 0 saved")
         else:
             latest_cp = list(self.checkpoints.keys())[-1]
-            output_fn(f"Checkpoints   : {len(self.checkpoints)} saved (latest: {latest_cp})")
+            total_cp_bytes = sum(c.get("size_bytes", 0) for c in self.checkpoints.values() if isinstance(c, dict))
+            cp_disk_str = f" [{_format_bytes(total_cp_bytes)} ephemeral disk, 0 MB RAM]" if total_cp_bytes > 0 else " [0 MB RAM]"
+            output_fn(f"Checkpoints   : {len(self.checkpoints)} saved (latest: {latest_cp}){cp_disk_str}")
 
         if verbose and self.checkpoints:
             for cp_name, cp_meta in self.checkpoints.items():
                 created = cp_meta.get("created_at", "")
                 t_count = len(cp_meta.get("tables", {}))
-                output_fn(f"  - {cp_name:<12}: ephemeral IPC created {created} ({t_count} tables, 0 MB RAM)")
+                sz = cp_meta.get("size_bytes", 0)
+                sz_str = f", {_format_bytes(sz)} ephemeral disk" if sz else ""
+                output_fn(f"  - {cp_name:<12}: ephemeral IPC created {created} ({t_count} tables{sz_str}, 0 MB RAM)")
 
         # Session Logs & Settings in verbose mode
         if verbose:
@@ -4482,6 +4493,7 @@ class PytaeRepl:
             output_fn("pytae: no dataset or variables loaded to checkpoint.")
             return
 
+        is_update = name in self.checkpoints
         self._delete_checkpoint_files(name)
         cp_dir = self._get_or_create_cp_dir()
 
@@ -4587,7 +4599,8 @@ class PytaeRepl:
             var_names = ", ".join(f"@{k}" for k in self.variables.keys())
             parts_saved.append(f"{len(self.variables)} variables: {var_names}")
         detail_tag = f" ({', '.join(parts_saved)})" if parts_saved else ""
-        output_fn(f"Saved checkpoint '{name}'{detail_tag}.")
+        action_verb = "Updated" if is_update else "Saved"
+        output_fn(f"{action_verb} checkpoint '{name}'{detail_tag}.")
 
     def _cmd_restore(self, name: str, output_fn: Callable[[str], None], record_history: bool = True) -> None:
         if name not in self.checkpoints:
@@ -4888,6 +4901,26 @@ class PytaeRepl:
                             except ValueError:
                                 pass
 
+        def _resolve_diff_target(target: str, default_tbl_hint: str | None = None) -> tuple[str | None, pl.DataFrame | None]:
+            resolved = self._resolve_table_name(target)
+            if resolved is not None:
+                return resolved, self.tables[resolved]
+            if target in self.checkpoints:
+                tbl = self._get_checkpoint_df(target, prefer_table=default_tbl_hint)
+                if tbl is not None:
+                    return f"checkpoint:{target}", tbl
+            if ":" in target and not Path(target).exists():
+                cp_cand, _, tbl_cand = target.partition(":")
+                if cp_cand in self.checkpoints:
+                    tbl = self._get_checkpoint_table_df(cp_cand, tbl_cand)
+                    if tbl is not None:
+                        return f"checkpoint:{cp_cand}:{tbl_cand}", tbl
+            try:
+                p, df = self._read_file_to_df(target)
+                return p.name, df
+            except Exception:
+                return None, None
+
         if len(clean_args) == 1:
             if self.current_df is None:
                 output_fn("pytae: no active dataset loaded to compare. Usage: diff <tbl1> <tbl2>")
@@ -4895,63 +4928,33 @@ class PytaeRepl:
             left_tbl_name = self.path_str or "active"
             left_df = self.current_df
             right_target = clean_args[0]
-            resolved_right = self._resolve_table_name(right_target)
-            if resolved_right is not None:
-                right_tbl_name = resolved_right
-                right_df = self.tables[resolved_right]
-            elif right_target in self.checkpoints:
-                right_tbl_name = f"checkpoint:{right_target}"
-                right_df = self._get_checkpoint_df(right_target)
-                if right_df is None:
+            right_tbl_name, right_df = _resolve_diff_target(right_target, default_tbl_hint=left_tbl_name)
+            if right_df is None:
+                if right_target in self.checkpoints or (":" in right_target and right_target.partition(":")[0] in self.checkpoints):
                     output_fn(f"pytae: could not load table from checkpoint '{right_target}'.")
-                    return
-            else:
-                try:
-                    p, right_df = self._read_file_to_df(right_target)
-                    right_tbl_name = p.name
-                except Exception:
+                else:
                     avail = ", ".join(self.tables.keys()) if self.tables else "none"
                     output_fn(f"pytae: comparison target '{right_target}' not found. Available: {avail}")
-                    return
+                return
         elif len(clean_args) >= 2:
             left_target, right_target = clean_args[0], clean_args[1]
-            resolved_left = self._resolve_table_name(left_target)
-            if resolved_left is not None:
-                left_tbl_name = resolved_left
-                left_df = self.tables[resolved_left]
-            elif left_target in self.checkpoints:
-                left_tbl_name = f"checkpoint:{left_target}"
-                left_df = self._get_checkpoint_df(left_target)
-                if left_df is None:
+            left_tbl_name, left_df = _resolve_diff_target(left_target, default_tbl_hint=self.path_str)
+            if left_df is None:
+                if left_target in self.checkpoints or (":" in left_target and left_target.partition(":")[0] in self.checkpoints):
                     output_fn(f"pytae: could not load table from checkpoint '{left_target}'.")
-                    return
-            else:
-                try:
-                    p, left_df = self._read_file_to_df(left_target)
-                    left_tbl_name = p.name
-                except Exception:
+                else:
                     avail = ", ".join(self.tables.keys()) if self.tables else "none"
                     output_fn(f"pytae: left comparison table '{left_target}' not found. Available: {avail}")
-                    return
+                return
 
-            resolved_right = self._resolve_table_name(right_target)
-            if resolved_right is not None:
-                right_tbl_name = resolved_right
-                right_df = self.tables[resolved_right]
-            elif right_target in self.checkpoints:
-                right_tbl_name = f"checkpoint:{right_target}"
-                right_df = self._get_checkpoint_df(right_target)
-                if right_df is None:
+            right_tbl_name, right_df = _resolve_diff_target(right_target, default_tbl_hint=left_tbl_name)
+            if right_df is None:
+                if right_target in self.checkpoints or (":" in right_target and right_target.partition(":")[0] in self.checkpoints):
                     output_fn(f"pytae: could not load table from checkpoint '{right_target}'.")
-                    return
-            else:
-                try:
-                    p, right_df = self._read_file_to_df(right_target)
-                    right_tbl_name = p.name
-                except Exception:
+                else:
                     avail = ", ".join(self.tables.keys()) if self.tables else "none"
                     output_fn(f"pytae: right comparison table '{right_target}' not found. Available: {avail}")
-                    return
+                return
         else:
             output_fn("Usage: -diff <tbl1> <tbl2> [on=<key>] [-tol N] or -diff <tbl2> [on=<key>] [-tol N]")
             return

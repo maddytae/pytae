@@ -264,9 +264,34 @@ def test_repl_ephemeral_ipc_checkpoint_and_switch():
     assert "v1" in st
     assert "0 MB RAM" in st
 
+    # 4b. Status session telemetry displays ephemeral disk and 0 MB RAM
+    outs.clear()
+    r.execute_line("status session", output_fn=outs.append)
+    st_sess = "\n".join(outs)
+    assert "Checkpoints   : 1 saved (latest: v1)" in st_sess
+    assert "ephemeral disk, 0 MB RAM" in st_sess
+
+    # 4c. Overwrite checkpoint reports "Updated" instead of "Saved"
+    outs.clear()
+    r.execute_line("checkpoint v1", output_fn=outs.append)
+    assert "Updated checkpoint 'v1'" in outs[0]
+
     # 5. Mutate table
     r.execute_line('t1 = -mutate "extra_col = 12345"', output_fn=outs.append)
     assert "extra_col" in r.tables["t1"].columns
+
+    # 5b. Milestone diffing compares active table against checkpoint version
+    outs.clear()
+    r.execute_line("-diff v1", output_fn=outs.append)
+    diff_out = "\n".join(outs)
+    assert "Comparing 't1' vs 'checkpoint:v1':" in diff_out
+    assert "extra_col" in diff_out
+
+    # 5c. Milestone diffing with explicit checkpoint table target
+    outs.clear()
+    r.execute_line("-diff v1:t1", output_fn=outs.append)
+    diff_out2 = "\n".join(outs)
+    assert "Comparing 't1' vs 'checkpoint:v1:t1':" in diff_out2
 
     # 6. Restore checkpoint reverts state
     outs.clear()
