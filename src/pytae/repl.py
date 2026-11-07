@@ -51,7 +51,7 @@ def _resolve_to_canonical_path(path_str: str) -> str:
 
     raw = path_str.strip().strip("'\"")
     raw = normalize_git_bash_path(raw)
-    if not raw or raw.startswith("sample:") or raw.startswith("http://") or raw.startswith("https://"):
+    if not raw or raw.lower() in ("clip", "clipboard") or raw.startswith("sample:") or raw.startswith("http://") or raw.startswith("https://"):
         return raw
 
     try:
@@ -1003,6 +1003,7 @@ To inspect specific commands or flags, type '-help <topic>' (e.g. -help restore,
 Quick Start:
   df = sample:penguins           Load built-in sample (penguins, tips, titanic)
   df = orders.parquet            Load local dataset (Parquet, CSV, IPC, Excel)
+  df = clip                      Load table directly from system clipboard
   status table                   List all loaded tables in memory and RAM footprint
   exit                           Exit REPL (or 'exit -s' to save session commands)
 
@@ -1031,7 +1032,7 @@ REPL_HELP = """\
                              PYTAE REPL COMMANDS                                
 ================================================================================
 DATASET INGEST & MANAGEMENT:
-  <var> = <path> [options]: Load dataset into named table (e.g. df = data.parquet)
+  <var> = <path> [options]: Load dataset into named table (e.g. df = data.parquet, df = clip)
   load <path> as <var>... : Load dataset with alias and options (-encoding, -dlim, -nrows)
   status table [name] [-v] : Inspect active table or loaded table inventory with RAM
   use <name>             : Switch active dataset (e.g. use df, use orders)
@@ -1284,6 +1285,8 @@ _RESERVED_VARIABLE_NAMES = _BARE_PIPELINE_VERBS | frozenset(
         "vars",
         "variables",
         "variable",
+        "clip",
+        "clipboard",
     )
 )
 
@@ -1753,6 +1756,7 @@ def _compile_history_to_python(entries: list[str], table_sources: dict[str, str]
         '"""Auto-generated standalone Python pipeline script from pytae REPL session."""',
         f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         "",
+        "import pandas as pd",
         "import polars as pl",
         "import pytae as pt",
         "",
@@ -1782,11 +1786,17 @@ def _compile_history_to_python(entries: list[str], table_sources: dict[str, str]
             if len(toks) >= 4 and toks[2].lower() == "as":
                 alias = toks[3]
                 path = toks[1].strip("\"'")
-                lines.append(f"{alias} = pt.read({repr(path)})")
+                if path.lower() in ("clip", "clipboard"):
+                    lines.append(f"{alias} = pl.from_pandas(pd.read_clipboard())")
+                else:
+                    lines.append(f"{alias} = pt.read({repr(path)})")
             elif len(toks) >= 2:
                 path = toks[1].strip("\"'")
-                alias = Path(path).stem or "df"
-                lines.append(f"{alias} = pt.read({repr(path)})")
+                if path.lower() in ("clip", "clipboard"):
+                    lines.append("df = pl.from_pandas(pd.read_clipboard())")
+                else:
+                    alias = Path(path).stem or "df"
+                    lines.append(f"{alias} = pt.read({repr(path)})")
             continue
 
         # 3. Colon ingestion: `<alias>: <path>`
@@ -1795,27 +1805,43 @@ def _compile_history_to_python(entries: list[str], table_sources: dict[str, str]
             alias = parts[0].strip()
             path = parts[1].strip().strip("\"'")
             if alias.isidentifier() and path:
-                lines.append(f"{alias} = pt.read({repr(path)})")
+                if path.lower() in ("clip", "clipboard"):
+                    lines.append(f"{alias} = pl.from_pandas(pd.read_clipboard())")
+                else:
+                    lines.append(f"{alias} = pt.read({repr(path)})")
                 continue
 
         # 4. Assignments: `<target> = <expression>`
         if "=" in clean and not clean.startswith("-"):
             target, expr = [p.strip() for p in clean.split("=", 1)]
             if target.isidentifier():
+                toks = shlex.split(expr)
+                if toks and toks[0].lower() in ("clip", "clipboard"):
+                    clip_code = "pl.from_pandas(pd.read_clipboard())"
+                    for idx_tok, tok in enumerate(toks):
+                        if tok in ("-nrows", "--nrows", "-limit", "--limit") and idx_tok + 1 < len(toks):
+                            try:
+                                clip_code += f".head({int(toks[idx_tok + 1])})"
+                            except ValueError:
+                                pass
+                    lines.append(f"{target} = {clip_code}")
+                    continue
                 if expr.startswith("sample:"):
                     s_name = expr.split(":", 1)[1].strip()
                     lines.append(f"{target} = pt.sample({repr(s_name)})")
                     continue
                 if expr.startswith("load "):
                     p = expr.split("load ", 1)[1].strip().strip("\"'")
-                    lines.append(f"{target} = pt.read({repr(p)})")
+                    if p.lower() in ("clip", "clipboard"):
+                        lines.append(f"{target} = pl.from_pandas(pd.read_clipboard())")
+                    else:
+                        lines.append(f"{target} = pt.read({repr(p)})")
                     continue
                 if expr.startswith(("-sql", "--sql")):
                     q = expr.split(None, 1)[1].strip().strip("\"'") if len(expr.split(None, 1)) > 1 else ""
                     lines.append(f"{target} = pt.sql({repr(q)})")
                     continue
 
-                toks = shlex.split(expr)
                 if toks:
                     src_token = toks[0]
                     if "." in src_token or "/" in src_token or "\\" in src_token:
@@ -1838,11 +1864,17 @@ def _compile_history_to_python(entries: list[str], table_sources: dict[str, str]
         if len(toks) >= 2 and toks[-2] == "-o":
             dest = toks[-1].strip("\"'")
             src = toks[0] if len(toks) > 2 else "df"
-            lines.append(f"{src}.save({repr(dest)})")
+            if dest.lower() in ("clip", "clipboard"):
+                lines.append(f"{src}.to_pandas().to_clipboard(index=False)")
+            else:
+                lines.append(f"{src}.save({repr(dest)})")
             continue
         if len(toks) >= 2 and toks[0] in ("export", "save"):
             dest = toks[1].strip("\"'")
-            lines.append(f"df.save({repr(dest)})")
+            if dest.lower() in ("clip", "clipboard"):
+                lines.append("df.to_pandas().to_clipboard(index=False)")
+            else:
+                lines.append(f"df.save({repr(dest)})")
             continue
 
     code_str = "\n".join(lines) + "\n"
@@ -2362,6 +2394,21 @@ class PytaeRepl:
 
         target = parse_input_target(str(path))
         raw_path = target["path"]
+        if raw_path.strip().lower() in ("clip", "clipboard"):
+            import pandas as pd
+
+            opts = dict(reader_opts)
+            sep_val = opts.pop("sep", None) or opts.pop("delimiter", None) or r"\s+"
+            nrows_val = opts.pop("nrows", None)
+            try:
+                clip_df = pd.read_clipboard(sep=sep_val)
+            except Exception as exc:
+                raise RuntimeError(f"clipboard error: {exc}") from exc
+            if nrows_val is not None:
+                clip_df = clip_df.iloc[:nrows_val]
+            df = pl.from_pandas(clip_df)
+            return Path("<clipboard>"), df
+
         p = Path(raw_path).expanduser()
         if str(p).startswith("sample:"):
             from pytae import _DATASET_NAMES, DATA_PATH
@@ -3215,12 +3262,23 @@ class PytaeRepl:
         )
         if has_output:
             tbl = getattr(self, "path_str", None) or "df"
-            cmd_example = f"{tbl} {first_lower}"
+            target_out = "<path>"
+            for idx_t, tok_t in enumerate(tokens):
+                if tok_t in ("-o", "-output", "--output") and idx_t + 1 < len(tokens):
+                    target_out = tokens[idx_t + 1]
+                    break
+                elif tok_t.startswith(("-o=", "-output=", "--output=")):
+                    target_out = tok_t.split("=", 1)[1].strip("\"'")
+                    break
+            example_args = [tokens[0]]
+            if len(tokens) > 1 and tokens[1].isdigit():
+                example_args.append(tokens[1])
+            cmd_example = f"{tbl} {' '.join(example_args)}"
             output_fn(
                 f"pytae: '{first_lower}' is an interactive screen preview and does not save with '-o' directly.\n"
                 f"To save this subset, assign it to a table first:\n"
                 f"  k = {cmd_example}\n"
-                f"  k -o <path>"
+                f"  k -o {target_out}"
             )
             return True
         if first_lower == "-frac":
@@ -4436,6 +4494,7 @@ class PytaeRepl:
 
                 target_path = target["path"]
                 p = Path(target_path).expanduser()
+                is_clip = target_path.strip().lower() in ("clip", "clipboard")
                 is_sample = target_path.startswith("sample:")
                 import glob
 
@@ -4448,7 +4507,7 @@ class PytaeRepl:
                     or (has_glob and bool(glob.glob(target_path)))
                 )
                 is_data_cand = (DATA_PATH / p.name).exists() or (DATA_PATH / f"{p.stem}.parquet").exists()
-                if is_sample or is_file or is_data_cand:
+                if is_clip or is_sample or is_file or is_data_cand:
                     if var_name in self.variables:
                         output_fn(
                             f"pytae: '{var_name}' is already a session variable; cannot assign as a table. Use 'rm var {var_name}' first."
@@ -4492,7 +4551,7 @@ class PytaeRepl:
                         output_fn(f"pytae: {exc}")
                         return
                     except Exception as exc:
-                        output_fn(f"pytae: failed to load {clean_path}: {exc}")
+                        output_fn(f"pytae: {exc}" if is_clip else f"pytae: failed to load {clean_path}: {exc}")
                         return
 
         # 3. Pipeline / Table assignment: `df3 = df1 -filter ...` or `df3 = -filter ...` or `df3 = df1`
@@ -4690,22 +4749,26 @@ class PytaeRepl:
             )
             return
 
-        p = Path(path_str).expanduser()
-        if not path_str.startswith("sample:") and not p.exists() and not any(ch in path_str for ch in "*?["):
-            from pytae import DATA_PATH
+        is_clip = path_str.strip().lower() in ("clip", "clipboard")
+        if not is_clip:
+            p = Path(path_str).expanduser()
+            if not path_str.startswith("sample:") and not p.exists() and not any(ch in path_str for ch in "*?["):
+                from pytae import DATA_PATH
 
-            candidate = DATA_PATH / p.name
-            if not candidate.exists():
-                candidate = DATA_PATH / f"{p.stem}.parquet"
-            if candidate.exists():
-                p = candidate
-            else:
-                output_fn(f"pytae: file not found: {p}")
-                return
+                candidate = DATA_PATH / p.name
+                if not candidate.exists():
+                    candidate = DATA_PATH / f"{p.stem}.parquet"
+                if candidate.exists():
+                    p = candidate
+                else:
+                    output_fn(f"pytae: file not found: {p}")
+                    return
         try:
-            reader = get_reader(p, **reader_kwargs)
-            loaded_df = reader.to_polars(nrows=nrows_val)
-            target_alias = alias or self.path_str or p.stem or p.name
+            load_opts = dict(reader_kwargs)
+            if nrows_val is not None:
+                load_opts["nrows"] = nrows_val
+            p, loaded_df = self._read_file_to_df(path_str, **load_opts)
+            target_alias = alias or self.path_str or ("df" if is_clip else p.stem or p.name)
             self.tables[target_alias] = loaded_df
             self.orig_tables[target_alias] = loaded_df
             self.initial_tables[target_alias] = loaded_df
@@ -4732,7 +4795,7 @@ class PytaeRepl:
                     f"Loaded {p.name} ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols){opts_desc}."
                 )
         except Exception as exc:
-            output_fn(f"pytae: failed to load {p}: {exc}")
+            output_fn(f"pytae: {exc}" if is_clip else f"pytae: failed to load {path_str}: {exc}")
 
     def _cmd_join(self, args: list[str], output_fn: Callable[[str], None]) -> None:
         if not args:
@@ -4884,7 +4947,11 @@ class PytaeRepl:
             output_fn("pytae: no dataset loaded to save.")
             return False
         if target.lower() in ("clip", "clipboard"):
-            self.current_df.to_pandas().to_clipboard(index=False)
+            try:
+                self.current_df.to_pandas().to_clipboard(index=False)
+            except Exception as exc:
+                output_fn(f"pytae: failed to copy to clipboard: {exc}")
+                return False
             output_fn(f"Copied {self.current_df.shape[0]:,} rows to system clipboard.")
             return True
         from pytae.cli_parsing import normalize_git_bash_path
@@ -5146,6 +5213,47 @@ class PytaeRepl:
             ]
         )
         show_all = not has_action
+
+        has_output = getattr(args, "output", None) is not None
+        if has_output and (
+            args.head is not None
+            or args.tail is not None
+            or args.describe
+            or args.glimpse
+            or getattr(args, "schema", False)
+            or args.cols
+            or args.dtype
+            or args.nulls
+            or args.sample is not None
+        ):
+            inspect_cmd = (
+                f"-head {args.head}"
+                if args.head is not None
+                else f"-tail {args.tail}"
+                if args.tail is not None
+                else "-describe"
+                if args.describe
+                else "-glimpse"
+                if args.glimpse
+                else "-schema"
+                if getattr(args, "schema", False)
+                else "-cols"
+                if args.cols
+                else "-dtype"
+                if args.dtype
+                else "-nulls"
+                if args.nulls
+                else "-sample"
+            )
+            out_target = getattr(args, "output", "<path>")
+            tbl = getattr(self, "path_str", None) or "df"
+            output_fn(
+                f"pytae: '{inspect_cmd.split()[0]}' is an interactive screen preview and does not save with '-o' directly.\n"
+                f"To save this subset, assign it to a table first:\n"
+                f"  k = {tbl} {inspect_cmd}\n"
+                f"  k -o {out_target}"
+            )
+            return None, None, True
 
         runs = getattr(args, "time", None)
         durations: list[float] | None = None
@@ -5522,7 +5630,7 @@ class PytaeRepl:
         else:
             output_fn(REPL_BANNER.format(version=__version__))
             output_fn(
-                "No initial dataset loaded. Use '<var> = <path>' or 'df = sample:penguins' to start."
+                "No initial dataset loaded. Use '<var> = <path>' (e.g. 'df = clip' or 'df = sample:penguins') to start."
             )
         is_redirected_input = False
         is_pty = False

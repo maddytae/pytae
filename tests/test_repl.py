@@ -3951,6 +3951,112 @@ def test_export_script_prunes_rolled_back_branches(tmp_path, monkeypatch):
     r.close()
 
 
+def test_repl_clipboard_ingestion_and_strict_clean_export(tmp_path, monkeypatch):
+    import ast
+
+    import pandas as pd
+
+    from pytae.repl import PytaeRepl
+
+    fake_df = pd.DataFrame({
+        "species": ["Adelie", "Gentoo", "Chinstrap", "Adelie", "Gentoo", "Adelie"],
+        "body_mass_g": [3700, 5000, 3800, 3900, 5200, 3650],
+    })
+
+    # Mock pd.read_clipboard
+    monkeypatch.setattr(pd, "read_clipboard", lambda **kwargs: fake_df.copy())
+
+    copied_payloads = []
+
+    def mock_to_clipboard(self, *args, **kwargs):
+        copied_payloads.append(self.copy())
+
+    monkeypatch.setattr(pd.DataFrame, "to_clipboard", mock_to_clipboard)
+
+    outputs = []
+    r = PytaeRepl()
+
+    # 1. Ingest via `df = clip`
+    r.execute_line("df = clip", output_fn=outputs.append)
+    assert any("Loaded <clipboard> as 'df' (6 rows x 2 cols)" in o for o in outputs)
+    assert r.current_df is not None
+    assert r.current_df.shape == (6, 2)
+    assert "df" in r.tables
+    assert r.table_sources["df"] == "<clipboard>"
+
+    # 2. Ingest via custom alias and nrows `sample_clip = clip -nrows 3`
+    outputs.clear()
+    r.execute_line("sample_clip = clip -nrows 3", output_fn=outputs.append)
+    assert any("Loaded <clipboard> as 'sample_clip' (3 rows x 2 cols)" in o for o in outputs)
+    assert r.tables["sample_clip"].shape == (3, 2)
+
+    # 3. Test Strict & Clean: Preview commands reject -o clip directly
+    outputs.clear()
+    r.execute_line("df -head 5 -o clip", output_fn=outputs.append)
+    assert any("interactive screen preview and does not save with '-o' directly" in o for o in outputs)
+    assert any("k = df -head 5" in o for o in outputs)
+    assert any("k -o clip" in o for o in outputs)
+    assert len(copied_payloads) == 0
+
+    outputs.clear()
+    r.execute_line("-head 5 -o clip", output_fn=outputs.append)
+    assert any("interactive screen preview and does not save with '-o' directly" in o for o in outputs)
+    assert len(copied_payloads) == 0
+
+    # 4. Strictly follow guided steps: Assign slice first, then export to clip
+    outputs.clear()
+    r.execute_line("k = df -head 5", output_fn=outputs.append)
+    assert any("Created 'k' (5 rows x 2 cols)" in o for o in outputs)
+    assert r.tables["k"].shape == (5, 2)
+
+    outputs.clear()
+    r.execute_line("k -o clip", output_fn=outputs.append)
+    assert any("Copied 5 rows to system clipboard" in o for o in outputs)
+    assert len(copied_payloads) == 1
+    assert len(copied_payloads[0]) == 5
+
+    # 5. Export script and verify transpilation
+    pt_path = tmp_path / "clip_pipeline.pt"
+    py_path = tmp_path / "clip_pipeline.py"
+    r.execute_line(f'export script "{pt_path}"', output_fn=outputs.append)
+    r.execute_line(f'export script "{py_path}"', output_fn=outputs.append)
+
+    assert pt_path.exists()
+    pt_code = pt_path.read_text(encoding="utf-8")
+    assert "df = clip" in pt_code
+    assert "k = df -head 5" in pt_code
+
+    assert py_path.exists()
+    py_code = py_path.read_text(encoding="utf-8")
+    ast.parse(py_code)
+    assert "import pandas as pd" in py_code
+    assert "df = pl.from_pandas(pd.read_clipboard())" in py_code
+    assert "sample_clip = pl.from_pandas(pd.read_clipboard()).head(3)" in py_code
+    assert "k = df.head(5)" in py_code
+    # Transient clipboard copies are excluded from replay scripts
+    assert "-o clip" not in pt_code
+    assert "-o clip" not in py_code
+
+    r.close()
+
+
+def test_repl_clipboard_error_handling(monkeypatch):
+    import pandas as pd
+
+    from pytae.repl import PytaeRepl
+
+    def mock_fail(**kwargs):
+        raise RuntimeError("No clipboard mechanism found")
+
+    monkeypatch.setattr(pd, "read_clipboard", mock_fail)
+
+    outputs = []
+    r = PytaeRepl()
+    r.execute_line("df = clip", output_fn=outputs.append)
+    assert any("clipboard error: No clipboard mechanism found" in o for o in outputs)
+    r.close()
+
+
 
 
 
