@@ -4057,6 +4057,171 @@ def test_repl_clipboard_error_handling(monkeypatch):
     r.close()
 
 
+def test_repl_lazy_scan_and_pipeline_chaining(tmp_path, monkeypatch):
+    """Test lazy scan ingestion, inspection pushdown, pipeline chaining, and streaming output."""
+    import polars as pl
+
+    from pytae import DATA_PATH
+    from pytae.repl import PytaeRepl
+
+    monkeypatch.chdir(tmp_path)
+    penguins_pq = DATA_PATH / "penguins.parquet"
+    assert penguins_pq.exists()
+
+    outputs = []
+    r = PytaeRepl()
+
+    # 1. Ingest via `df = scan penguins.parquet`
+    r.execute_line(f"df = scan {penguins_pq}", output_fn=outputs.append)
+    assert any("Scanned penguins.parquet as 'df' (lazy, 7 cols)." in o for o in outputs)
+    assert isinstance(r.tables["df"], pl.LazyFrame)
+    assert isinstance(r.current_df, pl.LazyFrame)
+
+    # 2. Prompt shows lazy status
+    prompt = r._build_prompt()
+    assert "[df (lazy)]>" in prompt or "[df: lazy" in prompt
+
+    # 3. Fast inspections push down without materializing
+    outputs.clear()
+    r.execute_line("-cols", output_fn=outputs.append)
+    assert any("species" in o for o in outputs)
+    assert isinstance(r.tables["df"], pl.LazyFrame)
+
+    outputs.clear()
+    r.execute_line("-explain", output_fn=outputs.append)
+    assert any("SCAN" in o or "Parquet" in o or "PROJECT" in o for o in outputs)
+
+    outputs.clear()
+    r.execute_line("-head 3", output_fn=outputs.append)
+    assert any("species" in o for o in outputs)
+
+    outputs.clear()
+    r.execute_line("-schema", output_fn=outputs.append)
+    assert any("species" in o for o in outputs)
+
+    outputs.clear()
+    r.execute_line("status table df", output_fn=outputs.append)
+    assert any("lazy scan" in o for o in outputs)
+
+    outputs.clear()
+    r.execute_line("df", output_fn=outputs.append)
+    assert any("lazy, 7 cols" in o for o in outputs)
+
+    # 4. Pipeline chaining without materialization
+    outputs.clear()
+    r.execute_line("k = df -filter \"species == 'Gentoo'\"", output_fn=outputs.append)
+    assert any("Created 'k' (lazy, 7 cols)." in o for o in outputs)
+    assert isinstance(r.tables["k"], pl.LazyFrame)
+
+    # 5. Materialization via -collect
+    outputs.clear()
+    r.execute_line("k -collect", output_fn=outputs.append)
+    assert any("Materialized 'k'" in o for o in outputs)
+    assert isinstance(r.tables["k"], pl.DataFrame)
+    assert r.tables["k"].shape[0] == 124  # 124 Gentoo rows
+
+    # 6. Materialize subset via assignment with -collect
+    outputs.clear()
+    r.execute_line("m = df -head 10 -collect", output_fn=outputs.append)
+    assert any("Created 'm' (10 rows x 7 cols)." in o for o in outputs)
+    assert isinstance(r.tables["m"], pl.DataFrame)
+    assert r.tables["m"].shape[0] == 10
+
+    # 7. Plotting guard on lazy table
+    outputs.clear()
+    r.execute_line("df -plot bill_length_mm", output_fn=outputs.append)
+    assert any("plotting commands cannot be run directly on lazy scanned tables" in o for o in outputs)
+
+    # 8. Streaming output to file
+    out_pq = tmp_path / "streamed.parquet"
+    outputs.clear()
+    r.execute_line(f"df -o {out_pq.name}", output_fn=outputs.append)
+    assert any(f"Streamed lazy pipeline to {out_pq.name}." in o for o in outputs)
+    assert out_pq.exists()
+
+    r.close()
+
+
+def test_repl_canonical_input_path_and_relative_export(tmp_path, monkeypatch):
+    """Verify that history logs full canonical absolute paths for inputs, while export script defaults to absolute and -relative outputs relative paths."""
+    import ast
+
+    import polars as pl
+
+    from pytae.repl import PytaeRepl
+
+    monkeypatch.chdir(tmp_path)
+    # Create sample input dataset in a subfolder
+    sub_dir = tmp_path / "data_in"
+    sub_dir.mkdir()
+    sample_file = sub_dir / "sample.parquet"
+    pl.DataFrame({"id": [1, 2, 3], "val": [10.0, 20.0, 30.0]}).write_parquet(sample_file)
+
+    outputs = []
+    r = PytaeRepl()
+
+    # User inputs relative file path
+    rel_input = "data_in/sample.parquet"
+    r.execute_line(f"df = {rel_input}", output_fn=outputs.append)
+    assert any("Loaded sample.parquet as 'df'" in o for o in outputs)
+
+    # Transform and save to relative output
+    r.execute_line("k = df -filter \"id > 1\"", output_fn=outputs.append)
+    r.execute_line("k -o result.parquet", output_fn=outputs.append)
+
+    # 1. Verify history contains full canonical absolute path for input, but relative path for output
+    canonical_input_path = sample_file.resolve().as_posix()
+    assert any(canonical_input_path in entry for entry in r.history)
+    # Raw session history log must also contain the canonical absolute path
+    raw_hist_text = r.session_history_path.read_text(encoding="utf-8")
+    assert canonical_input_path in raw_hist_text
+    # Output path strictly remained relative in history
+    assert any("k -o result.parquet" in entry for entry in r.history)
+    assert "k -o result.parquet" in raw_hist_text
+
+    # 2. Export default (absolute paths)
+    py_abs_file = tmp_path / "pipeline_abs.py"
+    pt_abs_file = tmp_path / "pipeline_abs.pt"
+    outputs.clear()
+    r.execute_line(f'export script "{py_abs_file}"', output_fn=outputs.append)
+    r.execute_line(f'export script "{pt_abs_file}"', output_fn=outputs.append)
+
+    py_abs_code = py_abs_file.read_text(encoding="utf-8")
+    ast.parse(py_abs_code)
+    assert canonical_input_path in py_abs_code
+    assert "result.parquet" in py_abs_code
+
+    pt_abs_code = pt_abs_file.read_text(encoding="utf-8")
+    assert canonical_input_path in pt_abs_code
+    assert "-o result.parquet" in pt_abs_code
+
+    # 3. Export with -relative (relative paths to current working directory)
+    py_rel_file = tmp_path / "pipeline_rel.py"
+    pt_rel_file = tmp_path / "pipeline_rel.pt"
+    outputs.clear()
+    r.execute_line(f'export script "{py_rel_file}" -relative', output_fn=outputs.append)
+    r.execute_line(f'export script "{pt_rel_file}" -relative', output_fn=outputs.append)
+
+    py_rel_code = py_rel_file.read_text(encoding="utf-8")
+    ast.parse(py_rel_code)
+    assert "data_in/sample.parquet" in py_rel_code
+    assert canonical_input_path not in py_rel_code
+    assert "result.parquet" in py_rel_code
+
+    pt_rel_code = pt_rel_file.read_text(encoding="utf-8")
+    assert "data_in/sample.parquet" in pt_rel_code
+    assert canonical_input_path not in pt_rel_code
+    assert "-o result.parquet" in pt_rel_code
+
+    # 4. Strictly reject `--relative`
+    outputs.clear()
+    r.execute_line(f'export script "{tmp_path}/invalid.py" --relative', output_fn=outputs.append)
+    assert any("pytae: '--relative' is not recognized; use '-relative'." in o for o in outputs)
+
+    r.close()
+
+
+
 
 
 

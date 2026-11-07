@@ -1540,6 +1540,16 @@ def _process_path(
             return _fail(parser, batch, str(exc))
 
     if getattr(args, "repl", False) or str(path) == "<memory>":
-        setattr(args, "_result_frame", pipeline.current_frame())
+        import polars as pl
+
+        is_lazy_source = (
+            hasattr(pipeline, "_reader")
+            and hasattr(pipeline._reader, "_df")
+            and isinstance(pipeline._reader._df, pl.LazyFrame)
+        )
+        if is_lazy_source and not getattr(args, "collect", False):
+            setattr(args, "_result_frame", pipeline.polars_lazy_frame())
+        else:
+            setattr(args, "_result_frame", pipeline.current_frame())
     setattr(args, "_result_pipeline", pipeline)
     return False

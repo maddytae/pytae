@@ -56,6 +56,14 @@ def _resolve_to_canonical_path(path_str: str) -> str:
 
     try:
         p = Path(os.path.expanduser(raw)).resolve()
+        if not p.exists():
+            from pytae import DATA_PATH
+
+            cand = DATA_PATH / p.name
+            if not cand.exists():
+                cand = DATA_PATH / f"{p.stem}.parquet"
+            if cand.exists():
+                p = cand.resolve()
     except Exception:
         return raw
 
@@ -83,6 +91,37 @@ def _resolve_to_canonical_path(path_str: str) -> str:
         canon_str = f'"{canon_str}"'
 
     return canon_str
+
+
+def _to_relative_path(path_str: str, base_dir: Path | str | None = None) -> str:
+    """Convert an absolute file path to a relative POSIX path from base_dir (default: CWD)."""
+    clean = path_str.strip().strip("'\"")
+    if (
+        not clean
+        or clean.lower() in ("clip", "clipboard")
+        or clean.startswith("sample:")
+        or clean.startswith("http://")
+        or clean.startswith("https://")
+    ):
+        return path_str
+
+    base = Path(base_dir).resolve() if base_dir else Path.cwd().resolve()
+    try:
+        target_p = Path(clean).resolve()
+        rel = os.path.relpath(target_p, start=base)
+        rel_posix = Path(rel).as_posix()
+        if " " in rel_posix and not (rel_posix.startswith('"') and rel_posix.endswith('"')):
+            return f'"{rel_posix}"'
+        return rel_posix
+    except Exception:
+        return path_str
+
+
+def _get_frame_columns(df: Any) -> list[str]:
+    """Retrieve column names cleanly across pl.DataFrame, pl.LazyFrame, and pd.DataFrame."""
+    if hasattr(df, "collect_schema"):
+        return list(df.collect_schema().names())
+    return list(df.columns)
 
 
 def _read_checkpoint_file(path: Path) -> pl.DataFrame:
@@ -1033,6 +1072,8 @@ REPL_HELP = """\
 ================================================================================
 DATASET INGEST & MANAGEMENT:
   <var> = <path> [options]: Load dataset into named table (e.g. df = data.parquet, df = clip)
+  <var> = scan <path>...  : Lazily scan dataset (Parquet, CSV, IPC, NDJSON) without RAM overhead
+  scan <path> [as <alias>]: Scan dataset into lazy table (e.g. scan large.parquet as df)
   load <path> as <var>... : Load dataset with alias and options (-encoding, -dlim, -nrows)
   status table [name] [-v] : Inspect active table or loaded table inventory with RAM
   use <name>             : Switch active dataset (e.g. use df, use orders)
@@ -1063,7 +1104,9 @@ INSPECTION & EXPORT:
   -time [N]              : Benchmark execution over N runs (default: 1), e.g. -distinct -time 3
   -o <path> / -o clip    : Export table to file (Parquet/CSV/NDJSON) or clipboard
   export <path> / clip   : Export table to file or clipboard (synonym for -o)
-  export script <path>   : Export reproducible pipeline to standalone Python (.py) or Pytae (.pt) script
+  export script <path> [-relative] : Export reproducible pipeline to standalone Python (.py) or Pytae (.pt) script
+  -collect               : Materialize active lazy table into memory
+  -explain               : Display optimized Polars query execution plan for lazy table
   <cmd> | <shell_cmd>    : Pipe command output to shell tool (e.g. -cols | grep bill)
 
 STATE & WORKBENCH:
@@ -1287,6 +1330,7 @@ _RESERVED_VARIABLE_NAMES = _BARE_PIPELINE_VERBS | frozenset(
         "variable",
         "clip",
         "clipboard",
+        "scan",
     )
 )
 
@@ -1706,6 +1750,12 @@ def _transpile_pipeline_tokens_to_python(tokens: list[str]) -> str:
             i = j
             continue
 
+        # -collect
+        if low in ("-collect", "--collect"):
+            calls.append(".collect()")
+            i += 1
+            continue
+
         # -o <dest>
         if low == "-o" and i + 1 < n:
             dest = tokens[i + 1].strip("\"'")
@@ -1744,7 +1794,12 @@ def _prune_rolled_back_entries(entries: list[str]) -> list[str]:
     return result
 
 
-def _compile_history_to_python(entries: list[str], table_sources: dict[str, str] | None = None) -> str:
+def _compile_history_to_python(
+    entries: list[str],
+    table_sources: dict[str, str] | None = None,
+    *,
+    relative: bool = False,
+) -> str:
     """Compile replayable REPL history into a standalone, executable Python script."""
     import ast
     import shlex
@@ -1786,17 +1841,58 @@ def _compile_history_to_python(entries: list[str], table_sources: dict[str, str]
             if len(toks) >= 4 and toks[2].lower() == "as":
                 alias = toks[3]
                 path = toks[1].strip("\"'")
+                in_path = _to_relative_path(path) if relative else path
                 if path.lower() in ("clip", "clipboard"):
                     lines.append(f"{alias} = pl.from_pandas(pd.read_clipboard())")
                 else:
-                    lines.append(f"{alias} = pt.read({repr(path)})")
+                    lines.append(f"{alias} = pt.read({repr(in_path)})")
             elif len(toks) >= 2:
                 path = toks[1].strip("\"'")
+                in_path = _to_relative_path(path) if relative else path
                 if path.lower() in ("clip", "clipboard"):
                     lines.append("df = pl.from_pandas(pd.read_clipboard())")
                 else:
                     alias = Path(path).stem or "df"
-                    lines.append(f"{alias} = pt.read({repr(path)})")
+                    lines.append(f"{alias} = pt.read({repr(in_path)})")
+            continue
+
+        # 2b. Lazy scan: `scan <path> as <alias>` or `scan <path>`
+        if clean.startswith("scan "):
+            toks = shlex.split(clean)
+            scan_extra = ""
+            for idx_p, sp in enumerate(toks[1:]):
+                if sp in ("-dlim", "--dlim", "-sep", "--sep") and idx_p + 1 < len(toks[1:]):
+                    scan_extra = f", separator={repr(toks[1:][idx_p + 1])}"
+            if len(toks) >= 4 and toks[2].lower() == "as":
+                alias = toks[3]
+                path = toks[1].strip("\"'")
+                in_path = _to_relative_path(path) if relative else path
+                suf = Path(path).suffix.lower()
+                scan_fn = (
+                    "scan_csv"
+                    if suf in (".csv", ".tsv", ".txt")
+                    else (
+                        "scan_ipc"
+                        if suf in (".ipc", ".arrow", ".feather")
+                        else ("scan_ndjson" if suf in (".ndjson", ".jsonl") else "scan_parquet")
+                    )
+                )
+                lines.append(f"{alias} = pl.{scan_fn}({repr(in_path)}{scan_extra})")
+            elif len(toks) >= 2:
+                path = toks[1].strip("\"'")
+                in_path = _to_relative_path(path) if relative else path
+                alias = Path(path).stem or "df"
+                suf = Path(path).suffix.lower()
+                scan_fn = (
+                    "scan_csv"
+                    if suf in (".csv", ".tsv", ".txt")
+                    else (
+                        "scan_ipc"
+                        if suf in (".ipc", ".arrow", ".feather")
+                        else ("scan_ndjson" if suf in (".ndjson", ".jsonl") else "scan_parquet")
+                    )
+                )
+                lines.append(f"{alias} = pl.{scan_fn}({repr(in_path)}{scan_extra})")
             continue
 
         # 3. Colon ingestion: `<alias>: <path>`
@@ -1805,16 +1901,38 @@ def _compile_history_to_python(entries: list[str], table_sources: dict[str, str]
             alias = parts[0].strip()
             path = parts[1].strip().strip("\"'")
             if alias.isidentifier() and path:
+                in_path = _to_relative_path(path) if relative else path
                 if path.lower() in ("clip", "clipboard"):
                     lines.append(f"{alias} = pl.from_pandas(pd.read_clipboard())")
                 else:
-                    lines.append(f"{alias} = pt.read({repr(path)})")
+                    lines.append(f"{alias} = pt.read({repr(in_path)})")
                 continue
 
         # 4. Assignments: `<target> = <expression>`
         if "=" in clean and not clean.startswith("-"):
             target, expr = [p.strip() for p in clean.split("=", 1)]
             if target.isidentifier():
+                if expr.startswith(("scan ", "scan:")):
+                    scan_tail = expr[4:].lstrip(": ").strip()
+                    scan_parts = shlex.split(scan_tail)
+                    raw_sp = scan_parts[0].strip("\"'") if scan_parts else ""
+                    in_sp = _to_relative_path(raw_sp) if relative else raw_sp
+                    suf = Path(raw_sp).suffix.lower()
+                    scan_fn = (
+                        "scan_csv"
+                        if suf in (".csv", ".tsv", ".txt")
+                        else (
+                            "scan_ipc"
+                            if suf in (".ipc", ".arrow", ".feather")
+                            else ("scan_ndjson" if suf in (".ndjson", ".jsonl") else "scan_parquet")
+                        )
+                    )
+                    scan_extra = ""
+                    for idx_p, sp in enumerate(scan_parts[1:]):
+                        if sp in ("-dlim", "--dlim", "-sep", "--sep") and idx_p + 1 < len(scan_parts[1:]):
+                            scan_extra = f", separator={repr(scan_parts[1:][idx_p + 1])}"
+                    lines.append(f"{target} = pl.{scan_fn}({repr(in_sp)}{scan_extra})")
+                    continue
                 toks = shlex.split(expr)
                 if toks and toks[0].lower() in ("clip", "clipboard"):
                     clip_code = "pl.from_pandas(pd.read_clipboard())"
@@ -1832,10 +1950,11 @@ def _compile_history_to_python(entries: list[str], table_sources: dict[str, str]
                     continue
                 if expr.startswith("load "):
                     p = expr.split("load ", 1)[1].strip().strip("\"'")
+                    in_p = _to_relative_path(p) if relative else p
                     if p.lower() in ("clip", "clipboard"):
                         lines.append(f"{target} = pl.from_pandas(pd.read_clipboard())")
                     else:
-                        lines.append(f"{target} = pt.read({repr(p)})")
+                        lines.append(f"{target} = pt.read({repr(in_p)})")
                     continue
                 if expr.startswith(("-sql", "--sql")):
                     q = expr.split(None, 1)[1].strip().strip("\"'") if len(expr.split(None, 1)) > 1 else ""
@@ -1845,7 +1964,9 @@ def _compile_history_to_python(entries: list[str], table_sources: dict[str, str]
                 if toks:
                     src_token = toks[0]
                     if "." in src_token or "/" in src_token or "\\" in src_token:
-                        src_code = f"pt.read({repr(src_token)})"
+                        raw_src = src_token.strip("\"'")
+                        in_src = _to_relative_path(raw_src) if relative else raw_src
+                        src_code = f"pt.read({repr(in_src)})"
                     else:
                         src_code = src_token
                     chain = _transpile_pipeline_tokens_to_python(toks[1:])
@@ -1885,8 +2006,14 @@ def _compile_history_to_python(entries: list[str], table_sources: dict[str, str]
     return code_str
 
 
-def _compile_history_to_pt(entries: list[str], filename: str = "pipeline.pt") -> str:
+def _compile_history_to_pt(
+    entries: list[str],
+    filename: str = "pipeline.pt",
+    *,
+    relative: bool = False,
+) -> str:
     """Compile replayable REPL history into a clean, replayable Pytae script."""
+    import shlex
     from datetime import datetime
 
     entries = _prune_rolled_back_entries(entries)
@@ -1900,6 +2027,40 @@ def _compile_history_to_pt(entries: list[str], filename: str = "pipeline.pt") ->
         clean = raw_entry.strip()
         if not clean or clean.startswith("#"):
             continue
+        if relative:
+            if clean.startswith("load "):
+                toks = shlex.split(clean)
+                if len(toks) >= 2:
+                    rel_p = _to_relative_path(toks[1])
+                    if len(toks) >= 4 and toks[2].lower() == "as":
+                        lines.append(f"load {rel_p} as {toks[3]}")
+                    else:
+                        lines.append(f"load {rel_p}")
+                    continue
+            elif clean.startswith("scan "):
+                toks = shlex.split(clean)
+                if len(toks) >= 2:
+                    rel_p = _to_relative_path(toks[1])
+                    if len(toks) >= 4 and toks[2].lower() == "as":
+                        lines.append(f"scan {rel_p} as {toks[3]}")
+                    else:
+                        lines.append(f"scan {rel_p}")
+                    continue
+            elif "=" in clean and not clean.startswith("-"):
+                target, expr = [p.strip() for p in clean.split("=", 1)]
+                if target.isidentifier():
+                    if expr.startswith(("scan ", "scan:")):
+                        raw_sp = expr[4:].lstrip(": ").strip().strip("\"'")
+                        rel_sp = _to_relative_path(raw_sp)
+                        lines.append(f"{target} = scan {rel_sp}")
+                        continue
+                    toks = shlex.split(expr)
+                    if toks and ("." in toks[0] or "/" in toks[0] or "\\" in toks[0]):
+                        raw_src = toks[0].strip("\"'")
+                        rel_src = _to_relative_path(raw_src)
+                        rem = expr[len(toks[0]) :].strip()
+                        lines.append(f"{target} = {rel_src} {rem}".strip())
+                        continue
         lines.append(clean)
 
     return "\n".join(lines) + "\n"
@@ -1941,8 +2102,8 @@ def _is_replayable_entry_static(entry: str) -> bool:
         if left_part.isidentifier():
             return True
 
-    # Ingestion commands: load <path> [as <alias>]
-    if clean.startswith("load "):
+    # Ingestion commands: load <path> [as <alias>] or scan <path> [as <alias>]
+    if clean.startswith(("load ", "scan ")):
         return True
 
     # Colon-style ingestion: <alias>: <path>
@@ -1984,6 +2145,8 @@ def _is_replayable_entry_static(entry: str) -> bool:
         return True
     if clean.startswith("rename ") or clean.startswith("use "):
         return True
+    if clean.endswith(" -collect") or clean == "-collect":
+        return True
 
     return False
 
@@ -1991,16 +2154,26 @@ def _is_replayable_entry_static(entry: str) -> bool:
 def run_cli_export(argv: list[str]) -> int:
     """Export a recorded history log file to a standalone Python (.py) or Pytae (.pt) script."""
     if not argv:
-        print("Usage: pytae -export <history_file> [-o <target.py|target.pt>]")
+        print("Usage: pytae -export <history_file> [-o <target.py|target.pt>] [-relative]")
         return 1
 
-    history_file_str = argv[0]
+    if "--relative" in argv:
+        print("pytae: '--relative' is not recognized; use '-relative'.")
+        return 1
+
+    relative = "-relative" in argv
+    clean_argv = [a for a in argv if a != "-relative"]
+    if not clean_argv:
+        print("Usage: pytae -export <history_file> [-o <target.py|target.pt>] [-relative]")
+        return 1
+
+    history_file_str = clean_argv[0]
     out_target: str | None = None
     i = 1
-    while i < len(argv):
-        arg = argv[i]
-        if arg in ("-o", "-output", "--output") and i + 1 < len(argv):
-            out_target = argv[i + 1]
+    while i < len(clean_argv):
+        arg = clean_argv[i]
+        if arg in ("-o", "-output", "--output") and i + 1 < len(clean_argv):
+            out_target = clean_argv[i + 1]
             i += 2
         elif arg.startswith(("-o=", "-output=", "--output=")):
             out_target = arg.split("=", 1)[1]
@@ -2030,14 +2203,15 @@ def run_cli_export(argv: list[str]) -> int:
     out_p.parent.mkdir(parents=True, exist_ok=True)
 
     if out_p.suffix.lower() == ".py":
-        content = _compile_history_to_python(replayable)
+        content = _compile_history_to_python(replayable, relative=relative)
         desc = "standalone Python script"
     else:
-        content = _compile_history_to_pt(replayable, out_p.name)
+        content = _compile_history_to_pt(replayable, out_p.name, relative=relative)
         desc = "Pytae script"
 
     out_p.write_text(content, encoding="utf-8")
-    print(f"Exported {desc} to {out_p}.")
+    path_desc = " (relative paths)" if relative else " (absolute paths)"
+    print(f"Exported {desc}{path_desc} to {out_p}.")
     return 0
 
 
@@ -2247,10 +2421,28 @@ class PytaeRepl:
         """Evaluate a variable expression against session variables."""
         return _eval_var_reference(expr_str, self.variables)
 
-    def _cmd_export_script(self, target_path_str: str, output_fn: Callable[[str], None]) -> bool:
+    def _update_last_history_log_line(self, canonical_line: str) -> None:
+        """Replace the last logged line in session_history_path with its canonicalized version."""
+        try:
+            if not self.session_history_path.exists():
+                return
+            lines = self.session_history_path.read_text(encoding="utf-8").splitlines()
+            if lines:
+                lines[-1] = canonical_line
+                self.session_history_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        except Exception:
+            pass
+
+    def _cmd_export_script(
+        self,
+        target_path_str: str,
+        output_fn: Callable[[str], None],
+        *,
+        relative: bool = False,
+    ) -> bool:
         """Export session commands to an executable Python (.py) or Pytae (.pt) script."""
         if not target_path_str:
-            output_fn("Usage: export script <path.py|path.pt>")
+            output_fn("Usage: export script <path.py|path.pt> [-relative]")
             return False
 
         from pytae.cli_parsing import normalize_git_bash_path
@@ -2267,14 +2459,15 @@ class PytaeRepl:
         try:
             target_path.parent.mkdir(parents=True, exist_ok=True)
             if target_path.suffix.lower() == ".py":
-                content = _compile_history_to_python(replayable, self.table_sources)
+                content = _compile_history_to_python(replayable, self.table_sources, relative=relative)
                 desc = "standalone Python script"
             else:
-                content = _compile_history_to_pt(replayable, target_path.name)
+                content = _compile_history_to_pt(replayable, target_path.name, relative=relative)
                 desc = "Pytae script"
 
             target_path.write_text(content, encoding="utf-8")
-            output_fn(f"Exported {desc} to {target_path}.")
+            path_desc = " (-relative)" if relative else ""
+            output_fn(f"Exported {desc} to {target_path}{path_desc}.")
             return True
         except Exception as exc:
             output_fn(f"pytae: Error exporting script to '{target_path_str}': {exc}")
@@ -2432,6 +2625,7 @@ class PytaeRepl:
                     p = candidate
                 else:
                     raise FileNotFoundError(f"File not found: {p}")
+        p = p.resolve()
         opts = dict(reader_opts)
         if "sheet" in opts and "sheet_name" not in opts:
             opts["sheet_name"] = opts.pop("sheet")
@@ -2451,6 +2645,62 @@ class PytaeRepl:
         df = reader.to_polars(nrows=nrows_val)
         return p, df
 
+    def _scan_file_to_df(self, path: Path | str, **scan_opts: Any) -> tuple[Path, pl.LazyFrame]:
+        """Resolve a dataset path and lazily scan it into a Polars LazyFrame."""
+        import polars as pl
+
+        from pytae.cli_parsing import parse_input_target
+
+        target = parse_input_target(str(path))
+        raw_path = target["path"]
+        if raw_path.strip().lower() in ("clip", "clipboard"):
+            raise ValueError("scan is not supported for clipboard. Use '<var> = clip' to load into memory.")
+
+        p = Path(raw_path).expanduser()
+        if str(p).startswith("sample:"):
+            from pytae import _DATASET_NAMES, DATA_PATH
+
+            sample_name = str(p)[7:].strip().removesuffix(".parquet")
+            sample_file = DATA_PATH / f"{sample_name}.parquet"
+            if not sample_file.exists():
+                available = ", ".join(_DATASET_NAMES)
+                raise FileNotFoundError(f"unknown sample dataset '{sample_name}'. Available: {available}")
+            p = sample_file
+        elif not p.exists():
+            if any(ch in str(p) for ch in "*?["):
+                pass
+            else:
+                from pytae import DATA_PATH
+
+                candidate = DATA_PATH / p.name
+                if not candidate.exists():
+                    candidate = DATA_PATH / f"{p.stem}.parquet"
+                if candidate.exists():
+                    p = candidate
+                else:
+                    raise FileNotFoundError(f"File not found: {p}")
+        p = p.resolve()
+        suffix = p.suffix.lower()
+        if suffix in (".parquet", ".pq"):
+            lf = pl.scan_parquet(p)
+        elif suffix in (".csv", ".tsv", ".txt", ".dat"):
+            sep = scan_opts.get("sep") or scan_opts.get("delimiter")
+            if sep:
+                lf = pl.scan_csv(p, separator=sep)
+            else:
+                lf = pl.scan_csv(p)
+        elif suffix in (".ipc", ".arrow", ".feather"):
+            lf = pl.scan_ipc(p)
+        elif suffix in (".ndjson", ".jsonl"):
+            lf = pl.scan_ndjson(p)
+        else:
+            raise ValueError(
+                f"scan is not supported for '{suffix}' files. "
+                "Supported formats for lazy scanning: Parquet, CSV, Arrow IPC, and NDJSON. "
+                f"Use '<var> = {p.name}' to load eagerly into memory."
+            )
+        return p, lf
+
     def _load_file(self, path: Path | str, **reader_opts: Any) -> None:
         p, df = self._read_file_to_df(path, **reader_opts)
         self.path = p
@@ -2461,6 +2711,10 @@ class PytaeRepl:
     def _get_shape_str(self) -> str:
         if self.current_df is None:
             return "no dataset"
+        import polars as pl
+
+        if isinstance(self.current_df, pl.LazyFrame):
+            return f"lazy, {len(_get_frame_columns(self.current_df))} cols"
         return f"{self.current_df.shape[0]:,}x{self.current_df.shape[1]}"
 
     def _resolve_table_name(self, target: str) -> str | None:
@@ -2486,9 +2740,14 @@ class PytaeRepl:
         return None
 
     def _build_prompt(self) -> str:
+        import polars as pl
+
         prefix = self.prompt
         if len(self.tables) > 1:
-            table_names = ", ".join(self.tables.keys())
+            table_names = ", ".join(
+                f"{k} (lazy)" if isinstance(v, pl.LazyFrame) else k
+                for k, v in self.tables.items()
+            )
             return f"{prefix} [{table_names}]> "
         elif self.current_df is not None:
             name = self.path_str or "<dataframe>"
@@ -2707,23 +2966,32 @@ class PytaeRepl:
             self._cmd_history(output_fn, args=tokens[1:])
             return True
 
-        # Export / Save Script: export script <path>, save script <path>, export clip, export <path>
+        # Export / Save Script: export script <path> [-relative], save script <path>, export clip, export <path>
         if first_lower in ("export", "-export") or (first_lower in ("save", "-save") and len(tokens) >= 2 and tokens[1].lower() in ("script", "code")):
             if len(tokens) >= 2 and tokens[1].lower() in ("script", "code"):
                 if len(tokens) < 3:
-                    output_fn(f"Usage: {first_lower} script <path.py|path.pt>")
+                    output_fn(f"Usage: {first_lower} script <path.py|path.pt> [-relative]")
                     return True
-                self._cmd_export_script(tokens[2], output_fn)
+                target = tokens[2]
+                if any(t == "--relative" for t in tokens[3:]):
+                    output_fn("pytae: '--relative' is not recognized; use '-relative'.")
+                    return True
+                relative = any(t == "-relative" for t in tokens[3:])
+                self._cmd_export_script(target, output_fn, relative=relative)
                 return True
             if len(tokens) >= 2:
                 target = tokens[1]
                 if target.lower().endswith((".py", ".pt")):
-                    self._cmd_export_script(target, output_fn)
+                    if any(t == "--relative" for t in tokens[2:]):
+                        output_fn("pytae: '--relative' is not recognized; use '-relative'.")
+                        return True
+                    relative = any(t == "-relative" for t in tokens[2:])
+                    self._cmd_export_script(target, output_fn, relative=relative)
                     return True
                 if self._cmd_save(target, output_fn):
                     self._record_history(f"-o {target}")
                 return True
-            output_fn("Usage: export script <path.py|path.pt> or export <path.parquet|csv|ndjson|clip>")
+            output_fn("Usage: export script <path.py|path.pt> [-relative] or export <path.parquet|csv|ndjson|clip>")
             return True
 
         # Reject disallowed aliases, legacy synonyms, or hyphenated inspection commands
@@ -3042,9 +3310,13 @@ class PytaeRepl:
 
             durations = []
             target_df = self.tables[resolved_table]
+            is_lazy = isinstance(target_df, pl.LazyFrame)
             for _ in range(runs):
                 t0 = _time.perf_counter()
-                n_rows, n_cols = target_df.shape
+                if is_lazy:
+                    n_rows, n_cols = -1, len(_get_frame_columns(target_df))
+                else:
+                    n_rows, n_cols = target_df.shape
                 durations.append(_time.perf_counter() - t0)
 
             timing_str = ""
@@ -3056,7 +3328,8 @@ class PytaeRepl:
 
             is_active = self.path_str == resolved_table
             active_info = " [active]" if is_active else f" (tip: 'use {resolved_table}' to switch active dataset)"
-            output_fn(f"{resolved_table}: {n_rows:,} rows x {n_cols} cols{timing_str}{active_info}")
+            shape_desc = f"lazy, {n_cols} cols" if is_lazy else f"{n_rows:,} rows x {n_cols} cols"
+            output_fn(f"{resolved_table}: {shape_desc}{timing_str}{active_info}")
             return True
 
         # Targeted table command (e.g. `df1 -filter ...` or `df -cols` or `penguins head 5`)
@@ -3138,6 +3411,14 @@ class PytaeRepl:
                 output_fn("Usage: load <path> [as <alias>] (e.g. load penguins.parquet as peng)")
                 return True
             self._cmd_load(tokens, output_fn)
+            return True
+
+        # Scan file as lazy table
+        if first_lower == "scan":
+            if len(tokens) < 2:
+                output_fn("Usage: scan <path> [as <alias>] (e.g. scan penguins.parquet as peng)")
+                return True
+            self._cmd_scan(tokens, output_fn)
             return True
 
         # Join: -join (bare join is caught by _BARE_PIPELINE_VERBS above)
@@ -3244,7 +3525,17 @@ class PytaeRepl:
                 return True
         first_lower = tokens[0].lower()
         is_inspect = (
-            first_lower in ("-shape", "-schema", "-glimpse", "-describe", "-head", "-tail")
+            first_lower
+            in (
+                "-shape",
+                "-schema",
+                "-glimpse",
+                "-describe",
+                "-head",
+                "-tail",
+                "-collect",
+                "-explain",
+            )
             or first_lower == "-cols"
             or first_lower.startswith("-cols=")
             or first_lower == "-dtype"
@@ -3287,19 +3578,53 @@ class PytaeRepl:
         if df is None:
             output_fn("No dataset loaded.")
             return True
-        if first_lower == "-shape":
-            output_fn(f"({df.shape[0]}, {df.shape[1]})")
+        import polars as pl
+
+        if first_lower == "-collect":
+            if isinstance(df, pl.LazyFrame):
+                materialized = df.collect()
+                tbl_name = getattr(self, "path_str", None) or "df"
+                self.tables[tbl_name] = materialized
+                self.orig_tables[tbl_name] = materialized
+                self.initial_tables[tbl_name] = materialized
+                self.current_df = materialized
+                output_fn(
+                    f"Materialized '{tbl_name}' ({materialized.shape[0]:,} rows x {materialized.shape[1]} cols)."
+                )
+                self._record_history(f"{tbl_name} -collect")
+                return True
+            else:
+                tbl_name = getattr(self, "path_str", None) or "df"
+                output_fn(f"pytae: '{tbl_name}' is already an in-memory DataFrame.")
+                return True
+        elif first_lower == "-explain":
+            if isinstance(df, pl.LazyFrame):
+                output_fn(df.explain())
+                return True
+            else:
+                tbl_name = getattr(self, "path_str", None) or "df"
+                output_fn(f"pytae: '{tbl_name}' is an in-memory DataFrame; -explain applies to lazy scanned tables.")
+                return True
+        elif first_lower == "-shape":
+            if isinstance(df, pl.LazyFrame):
+                output_fn(f"(LazyFrame: {len(_get_frame_columns(df))} cols; use '-collect' or '-head' to view rows)")
+            else:
+                output_fn(f"({df.shape[0]}, {df.shape[1]})")
         elif first_lower == "-schema":
             from pytae.other_utilities import format_schema
 
-            output_fn(format_schema(df))
+            if isinstance(df, pl.LazyFrame):
+                collected = df.head(5).collect()
+                output_fn(format_schema(collected))
+            else:
+                output_fn(format_schema(df))
         elif first_lower == "-cols" or first_lower.startswith("-cols="):
             order = "file"
             if "=" in first_lower:
                 order = first_lower.split("=", 1)[1].strip("\"'").lower()
             elif len(tokens) > 1:
                 order = tokens[1].lower()
-            cols = list(df.columns)
+            cols = _get_frame_columns(df)
             if order == "asc":
                 cols = sorted(cols, key=lambda s: (s.lower(), s))
             elif order == "desc":
@@ -3325,7 +3650,8 @@ class PytaeRepl:
                 order = first_lower.split("=", 1)[1].strip("\"'").lower()
             elif len(tokens) > 1:
                 order = tokens[1].lower()
-            nulls_s = df.null_count().to_pandas().iloc[0]
+            nulls_df = df.null_count().collect() if isinstance(df, pl.LazyFrame) else df.null_count()
+            nulls_s = nulls_df.to_pandas().iloc[0]
             if order == "asc":
                 nulls_s = nulls_s.sort_index(ascending=True)
             elif order == "desc":
@@ -3334,16 +3660,25 @@ class PytaeRepl:
         elif first_lower == "-glimpse":
             from pytae.other_utilities import format_glimpse
 
-            output_fn(format_glimpse(df))
+            collected = df.head(10).collect() if isinstance(df, pl.LazyFrame) else df
+            output_fn(format_glimpse(collected))
         elif first_lower == "-describe":
-            output_fn(self._format_table(df.describe()))
+            collected = df.collect() if isinstance(df, pl.LazyFrame) else df
+            output_fn(self._format_table(collected.describe()))
         elif first_lower == "-head":
             n = int(tokens[1]) if len(tokens) > 1 and tokens[1].isdigit() else 5
-            output_fn(self._format_table(df.head(n), tbl_rows=n))
+            collected = df.head(n).collect() if isinstance(df, pl.LazyFrame) else df.head(n)
+            output_fn(self._format_table(collected, tbl_rows=n))
         elif first_lower == "-tail":
             n = int(tokens[1]) if len(tokens) > 1 and tokens[1].isdigit() else 5
-            output_fn(self._format_table(df.tail(n), tbl_rows=n))
+            collected = df.tail(n).collect() if isinstance(df, pl.LazyFrame) else df.tail(n)
+            output_fn(self._format_table(collected, tbl_rows=n))
         elif first_lower == "-sample":
+            if isinstance(df, pl.LazyFrame):
+                output_fn(
+                    "pytae: -sample is not supported directly on lazy scans. Materialize a sample first with '-head [N] -collect'."
+                )
+                return True
             n = 5
             frac = None
             if len(tokens) > 1:
@@ -3389,16 +3724,32 @@ class PytaeRepl:
         self, resolved: str, output_fn: Callable[[str], None], verbose: bool = False
     ) -> None:
         tbl_df = self.tables[resolved]
-        n_rows, n_cols = tbl_df.shape
-        tbl_mem_mb = tbl_df.estimated_size() / (1024 * 1024)
+        import polars as pl
+
+        is_active = self.path_str == resolved or (self.current_df is not None and self.current_df is tbl_df)
         src = self.table_sources.get(resolved, "")
         src_str = f" ({src})" if src else ""
-        is_active = self.path_str == resolved or (self.current_df is not None and self.current_df is tbl_df)
         act_str = " [active]" if is_active else ""
+        status_desc = "active" if is_active else "inactive (tip: 'use " + resolved + "' to switch active cursor)"
+
+        if isinstance(tbl_df, pl.LazyFrame):
+            lazy_cols = _get_frame_columns(tbl_df)
+            n_cols = len(lazy_cols)
+            output_fn(f"Table          : {resolved}{src_str}{act_str}")
+            output_fn(f"Shape          : lazy scan ({n_cols} columns)")
+            output_fn("Table memory   : 0 MB (lazy, unmaterialized)")
+            output_fn(f"Status         : {status_desc}")
+            if verbose:
+                output_fn(f"Columns ({n_cols}):")
+                for col_name, dtype in zip(lazy_cols, tbl_df.dtypes, strict=False):
+                    output_fn(f"  {col_name:<20}: {dtype}")
+            return
+
+        n_rows, n_cols = tbl_df.shape
+        tbl_mem_mb = tbl_df.estimated_size() / (1024 * 1024)
         output_fn(f"Table          : {resolved}{src_str}{act_str}")
         output_fn(f"Shape          : {n_rows:,} rows x {n_cols} columns")
         output_fn(f"Table memory   : ~{tbl_mem_mb:.2f} MB")
-        status_desc = "active" if is_active else "inactive (tip: 'use " + resolved + "' to switch active cursor)"
         output_fn(f"Status         : {status_desc}")
         if verbose:
             output_fn(f"Columns ({n_cols}):")
@@ -3488,9 +3839,12 @@ class PytaeRepl:
         # Active Table
         if self.current_df is not None:
             active_name = self.path_str or "df"
-            n_rows, n_cols = self.current_df.shape
-            mem_mb = self.current_df.estimated_size() / (1024 * 1024)
-            output_fn(f"Active Table  : {active_name} ({n_rows:,} rows x {n_cols} cols, ~{mem_mb:.2f} MB)")
+            if isinstance(self.current_df, pl.LazyFrame):
+                output_fn(f"Active Table  : {active_name} (lazy, {len(_get_frame_columns(self.current_df))} cols, 0 MB)")
+            else:
+                n_rows, n_cols = self.current_df.shape
+                mem_mb = self.current_df.estimated_size() / (1024 * 1024)
+                output_fn(f"Active Table  : {active_name} ({n_rows:,} rows x {n_cols} cols, ~{mem_mb:.2f} MB)")
         else:
             output_fn("Active Table  : (none)")
 
@@ -3500,21 +3854,28 @@ class PytaeRepl:
         elif len(self.tables) == 1:
             t_name = next(iter(self.tables.keys()))
             t_df = self.tables[t_name]
-            t_mb = t_df.estimated_size() / (1024 * 1024)
-            output_fn(f"Loaded Tables : 1 table [{t_name}*] (~{t_mb:.2f} MB in memory)")
+            if isinstance(t_df, pl.LazyFrame):
+                output_fn(f"Loaded Tables : 1 table [{t_name}*] (lazy in memory)")
+            else:
+                t_mb = t_df.estimated_size() / (1024 * 1024)
+                output_fn(f"Loaded Tables : 1 table [{t_name}*] (~{t_mb:.2f} MB in memory)")
         else:
-            total_mb = sum(t.estimated_size() / (1024 * 1024) for t in self.tables.values())
+            total_mb = sum((t.estimated_size() / (1024 * 1024)) if not isinstance(t, pl.LazyFrame) else 0.0 for t in self.tables.values())
             t_list = [f"{t}*" if t == self.path_str else t for t in self.tables.keys()]
             output_fn(f"Loaded Tables : {len(self.tables)} tables [{', '.join(t_list)}] (~{total_mb:.2f} MB in memory)")
 
         if verbose and self.tables:
             for t_name, t_df in self.tables.items():
                 is_act = " [active]" if t_name == self.path_str else ""
-                r_c, c_c = t_df.shape
-                mb = t_df.estimated_size() / (1024 * 1024)
                 src = self.table_sources.get(t_name, "")
                 src_info = f" (source: {src})" if src else ""
-                output_fn(f"  - {t_name}{is_act:<9}: {r_c:,} rows x {c_c} cols (~{mb:.2f} MB){src_info}")
+                if isinstance(t_df, pl.LazyFrame):
+                    c_c = len(t_df.columns)
+                    output_fn(f"  - {t_name}{is_act:<9}: lazy ({c_c} cols, 0 MB){src_info}")
+                else:
+                    r_c, c_c = t_df.shape
+                    mb = t_df.estimated_size() / (1024 * 1024)
+                    output_fn(f"  - {t_name}{is_act:<9}: {r_c:,} rows x {c_c} cols (~{mb:.2f} MB){src_info}")
 
         # Variables
         if not self.variables:
@@ -4474,6 +4835,48 @@ class PytaeRepl:
         # Normalize unquoted Windows backslash paths (e.g. C:\Users\... -> C:/Users/...) so shlex does not eat backslashes
         norm_expr = _normalize_unquoted_windows_paths(right_expr)
         right_tokens = shlex.split(norm_expr)
+
+        # 2a. Lazy scan assignment: `df = scan data.parquet` or `df = scan data.csv -dlim ","`
+        if right_tokens and right_tokens[0].lower() == "scan":
+            if var_name in self.variables:
+                output_fn(
+                    f"pytae: '{var_name}' is already a session variable; cannot assign as a table. Use 'rm var {var_name}' first."
+                )
+                return
+            scan_toks = right_tokens[1:]
+            cleaned_toks, reader_kwargs, _ = _parse_reader_options(scan_toks)
+            if not cleaned_toks:
+                output_fn("Usage: <var> = scan <path> [-dlim <char>]")
+                return
+            clean_path = cleaned_toks[0].strip("\"' ")
+            try:
+                p, lf = self._scan_file_to_df(clean_path, **reader_kwargs)
+                self.tables[var_name] = lf
+                self.orig_tables[var_name] = lf
+                self.initial_tables[var_name] = lf
+                self.initial_df = lf
+                self.table_sources[var_name] = p.name
+                self.current_df = lf
+                self.orig_df = lf
+                self.path_str = var_name
+                canonical_target = _resolve_to_canonical_path(clean_path)
+                unquoted_canon = canonical_target.strip("\"'")
+                quoted_canon = f'"{unquoted_canon}"' if " " in unquoted_canon else unquoted_canon
+                opts_str = ""
+                if reader_kwargs:
+                    opts_items = [f"-{k} {v}" for k, v in reader_kwargs.items()]
+                    opts_str = f" {' '.join(opts_items)}"
+                canonical_line = f"{var_name} = scan {quoted_canon}{opts_str}"
+                self._record_history(canonical_line)
+                self._update_last_history_log_line(canonical_line)
+                output_fn(
+                    f"Scanned {p.name} as '{var_name}' (lazy, {len(_get_frame_columns(lf))} cols)."
+                )
+                return
+            except Exception as exc:
+                output_fn(f"pytae: failed to scan {clean_path}: {exc}")
+                return
+
         cleaned_tokens, reader_kwargs, nrows_val = _parse_reader_options(right_tokens)
         if cleaned_tokens:
             clean_path = cleaned_tokens[0].removeprefix("load ").strip("\"' ")
@@ -4537,6 +4940,7 @@ class PytaeRepl:
                         else:
                             canonical_right = norm_expr.replace(clean_path, quoted_canon, 1)
                         self._record_history(f"{var_name} = {canonical_right}")
+                        self._update_last_history_log_line(f"{var_name} = {canonical_right}")
                         opts_desc = ""
                         if reader_kwargs or nrows_val is not None:
                             opts_items = [f"{k}={v}" for k, v in reader_kwargs.items()]
@@ -4601,8 +5005,12 @@ class PytaeRepl:
                         self.initial_df = self.initial_tables.get(var_name)
                         self.path_str = var_name
                         self._record_history(f"{var_name} = {right_expr}")
+                        if isinstance(source_df, pl.LazyFrame):
+                            shape_desc = f"lazy, {len(source_df.columns)} cols"
+                        else:
+                            shape_desc = f"{source_df.shape[0]:,} rows x {source_df.shape[1]} cols"
                         output_fn(
-                            f"Assigned '{var_name}' from '{first_tok}' ({source_df.shape[0]:,} rows x {source_df.shape[1]} cols)."
+                            f"Assigned '{var_name}' from '{first_tok}' ({shape_desc})."
                         )
                         return
 
@@ -4612,25 +5020,40 @@ class PytaeRepl:
                         f"pytae: '{var_name}' is already a session variable; cannot assign as a table. Use 'rm var {var_name}' first."
                     )
                     return
-                first_pipe = pipe_tokens[0].lower()
-                if first_pipe in _DISALLOWED_ALIASES:
-                    canonical = _DISALLOWED_ALIASES[first_pipe]
-                    output_fn(f"pytae: '{first_pipe}' is not recognized; use '{canonical}'.")
-                    return
-                if first_pipe in _BARE_PIPELINE_VERBS:
-                    output_fn(
-                        f"pytae: bare '{first_pipe}' is not recognized; use '-{first_pipe}' (matching CLI syntax)."
-                    )
-                    return
-                if first_pipe == "-join":
-                    self.current_df = source_df.clone()
-                    self._cmd_join(pipe_tokens[1:], output_fn)
-                    res_df = self.current_df
-                    durations = None
+                has_collect = any(t == "-collect" for t in pipe_tokens)
+                if has_collect:
+                    pipe_tokens = [t for t in pipe_tokens if t != "-collect"]
+
+                if not pipe_tokens:
+                    if has_collect and isinstance(source_df, pl.LazyFrame):
+                        res_df = source_df.collect()
+                        durations = None
+                    else:
+                        res_df = source_df.clone()
+                        durations = None
                 else:
-                    res_df, durations = self._eval_pipeline_df(source_df, pipe_tokens, output_fn)
-                    if res_df is None:
+                    first_pipe = pipe_tokens[0].lower()
+                    if first_pipe in _DISALLOWED_ALIASES:
+                        canonical = _DISALLOWED_ALIASES[first_pipe]
+                        output_fn(f"pytae: '{first_pipe}' is not recognized; use '{canonical}'.")
                         return
+                    if first_pipe in _BARE_PIPELINE_VERBS:
+                        output_fn(
+                            f"pytae: bare '{first_pipe}' is not recognized; use '-{first_pipe}' (matching CLI syntax)."
+                        )
+                        return
+                    if first_pipe == "-join":
+                        self.current_df = source_df.clone()
+                        self._cmd_join(pipe_tokens[1:], output_fn)
+                        res_df = self.current_df
+                        durations = None
+                    else:
+                        res_df, durations = self._eval_pipeline_df(source_df, pipe_tokens, output_fn)
+                        if res_df is None:
+                            return
+                    if has_collect and isinstance(res_df, pl.LazyFrame):
+                        res_df = res_df.collect()
+
                 was_existing = var_name in self.tables
                 self.tables[var_name] = res_df
                 self.table_sources[var_name] = f"{source_label} {pipe_line[:20]}"
@@ -4648,7 +5071,11 @@ class PytaeRepl:
                         timing_str = f" | Elapsed: {_format_duration_ms(durations[0])}"
                     else:
                         timing_str = f" | {_format_timing_summary(durations)}"
-                output_fn(f"{action} '{var_name}' ({res_df.shape[0]:,} rows x {res_df.shape[1]} cols){timing_str}.")
+                if isinstance(res_df, pl.LazyFrame):
+                    shape_desc = f"lazy, {len(_get_frame_columns(res_df))} cols"
+                else:
+                    shape_desc = f"{res_df.shape[0]:,} rows x {res_df.shape[1]} cols"
+                output_fn(f"{action} '{var_name}' ({shape_desc}){timing_str}.")
                 return
 
         # 4. Variable literal assignment (scalars, lists, dicts)
@@ -4784,18 +5211,73 @@ class PytaeRepl:
                     opts_items.append(f"nrows={nrows_val}")
                 opts_desc = f" [{', '.join(opts_items)}]"
             canonical_target = _resolve_to_canonical_path(path_str)
+            unquoted_canon = canonical_target.strip("\"'")
+            quoted_canon = f'"{unquoted_canon}"' if " " in unquoted_canon else unquoted_canon
             if alias:
-                self._record_history(f"load {canonical_target} as {alias}")
+                hist_line = f"load {quoted_canon} as {alias}"
+                self._record_history(hist_line)
+                self._update_last_history_log_line(hist_line)
                 output_fn(
                     f"Loaded {p.name} as '{alias}' ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols){opts_desc}."
                 )
             else:
-                self._record_history(f"load {canonical_target}")
+                hist_line = f"load {quoted_canon}"
+                self._record_history(hist_line)
+                self._update_last_history_log_line(hist_line)
                 output_fn(
                     f"Loaded {p.name} ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols){opts_desc}."
                 )
         except Exception as exc:
             output_fn(f"pytae: {exc}" if is_clip else f"pytae: failed to load {path_str}: {exc}")
+
+    def _cmd_scan(self, tokens: list[str], output_fn: Callable[[str], None]) -> None:
+        cleaned_tokens, reader_kwargs, _ = _parse_reader_options(tokens)
+        if len(cleaned_tokens) < 2:
+            output_fn("Usage: scan <path> [as <alias>] [-dlim <char>]")
+            return
+        path_str = cleaned_tokens[1].strip("\"' ")
+        alias: str | None = None
+        if len(cleaned_tokens) >= 4 and cleaned_tokens[2].lower() == "as":
+            alias = cleaned_tokens[3]
+
+        if alias and alias.lower() in _RESERVED_VARIABLE_NAMES:
+            output_fn(f"pytae: '{alias}' is a reserved command or verb; choose a different alias.")
+            return
+        if alias and alias in self.variables:
+            output_fn(
+                f"pytae: '{alias}' is already a session variable; cannot assign as a table. Use 'rm var {alias}' first."
+            )
+            return
+
+        try:
+            p, lf = self._scan_file_to_df(path_str, **reader_kwargs)
+            target_alias = alias or self.path_str or (p.stem or p.name)
+            self.tables[target_alias] = lf
+            self.orig_tables[target_alias] = lf
+            self.initial_tables[target_alias] = lf
+            self.initial_df = lf
+            self.table_sources[target_alias] = p.name
+            self.current_df = lf
+            self.orig_df = lf
+            self.path_str = target_alias
+            canonical_target = _resolve_to_canonical_path(path_str)
+            unquoted_canon = canonical_target.strip("\"'")
+            quoted_canon = f'"{unquoted_canon}"' if " " in unquoted_canon else unquoted_canon
+            opts_str = ""
+            if reader_kwargs:
+                opts_items = [f"-{k} {v}" for k, v in reader_kwargs.items()]
+                opts_str = f" {' '.join(opts_items)}"
+            lazy_cols = _get_frame_columns(lf)
+            if alias:
+                hist_line = f"scan {quoted_canon} as {alias}{opts_str}"
+                output_fn(f"Scanned {p.name} as '{alias}' (lazy, {len(lazy_cols)} cols).")
+            else:
+                hist_line = f"scan {quoted_canon}{opts_str}"
+                output_fn(f"Scanned {p.name} (lazy, {len(lazy_cols)} cols).")
+            self._record_history(hist_line)
+            self._update_last_history_log_line(hist_line)
+        except Exception as exc:
+            output_fn(f"pytae: failed to scan {path_str}: {exc}")
 
     def _cmd_join(self, args: list[str], output_fn: Callable[[str], None]) -> None:
         if not args:
@@ -4946,13 +5428,17 @@ class PytaeRepl:
         if self.current_df is None:
             output_fn("pytae: no dataset loaded to save.")
             return False
+        import polars as pl
+
+        is_lazy = isinstance(self.current_df, pl.LazyFrame)
         if target.lower() in ("clip", "clipboard"):
             try:
-                self.current_df.to_pandas().to_clipboard(index=False)
+                df_to_copy = self.current_df.collect() if is_lazy else self.current_df
+                df_to_copy.to_pandas().to_clipboard(index=False)
             except Exception as exc:
                 output_fn(f"pytae: failed to copy to clipboard: {exc}")
                 return False
-            output_fn(f"Copied {self.current_df.shape[0]:,} rows to system clipboard.")
+            output_fn(f"Copied {df_to_copy.shape[0]:,} rows to system clipboard.")
             return True
         from pytae.cli_parsing import normalize_git_bash_path
 
@@ -4962,7 +5448,10 @@ class PytaeRepl:
             from pytae.readers import write_dataframe
 
             write_dataframe(self.current_df, out_path)
-            output_fn(f"Saved {self.current_df.shape[0]:,} rows to {out_path}.")
+            if is_lazy:
+                output_fn(f"Streamed lazy pipeline to {out_path}.")
+            else:
+                output_fn(f"Saved {self.current_df.shape[0]:,} rows to {out_path}.")
             return True
         except Exception as exc:
             output_fn(f"pytae: failed to save to {out_path}: {exc}")
@@ -5215,6 +5704,21 @@ class PytaeRepl:
         show_all = not has_action
 
         has_output = getattr(args, "output", None) is not None
+        if isinstance(source_df, pl.LazyFrame) and any(
+            [
+                getattr(args, "plot", None) is not None,
+                getattr(args, "hist", None) is not None,
+                getattr(args, "bar", None) is not None,
+                getattr(args, "scatter", None) is not None,
+                getattr(args, "corr", None) is not None,
+            ]
+        ):
+            output_fn(
+                "pytae: plotting commands cannot be run directly on lazy scanned tables.\n"
+                "Materialize a sample or subset first with '-head [N] -collect' or '-collect'."
+            )
+            return None, None, True
+
         if has_output and (
             args.head is not None
             or args.tail is not None
@@ -5304,10 +5808,13 @@ class PytaeRepl:
             if failed:
                 return None, None, True
             res_frame = getattr(args, "_result_frame", None)
-            res_pl: pl.DataFrame | None = None
+            res_pl: pl.DataFrame | pl.LazyFrame | None = None
             if res_frame is not None:
                 if isinstance(res_frame, pl.LazyFrame):
-                    res_pl = res_frame.collect()
+                    if isinstance(source_df, pl.LazyFrame):
+                        res_pl = res_frame
+                    else:
+                        res_pl = res_frame.collect()
                 elif isinstance(res_frame, pl.DataFrame):
                     res_pl = res_frame
                 else:

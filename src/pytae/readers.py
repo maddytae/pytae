@@ -732,22 +732,41 @@ class DataFrameReader:
         self.path = Path(str(path))
 
     def shape(self) -> tuple[int, int]:
+        import polars as pl
+
+        if isinstance(self._df, pl.LazyFrame):
+            names = list(self._df.collect_schema().names() if hasattr(self._df, "collect_schema") else self._df.columns)
+            return (-1, len(names))
         return self._df.shape
 
     def columns(self) -> list[str]:
+        import polars as pl
+
+        if isinstance(self._df, pl.LazyFrame):
+            return list(self._df.collect_schema().names() if hasattr(self._df, "collect_schema") else self._df.columns)
         return list(self._df.columns)
 
     def dtypes(self) -> pd.Series:
         import polars as pl
 
+        if isinstance(self._df, pl.LazyFrame):
+            return pd.Series({col: str(dtype) for col, dtype in self._df.schema.items()})
         if isinstance(self._df, pl.DataFrame):
             return self._df.head(0).to_pandas().dtypes
         return self._df.dtypes
 
     def head(self, n: int) -> Any:
+        import polars as pl
+
+        if isinstance(self._df, pl.LazyFrame):
+            return self._df.head(n).collect()
         return self._df.head(n)
 
     def tail(self, n: int) -> Any:
+        import polars as pl
+
+        if isinstance(self._df, pl.LazyFrame):
+            return self._df.tail(n).collect()
         return self._df.tail(n)
 
     def to_dataframe(
@@ -759,6 +778,8 @@ class DataFrameReader:
     ) -> pd.DataFrame:
         import polars as pl
 
+        if isinstance(self._df, pl.LazyFrame):
+            return self.to_polars(columns=columns, nrows=nrows).to_pandas()
         if isinstance(self._df, pl.DataFrame):
             out_pl = self._df
             if columns is not None:
@@ -776,6 +797,13 @@ class DataFrameReader:
     def to_polars(self, columns: list[str] | None = None, nrows: int | None = None):
         import polars as pl
 
+        if isinstance(self._df, pl.LazyFrame):
+            lf = self._df
+            if nrows is not None:
+                lf = lf.head(nrows)
+            if columns is not None:
+                lf = lf.select(columns)
+            return lf.collect()
         df = self._df if isinstance(self._df, pl.DataFrame) else pl.from_pandas(self._df)
         if nrows is not None:
             df = df.head(nrows)
@@ -784,6 +812,13 @@ class DataFrameReader:
         return df
 
     def to_polars_lazy(self, columns: list[str] | None = None):
+        import polars as pl
+
+        if isinstance(self._df, pl.LazyFrame):
+            lf = self._df
+            if columns is not None:
+                lf = lf.select(columns)
+            return lf
         return self.to_polars(columns=columns).lazy()
 
 
