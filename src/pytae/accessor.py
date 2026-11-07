@@ -21,17 +21,6 @@ class _BasePtAccessor:
     def __init__(self, obj: Any) -> None:
         self._obj = obj
 
-    def __call__(self) -> DataFrame:
-        return DataFrame(self._obj)
-
-    @property
-    def df(self) -> DataFrame:
-        return DataFrame(self._obj)
-
-    @property
-    def pt(self) -> DataFrame:
-        return DataFrame(self._obj)
-
     def filter(self, *conditions: Any, params: dict[str, Any] | None = None, **kwargs: Any) -> DataFrame:
         return DataFrame(self._obj).filter(*conditions, params=params, **kwargs)
 

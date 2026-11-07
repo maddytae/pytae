@@ -164,11 +164,11 @@ def test_repl_py_model_a_explicit_registration_and_cleanup():
     r.execute_line("k -cols", output_fn=outs.append)
     assert "x\ny" in outs[-1]
 
-    # 3. Converted using .pt accessor: registered into self.tables
+    # 3. Accessor proxy .pt is rejected from table registration with tip to use .to_pytae()
     outs.clear()
     r.execute_line("py m = df.to_pandas().pt", output_fn=outs.append)
-    assert "m" in r.tables
-    assert any("Registered table 'm'" in o for o in outs)
+    assert "m" not in r.tables
+    assert any("accessor proxy" in o and "to_pytae()" in o for o in outs)
 
     # 4. Converted using .to_pytae() method: registered into self.tables
     outs.clear()

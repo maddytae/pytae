@@ -5778,12 +5778,12 @@ class PytaeRepl:
                 if out_val:
                     output_fn(out_val)
 
-            # Model A registration: Only keep dataframes explicitly converted to Pytae DataFrame / GroupedDataFrame
+            # Model A registration: Only keep dataframes explicitly converted via .to_pytae()
             # 1. Active table update: check if 'df' was modified or reassigned to a PytaeDataFrame
             current_df_val = local_scope.get("df")
             if isinstance(current_df_val, _BasePtAccessor):
-                current_df_val = PytaeDataFrame(current_df_val._obj)
-            if (
+                output_fn("pytae: active 'df' cannot be an accessor proxy. Use 'df = df.to_pytae()' to update active table.")
+            elif (
                 isinstance(current_df_val, (PytaeDataFrame, PytaeGroupedDataFrame))
                 and current_df_val is not orig_df_obj
             ):
@@ -5804,8 +5804,8 @@ class PytaeRepl:
                 if k in ("df", "pldf", "pl", "pt", "DataFrame", "__builtins__"):
                     continue
                 if isinstance(val, _BasePtAccessor):
-                    val = PytaeDataFrame(val._obj)
-                if isinstance(val, (PytaeDataFrame, PytaeGroupedDataFrame)):
+                    output_fn(f"pytae: '{k}' is an accessor proxy, not a Pytae table. Use '{k} = {k}.to_pytae()' to register as a table.")
+                elif isinstance(val, (PytaeDataFrame, PytaeGroupedDataFrame)):
                     if k in orig_table_instances and val is orig_table_instances[k]:
                         continue
                     new_pl = (
