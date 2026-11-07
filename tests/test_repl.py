@@ -4243,8 +4243,10 @@ def test_repl_canonical_input_path_and_relative_export(tmp_path, monkeypatch):
     r.close()
 
 
-def test_repl_zero_disk_footprint_on_empty_exit(tmp_path, monkeypatch):
-    """Verify that launching REPL and immediately exiting leaves zero ~/.pytae directory on disk."""
+def test_repl_auto_creates_config_json_and_cleans_empty_history(tmp_path, monkeypatch):
+    """Verify that launching REPL auto-creates ~/.pytae/config.json with defaults, while leaving zero history folders on empty exit."""
+    import json
+
     from pytae.repl import PytaeRepl
 
     fake_home = tmp_path / "fake_home"
@@ -4255,18 +4257,32 @@ def test_repl_zero_disk_footprint_on_empty_exit(tmp_path, monkeypatch):
 
     # 1. Direct execute_line("exit") then close()
     r = PytaeRepl()
-    assert (fake_home / ".pytae").exists()  # Temporarily exists during session
     r.execute_line("exit")
     r.close()
-    assert not (fake_home / ".pytae").exists(), "Empty session exit must clean up ~/.pytae completely"
 
-    # 2. Interactive run() loop with immediate exit
+    # config.json is created with defaults
+    cfg_path = fake_home / ".pytae" / "config.json"
+    assert cfg_path.exists(), "config.json must be auto-created on first launch"
+    cfg_data = json.loads(cfg_path.read_text(encoding="utf-8"))
+    assert cfg_data["max_rows"] == 10
+    assert cfg_data["max_cols"] == "all"
+    assert cfg_data["float_precision"] == "auto"
+    assert cfg_data["comma"] == "off"
+
+    # Empty history directory is cleaned up
+    assert not (fake_home / ".pytae" / "history").exists(), "Empty history directory must be cleaned up on exit"
+
+    # 2. Test with custom user-specified directory ($PYTAE_HOME)
+    custom_home = tmp_path / "custom_pytae_home"
+    monkeypatch.setenv("PYTAE_HOME", str(custom_home))
     r2 = PytaeRepl()
-    assert (fake_home / ".pytae").exists()
     monkeypatch.setattr("builtins.input", lambda prompt="": "exit")
     r2.run(output_fn=lambda _: None)
     r2.close()
-    assert not (fake_home / ".pytae").exists(), "REPL run() loop empty exit must clean up ~/.pytae completely"
+
+    custom_cfg = custom_home / "config.json"
+    assert custom_cfg.exists(), "config.json must be auto-created in user-specified $PYTAE_HOME"
+    assert not (custom_home / "history").exists(), "Empty history directory must be cleaned up on exit in custom home"
 
 
 def test_repl_load_config_json_on_startup(tmp_path, monkeypatch):

@@ -4275,9 +4275,20 @@ class PytaeRepl:
                 self.initial_df = None
 
     def _load_config(self) -> None:
-        """Load persistent REPL configuration from ~/.pytae/config.json if present."""
+        """Load persistent REPL configuration from ~/.pytae/config.json, generating default if missing."""
         cfg_path = _get_config_path()
         if not cfg_path.exists():
+            try:
+                cfg_path.parent.mkdir(parents=True, exist_ok=True)
+                default_data = {
+                    "max_rows": 10,
+                    "max_cols": "all",
+                    "float_precision": "auto",
+                    "comma": "off",
+                }
+                cfg_path.write_text(json.dumps(default_data, indent=2) + "\n", encoding="utf-8")
+            except Exception:
+                pass
             return
         try:
             with open(cfg_path, encoding="utf-8") as f:
