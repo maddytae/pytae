@@ -1084,13 +1084,6 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
-    if getattr(args, "session", None) is not None:
-        print(
-            "pytae: persistent disk sessions have been retired. Use 'checkpoint <name>' inside REPL for in-memory undo, "
-            "'export script <path.py|path.pt>' to save pipelines, or 'pytae <script.pt>' to replay."
-        )
-        return 0
-
     has_progress = args.progress is not None
     chunk_size = args.progress or 200_000
     args.progress = has_progress

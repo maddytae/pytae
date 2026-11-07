@@ -404,15 +404,14 @@ reset                # Revert to latest checkpoint (or initial dataset if none)
 reset initial        # Revert strictly to initial dataset read (bypassing checkpoints)
 history              # Show session audit log (all steps auto-logged to ~/.pytae/history/)
 history 5            # Show last 5 steps from current session audit log
-checkpoint v1        # Save disk-backed snapshot (Arrow IPC, 0 RAM overhead)
-rm checkpoint v1     # Delete a saved checkpoint from disk (or rm checkpoint *)
-restore v1           # Restore workbench to snapshot (RAM strictly from v1, purges post-v1 tables)
-status session [-v]  # Display active session name, disk path, and saved checkpoints
-set new_session = lab1 # Start or bind persistent session in current working directory
-set load_session = lab1 # Load persistent session and restore its latest checkpoint
-set save_session = backup # Save/clone session to new directory (optional: move = true)
-set save_code = pipeline.txt # Auto-save clean reproducible pipeline script on exit
-status checkpoint    # List saved checkpoints and snapshots (optional -v for files & disk size)
+checkpoint v1        # Save in-memory snapshot across all active tables
+rm checkpoint v1     # Delete a saved checkpoint from memory (or rm checkpoint *)
+rollback v1          # Restore workbench to snapshot (or bare rollback for latest)
+status session [-v]  # Display active workbench tables, RAM consumption, and history
+export script p.pt   # Export executed pipeline to reproducible Pytae script
+export script p.py   # Export executed pipeline to reproducible Python script
+set save             # Persist current display settings to ~/.pytae/config.json
+status checkpoint    # List saved in-memory checkpoints
 status table <name>  # Inspect specific table shape and memory (-v for column dtypes)
 rm table orders      # Remove specific table from memory and free RAM (or rm table *)
 clear                # Clear the terminal screen

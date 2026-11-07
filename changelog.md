@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- **Hermetic REPL Test Isolation (`tests/conftest.py`)**:
+  - Added an autouse fixture isolating `PYTAE_HOME` to a pytest temporary directory, preventing test contamination from local developer configuration (`~/.pytae/config.json`) and eliminating accidental creation of `~/.pytae/` during automated test runs.
+- **Runtime `NameError` in `get_sessions_dir()` (`src/pytae/repl.py`)**:
+  - Restored `_CONFIGURED_SESSIONS_DIR: Path | None = None` at module level, resolving an unhandled `NameError: name '_CONFIGURED_SESSIONS_DIR' is not defined` when calling `get_sessions_dir()` directly.
+- **Git Bash Path Normalization on Script Export**:
+  - Fixed path resolution in `_export_session_history` (`exit -s <path>`) on Windows Git Bash environments via `normalize_git_bash_path`.
+
+### Added
+- **Interactive `set save` REPL Command**:
+  - Added support for `set save` inside the REPL shell, enabling users to persist active display preferences (`max_rows`, `max_cols`, `float_precision`, `comma`) to `~/.pytae/config.json` for subsequent interactive sessions.
+
+### Streamlined & Removed
+- **Pruned Dead Disk Session Code**:
+  - Removed uncalled legacy utilities from `src/pytae/repl.py`: `_safe_rmtree`, `_safe_table_filename`, and `_safe_ipc_filename`.
+  - Removed unreachable `if getattr(args, "session", None)` branch from `src/pytae/cli.py`.
+  - Unified `_export_session_history` logic with `_export_script`.
+  - Updated `src/pytae/cli_help.py` and `src/pytae/cheatsheet.py` to remove references to retired disk session commands (`set load_session`, `set new_session`, `set save_session`, `checkpoint_format`).
+
 ## [3.13.5] - 2026-11-06
 
 ### Fixed

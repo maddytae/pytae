@@ -196,10 +196,10 @@ pytae [df: 344x7]> -head 50 | wc -l
 
 The Pytae REPL provides context-aware autocompletion via standard `readline`:
 
-- **Commands & Verbs**: Press `[Tab]` at an empty prompt to view top-level commands (`use`, `diff`, `rename`, `rm`, `set`, `checkpoint`, `restore`, etc.).
+- **Commands & Verbs**: Press `[Tab]` at an empty prompt to view top-level commands (`use`, `diff`, `rename`, `rm`, `set`, `checkpoint`, `rollback`, `export`, etc.).
 - **Flags**: Type `-` and press `[Tab]` to autocomplete CLI pipeline verbs (`-filter`, `-select`, `-mutate`, `-arrange`, `-pivot`, etc.).
-- **Table & Checkpoint Names**: Autocompletes loaded tables after `use `, `rename `, `diff `, and `rm table `, or checkpoints after `restore `.
+- **Table & Checkpoint Names**: Autocompletes loaded tables after `use `, `rename `, `diff `, and `rm table `, or checkpoints after `rollback `.
 - **Column Names**: Inside pipeline flags (`-select `, `-filter `, `-by `, `-arrange `), autocompletes column names of the active dataset or specified table prefix.
 - **File Paths**: Autocompletes local filesystem files and directories after `load `, `-o `, or assignment (`df = `).
-- **Settings**: Autocompletes configuration keys and options after `set ` (e.g. `set checkpoint_format = ` -> `ipc`, `parquet`).
+- **Settings**: Autocompletes configuration keys and options after `set ` (e.g. `set comma = ` -> `on`, `off`, or `set save`).
 - **Keybindings**: <kbd>Ctrl+A</kbd> / <kbd>Home</kbd> jumps to the beginning of the line; <kbd>Ctrl+E</kbd> / <kbd>End</kbd> jumps to the end; <kbd>Ctrl+C</kbd> aborts multi-line continuation prompts.

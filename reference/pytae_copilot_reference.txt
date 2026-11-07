@@ -12889,293 +12889,202 @@ kind='hist': unsupported=[], controls=['annot', 'by', 'clip_data', 'column', 'dr
 ################################################################################
 # FILE: docs/detailed_docs/repl/checkpoints_sessions.md
 ################################################################################
-# REPL Guide: Checkpoints & Persistent Sessions
+# REPL Guide: In-Memory Workbench, Checkpoints & Configuration
 
 [← Back to Master Reference](../../pytae.md)
 
-This guide covers disk-backed snapshotting (`checkpoint`), instant workbench recovery (`restore`), persistent project sessions, and interactive configuration (`set`) in the Pytae interactive REPL (`pytae -i`).
+This guide covers in-memory snapshotting (`checkpoint`), instant workbench recovery (`rollback`), session status inspection, pipeline script export (`export script`), and configuration (`set`, `set save`) in the Pytae interactive REPL (`pytae -i`).
 
 ---
 
 ## Contents
 
-- [Checkpoints (Disk-Backed & RAM-Isolated)](#checkpoints-disk-backed--ram-isolated)
-  - [Saving Checkpoints (`checkpoint <name>`)](#saving-checkpoints-checkpoint-name)
-  - [Zero RAM Overhead Guarantee](#zero-ram-overhead-guarantee)
-  - [Ephemeral Mode & Automatic Temp Cleanup](#ephemeral-mode--automatic-temp-cleanup)
-  - [Mid-Session Project Promotion](#mid-session-project-promotion)
+- [In-Memory Workbench Architecture](#in-memory-workbench-architecture)
+- [Checkpoints & Rollbacks](#checkpoints--rollbacks)
+  - [Saving In-Memory Checkpoints (`checkpoint <name>`)](#saving-in-memory-checkpoints-checkpoint-name)
+  - [Restoring Workbench State (`rollback [name]`)](#restoring-workbench-state-rollback-name)
   - [Listing & Deleting Checkpoints (`status checkpoint`, `rm checkpoint`)](#listing--deleting-checkpoints-status-checkpoint-rm-checkpoint)
-  - [Restoring Workbench State (`restore <name>`)](#restoring-workbench-state-restore-name)
-  - [Reloading After `rm *` via `restore <name>`](#reloading-after-rm--via-restore-name)
-- [Persistent REPL Sessions](#persistent-repl-sessions)
-  - [Unified Path-First Session Architecture](#unified-path-first-session-architecture)
-  - [Session Manifest Structure](#session-manifest-structure)
-  - [Inspecting & Managing Sessions (`status session`, `sessions`)](#inspecting--managing-sessions-status-session-sessions)
-  - [Environment Variable `PYTAE_SESSIONS_DIR`](#environment-variable-pytae_sessions_dir)
-- [REPL Configuration (`set`)](#repl-configuration-set)
-  - [Querying Settings (`set`, `set <key>`)](#querying-settings-set-set-key)
-  - [Starting a Session (`set new_session = <name|path>`)](#starting-a-session-set-new_session--namepath)
-  - [Loading a Session (`set load_session = <name|path>`)](#loading-a-session-set-load_session--namepath)
-  - [Saving / Relocating a Session (`set save_session = <name|path>`)](#saving--relocating-a-session-set-save_session--namepath)
-  - [Checkpoint Storage Format (`set checkpoint_format = parquet|ipc`, `convert = all`)](#checkpoint-storage-format-set-checkpoint_format--parquetipc-convert--all)
-  - [Replay Script Auto-Save (`set save_code = <path>`)](#replay-script-auto-save-set-save_code--path)
-  - [Display Preferences (`max_rows`, `max_cols`, `float_precision`, `comma`)](#display-preferences-set-max_rows-max_cols-float_precision-comma)
-  - [Combining Multiple Settings on One Line](#combining-multiple-settings-on-one-line)
+  - [Reverting to Disk Source (`reset`)](#reverting-to-disk-source-reset)
+- [Session Status & Diagnostics (`status session`)](#session-status--diagnostics-status-session)
+- [Exporting Reusable Pipelines (`export script`)](#exporting-reusable-pipelines-export-script)
+- [REPL Configuration (`set`, `set save`)](#repl-configuration-set-set-save)
+  - [Querying Active Settings (`set`)](#querying-active-settings-set)
+  - [Display Preferences (`max_rows`, `max_cols`, `float_precision`, `comma`)](#display-preferences)
+  - [Persisting Settings to Disk (`set save`, `~/.pytae/config.json`)](#persisting-settings-to-disk-set-save-pytaeconfigjson)
+  - [Retirement of Legacy Disk Sessions](#retirement-of-legacy-disk-sessions)
 
 ---
 
-## Checkpoints (Disk-Backed & RAM-Isolated)
+## In-Memory Workbench Architecture
 
-### Saving Checkpoints (`checkpoint <name>`)
+The Pytae REPL operates as a pure **in-memory workbench**:
+- **Zero Disk Footprint**: Interactive sessions run in RAM without generating persistent disk session directories.
+- **Flight Recorder History**: All commands entered during a session are auto-logged to `~/.pytae/history/history_<timestamp>.txt`. Exiting an empty session immediately purges empty history files.
+- **Multi-Table Workspace**: Load datasets into named tables (`df1 = orders.parquet`, `df2 = sample:tips`), query them via fluent verbs or ANSI SQL (`-sql "SELECT * FROM df1 JOIN df2..."`), and manage multiple frames concurrently.
 
-Save a complete snapshot of the entire workbench to disk:
+---
+
+## Checkpoints & Rollbacks
+
+### Saving In-Memory Checkpoints (`checkpoint <name>`)
+
+Take an in-memory snapshot of all active tables, variables, and pipeline state:
 
 ```text
 pytae [orders, cust]> checkpoint baseline
 Saved checkpoint 'baseline' (2 tables: orders, cust).
 ```
 
-### Zero RAM Overhead Guarantee
+Checkpoints freeze table states in memory via zero-copy / deep-copy semantics, allowing instant milestone recovery without writing to disk.
 
-Tables are written to disk storage (`.ipc` or `.parquet`). Checkpoints consume **0 MB of active RAM**. Creating a checkpoint frees intermediate memory while establishing a safe restore point.
+### Restoring Workbench State (`rollback [name]`)
 
-### Ephemeral Mode & Automatic Temp Cleanup
-
-When running `pytae -i` without binding to a named session, checkpoints are written to an isolated, secure OS temporary folder (e.g. `/tmp/pytae_cp_xxxxxx/` or `$TMPDIR/pytae_cp_xxxxxx/` on macOS/Linux, `%TEMP%\pytae_cp_xxxxxx\` on Windows).
-- **Automatic Cleanup**: When you exit or close the REPL, the temporary checkpoint folder is automatically purged from disk, leaving zero lingering files on your machine.
-- **Inspect Location**: Run `status checkpoint -v` anytime to inspect the exact temporary directory path and on-disk byte sizes.
-
-### Mid-Session Project Promotion
-
-If you start in ephemeral mode, save several checkpoints, and decide you want to keep them permanently, simply bind a session name:
+Revert the workbench to any previously saved checkpoint:
 
 ```text
-pytae> set new_session = my_permanent_project
+# Revert to specific checkpoint
+pytae [orders, cust, scratch_df]> rollback baseline
+Restored checkpoint 'baseline' (2 tables: orders, cust; active: cust).
+
+# Revert to the most recent checkpoint
+pytae [orders, cust]> rollback
+Restored checkpoint 'baseline' (2 tables: orders, cust).
 ```
-Pytae immediately promotes all existing temporary checkpoints into `./my_permanent_project/` (or your target path) while keeping all in-memory tables loaded.
+
+All post-checkpoint scratch tables and uncommitted mutations are automatically dropped.
 
 ### Listing & Deleting Checkpoints (`status checkpoint`, `rm checkpoint`)
 
 ```text
-# List all checkpoints and their constituent tables
+# List all saved checkpoints
 pytae> status checkpoint
-Saved Checkpoints (2):
-  - baseline       : orders (100,000x6), cust (15,000x5) [active: cust]
-  - cleaned        : orders (82,000x6) [active: orders] [parquet]
+Checkpoints (2 saved):
+  - baseline : orders, cust (created 2026-11-07 12:00:00)
+  - filtered : orders (created 2026-11-07 12:05:00)
 
-# Detailed snapshot file listing
-pytae> status checkpoint -v
+# Delete a single checkpoint from memory
+pytae> rm checkpoint filtered
+Removed checkpoint 'filtered'.
 
-# Delete a single checkpoint from disk
-pytae> rm checkpoint cleaned
-Removed checkpoint 'cleaned'.
-
-# Delete all checkpoints
+# Purge all checkpoints
 pytae> rm checkpoint *
 Cleared all saved checkpoints.
 ```
 
-### Restoring Workbench State (`restore <name>`)
+### Reverting to Disk Source (`reset`)
 
-Restore the workbench to any saved checkpoint milestone:
-
-```text
-pytae [orders, cust, scratch_df]> restore baseline
-Restored checkpoint 'baseline' (2 tables: orders, cust; active: cust).
-```
-All post-checkpoint scratch tables (`scratch_df`) are automatically dropped and garbage collected. Active RAM strictly matches the checkpoint state.
-
-### Reloading After `rm *` via `restore <name>`
-
-Because checkpoints live on **disk**, running `rm *` clears active RAM but leaves all checkpoints completely safe!
+To revert active tables back to their original state loaded from disk:
 
 ```text
-pytae [df1, df2]> checkpoint abc
-Saved checkpoint 'abc' (2 tables: df1, df2).
-
-pytae [df1, df2]> rm *
-Removed all 2 loaded tables. No tables remain loaded.
-pytae> 
-
-# Restore entire workbench from checkpoint:
-pytae> restore abc
-Restored checkpoint 'abc' (2 tables: df1, df2; active: df1).
+pytae [orders]> reset
+Reset active table 'orders' to initial state.
 ```
-
-> [!NOTE]
-> Checkpoints are state milestones and are restored strictly via `restore <name>` (or `reset`). Variable assignment (`df = abc`) is reserved exclusively for file paths, table copies, and query results. Trying to assign a checkpoint directly (`df = abc`) is rejected with a helpful suggestion to use `restore abc`.
 
 ---
 
-## Persistent REPL Sessions
+## Session Status & Diagnostics (`status session`)
 
-Persistent sessions allow you to save your workbench checkpoints to disk and resume your analysis across terminal restarts or system reboots.
-
-### Unified Path-First Session Architecture
-
-Pytae sessions are 100% path-first and self-contained:
-- **Project-Local by Default**: A named session created in your terminal lives right inside the current working directory (`./<session_name>/`) or at any explicit relative/absolute filesystem path you specify (e.g. `/Volumes/ExternalSSD/my_lab`).
-- **Standard Session Manifest**:
-  - `session.json`: JSON manifest storing session metadata (`name`, `created_at`, `updated_at`, `checkpoint_format`, `checkpoints`).
-  - `checkpoints/`: Directory containing IPC/Parquet snapshot subdirectories and frozen table states.
-  - `.pytae_session`: Marker file ensuring the directory is recognized as an active Pytae session.
-- **Home Directory Support Files (`~/.pytae/`)**:
-  - `~/.pytae/code/`: Default home for generated replayable pipeline scripts.
-  - `~/.pytae/history/`: Flight recorder logging interactive keystrokes and queries.
-
-### Inspecting & Managing Sessions (`status session`, `sessions`)
+Inspect active in-memory tables, variable definitions, saved checkpoints, process RAM consumption, and history logs:
 
 ```text
-# Inspect active session name, disk path, checkpoints, and RAM
-pytae:my_project [df1]> status session
+pytae [df1]> status session
 === REPL Session Status ===
-Session Name  : my_project (storage: ./my_project)
+Mode          : in-memory workbench
 Active Table  : df1
-Loaded Tables : 1 tables loaded
-Checkpoints   : 2 saved
-Process RAM   : ~129.5 MB (PID 95089)
+Loaded Tables : 1 tables loaded [df1]
+Variables     : 2 defined [@min_val, @factor]
+Checkpoints   : 1 saved (latest: baseline)
+Process RAM   : ~45.2 MB (PID 12345)
+------------------------------------------------------------
+(Tip: Use 'status table [name]' for table details, 'status checkpoint [name]' for checkpoints, 'status var [name]' for variables)
 
-# Verbose session status (includes log file path and active configuration)
-pytae:my_project [df1]> status session -v
-
-# Inspect an external session directory on disk without loading it into memory
-pytae> status session ./other_project -v
-
-# List persistent sessions in current working directory (or search path)
-pytae> sessions
-Sessions Directory: /Users/username/my_analysis
-
-Saved Sessions (2 found):
-  - my_project
-    Path:        /Users/username/my_analysis/my_project
-    Status:      Ready
-  - sales_q3
-    Path:        /Volumes/ExternalSSD/sales_q3
-    Status:      [Offline / Unreachable]
+# Verbose session status (includes history log path and active configuration)
+pytae [df1]> status session -v
 ```
-
-### Environment Variable `PYTAE_SESSIONS_DIR`
-
-Configure default session directory search path:
-
-```bash
-export PYTAE_SESSIONS_DIR="/Volumes/ExternalSSD/pytae_sessions"
-pytae -i
-```
-
-**Directory Precedence Order**:
-1. Explicit In-REPL Setting: `set new_session = <path>` or `set load_session = <path>`.
-2. OS Environment Variable: `PYTAE_SESSIONS_DIR`.
-3. Default: Current working directory `Path.cwd()`.
 
 ---
 
-## REPL Configuration (`set`)
+## Exporting Reusable Pipelines (`export script`)
 
-The `set` command is the central control hub for inspecting and configuring your interactive session workbench. Settings can be queried bare, set individually, or combined together on a single line.
+Export the executed, state-mutating pipeline to an executable Pytae script (`.pt`) or standalone Python script (`.py`):
 
-### Querying Settings (`set`, `set <key>`)
+```text
+# Export to a Pytae script (replayable via `pytae pipeline.pt`)
+pytae> export script pipeline.pt
 
-Running `set` with no arguments displays all current configuration values and available options:
+# Export with relative file paths (portable across machines)
+pytae> export script pipeline.pt -relative
+
+# Export to a standalone Python script using Polars / Pytae DataFrame
+pytae> export script pipeline.py
+```
+
+The exported script automatically prunes rolled-back command branches, filters pure inspections (e.g. `-head`, `-schema`), and produces 100% reproducible data pipelines.
+
+---
+
+## REPL Configuration (`set`, `set save`)
+
+### Querying Active Settings (`set`)
+
+Running `set` with no arguments displays active display preferences:
 
 ```text
 pytae> set
-new_session       = (options: <name>, <path>) (e.g. set new_session = rwa_analysis)
-load_session      = (options: <name>, <path>) (e.g. set load_session = rwa_analysis)
-save_session      = none (options: <name>, <path>, move = true, overwrite = true)
-checkpoint_format = ipc (options: ipc, parquet)
-save_code         = none (options: <path>, none)
-max_rows          = 10 (options: <int>, default)
-max_cols          = all (options: <int>, all, default)
-float_precision   = auto (options: <int>, auto, default)
-comma             = off (options: on, off)
+max_rows        = 10 (options: <int>, default)
+max_cols        = all (options: <int>, all, default)
+float_precision = auto (options: <int>, auto, default)
+comma           = off (options: on, off)
+(Tip: Run 'set save' to persist settings across REPL sessions)
 ```
 
-Query an individual setting with `set <key>`:
-```text
-pytae> set checkpoint_format
-checkpoint_format = ipc (options: ipc, parquet)
-```
-
-### Starting a Session (`set new_session = <name|path>`)
+Query a specific key using `set <key>`:
 
 ```text
-# Start session in current working directory (./my_lab)
-pytae [df: 344x7]> set new_session = my_lab
-Started new session 'my_lab' at '/Users/username/my_analysis/my_lab' (1 tables active in workbench).
-pytae:my_lab [df: 344x7]>
-
-# Start session at a custom absolute or relative directory path
-pytae> set new_session = /Volumes/ExternalSSD/rwa_analysis
-Started new session 'rwa_analysis' at '/Volumes/ExternalSSD/rwa_analysis'.
-pytae:rwa_analysis>
+pytae> set max_rows
+max_rows        = 10 (options: <int>, default)
 ```
 
-### Loading a Session (`set load_session = <name|path>`)
+### Display Preferences
 
-```text
-# Load session from current working directory
-pytae> set load_session = sales_q3
-Switched to session 'sales_q3'. Restored latest checkpoint 'v2'.
-pytae:sales_q3 [sales_q3: 150,000x12]>
-```
-
-### Saving / Relocating a Session (`set save_session = <name|path>`)
-
-```text
-# Clone/snapshot session to a new name in current directory
-pytae:my_lab> set save_session = my_lab_backup
-Saved session 'my_lab' to '/Users/username/my_analysis/my_lab_backup'.
-
-# Relocate (move) active session directory to new path
-pytae:my_lab> set save_session = /Volumes/ExternalSSD/my_lab, move = true
-Relocated session to '/Volumes/ExternalSSD/my_lab'.
-
-# Safely replace an existing session directory with a clean slate
-pytae:my_lab> set save_session = my_lab_backup, overwrite = true
-Overwrote existing session 'my_lab_backup' at '/Users/username/my_analysis/my_lab_backup'.
-```
-
-### Checkpoint Storage Format (`set checkpoint_format = parquet|ipc`, `convert = all`)
-
-Control the on-disk serialization format used for session checkpoints:
-- **`ipc` (Default)**: Uncompressed Arrow IPC streaming format (`.ipc`). Maximum write/read speed.
-- **`parquet`**: Compressed columnar Parquet format (`.parquet`). Minimizes disk usage on storage-constrained environments or USB drives.
-
-```text
-# Set future format
-pytae> set checkpoint_format = parquet
-
-# Convert all existing checkpoints to Parquet and update future format
-pytae> set checkpoint_format = parquet, convert = all
-Converting 2 existing checkpoint(s) to parquet...
-  - cp1: converted (320.0 MB -> 62.4 MB)
-  - cp2: converted (320.0 MB -> 64.1 MB)
-All 2 checkpoint(s) converted. Set checkpoint_format = parquet.
-```
-
-### Replay Script Auto-Save (`set save_code = <path>`)
-
-Designate a file path to automatically capture and write your session's replayable command script upon exit (also supported via alias `save_commands`):
-
-```text
-pytae> set save_code = pipeline.txt
-Set save_code = 'pipeline.txt' (session commands will be auto-saved here on exit).
-```
-
-### Display Preferences (`set max_rows`, `max_cols`, `float_precision`, `comma`)
-
-- **Row Truncation (`set max_rows = <int>|default`, alias: `rows`)**: Controls rows printed in table previews. Defaults to `10`.
+- **Row Truncation (`set max_rows = <int>|default`, alias: `rows`)**: Controls rows displayed in previews. Defaults to `10`.
 - **Column Truncation (`set max_cols = <int>|all|default`, alias: `cols`)**: Limits columns displayed in wide tables. Defaults to `all`.
-- **Floating-Point Precision (`set float_precision = <int>|auto|default`, alias: `precision`)**: Sets decimal display places. Defaults to `auto`. (Does not affect unrounded IEEE 754 exports).
-- **Thousands Comma Separator (`set comma = on|off`)**: Formats numbers with comma separators (e.g. `1,234,567`). Numeric columns remain native integers/floats in memory and exports.
+- **Floating-Point Precision (`set float_precision = <int>|auto|default`, alias: `precision`)**: Sets decimal display places. Defaults to `auto`.
+- **Thousands Comma Separator (`set comma = on|off`)**: Formats numbers with grouping commas (e.g. `1,234,567`). Numeric columns remain native integers/floats in memory and exports.
 
-### Combining Multiple Settings on One Line
+Multiple settings can be combined on one line:
 
 ```text
-pytae> set new_session = my_lab, save_code = pipeline.txt
-pytae> set new_session = /Volumes/Share/sessions/analytics, checkpoint_format = parquet
+pytae> set max_rows = 25, comma = on, float_precision = 2
 ```
+
+### Persisting Settings to Disk (`set save`, `~/.pytae/config.json`)
+
+On first launch, Pytae automatically creates `~/.pytae/config.json` with default settings. To save active configuration settings across sessions:
+
+```text
+pytae> set save
+Saved configuration to /Users/username/.pytae/config.json.
+```
+
+The JSON configuration file is loaded automatically on subsequent REPL launches:
+
+```json
+{
+  "max_rows": 25,
+  "max_cols": "all",
+  "float_precision": 2,
+  "comma": "on"
+}
+```
+
+### Retirement of Legacy Disk Sessions
+
+> [!NOTE]
+> Legacy persistent disk sessions (`set new_session = ...`, `set load_session = ...`, `set save_session = ...`, `set checkpoint_format = ...`) have been retired.
+> - Use in-memory checkpoints (`checkpoint <name>`, `rollback [name]`) for instant undo and branching.
+> - Use `export script <path.pt | path.py>` to persist, version-control, and share data pipelines.
+> - Run exported scripts in batch mode via `pytae <script.pt>` or `pytae -run <script.pt>`.
 
 ################################################################################
 # FILE: docs/detailed_docs/repl/ingestion_tables.md
@@ -13611,12 +13520,12 @@ pytae [df: 344x7]> -head 50 | wc -l
 
 The Pytae REPL provides context-aware autocompletion via standard `readline`:
 
-- **Commands & Verbs**: Press `[Tab]` at an empty prompt to view top-level commands (`use`, `diff`, `rename`, `rm`, `set`, `checkpoint`, `restore`, etc.).
+- **Commands & Verbs**: Press `[Tab]` at an empty prompt to view top-level commands (`use`, `diff`, `rename`, `rm`, `set`, `checkpoint`, `rollback`, `export`, etc.).
 - **Flags**: Type `-` and press `[Tab]` to autocomplete CLI pipeline verbs (`-filter`, `-select`, `-mutate`, `-arrange`, `-pivot`, etc.).
-- **Table & Checkpoint Names**: Autocompletes loaded tables after `use `, `rename `, `diff `, and `rm table `, or checkpoints after `restore `.
+- **Table & Checkpoint Names**: Autocompletes loaded tables after `use `, `rename `, `diff `, and `rm table `, or checkpoints after `rollback `.
 - **Column Names**: Inside pipeline flags (`-select `, `-filter `, `-by `, `-arrange `), autocompletes column names of the active dataset or specified table prefix.
 - **File Paths**: Autocompletes local filesystem files and directories after `load `, `-o `, or assignment (`df = `).
-- **Settings**: Autocompletes configuration keys and options after `set ` (e.g. `set checkpoint_format = ` -> `ipc`, `parquet`).
+- **Settings**: Autocompletes configuration keys and options after `set ` (e.g. `set comma = ` -> `on`, `off`, or `set save`).
 - **Keybindings**: <kbd>Ctrl+A</kbd> / <kbd>Home</kbd> jumps to the beginning of the line; <kbd>Ctrl+E</kbd> / <kbd>End</kbd> jumps to the end; <kbd>Ctrl+C</kbd> aborts multi-line continuation prompts.
 
 ################################################################################
@@ -13858,12 +13767,10 @@ pytae> rm var *
 Removed all session variables (2 removed).
 ```
 
-### Checkpoint & Session Persistence (`vars.json`)
-
-Session variables are fully integrated into Pytae's checkpoint and persistent session architecture:
-1. When you run `checkpoint <name>`, Pytae creates `vars.json` alongside the dataset snapshots in the checkpoint directory and records variable counts in `meta.json`.
-2. When you run `restore <name>`, Pytae clears current session variables and restores the exact variable snapshot from `vars.json`.
-3. Persistent session storage (`set new_session = <name>`, `set save_session = <name>`) preserves `vars.json` so your configuration dictionaries and parameter thresholds persist across terminal restarts.
+### Checkpoint & Script Export
+1. When you run `checkpoint <name>`, Pytae saves all in-memory variables alongside active table states.
+2. When you run `rollback [name]`, Pytae restores the exact variable snapshot from the checkpoint.
+3. Variable assignments are preserved across pipeline exports (`export script pipeline.pt`), ensuring parameter thresholds and configuration values replay faithfully.
 
 ```text
 pytae [df]> min_mass = 4500
@@ -15078,15 +14985,14 @@ reset                # Revert to latest checkpoint (or initial dataset if none)
 reset initial        # Revert strictly to initial dataset read (bypassing checkpoints)
 history              # Show session audit log (all steps auto-logged to ~/.pytae/history/)
 history 5            # Show last 5 steps from current session audit log
-checkpoint v1        # Save disk-backed snapshot (Arrow IPC, 0 RAM overhead)
-rm checkpoint v1     # Delete a saved checkpoint from disk (or rm checkpoint *)
-restore v1           # Restore workbench to snapshot (RAM strictly from v1, purges post-v1 tables)
-status session [-v]  # Display active session name, disk path, and saved checkpoints
-set new_session = lab1 # Start or bind persistent session in current working directory
-set load_session = lab1 # Load persistent session and restore its latest checkpoint
-set save_session = backup # Save/clone session to new directory (optional: move = true)
-set save_code = pipeline.txt # Auto-save clean reproducible pipeline script on exit
-status checkpoint    # List saved checkpoints and snapshots (optional -v for files & disk size)
+checkpoint v1        # Save in-memory snapshot across all active tables
+rm checkpoint v1     # Delete a saved checkpoint from memory (or rm checkpoint *)
+rollback v1          # Restore workbench to snapshot (or bare rollback for latest)
+status session [-v]  # Display active workbench tables, RAM consumption, and history
+export script p.pt   # Export executed pipeline to reproducible Pytae script
+export script p.py   # Export executed pipeline to reproducible Python script
+set save             # Persist current display settings to ~/.pytae/config.json
+status checkpoint    # List saved in-memory checkpoints
 status table <name>  # Inspect specific table shape and memory (-v for column dtypes)
 rm table orders      # Remove specific table from memory and free RAM (or rm table *)
 clear                # Clear the terminal screen

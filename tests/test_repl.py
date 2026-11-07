@@ -4362,12 +4362,14 @@ def test_repl_config_json_defaults_and_saving(tmp_path, monkeypatch):
     assert r.float_precision is None
     assert r.comma is False
 
-    # 2. Mutate settings and save via _save_config()
+    # 2. Mutate settings and save via interactive 'set save'
     r.execute_line("set max_rows = 50")
     r.execute_line("set comma = on")
     r.execute_line("set float_precision = 4")
     r.execute_line("set max_cols = 12")
-    r._save_config()
+    save_outputs: list[str] = []
+    r.execute_line("set save", output_fn=save_outputs.append)
+    assert any("Saved configuration to" in o for o in save_outputs)
 
     saved_data = json.loads(cfg_file.read_text(encoding="utf-8"))
     assert saved_data["max_rows"] == 50

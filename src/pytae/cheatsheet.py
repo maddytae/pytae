@@ -138,16 +138,17 @@ CHEATSHEET_TEXT = """\
 --------------------------------------------------------------------------------
   pytae -i                                                        # Launch interactive REPL workbench
   # Inside REPL session:
-  #   set load_session = name Load persistent named session
   #   df = data.parquet       Load dataset into active table
   #   df1 = "parts/*.parquet" Load globbed partitions into single table
+  #   export script <path>    Export pipeline to reproducible .pt or .py script
+  #   set save                Persist current display settings to ~/.pytae/config.json
   #   history [-s [path]]     Show session audit log or export to named file
   #   exit [-s [path]]        Exit REPL (optionally save session history to file)
   #   reset                   Restore original dataset from disk (instant O(1))
   #   checkpoint <name>       Save named snapshot across all session tables
+  #   rollback [name]         Restore entire workbench to named snapshot
   #   rm table <tbl>          Remove in-memory table (or rm table *)
   #   rm checkpoint <name>    Delete a saved checkpoint (or rm checkpoint *)
-  #   restore <name>          Restore entire workbench to named snapshot
   #   -cols [asc|desc]        List column names (file order or sorted)
   #   <cmd> | <shell_cmd>     Pipe output to shell utility (e.g. -cols | grep mass)
   #   -sql "<query>"          Run ANSI SQL across loaded tables

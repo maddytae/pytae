@@ -234,12 +234,10 @@ pytae> rm var *
 Removed all session variables (2 removed).
 ```
 
-### Checkpoint & Session Persistence (`vars.json`)
-
-Session variables are fully integrated into Pytae's checkpoint and persistent session architecture:
-1. When you run `checkpoint <name>`, Pytae creates `vars.json` alongside the dataset snapshots in the checkpoint directory and records variable counts in `meta.json`.
-2. When you run `restore <name>`, Pytae clears current session variables and restores the exact variable snapshot from `vars.json`.
-3. Persistent session storage (`set new_session = <name>`, `set save_session = <name>`) preserves `vars.json` so your configuration dictionaries and parameter thresholds persist across terminal restarts.
+### Checkpoint & Script Export
+1. When you run `checkpoint <name>`, Pytae saves all in-memory variables alongside active table states.
+2. When you run `rollback [name]`, Pytae restores the exact variable snapshot from the checkpoint.
+3. Variable assignments are preserved across pipeline exports (`export script pipeline.pt`), ensuring parameter thresholds and configuration values replay faithfully.
 
 ```text
 pytae [df]> min_mass = 4500

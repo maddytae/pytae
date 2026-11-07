@@ -24,18 +24,6 @@ from pytae.cli_run import _format_table, _process_path
 from pytae.readers import DataFrameReader, get_reader
 
 
-def _safe_table_filename(name: str, ext: str = ".ipc") -> str:
-    """Generate a filesystem-safe filename for a table file across all OS platforms."""
-    safe = "".join(c if (c.isalnum() or c in ("_", "-")) else f"_{ord(c):02x}_" for c in name)
-    clean_ext = ext if ext.startswith(".") else f".{ext}"
-    return f"{safe}{clean_ext}"
-
-
-def _safe_ipc_filename(name: str) -> str:
-    """Generate a filesystem-safe filename for an IPC table file across all OS platforms."""
-    return _safe_table_filename(name, ".ipc")
-
-
 def _normalize_unquoted_windows_paths(text: str) -> str:
     """Normalize unquoted Windows drive paths with backslashes (e.g. C:\\Users\\... -> C:/Users/...) so shlex does not eat backslashes."""
     return re.sub(
@@ -181,63 +169,6 @@ def _release_memory() -> None:
 
             libc = ctypes.CDLL("libc.so.6")
             libc.malloc_trim(0)
-        except Exception:
-            pass
-
-
-def _safe_rmtree(path: Path | str) -> None:
-    """Robustly and recursively delete a directory tree, handling read-only files,
-    OS file locks, and retrying if necessary."""
-    p = Path(path)
-    if not p.exists():
-        return
-    import stat
-    import time
-
-    gc.collect()
-    _release_memory()
-
-    def _handle_error(func, target_path, exc_info):
-        try:
-            os.chmod(target_path, stat.S_IWRITE | stat.S_IWUSR)
-            func(target_path)
-        except Exception:
-            pass
-
-    for attempt in range(5):
-        try:
-            if sys.version_info >= (3, 12):
-                shutil.rmtree(p, onexc=lambda func, target_path, exc: _handle_error(func, target_path, None))
-            else:
-                shutil.rmtree(p, onerror=_handle_error)
-        except Exception:
-            pass
-        if not p.exists():
-            return
-        gc.collect()
-        _release_memory()
-        time.sleep(0.02 * (attempt + 1))
-
-    # If top dir or any lingering child dirs still exist, walk bottom-up and remove manually
-    if p.exists():
-        for root, dirs, files in os.walk(str(p), topdown=False):
-            for f in files:
-                fp = os.path.join(root, f)
-                try:
-                    os.chmod(fp, stat.S_IWRITE | stat.S_IWUSR)
-                    os.unlink(fp)
-                except Exception:
-                    pass
-            for d in dirs:
-                dp = os.path.join(root, d)
-                try:
-                    os.chmod(dp, stat.S_IWRITE | stat.S_IWUSR)
-                    os.rmdir(dp)
-                except Exception:
-                    pass
-        try:
-            os.chmod(str(p), stat.S_IWRITE | stat.S_IWUSR)
-            os.rmdir(str(p))
         except Exception:
             pass
 
@@ -509,8 +440,6 @@ def _win_console_input(
 
     sys.stdout.write(prompt_text)
     sys.stdout.flush()
-
-    import shutil
 
     line_chars: list[str] = []
     cursor_pos = 0
@@ -822,8 +751,6 @@ def _win_console_input(
                     col_width = min(40, max(len(m) for m in matches) + 2)
                     term_cols = 80
                     try:
-                        import shutil
-
                         term_cols = shutil.get_terminal_size((80, 20)).columns
                     except Exception:
                         pass
@@ -1503,9 +1430,9 @@ def _parse_set_pairs(line: str) -> list[tuple[str, str]]:
     """Parse key=value setting pairs from a command line.
 
     Supports:
-      - Comma-separated: set session_name = proj_x, save_commands = run.txt
-      - Semicolon-separated: set session_name = proj_x; set save_commands = run.txt
-      - Space-separated: set session_name = proj_x save_commands = run.txt
+      - Comma-separated: set max_rows = 20, comma = on
+      - Semicolon-separated: set max_rows = 20; set comma = on
+      - Space-separated: set max_rows = 20 comma = on
       - Multiple 'set' keywords on the same line
     """
     pairs: list[tuple[str, str]] = []
@@ -2314,8 +2241,6 @@ class PytaeRepl:
             self.initial_df = self.current_df
             self.table_sources[initial_name] = self.path.name
 
-        import datetime
-
         self._session_start_time = datetime.datetime.now()
         timestamp_str = self._session_start_time.strftime("%Y_%m_%d_%H_%M_%S")
         self.session_history_path: Path = _get_history_dir() / f"history_{timestamp_str}.txt"
@@ -2465,19 +2390,19 @@ class PytaeRepl:
             return False
 
     def _export_session_history(self, target_path_str: str, output_fn: Callable[[str], None]) -> bool:
-        """Export session commands to a named file.
+        """Export session commands to a named file (used by exit -s [path])."""
+        from pytae.cli_parsing import normalize_git_bash_path
 
-        Expands '~' and resolves paths. Relative paths are resolved against current working directory.
-        """
-        if getattr(self, "session_cmd_count", 0) == 0 and not any(self._is_replayable_entry(e) for e in self.history):
-            output_fn(f"pytae: No commands were executed; '{target_path_str}' not created.")
+        clean_path = normalize_git_bash_path(target_path_str.strip("'\""))
+        target_path = Path(os.path.expanduser(clean_path)).resolve()
+        pruned_history = _prune_rolled_back_entries(self.history)
+        replayable = [e for e in pruned_history if self._is_replayable_entry(e)]
+        if not replayable:
+            output_fn(f"pytae: No commands were executed; '{target_path.name}' not created.")
             return False
 
-        target_path = Path(os.path.expanduser(target_path_str)).resolve()
         try:
             target_path.parent.mkdir(parents=True, exist_ok=True)
-            pruned_history = _prune_rolled_back_entries(self.history)
-            replayable = [e for e in pruned_history if self._is_replayable_entry(e)]
             if target_path.suffix.lower() == ".py":
                 content = _compile_history_to_python(replayable, self.table_sources)
             else:
@@ -3955,7 +3880,7 @@ class PytaeRepl:
         # Direct user to specific subcommands if bare 'status' or 'status -v' is typed
         if not target_args:
             output_fn("pytae: please specify a status category to inspect:")
-            output_fn("  - status session [path] [-v] : Inspect active session or a session on disk")
+            output_fn("  - status session [-v]        : Inspect active in-memory session status, tables, and memory")
             output_fn("  - status table [name] [-v]   : Inspect active table schema or loaded table inventory")
             output_fn("  - status checkpoint [name]   : Inspect saved checkpoints or checkpoint details")
             output_fn("  - status var [name] [-v]     : Inspect session variables, parameters and constants")
@@ -4378,13 +4303,19 @@ class PytaeRepl:
             output_fn(f"max_cols        = {max_cols_str} (options: <int>, all, default)")
             output_fn(f"float_precision = {prec_str} (options: <int>, auto, default)")
             output_fn(f"comma           = {comma_str} (options: on, off)")
+            output_fn("(Tip: Run 'set save' to persist settings across REPL sessions)")
             return
 
         line = raw_line if raw_line else " ".join(args).strip()
+        if line.lower() in ("save", "save_config", "persist"):
+            self._save_config()
+            output_fn(f"Saved configuration to {_get_config_path()}.")
+            return
+
         pairs = _parse_set_pairs(line)
         if not pairs:
             output_fn(
-                "Usage: set [key [= value]] (e.g. set max_rows = 20, set max_cols = all, set comma = on)"
+                "Usage: set [key [= value]] (e.g. set max_rows = 20, set max_cols = all, set comma = on, set save)"
             )
             return
 
@@ -4399,7 +4330,17 @@ class PytaeRepl:
                 return
 
         for k, val in list(pair_map.items()):
-            if k in ("max_rows", "rows"):
+            if k in ("save", "save_config", "persist"):
+                clean_v = val.lower().strip("'\"") if val else ""
+                if clean_v and clean_v not in ("true", "on", "1", "yes", ""):
+                    output_fn(
+                        "pytae: unknown setting 'save'. Legacy 'set save = <path>' has been retired; "
+                        "use 'set save' to persist settings to config.json, or 'export script <path>' to save pipelines."
+                    )
+                else:
+                    self._save_config()
+                    output_fn(f"Saved configuration to {_get_config_path()}.")
+            elif k in ("max_rows", "rows"):
                 if not val:
                     output_fn(f"max_rows        = {self.max_rows} (options: <int>, default)")
                     continue
@@ -6209,7 +6150,6 @@ class PytaeRepl:
         git_bash_raw_active = False
         git_bash_orig_stty: str | None = None
         if sys.platform == "win32" and is_pty and not is_redirected_input:
-            import shutil
             import subprocess
 
             stty_exe = shutil.which("stty")
@@ -6229,7 +6169,6 @@ class PytaeRepl:
             nonlocal git_bash_raw_active
             if git_bash_raw_active and git_bash_orig_stty:
                 try:
-                    import shutil
                     import subprocess
 
                     stty_exe = shutil.which("stty")
