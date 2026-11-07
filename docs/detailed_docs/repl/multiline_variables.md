@@ -129,11 +129,19 @@ Variables are strictly restricted to JSON-serializable primitives:
 
 Arbitrary Python class instances, lambda functions, and unpicklable objects are disallowed. This guarantees 100% portability, fast disk I/O, and zero dependency on Python pickle.
 
-### Inspection & Key Traversal (`@var`, `@var.key`, `@var[idx]`)
+### Inspection & Key Traversal (`var`, `@var`, `var.key`, `var[idx]`)
 
-Type any variable prefixed with `@` to inspect its current value and data type without mutating workbench state. Nested dictionary keys and list indices can be accessed using standard dot (`.`) or bracket (`[]`) notation:
+Type any variable name (either bare or prefixed with `@`) to evaluate its current value and data type without mutating workbench state. Nested dictionary keys and list indices can be accessed using standard dot (`.`) or bracket (`[]`) notation:
 
 ```text
+# Bare variable evaluation
+pytae> min_mass
+@min_mass = 3500 (int)
+
+pytae> cfg.island
+@cfg.island = 'Biscoe' (str)
+
+# @-prefixed variable evaluation
 pytae> @min_mass
 @min_mass = 3500 (int)
 

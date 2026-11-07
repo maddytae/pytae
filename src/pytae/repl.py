@@ -2742,7 +2742,9 @@ class PytaeRepl:
         prefix = self.prompt
         if len(self.tables) > 1:
             table_names = ", ".join(
-                f"{k} (lazy)" if isinstance(v, pl.LazyFrame) else k
+                f"{k}*{' (lazy)' if isinstance(v, pl.LazyFrame) else ''}"
+                if k == self.path_str
+                else f"{k}{' (lazy)' if isinstance(v, pl.LazyFrame) else ''}"
                 for k, v in self.tables.items()
             )
             return f"{prefix} [{table_names}]> "
@@ -2927,16 +2929,27 @@ class PytaeRepl:
             self._cmd_clear(output_fn)
             return True
 
-        # Bare variable inspection: `@min_mass` or `@cfg.island`
+        # Bare variable inspection (with @ or bare identifier): `@min_mass` or `min_mass` or `cfg.island`
         clean_strip = line.strip()
-        if clean_strip.startswith("@") and "=" not in clean_strip and not clean_strip.startswith(("-", "!", "?")):
-            try:
-                val = self._eval_var_expr(clean_strip[1:])
-                output_fn(f"{clean_strip} = {repr(val)} ({type(val).__name__})")
-                return True
-            except KeyError as exc:
-                output_fn(f"pytae: {exc}")
-                return True
+        if "=" not in clean_strip and not clean_strip.startswith(("-", "!", "?")):
+            if clean_strip.startswith("@"):
+                try:
+                    val = self._eval_var_expr(clean_strip[1:])
+                    output_fn(f"{clean_strip} = {repr(val)} ({type(val).__name__})")
+                    return True
+                except KeyError as exc:
+                    output_fn(f"pytae: {exc}")
+                    return True
+            else:
+                base_var = re.split(r"[.\[]", clean_strip)[0]
+                if base_var in self.variables:
+                    try:
+                        val = self._eval_var_expr(clean_strip)
+                        output_fn(f"@{clean_strip} = {repr(val)} ({type(val).__name__})")
+                        return True
+                    except KeyError as exc:
+                        output_fn(f"pytae: {exc}")
+                        return True
 
         # Tokenize line
         norm_line = _normalize_unquoted_windows_paths(line)
@@ -3968,13 +3981,9 @@ class PytaeRepl:
         verbose = any(a in ("-v", "-verbose", "--verbose", "verbose", "v") for a in args)
         target_args = [a for a in args if a not in ("-v", "-verbose", "--verbose", "verbose", "v")]
 
-        # Direct user to specific subcommands if bare 'status' or 'status -v' is typed
+        # Bare 'status' or 'status -v' displays the unified session status overview
         if not target_args:
-            output_fn("pytae: please specify a status category to inspect:")
-            output_fn("  - status session [-v]        : Inspect active in-memory session status, tables, and memory")
-            output_fn("  - status table [name] [-v]   : Inspect active table schema or loaded table inventory")
-            output_fn("  - status checkpoint [name]   : Inspect saved checkpoints or checkpoint details")
-            output_fn("  - status var [name] [-v]     : Inspect session variables, parameters and constants")
+            self._show_session_status(output_fn, verbose=verbose)
             return
 
         raw_cat = target_args[0].lower()
@@ -4008,6 +4017,9 @@ class PytaeRepl:
                 self._show_external_session_status(target_args[1], output_fn, verbose=verbose)
             else:
                 self._show_session_status(output_fn, verbose=verbose)
+                output_fn(
+                    "(Note: 'status session' is deprecated and will be removed in a future release; use bare 'status' instead.)"
+                )
             return
 
         if cat == "table":
@@ -4858,10 +4870,6 @@ class PytaeRepl:
 
     def _cmd_diff(self, args: list[str], output_fn: Callable[[str], None]) -> None:
         """Compare two tables or compare active table against another table / checkpoint."""
-        if not args:
-            output_fn("Usage: -diff <tbl1> <tbl2> [on=<key>] [-tol N] or -diff <tbl2> [on=<key>] [-tol N]")
-            return
-
         left_tbl_name: str | None = None
         right_tbl_name: str | None = None
         tol_val: float = 0.0
@@ -4936,9 +4944,24 @@ class PytaeRepl:
             except Exception:
                 return None, None
 
-        if len(clean_args) == 1:
+        if len(clean_args) == 0:
             if self.current_df is None:
-                output_fn("pytae: no active dataset loaded to compare. Usage: diff <tbl1> <tbl2>")
+                output_fn("pytae: no active dataset loaded to compare. Usage: -diff <tbl1> <tbl2>")
+                return
+            if not self.checkpoints:
+                output_fn("Usage: -diff <tbl1> <tbl2> [on=<key>] [-tol N] or -diff <tbl2> [on=<key>] [-tol N]")
+                return
+            latest_cp = list(self.checkpoints.keys())[-1]
+            left_tbl_name = self.path_str or "active"
+            left_df = self.current_df
+            right_tbl_name = f"checkpoint:{latest_cp}"
+            right_df = self._get_checkpoint_df(latest_cp, prefer_table=left_tbl_name)
+            if right_df is None:
+                output_fn(f"pytae: could not load table from checkpoint '{latest_cp}'.")
+                return
+        elif len(clean_args) == 1:
+            if self.current_df is None:
+                output_fn("pytae: no active dataset loaded to compare. Usage: -diff <tbl1> <tbl2>")
                 return
             left_tbl_name = self.path_str or "active"
             left_df = self.current_df

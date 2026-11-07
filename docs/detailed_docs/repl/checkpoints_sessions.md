@@ -78,13 +78,15 @@ Restored checkpoint 'baseline' (2 tables: orders, cust).
 
 All post-checkpoint scratch tables and uncommitted mutations are automatically dropped.
 
-### Milestone Diffing Against Checkpoints (`-diff <checkpoint>`)
+### Milestone Diffing Against Checkpoints (`-diff`)
 
-You can compare the active in-memory table against its counterpart inside any saved checkpoint:
+You can compare the active in-memory table against its counterpart inside any saved checkpoint. Like `git diff`, running bare `-diff` automatically diffs the active table against the **latest saved milestone**:
 
 ```text
-pytae [t1]> t1 = -mutate "bonus = tip * 2"
-pytae [t1]> -diff baseline
+pytae [t1*]> t1 = -mutate "bonus = tip * 2"
+
+# 1. Bare -diff automatically compares active table vs latest checkpoint
+pytae [t1*]> -diff
 Comparing 't1' vs 'checkpoint:baseline':
 Comparing:
   Left (source):  <left> (244 rows, 8 cols)
@@ -103,6 +105,9 @@ Schema Drift:
 
 Values:
   Matching: all cell values in common columns match.
+
+# 2. Compare against a specific named checkpoint
+pytae [t1*]> -diff baseline
 ```
 
 #### Comparing Specific Tables inside a Checkpoint (`<checkpoint>:<table_name>`)
@@ -188,12 +193,12 @@ shape: (3, 5)
 
 ---
 
-## Session Status & Diagnostics (`status session`)
+## Session Status & Diagnostics (`status`, `status -v`)
 
-Inspect active in-memory tables, variable definitions, saved checkpoints, process RAM consumption, and history logs:
+Running bare `status` displays the complete session status overview directly (active table, loaded tables inventory, variables, checkpoints, and process RAM):
 
 ```text
-pytae [orders, cust*]> status session
+pytae [orders, cust*]> status
 === REPL Session Status ===
 Active Table  : cust (500 rows x 4 cols, ~0.02 MB)
 Loaded Tables : 2 tables [orders, cust*] (~0.12 MB in memory)
@@ -204,10 +209,10 @@ Process RAM   : ~148.2 MB (PID 64919)
 (Tip: Use 'status table [name]' for table details, 'status checkpoint [name]' for checkpoints, 'status var [name]' for variables)
 ```
 
-In verbose mode (`status session -v`), each checkpoint lists its individual ephemeral disk footprint alongside its creation timestamp and table count:
+In verbose mode (`status -v`), Pytae prints detailed breakdowns for every table, variable, checkpoint disk size, history log path, and display preferences:
 
 ```text
-pytae [orders, cust*]> status session -v
+pytae [orders, cust*]> status -v
 === REPL Session Status ===
 Active Table  : cust (500 rows x 4 cols, ~0.02 MB)
 Loaded Tables : 2 tables [orders, cust*] (~0.12 MB in memory)
@@ -222,6 +227,9 @@ History Log   : ~/.pytae/history/history_20261107_120000.txt
 Settings      : max_rows=10, max_cols=all, float_precision=auto
 Process RAM   : ~148.2 MB (PID 64919)
 ```
+
+> [!NOTE]
+> The command `status session` is **deprecated** in favor of bare `status`. While `status session` still works for backward compatibility, it emits a deprecation notice.
 
 ---
 

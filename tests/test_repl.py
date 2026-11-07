@@ -619,8 +619,8 @@ def test_repl_strict_checkpoints_vs_tables_separation():
     r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
     r.execute_line("df2 = sample:tips", output_fn=outputs.append)
 
-    # Prompt only displays loaded workbench tables
-    assert r._build_prompt() == "pytae [df1, df2]> "
+    # Prompt displays loaded workbench tables with asterisk on active table
+    assert r._build_prompt() == "pytae [df1, df2*]> "
 
     # Save checkpoint 'maddy'
     outputs.clear()
@@ -629,8 +629,8 @@ def test_repl_strict_checkpoints_vs_tables_separation():
     assert "maddy" in r.checkpoints
     assert "maddy" not in r.tables
 
-    # Prompt MUST remain [df1, df2], never polluting with 'maddy'
-    assert r._build_prompt() == "pytae [df1, df2]> "
+    # Prompt MUST remain [df1, df2*], never polluting with 'maddy'
+    assert r._build_prompt() == "pytae [df1, df2*]> "
 
     # Bare 'checkpoints' and 'tables' are rejected with guidance
     outputs.clear()
@@ -750,7 +750,7 @@ def test_repl_multi_table_session_and_checkpoints():
     outputs.clear()
     repl.execute_line("df2=tips.parquet", output_fn=outputs.append)
     assert "Loaded tips.parquet as 'df2' (244 rows x 7 cols)." in outputs[-1]
-    assert repl._build_prompt() == "pytae [df1, df2]> "
+    assert repl._build_prompt() == "pytae [df1, df2*]> "
 
     # 3. List tables via status table
     outputs.clear()
@@ -765,7 +765,7 @@ def test_repl_multi_table_session_and_checkpoints():
     repl.execute_line("checkpoint maddy", output_fn=outputs.append)
     assert "Saved checkpoint 'maddy' (2 tables: df1, df2)." in outputs[-1]
     # Checkpoint should not change table prompt
-    assert repl._build_prompt() == "pytae [df1, df2]> "
+    assert repl._build_prompt() == "pytae [df1, df2*]> "
 
     # 5. List checkpoints via status checkpoint
     outputs.clear()
@@ -774,12 +774,12 @@ def test_repl_multi_table_session_and_checkpoints():
     assert "Saved Checkpoints" in cps_out
     assert "maddy" in cps_out
     assert "df1: 344 rows x 7 cols" in cps_out and "df2: 244 rows x 7 cols" in cps_out
-    assert repl._build_prompt() == "pytae [df1, df2]> "
+    assert repl._build_prompt() == "pytae [df1, df2*]> "
 
     # 6. Mutate and add a 3rd table df3
     repl.execute_line("df3 = df1", output_fn=outputs.append)
     assert "df3" in repl.tables
-    assert repl._build_prompt() == "pytae [df1, df2, df3]> "
+    assert repl._build_prompt() == "pytae [df1, df2, df3*]> "
 
     # 7. Restore maddy restores original workbench state (df3 removed, df1 & df2 intact)
     outputs.clear()
@@ -787,7 +787,7 @@ def test_repl_multi_table_session_and_checkpoints():
     assert "Restored checkpoint 'maddy'" in outputs[-1]
     assert "df3" not in repl.tables
     assert "df1" in repl.tables and "df2" in repl.tables
-    assert repl._build_prompt() == "pytae [df1, df2]> "
+    assert repl._build_prompt() == "pytae [df1, df2*]> "
 
 
 def test_repl_reader_options_on_assignment_and_load(tmp_path):
@@ -1741,15 +1741,15 @@ def test_repl_rm_clears_all_internal_references_and_gc_command():
     outputs.clear()
     r.execute_line("status", output_fn=outputs.append)
     status_text = "\n".join(outputs)
-    assert "please specify a status category to inspect" in status_text
-    assert "status session" in status_text
+    assert "=== REPL Session Status ===" in status_text
+    assert "Active Table  : (none)" in status_text
+    assert "Process RAM" in status_text
 
     outputs.clear()
     r.execute_line("status session", output_fn=outputs.append)
     sess_text = "\n".join(outputs)
     assert "=== REPL Session Status ===" in sess_text
-    assert "Active Table  : (none)" in sess_text
-    assert "Process RAM" in sess_text
+    assert "'status session' is deprecated" in sess_text
 
     r.close()
 
@@ -3261,41 +3261,29 @@ def test_repl_status_subcommands_and_verbose():
     outputs: list[str] = []
     r = PytaeRepl()
 
-    # 1. Bare status directs to specific subcommands (session, table, checkpoints)
+    # 1. Bare status shows unified session overview directly
     r.execute_line("status", output_fn=outputs.append)
     st_none = "\n".join(outputs)
-    assert "please specify a status category to inspect" in st_none
-    assert "status session" in st_none
-    assert "status table" in st_none
-    assert "status checkpoint" in st_none
+    assert "=== REPL Session Status ===" in st_none
+    assert "Active Table  : (none)" in st_none
+    assert "Loaded Tables : 0 tables loaded" in st_none
 
-    # 1b. status session with no dataset loaded
+    # 1b. status session works as deprecated alias
     outputs.clear()
     r.execute_line("status session", output_fn=outputs.append)
     st_sess_none = "\n".join(outputs)
     assert "=== REPL Session Status ===" in st_sess_none
     assert "Active Table  : (none)" in st_sess_none
-    assert "Loaded Tables : 0 tables loaded" in st_sess_none
+    assert "'status session' is deprecated" in st_sess_none
 
     # 2. Load two tables
     r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
     r.execute_line("df2 = sample:tips", output_fn=outputs.append)
     r.execute_line("checkpoint cp1", output_fn=outputs.append)
 
-    # 3. Bare status and status -v direct the user to specific categories
+    # 3. Bare status and status -v display unified session status directly
     outputs.clear()
     r.execute_line("status", output_fn=outputs.append)
-    st_dir = "\n".join(outputs)
-    assert "please specify a status category to inspect" in st_dir
-
-    outputs.clear()
-    r.execute_line("status -v", output_fn=outputs.append)
-    st_v_dir = "\n".join(outputs)
-    assert "please specify a status category to inspect" in st_v_dir
-
-    # 3b. status session (session status: session name, active table, tables overview, checkpoints, process RAM)
-    outputs.clear()
-    r.execute_line("status session", output_fn=outputs.append)
     st = "\n".join(outputs)
     assert "=== REPL Session Status ===" in st
     assert "Active Table  : df2 (244 rows x 7 cols" in st
@@ -3305,10 +3293,22 @@ def test_repl_status_subcommands_and_verbose():
     assert "Columns (" not in st
     assert "Commands Run" not in st
 
-    # 4. status session -v (shows session verbose breakdown: per-table inventory, checkpoints list, settings)
     outputs.clear()
-    r.execute_line("status session -v", output_fn=outputs.append)
+    r.execute_line("status -v", output_fn=outputs.append)
     st_v = "\n".join(outputs)
+    assert "=== REPL Session Status ===" in st_v
+    assert "Loaded Tables : 2 tables" in st_v
+    assert "df1" in st_v
+    assert "df2 [active]" in st_v
+    assert "cp1" in st_v
+    assert "Settings      :" in st_v
+
+    # 3b. status session works as deprecated alias
+    outputs.clear()
+    r.execute_line("status session", output_fn=outputs.append)
+    st_sess_alias = "\n".join(outputs)
+    assert "=== REPL Session Status ===" in st_sess_alias
+    assert "'status session' is deprecated" in st_sess_alias
     assert "=== REPL Session Status ===" in st_v
     assert "Loaded Tables : 2 tables" in st_v
     assert "df1" in st_v

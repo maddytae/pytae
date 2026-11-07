@@ -16,6 +16,7 @@ import pytest
 import pytae as pt
 from pytae.cli import build_parser
 from pytae.plotting import Plotter
+from pytae.repl import PytaeRepl
 
 
 def test_grouped_arrange_descending_group_column():
@@ -327,6 +328,65 @@ def test_repl_ephemeral_ipc_checkpoint_and_switch():
     inputs = iter(["exit"])
     r2.run(input_fn=lambda _: next(inputs), output_fn=lambda _: None)
     assert not temp_dir2.exists()
+
+
+def test_repl_audit_ux_polish_improvements():
+    """Verify the 4 UX polish enhancements:
+    1. Bare variable evaluation without '@'.
+    2. Bare 'status' displays session status directly; 'status session' emits deprecation note.
+    3. Multi-table prompt marks active table with asterisk.
+    4. Bare '-diff' auto-compares active table against latest milestone checkpoint.
+    """
+    outputs: list[str] = []
+    r = PytaeRepl()
+
+    # 1. Bare variable evaluation
+    r.execute_line("min_spend = 50.0", output_fn=outputs.append)
+    assert "Set @min_spend = 50.0" in outputs[-1]
+
+    outputs.clear()
+    r.execute_line("min_spend", output_fn=outputs.append)
+    assert "@min_spend = 50.0 (float)" in outputs[-1]
+
+    # Nested config bare evaluation
+    r.execute_line("cfg = {'mode': 'fast', 'limit': 100}", output_fn=outputs.append)
+    outputs.clear()
+    r.execute_line("cfg.mode", output_fn=outputs.append)
+    assert "@cfg.mode = 'fast' (str)" in outputs[-1]
+
+    # 2. Bare 'status' displays unified session status overview
+    outputs.clear()
+    r.execute_line("status", output_fn=outputs.append)
+    st = "\n".join(outputs)
+    assert "=== REPL Session Status ===" in st
+    assert "Active Table  : (none)" in st
+
+    # 'status session' emits deprecation note
+    outputs.clear()
+    r.execute_line("status session", output_fn=outputs.append)
+    st_sess = "\n".join(outputs)
+    assert "=== REPL Session Status ===" in st_sess
+    assert "'status session' is deprecated" in st_sess
+
+    # 3. Multi-table prompt marks active table with asterisk
+    r.execute_line("t1 = sample:tips", output_fn=outputs.append)
+    assert r._build_prompt() == "pytae [t1: 244x7]> "
+
+    r.execute_line("t2 = sample:iris", output_fn=outputs.append)
+    assert r._build_prompt() == "pytae [t1, t2*]> "
+
+    r.execute_line("switch t1", output_fn=outputs.append)
+    assert r._build_prompt() == "pytae [t1*, t2]> "
+
+    # 4. Bare '-diff' auto-compares active table against latest milestone checkpoint
+    r.execute_line("checkpoint v1", output_fn=outputs.append)
+    r.execute_line('t1 = -mutate "bonus = tip * 2"', output_fn=outputs.append)
+
+    outputs.clear()
+    r.execute_line("-diff", output_fn=outputs.append)
+    diff_out = "\n".join(outputs)
+    assert "Comparing 't1' vs 'checkpoint:v1':" in diff_out
+    assert "bonus" in diff_out
 
 
 

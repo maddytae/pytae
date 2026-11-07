@@ -1293,28 +1293,29 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "status": KeywordHelp(
         name="status",
-        flag="status <category> [-v]",
-        syntax="status [session [path] | table [name] | checkpoint [name] | var [name]] [-v]",
-        summary="Inspect REPL session status, storage location, loaded tables, checkpoints, or variables.",
+        flag="status [category] [-v]",
+        syntax="status [table [name] | checkpoint [name] | var [name]] [-v]",
+        summary="Inspect REPL workbench status, loaded tables, checkpoints, or variables.",
         description=(
-            "Central inspection command for REPL session and workbench state:\n"
-            "- Bare 'status' or 'status -v': Directs to specific inspection categories.\n"
-            "- 'status session [path] [-v]': Shows active session state, or inspects an external session directory on disk without loading it into memory.\n"
+            "Central inspection command for REPL workbench state:\n"
+            "- Bare 'status' or 'status -v': Displays unified session overview (active table, loaded tables, vars, checkpoints, RAM).\n"
             "- 'status table [name] [-v]': Displays active table schema or inventory of all in-memory tables and memory footprint.\n"
             "- 'status checkpoint [name] [-v]': Displays snapshot metadata, storage formats, disk bytes, or list of all saved checkpoints.\n"
-            "- 'status var [name] [-v]': Displays session variables, parameters, constants, and JSON breakdown."
+            "- 'status var [name] [-v]': Displays session variables, parameters, constants, and JSON breakdown.\n"
+            "- (Note: 'status session' is deprecated in favor of bare 'status')."
         ),
         options=[
-            "status : Directs to specific status categories (session, table, checkpoint, var).",
-            "status session [path] [-v] : Current REPL session state or inspect an external session directory on disk.",
+            "status [-v] : Unified workbench overview: active dataset, loaded tables, checkpoints, and RAM footprint.",
             "status table [name] [-v] : Diagnostics, schema, and inventory of loaded tables.",
             "status checkpoint [name] [-v] : Checkpoint history, format breakdown, and snapshot details.",
             "status var [name] [-v] : Session variables inventory and value inspection.",
+            "status session [-v] : Deprecated; use bare 'status'.",
         ],
         examples=[
-            "pytae -i  # Inside REPL: status session",
-            "pytae -i  # Inside REPL: status session 'C:/Users/TAF3842/my_sessions/rwa_analysis' -v",
+            "pytae -i  # Inside REPL: status",
+            "pytae -i  # Inside REPL: status -v",
             "pytae -i data.parquet  # Inside REPL: status table -v",
+            "pytae -i  # Inside REPL: status checkpoint",
         ],
         see_also=["checkpoint", "restore", "tables", "diff"],
     ),
