@@ -881,7 +881,10 @@ def _complete_paths(text: str) -> list[str]:
     return matches
 
 
-def _init_readline(completer_fn: Callable[[str, int], str | None] | None = None) -> None:
+def _init_readline(
+    completer_fn: Callable[[str, int], str | None] | None = None,
+    initial_history: list[str] | None = None,
+) -> None:
     """Initialize readline history file, arrow key navigation, and tab completion."""
     if readline is None:
         return
@@ -996,6 +999,13 @@ def _init_readline(completer_fn: Callable[[str, int], str | None] | None = None)
             readline.clear_history()
         except Exception:
             pass
+
+    if initial_history:
+        for item in initial_history:
+            try:
+                readline.add_history(item)
+            except Exception:
+                pass
 
 
 def _save_readline_history() -> None:
@@ -6125,7 +6135,7 @@ class PytaeRepl:
         output_fn: Callable[[str], None] = print,
     ) -> Any:
         """Run the REPL interactive loop until user exits. Returns final active DataFrame."""
-        _init_readline(self._complete)
+        _init_readline(self._complete, initial_history=self._raw_history)
         from pytae import __version__
 
         if self.current_df is not None:

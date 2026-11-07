@@ -3807,7 +3807,33 @@ def test_cli_interactive_resume_script(tmp_path, monkeypatch):
     assert "t2" in r.tables
     assert r.tables["t1"].shape[0] == 344
     assert r.tables["t2"].shape[0] == 244
+
+    try:
+        from pytae.repl import readline
+
+        if readline is not None:
+            r.run(input_fn=lambda _: "exit", output_fn=lambda _: None)
+            hist_len = readline.get_current_history_length()
+            loaded = [readline.get_history_item(i) for i in range(1, hist_len + 1)]
+            assert any("t1 = sample:penguins" in (item or "") for item in loaded)
+            assert any("t2 = sample:tips" in (item or "") for item in loaded)
+    except Exception:
+        pass
     r.close()
+
+    # Verify bare REPL starts with reset/clean readline history
+    r_bare = PytaeRepl()
+    try:
+        from pytae.repl import readline
+
+        if readline is not None:
+            r_bare.run(input_fn=lambda _: "exit", output_fn=lambda _: None)
+            hist_len = readline.get_current_history_length()
+            loaded = [readline.get_history_item(i) for i in range(1, hist_len + 1)]
+            assert not any("t1 = sample:penguins" in (item or "") for item in loaded)
+    except Exception:
+        pass
+    r_bare.close()
 
 
 def test_export_script_pt_and_py_e2e(tmp_path, monkeypatch):
