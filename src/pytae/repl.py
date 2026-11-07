@@ -6529,6 +6529,7 @@ class PytaeRepl:
         finally:
             _restore_git_bash()
             self._cleanup_empty_session_dirs()
+            self._cleanup_cp_dir()
             # Release in-memory resources
             _release_memory()
         return self.current_df

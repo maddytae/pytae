@@ -292,5 +292,16 @@ def test_repl_ephemeral_ipc_checkpoint_and_switch():
     r.close()
     assert not cp_temp_path.exists()
 
+    # 10. Interactive run() loop exit purges ephemeral IPC temp dir completely
+    r2 = PytaeRepl()
+    r2.execute_line("t = sample:tips")
+    r2.execute_line("checkpoint snap")
+    temp_dir2 = r2._cp_dir
+    assert temp_dir2 is not None and temp_dir2.exists()
+
+    inputs = iter(["exit"])
+    r2.run(input_fn=lambda _: next(inputs), output_fn=lambda _: None)
+    assert not temp_dir2.exists()
+
 
 
