@@ -319,34 +319,17 @@ def test_repl_status_checkpoint_and_session_display_variables(tmp_path: Path):
         assert "@min_mass" in sess_v_out and "3500" in sess_v_out
         assert "@project_tag" in sess_v_out and "'q4_audit'" in sess_v_out
 
-        # 4. External session inspection: status session audit_sess
+        # 4. In-memory checkpoint stores variables cleanly
+        assert r.checkpoints["cp1"]["variables"] == {"min_mass": 3500, "project_tag": "q4_audit"}
         r.close()
+
+        # 5. Status session audit_sess outputs retirement notice
         r2 = PytaeRepl()
         outputs.clear()
         r2.execute_line("status session audit_sess", output_fn=outputs.append)
         ext_sess_out = "\n".join(outputs)
-        assert "Session Inspection: audit_sess" in ext_sess_out
-        assert "Variables     : 2 defined [@min_mass, @project_tag]" in ext_sess_out
-        assert "Checkpoints (1):" in ext_sess_out
-        assert "@min_mass" in ext_sess_out and "3500" in ext_sess_out
+        assert "persistent disk sessions have been retired" in ext_sess_out
         r2.close()
-
-        # 5. Option A verification: meta.json has lightweight summary, vars.json has payload
-        import json
-
-        cp_dir = sess_container / "audit_sess" / "checkpoints" / "cp1"
-        assert (cp_dir / "vars.json").exists()
-        assert (cp_dir / "meta.json").exists()
-
-        vars_data = json.loads((cp_dir / "vars.json").read_text(encoding="utf-8"))
-        assert vars_data == {"min_mass": 3500, "project_tag": "q4_audit"}
-
-        meta_data = json.loads((cp_dir / "meta.json").read_text(encoding="utf-8"))
-        assert meta_data["variables"] == {"count": 2, "names": ["min_mass", "project_tag"]}
-        assert "3500" not in str(meta_data["variables"])  # Payload NOT duplicated in meta
-
-        sess_data = json.loads((sess_container / "audit_sess" / "session.json").read_text(encoding="utf-8"))
-        assert sess_data["variables"] == {"count": 2, "names": ["min_mass", "project_tag"]}
     finally:
         set_sessions_dir(None)
 

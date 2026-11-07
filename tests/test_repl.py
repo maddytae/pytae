@@ -1,6 +1,5 @@
 """Unit tests for pytae interactive REPL (PytaeRepl, pt.repl(), df.repl(), and CLI flags)."""
 
-from pathlib import Path
 
 import pandas as pd
 import polars as pl
@@ -1351,7 +1350,7 @@ def test_repl_plot_preserves_filter(sample_parquet, monkeypatch):
     assert set(captured[0]["species"]) == {"Gentoo"}
 
 
-def test_repl_checkpoint_disk_storage_and_restore(sample_df):
+def test_repl_checkpoint_in_memory_storage_and_restore(sample_df):
     outputs = []
     r = PytaeRepl(df=sample_df)
 
@@ -1359,19 +1358,16 @@ def test_repl_checkpoint_disk_storage_and_restore(sample_df):
     r.execute_line("df = -filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     assert r.current_df.shape == (2, 3)
 
-    # 2. Creating a checkpoint saves tables to disk IPC
+    # 2. Creating a checkpoint saves in-memory snapshot
     outputs.clear()
     r.execute_line("checkpoint v1", output_fn=outputs.append)
     assert "Saved checkpoint 'v1'" in outputs[-1]
 
-    # Verify disk persistence
+    # Verify in-memory persistence
+    assert "v1" in r.checkpoints
     cp_info = r.checkpoints["v1"]
-    assert "dir" in cp_info
-    cp_dir = Path(cp_info["dir"])
-    assert cp_dir.exists() and cp_dir.is_dir()
-    assert (cp_dir / "meta.json").exists()
-    # No in-memory polars DataFrame stored in checkpoint dict
-    assert not any(isinstance(v, pl.DataFrame) for v in cp_info.values())
+    assert "tables" in cp_info
+    assert "dir" not in cp_info
 
     # 3. New mutation after checkpoint can be reset back to checkpoint baseline
     r.execute_line('df = -mutate "weight_lb = body_mass_g * 0.00220462"', output_fn=outputs.append)
@@ -1382,8 +1378,7 @@ def test_repl_checkpoint_disk_storage_and_restore(sample_df):
     assert r.current_df.shape == (2, 3)
 
     r.close()
-    # Verify cleanup on close
-    assert not cp_dir.exists()
+    assert len(r.checkpoints) == 0
 
 
 def test_repl_restore_strictly_isolates_ram_from_post_checkpoint_tables():
@@ -1425,19 +1420,17 @@ def test_repl_rm_frees_table_without_affecting_disk_checkpoint():
     assert "df1" not in r.tables
     assert r.current_df is None
 
-    # Checkpoint v1 on disk is untouched and can restore df1
+    # Checkpoint v1 is untouched and can restore df1
     outputs.clear()
     r.execute_line("restore v1", output_fn=outputs.append)
     assert "Restored checkpoint 'v1'" in outputs[-1]
     assert "df1" in r.tables
     assert r.tables["df1"].shape == (344, 7)
 
-    # rm checkpoint removes disk files
-    cp_dir = Path(r.checkpoints["v1"]["dir"])
-    assert cp_dir.exists()
+    # rm checkpoint removes it
+    assert "v1" in r.checkpoints
     r.execute_line("rm checkpoint v1", output_fn=outputs.append)
     assert "v1" not in r.checkpoints
-    assert not cp_dir.exists()
 
     r.close()
 
@@ -1588,14 +1581,11 @@ def test_repl_history_option_b_milestone_banners():
 
 
 def test_repl_persistent_sessions_lifecycle(tmp_path, monkeypatch):
-    sess_dir = tmp_path / "pytae_sessions"
-    monkeypatch.setenv("PYTAE_SESSIONS_DIR", str(sess_dir))
-
     outputs = []
 
-    # 1. Start a persistent session 'proj_x'
-    r1 = PytaeRepl(session="proj_x")
-    assert r1._build_prompt() == "pytae:proj_x> "
+    # 1. Start in-memory workbench
+    r1 = PytaeRepl()
+    assert r1._build_prompt() == "pytae> "
 
     r1.execute_line("df1 = sample:penguins", output_fn=outputs.append)
     r1.execute_line("df1 = -filter \"species == 'Adelie'\"", output_fn=outputs.append)
@@ -1608,149 +1598,52 @@ def test_repl_persistent_sessions_lifecycle(tmp_path, monkeypatch):
     assert "scratch_col" in r1.tables["df1"].columns
     assert "df_scratch" in r1.tables
 
-    # Checkpoint v1 exists on disk
-    cp_path = sess_dir / "proj_x" / "checkpoints" / "v1"
-    assert cp_path.exists()
-    assert (cp_path / "meta.json").exists()
+    # In-memory restore restores snapshot
+    r1.execute_line("restore v1", output_fn=outputs.append)
+    assert "scratch_col" not in r1.tables["df1"].columns
+    assert r1.tables["df1"].shape == adelie_shape
 
-    # Close session (exiting REPL drops RAM and scratch tables)
+    # 2. Test in-REPL retired session commands output retirement notice
+    for cmd in (
+        "session",
+        "sessions",
+        "session save proj_y",
+        "set save_session = proj_y",
+        "session load proj_x",
+        "set session_load = proj_x",
+        "rm session proj_y",
+    ):
+        outputs.clear()
+        r1.execute_line(cmd, output_fn=outputs.append)
+        assert any("persistent disk sessions have been retired" in o for o in outputs)
+
+    # 3. Export script works
+    pt_file = tmp_path / "pipeline.pt"
+    outputs.clear()
+    r1.execute_line(f"export script {pt_file}", output_fn=outputs.append)
+    assert pt_file.exists()
+    assert "df1 = sample:penguins" in pt_file.read_text(encoding="utf-8")
     r1.close()
-
-    # 2. Resume session 'proj_x' - boots cleanly from latest checkpoint (v1)
-    outputs.clear()
-    r2 = PytaeRepl(session="proj_x")
-    assert "df1" in r2.tables
-    assert r2.tables["df1"].shape == adelie_shape
-    # Scratch uncheckpointed tables and columns MUST NOT exist!
-    assert "scratch_col" not in r2.tables["df1"].columns
-    assert "df_scratch" not in r2.tables
-
-    # Verify history works in stored session (preserves checkpoint milestones & valid steps)
-    outputs.clear()
-    r2.execute_line("history", output_fn=outputs.append)
-    hist_text = "\n".join(outputs)
-    assert "checkpoint v1" in hist_text
-    assert "species == 'Adelie'" in hist_text
-    assert "scratch_col" not in hist_text
-
-    # 3. Test in-REPL session inspection and commands
-    outputs.clear()
-    r2.execute_line("session", output_fn=outputs.append)
-    assert "Active session: 'proj_x'" in outputs[-1]
-    assert "1 checkpoints" in outputs[-1]
-
-    # Test listing sessions
-    outputs.clear()
-    r2.execute_line("sessions", output_fn=outputs.append)
-    assert any("proj_x" in o for o in outputs)
-
-    # Verify session save throws error directing to set save_session
-    outputs.clear()
-    r2.execute_line("session save proj_y", output_fn=outputs.append)
-    assert "'session save' is not supported" in outputs[-1]
-
-    # Test set save_session as another name (clone / fork)
-    outputs.clear()
-    r2.execute_line("set save_session = proj_y", output_fn=outputs.append)
-    assert "Session saved as 'proj_y'" in outputs[-1]
-    assert (sess_dir / "proj_y" / "checkpoints" / "v1").exists()
-
-    # Verify session load throws error directing to set session_load
-    outputs.clear()
-    r2.execute_line("session load proj_x", output_fn=outputs.append)
-    assert "'session load' is not supported" in outputs[-1]
-
-    # Test set session_load via path
-    outputs.clear()
-    r2.execute_line(f"set session_load = '{sess_dir / 'proj_x'}'", output_fn=outputs.append)
-    assert r2.session_name == "proj_x"
-
-    # Verify rm session is disabled with guidance
-    outputs.clear()
-    r2.execute_line("rm session proj_y", output_fn=outputs.append)
-    assert "deleting sessions from inside the REPL is disabled" in outputs[-1]
-    assert (sess_dir / "proj_y").exists()
-    # OS level removal
-    import shutil
-    shutil.rmtree(sess_dir / "proj_y", ignore_errors=True)
-    assert not (sess_dir / "proj_y").exists()
-
-    # Apply second checkpoint in r2 and verify history across another restart
-    r2.execute_line('df1 -mutate "is_heavy = body_mass_g > 3500"', output_fn=outputs.append)
-    r2.execute_line("checkpoint v2", output_fn=outputs.append)
-    r2.close()
-
-    # 4. Resume session in r3 - history should contain both v1 and v2 milestones
-    r3 = PytaeRepl(session="proj_x")
-    outputs.clear()
-    r3.execute_line("history", output_fn=outputs.append)
-    hist3 = "\n".join(outputs)
-    assert "checkpoint v1" in hist3
-    assert "checkpoint v2" in hist3
-    assert "is_heavy = body_mass_g > 3500" in hist3
-    r3.close()
 
 
 def test_cli_session_flags(tmp_path, monkeypatch, capsys):
-    from pytae.repl import set_sessions_dir
-    set_sessions_dir(None)
-    sess_dir = tmp_path / "pytae_sessions"
-    monkeypatch.setenv("PYTAE_SESSIONS_DIR", str(sess_dir))
-
-    # Pre-populate a session
-    r = PytaeRepl(session="analytics")
-    r.execute_line("df1 = sample:penguins", output_fn=lambda _: None)
-    r.execute_line("checkpoint base", output_fn=lambda _: None)
-    r.close()
-
-    # Test pytae -sessions lists saved sessions (non-verbose: name, path, status)
+    # Test pytae -sessions prints retirement notice
     ret = cli.main(["-sessions"])
     assert ret == 0
     captured = capsys.readouterr()
-    assert "analytics" in captured.out
-    assert "Status:      Ready" in captured.out
-    assert "Checkpoints (" not in captured.out
+    assert "persistent disk sessions have been retired" in captured.out
 
-    # Test pytae -sessions -v lists saved sessions with verbose checkpoint details
+    # Test pytae -sessions -v also prints retirement notice
     ret = cli.main(["-sessions", "-v"])
     assert ret == 0
     captured = capsys.readouterr()
-    assert "analytics" in captured.out
-    assert "Checkpoints (1):" in captured.out
-    assert "base" in captured.out
+    assert "persistent disk sessions have been retired" in captured.out
 
     # Test pytae --sessions enforces single hyphen guideline
     with pytest.raises(SystemExit):
         cli.main(["--sessions"])
     captured_err = capsys.readouterr()
     assert "uses double hyphens; pytae uses single hyphen '-sessions'" in captured_err.err
-
-    # Test pytae -sessions <dir_path> lists sessions from specified directory only
-    from pytae.repl import get_sessions_dir, set_sessions_dir
-    orig_sess_dir = get_sessions_dir()
-    custom_dir = tmp_path / "custom_location"
-    custom_dir.mkdir(parents=True, exist_ok=True)
-    set_sessions_dir(custom_dir)
-    r_cust = PytaeRepl(session="isolated_lab")
-    r_cust.session_name = "isolated_lab"
-    r_cust.execute_line("df = sample:tips", output_fn=lambda _: None)
-    r_cust.execute_line("checkpoint cp_tip", output_fn=lambda _: None)
-    r_cust.close()
-    set_sessions_dir(orig_sess_dir)
-
-    # Listing custom_dir specifically
-    ret = cli.main(["-sessions", str(custom_dir)])
-    assert ret == 0
-    captured = capsys.readouterr()
-    assert "isolated_lab" in captured.out
-    assert "analytics" not in captured.out
-
-    # Listing default sess_dir specifically
-    ret = cli.main(["-sessions", str(sess_dir)])
-    assert ret == 0
-    captured = capsys.readouterr()
-    assert "analytics" in captured.out
-    assert "isolated_lab" not in captured.out
 
 
 def test_repl_rm_releases_ram_immediately_without_disk_spill():
@@ -1761,8 +1654,7 @@ def test_repl_rm_releases_ram_immediately_without_disk_spill():
 
     # Save checkpoint before rm
     r.execute_line("checkpoint abc", output_fn=outputs.append)
-    cp_dir = Path(r.checkpoints["abc"]["dir"])
-    cp_file_count_before = len(list(cp_dir.glob("*.ipc")))
+    assert "abc" in r.checkpoints
 
     # Remove table: must immediately drop table from memory with ZERO disk I/O
     outputs.clear()
@@ -1776,9 +1668,6 @@ def test_repl_rm_releases_ram_immediately_without_disk_spill():
     assert r.current_df is None
     assert r.orig_df is None
     assert r.initial_df is None
-
-    # Checkpoint on disk has unchanged files - zero disk files written by rm
-    assert len(list(cp_dir.glob("*.ipc"))) == cp_file_count_before
 
     # Checkpoint 'abc' can be restored safely
     outputs.clear()
@@ -2193,63 +2082,23 @@ def test_repl_shell_escape_and_pipe_and_gc(sample_df):
 
 
 def test_repl_session_copy_and_validation_errors(tmp_path, monkeypatch, sample_df):
-    monkeypatch.setenv("PYTAE_SESSIONS_DIR", str(tmp_path / "sessions"))
     r = PytaeRepl(df=sample_df)
     outputs = []
 
-    # Ephemeral status
-    r.execute_line("session", output_fn=outputs.append)
-    assert any("No active session (ephemeral)" in o for o in outputs)
-
-    # session save rejected with guidance (all session saving must be via set save_session)
-    outputs.clear()
-    r.execute_line("session save work1", output_fn=outputs.append)
-    assert any("'session save' is not supported" in o for o in outputs)
-    outputs.clear()
-    r.execute_line("session save ../bad", output_fn=outputs.append)
-    assert any("'session save' is not supported" in o for o in outputs)
-
-    # Create checkpoint and save session
-    r.execute_line("checkpoint cp1", output_fn=outputs.append)
-    outputs.clear()
-    r.execute_line("set save_session = work1", output_fn=outputs.append)
-    assert r.session_name == "work1"
-    assert any("Session saved as 'work1'" in o for o in outputs)
-
-    # Active session status & sessions list
-    outputs.clear()
-    r.execute_line("session", output_fn=outputs.append)
-    assert any("Active session: 'work1'" in o for o in outputs)
-
-    outputs.clear()
-    r.execute_line("sessions", output_fn=outputs.append)
-    assert any("work1" in o for o in outputs)
-
-    # Save under a second session name (copies existing session checkpoints)
-    outputs.clear()
-    r.execute_line("set save_session = work2", output_fn=outputs.append)
-    assert r.session_name == "work2"
-
-    # Verify session load throws error
-    outputs.clear()
-    r.execute_line("session load work1", output_fn=outputs.append)
-    assert "'session load' is not supported" in outputs[-1]
-
-    # Load first session back via set session_load
-    outputs.clear()
-    from pytae.repl import get_sessions_dir
-    r.execute_line(f"set session_load = '{get_sessions_dir() / 'work1'}'", output_fn=outputs.append)
-    assert r.session_name == "work1"
-    assert "cp1" in r.checkpoints
-
-    # Verify rm session / session rm is disabled inside REPL
-    outputs.clear()
-    r.execute_line("rm session work2", output_fn=outputs.append)
-    assert any("deleting sessions from inside the REPL is disabled" in o for o in outputs)
-
-    outputs.clear()
-    r.execute_line("session rm work1", output_fn=outputs.append)
-    assert any("deleting sessions from inside the REPL is disabled" in o for o in outputs)
+    # All session commands and settings trigger the retirement notice
+    for cmd in (
+        "session",
+        "sessions",
+        "session save work1",
+        "set save_session = work1",
+        "session load work1",
+        "set session_load = work1",
+        "rm session work2",
+        "session rm work1",
+    ):
+        outputs.clear()
+        r.execute_line(cmd, output_fn=outputs.append)
+        assert any("persistent disk sessions have been retired" in o for o in outputs)
     r.close()
 
 
@@ -2359,28 +2208,45 @@ def test_repl_history_save_and_exit_save(tmp_path, monkeypatch):
     assert any("unknown setting 'save'" in o for o in outputs)
     assert r2.save_history_file is None
 
-    # Configure 'set save_code = rel_hist.txt' upfront
+    # Verify 'set save_code' and 'set save_commands' are cleanly deprecated and rejected
     outputs.clear()
     r2.execute_line("set save_code = rel_hist.txt", output_fn=outputs.append)
-    assert r2.save_history_file == "rel_hist.txt"
-    assert any("Set save_code = 'rel_hist.txt'" in o for o in outputs)
+    assert any("unknown setting 'save_code'" in o for o in outputs)
+    assert r2.save_history_file is None
 
-    # Legacy 'set save_commands = rel_hist.txt' also supported
     outputs.clear()
     r2.execute_line("set save_commands = rel_hist.txt", output_fn=outputs.append)
-    assert r2.save_history_file == "rel_hist.txt"
-    assert any("Set save_commands = 'rel_hist.txt'" in o for o in outputs)
+    assert any("unknown setting 'save_commands'" in o for o in outputs)
+    assert r2.save_history_file is None
 
-    # Plain exit automatically saves to configured history file
+    # Test on-demand export script (.pt)
     outputs.clear()
-    res = r2.execute_line("exit", output_fn=outputs.append)
+    r2.execute_line("export script rel_hist.pt", output_fn=outputs.append)
+    assert any("Exported Pytae script to" in o for o in outputs)
+    saved_pt = work_dir / "rel_hist.pt"
+    assert saved_pt.exists()
+    assert "df = sample:penguins" in saved_pt.read_text(encoding="utf-8")
+
+    # Test on-demand export script (.py)
+    outputs.clear()
+    r2.execute_line("export script rel_hist.py", output_fn=outputs.append)
+    assert any("Exported standalone Python script to" in o for o in outputs)
+    saved_py = work_dir / "rel_hist.py"
+    assert saved_py.exists()
+    py_text = saved_py.read_text(encoding="utf-8")
+    assert "df = pt.sample('penguins')" in py_text or 'df = pt.sample("penguins")' in py_text
+    import ast
+
+    ast.parse(py_text)
+
+    # Exit with -s saves to specified file
+    outputs.clear()
+    res = r2.execute_line("exit -s exit_hist.txt", output_fn=outputs.append)
     assert res is False  # Exits!
-    saved_rel = work_dir / "rel_hist.txt"
+    saved_rel = work_dir / "exit_hist.txt"
     assert saved_rel.exists()
     saved_content = saved_rel.read_text(encoding="utf-8")
     assert "df = sample:penguins" in saved_content
-    # The 'set save_commands' command itself must not pollute the exported commands script
-    assert "save_commands" not in saved_content
     assert any("Session code saved to" in o or "Session commands saved to" in o or "Session history saved to" in o for o in outputs)
 
     # Case 3: Invalid exit arguments
@@ -2449,90 +2315,31 @@ def test_repl_schema_and_sample_and_keyword_join():
 
 
 def test_repl_set_checkpoint_format_parquet_and_ipc(tmp_path, monkeypatch):
-    from pytae.repl import set_sessions_dir
-    set_sessions_dir(None)
-    sess_dir = tmp_path / "sessions"
-    sess_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("PYTAE_SESSIONS_DIR", str(sess_dir))
-
     outputs: list[str] = []
-    r = PytaeRepl(session="test_fmt")
+    r = PytaeRepl()
 
-    # 1. Inspect default format
-    outputs.clear()
-    r.execute_line("set", output_fn=outputs.append)
-    assert any("checkpoint_format = ipc" in o for o in outputs)
-    assert any("save_code         = none" in o for o in outputs)
-
-    outputs.clear()
-    r.execute_line("set checkpoint_format", output_fn=outputs.append)
-    assert "checkpoint_format = ipc" in outputs[0]
-
-    # 2. Reject invalid format
-    outputs.clear()
-    r.execute_line("set checkpoint_format = csv", output_fn=outputs.append)
-    assert "unsupported checkpoint_format 'csv'" in outputs[0]
-    assert r.checkpoint_format == "ipc"
-
-    # 3. Load tables
-    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
-    r.execute_line("df2 = sample:tips", output_fn=outputs.append)
-
-    # 4. Save IPC checkpoint (default)
-    outputs.clear()
-    r.execute_line("checkpoint cp_ipc", output_fn=outputs.append)
-    assert "Saved checkpoint 'cp_ipc'" in outputs[0]
-    ipc_dir = sess_dir / "test_fmt" / "checkpoints" / "cp_ipc"
-    assert (ipc_dir / "df1.ipc").exists()
-    assert (ipc_dir / "df2.ipc").exists()
-
-    # 5. Set checkpoint_format = parquet
+    # 1. Setting checkpoint_format prints retirement notice
     outputs.clear()
     r.execute_line("set checkpoint_format = parquet", output_fn=outputs.append)
-    assert "Set checkpoint_format = parquet" in outputs[0]
-    assert r.checkpoint_format == "parquet"
+    assert any("persistent disk sessions have been retired" in o for o in outputs)
 
-    # 6. Save Parquet checkpoint
     outputs.clear()
-    r.execute_line("checkpoint cp_pq", output_fn=outputs.append)
-    assert "Saved checkpoint 'cp_pq' [parquet]" in outputs[0]
-    pq_dir = sess_dir / "test_fmt" / "checkpoints" / "cp_pq"
-    assert (pq_dir / "df1.parquet").exists()
-    assert (pq_dir / "df2.parquet").exists()
-    # Confirm they really are readable parquet files
-    df1_pq = pl.read_parquet(pq_dir / "df1.parquet")
-    assert df1_pq.shape == r.tables["df1"].shape
+    r.execute_line("set checkpoint_format = ipc", output_fn=outputs.append)
+    assert any("persistent disk sessions have been retired" in o for o in outputs)
 
-    # 7. Check checkpoints listing displays format via status checkpoint
-    outputs.clear()
-    r.execute_line("status checkpoint", output_fn=outputs.append)
-    cps_text = "\n".join(outputs)
-    assert "cp_ipc" in cps_text
-    assert "cp_pq" in cps_text
-    assert "[parquet]" in cps_text
-
-    # 8. Mutate RAM table, then restore from parquet checkpoint
+    # 2. In-memory checkpoints work with zero disk footprint
+    r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
     orig_shape = r.tables["df1"].shape
+    r.execute_line("checkpoint cp1", output_fn=outputs.append)
+    assert "cp1" in r.checkpoints
+
     r.execute_line("df1 = df1 -filter \"species == 'Adelie'\"", output_fn=outputs.append)
     assert r.tables["df1"].shape[0] < orig_shape[0]
 
     outputs.clear()
-    r.execute_line("restore cp_pq", output_fn=outputs.append)
-    assert "Restored checkpoint 'cp_pq'" in outputs[0]
+    r.execute_line("restore cp1", output_fn=outputs.append)
+    assert "Restored checkpoint 'cp1'" in outputs[0]
     assert r.tables["df1"].shape == orig_shape
-
-    # 9. Restore from IPC checkpoint seamlessly
-    outputs.clear()
-    r.execute_line("restore cp_ipc", output_fn=outputs.append)
-    assert "Restored checkpoint 'cp_ipc'" in outputs[0]
-    assert r.tables["df1"].shape == orig_shape
-
-    # 10. Switch back to IPC format
-    outputs.clear()
-    r.execute_line("set checkpoint_format = ipc", output_fn=outputs.append)
-    assert "Set checkpoint_format = ipc" in outputs[0]
-    assert r.checkpoint_format == "ipc"
-
     r.close()
 
 
@@ -2847,77 +2654,19 @@ def test_repl_tab_autocompletions():
 
 def test_repl_set_session_load_and_sessions_dir(tmp_path):
     outputs = []
-    from pytae.repl import get_sessions_dir, set_sessions_dir
+    r = PytaeRepl()
 
-    orig_dir = get_sessions_dir()
-    custom_dir_1 = tmp_path / "sessions_1"
-    custom_dir_2 = tmp_path / "sessions_2"
-    custom_dir_1.mkdir(parents=True, exist_ok=True)
-    custom_dir_2.mkdir(parents=True, exist_ok=True)
-
-    try:
-        # 0. Unknown setting 'set session' is rejected; 'load_session' is official setting
-        r = PytaeRepl()
+    # Retired session settings print retirement notice
+    for cmd in (
+        "set session_load = non_existent_session",
+        "set load_session = non_existent_session",
+        "set sessions_dir = /tmp/foo",
+        "set session_name = project_alpha",
+    ):
         outputs.clear()
-        r.execute_line("set session = legacy_name", output_fn=outputs.append)
-        assert "unknown setting 'session'" in outputs[-1].lower()
-
-        outputs.clear()
-        r.execute_line("set load_session = non_existent_dir", output_fn=outputs.append)
-        assert "not found" in outputs[-1].lower()
-
-        # 1. sessions_dir alone with NO active session is rejected / not modified
-        outputs.clear()
-        r.execute_line(f"set sessions_dir = {custom_dir_1}", output_fn=outputs.append)
-        assert "no active session" in outputs[-1].lower()
-        assert get_sessions_dir() == orig_dir
-
-        # 2. Bind active session via session_name
-        outputs.clear()
-        r.execute_line("set session_name = project_alpha", output_fn=outputs.append)
-        assert r.session_name == "project_alpha"
-        r.execute_line("df = sample:penguins")
-        r.execute_line("checkpoint cp1")
-
-        # 3. sessions_dir alone with active session -> relocates active session
-        outputs.clear()
-        r.execute_line(f"set sessions_dir = {custom_dir_1}", output_fn=outputs.append)
-        assert "relocated active session 'project_alpha'" in outputs[-1].lower()
-        assert (custom_dir_1 / "project_alpha" / "checkpoints" / "cp1").exists()
-        assert not (orig_dir / "project_alpha").exists(), "Old session directory in orig_dir should be removed after migration"
-        assert get_sessions_dir() == custom_dir_1.resolve()
-        r.close()
-
-        # 4. session_load non-existent path reports error with resolved path
-        r2 = PytaeRepl()
-        outputs.clear()
-        r2.execute_line("set session_load = non_existent_session", output_fn=outputs.append)
-        assert "not found" in outputs[-1].lower()
-
-        # 5. session_load with path and sessions_dir forks/copies to target sessions_dir
-        outputs.clear()
-        r2.execute_line(
-            f'set session_load = "{custom_dir_1 / "project_alpha"}", sessions_dir = "{custom_dir_2}"',
-            output_fn=outputs.append,
-        )
-        assert r2.session_name == "project_alpha"
-        assert (custom_dir_2 / "project_alpha" / "checkpoints" / "cp1").exists()
-        assert (custom_dir_1 / "project_alpha").exists(), "Original session directory in custom_dir_1 should remain intact"
-        assert get_sessions_dir() == custom_dir_2.resolve()
-        assert "cp1" in r2.checkpoints
-
-        # 6. Set multiple settings on a single line (commas, semicolons, spaces, repeated set)
-        r2.execute_line("set save_commands = my_hist.txt, checkpoint_format = parquet")
-        assert r2.save_history_file == "my_hist.txt"
-        assert r2.checkpoint_format == "parquet"
-
-        r2.execute_line("set save_commands = log1.txt; set checkpoint_format = ipc")
-        assert r2.save_history_file == "log1.txt"
-        assert r2.checkpoint_format == "ipc"
-
-        r2.close()
-    finally:
-        set_sessions_dir(orig_dir)
+        r.execute_line(cmd, output_fn=outputs.append)
+        assert any("persistent disk sessions have been retired" in o for o in outputs)
+    r.close()
 
 
 def test_repl_save_commands_captures_bare_output_and_canonical_posix_paths(tmp_path) -> None:
@@ -2939,11 +2688,6 @@ def test_repl_save_commands_captures_bare_output_and_canonical_posix_paths(tmp_p
     r = PytaeRepl()
     outputs: list[str] = []
 
-    # Configure save_commands and another REPL setting
-    r.execute_line(f"set save_commands = {script_file}", output_fn=outputs.append)
-    r.execute_line("set checkpoint_format = parquet", output_fn=outputs.append)
-    assert r.save_history_file == str(script_file)
-
     # Load dataset
     r.execute_line(f"df = {data_file}", output_fn=outputs.append)
     assert "df" in r.tables
@@ -2953,18 +2697,17 @@ def test_repl_save_commands_captures_bare_output_and_canonical_posix_paths(tmp_p
     assert out_csv.exists()
     assert any("Saved 3 rows to" in o for o in outputs)
 
-    # Exit and verify script file contents
+    # Export script and verify script file contents
     outputs.clear()
-    res = r.execute_line("exit", output_fn=outputs.append)
-    assert res is False
+    r.execute_line(f"export script {script_file}", output_fn=outputs.append)
     assert script_file.exists()
     script_text = script_file.read_text(encoding="utf-8")
 
     # Script file must have captured:
     # 1. The data assignment with forward slashes
-    assert f"df = {data_file.as_posix()}" in script_text
+    assert f"df = {data_file.as_posix()}" in script_text or data_file.name in script_text
     # 2. The -o command
-    assert f"-o {out_csv}" in script_text
+    assert f"-o {out_csv.name}" in script_text or f"-o {out_csv}" in script_text
     # 3. Must NOT contain any 'set ' configuration commands
     assert "set " not in script_text
     assert "checkpoint_format" not in script_text
@@ -3068,13 +2811,11 @@ def test_repl_redirected_file_input_suppresses_prompt(tmp_path, monkeypatch) -> 
 
 
 def test_list_saved_sessions_output_and_directories(tmp_path, monkeypatch) -> None:
-    """Verify that list_saved_sessions shows directory path, exact locations, and offline status safely."""
+    """Verify that list_saved_sessions outputs retirement notice and directories are located correctly."""
     from pytae.repl import (
         _get_history_dir,
         get_commands_dir,
-        get_sessions_dir,
         list_saved_sessions,
-        set_sessions_dir,
     )
 
     # 1. Verify directory paths under ~/.pytae
@@ -3088,54 +2829,10 @@ def test_list_saved_sessions_output_and_directories(tmp_path, monkeypatch) -> No
     assert cmd_dir.name in ("code", "commands")
     assert cmd_dir.parent.name == ".pytae"
 
-    # 2. Test list_saved_sessions with dummy sessions in custom temp dir
-    orig_sess_dir = get_sessions_dir()
-    custom_sess_dir = tmp_path / "sessions"
-    custom_sess_dir.mkdir(parents=True, exist_ok=True)
-    set_sessions_dir(custom_sess_dir)
-
-    try:
-        # Empty sessions directory
-        outputs: list[str] = []
-        list_saved_sessions(outputs.append)
-        assert any(f"Sessions Directory: {custom_sess_dir}" in o for o in outputs)
-        assert any("No saved sessions found" in o for o in outputs)
-
-        # Create a valid session
-        valid_sess = custom_sess_dir / "proj_alpha"
-        cp_dir = valid_sess / "checkpoints" / "cp1"
-        cp_dir.mkdir(parents=True, exist_ok=True)
-        (cp_dir / "data.parquet").write_bytes(b"12345")
-        (valid_sess / "session.json").write_text('{"updated_at": "2026-11-01 12:00:00"}', encoding="utf-8")
-
-        outputs.clear()
-        # Non-verbose output (default): just session name, path, and status
-        list_saved_sessions(outputs.append, verbose=False)
-        assert any(f"Sessions Directory: {custom_sess_dir}" in o for o in outputs)
-        assert any("proj_alpha" in o for o in outputs)
-        assert any(str(valid_sess) in o for o in outputs)
-        assert any("Status:      Ready" in o for o in outputs)
-        # Should NOT contain checkpoint details in non-verbose
-        assert not any("Checkpoints (1):" in o for o in outputs)
-
-        # Verbose output: detailed checkpoints, format, and size
-        outputs.clear()
-        list_saved_sessions(outputs.append, verbose=True)
-        assert any("Status:      Ready" in o for o in outputs)
-        assert any("Checkpoints (1):" in o for o in outputs)
-        assert any("cp1" in o for o in outputs)
-        assert any("[parquet]" in o for o in outputs)
-
-        # Create an unreadable / file entry (simulating offline / inaccessible share)
-        offline_sess = custom_sess_dir / "offline_share"
-        offline_sess.write_text("not_a_dir", encoding="utf-8")
-
-        outputs.clear()
-        list_saved_sessions(outputs.append)
-        assert any("offline_share" in o for o in outputs)
-        assert any("[Offline / Unreachable]" in o for o in outputs)
-    finally:
-        set_sessions_dir(orig_sess_dir)
+    # 2. Test list_saved_sessions outputs retirement notice
+    outputs: list[str] = []
+    list_saved_sessions(outputs.append)
+    assert any("persistent disk sessions have been retired" in o for o in outputs)
 
 
 def test_faithful_history_vs_commands_script(tmp_path) -> None:
@@ -3149,7 +2846,7 @@ def test_faithful_history_vs_commands_script(tmp_path) -> None:
     r.current_df = r.tables["df"]
     r.path_str = "df"
 
-    cmd_export = tmp_path / "my_commands.txt"
+    cmd_export = tmp_path / "my_commands.pt"
     out_csv = tmp_path / "out.csv"
 
     # Run diverse mix of exploratory, informational, comment, config, and mutation steps
@@ -3157,9 +2854,9 @@ def test_faithful_history_vs_commands_script(tmp_path) -> None:
     r.execute_line("status")
     r.execute_line("help")
     r.execute_line("-head 3")
-    r.execute_line(f"set save_commands = {cmd_export}")
     r.execute_line("k = df -head 5")
     r.execute_line(f"k -o {out_csv}")
+    r.execute_line(f"export script {cmd_export}")
     r.execute_line("exit")
 
     # 1. Verify history file (faithful flight recorder in history/)
@@ -3169,7 +2866,6 @@ def test_faithful_history_vs_commands_script(tmp_path) -> None:
     assert "status" in hist_text
     assert "help" in hist_text
     assert "-head 3" in hist_text
-    assert "set save_commands" in hist_text
     assert "k = df -head 5" in hist_text
     assert f"k -o {out_csv}" in hist_text
     assert "exit" in hist_text
@@ -3178,58 +2874,23 @@ def test_faithful_history_vs_commands_script(tmp_path) -> None:
     assert cmd_export.exists()
     cmd_text = cmd_export.read_text(encoding="utf-8")
     assert "k = df -head 5" in cmd_text
-    assert f"k -o {out_csv}" in cmd_text
+    assert f"k -o {out_csv.name}" in cmd_text or f"k -o {out_csv}" in cmd_text
     # Meta / preview / comments must NOT be in commands script
     assert "status" not in cmd_text
     assert "help" not in cmd_text
     assert "-head 3" not in cmd_text
-    assert "set save_commands" not in cmd_text
     assert "# A descriptive comment" not in cmd_text
 
 
 def test_repl_relocate_active_session_full_migration(tmp_path) -> None:
-    """Verify that relocating an active session cleanly moves all data and removes the old directory without duplicates."""
-    import polars as pl
+    """Verify that retired sessions_dir setting prints retirement notice."""
+    from pytae.repl import PytaeRepl
 
-    from pytae.repl import PytaeRepl, get_sessions_dir, set_sessions_dir
-
-    orig_dir = get_sessions_dir()
-    dir_a = tmp_path / "sessions_a"
-    dir_b = tmp_path / "sessions_b"
-    dir_a.mkdir(parents=True, exist_ok=True)
-    dir_b.mkdir(parents=True, exist_ok=True)
-
-    set_sessions_dir(dir_a)
-    try:
-        r = PytaeRepl()
-        outputs: list[str] = []
-        r.execute_line("set session_name = analytics_v1", output_fn=outputs.append)
-        r.tables["df"] = pl.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]})
-        r.current_df = r.tables["df"]
-        r.path_str = "df"
-        r.execute_line("checkpoint baseline", output_fn=outputs.append)
-
-        assert (dir_a / "analytics_v1" / "checkpoints" / "baseline").exists()
-
-        # Relocate active session to dir_b
-        outputs.clear()
-        r.execute_line(f"set sessions_dir = {dir_b}", output_fn=outputs.append)
-        assert any("relocated active session 'analytics_v1'" in o.lower() for o in outputs)
-        assert get_sessions_dir() == dir_b.resolve()
-
-        # Destination contains all checkpoints and metadata
-        assert (dir_b / "analytics_v1" / "checkpoints" / "baseline").exists()
-        assert (dir_b / "analytics_v1" / "session.json").exists()
-
-        # Source session directory in dir_a MUST be completely removed (no duplicates)
-        assert not (dir_a / "analytics_v1").exists()
-
-        # Session can restore checkpoint in new location
-        r.execute_line("restore baseline", output_fn=outputs.append)
-        assert "df" in r.tables
-        r.close()
-    finally:
-        set_sessions_dir(orig_dir)
+    r = PytaeRepl()
+    outputs: list[str] = []
+    r.execute_line("set sessions_dir = /tmp/somedir", output_fn=outputs.append)
+    assert any("persistent disk sessions have been retired" in o for o in outputs)
+    r.close()
 
 
 def test_repl_set_display_and_custom_settings():
@@ -3237,22 +2898,23 @@ def test_repl_set_display_and_custom_settings():
     r = PytaeRepl()
     outputs: list[str] = []
 
-    # 1. Bare 'set' lists all new proposal settings
+    # 1. Bare 'set' lists active display settings
     r.execute_line("set", output_fn=outputs.append)
     set_text = "\n".join(outputs)
-    assert "new_session       = none (options: <name>, <path>, overwrite = true)" in set_text
-    assert "load_session      = none (options: <name>, <path>)" in set_text
-    assert "save_session      = none (options: <name>, <path>, move = true, overwrite = true)" in set_text
-    assert "checkpoint_format =" in set_text
-    assert "save_code         =" in set_text
-    assert "max_rows          = 10" in set_text
-    assert "max_cols          = all" in set_text
-    assert "float_precision   = auto" in set_text
-    assert "comma             = off" in set_text
+    assert "max_rows        = 10" in set_text
+    assert "max_cols        = all" in set_text
+    assert "float_precision = auto" in set_text
+    assert "comma           = off" in set_text
+    assert "save_code" not in set_text
     assert "null_repr" not in set_text
     assert "timing" not in set_text
     assert "color" not in set_text
     assert "echo" not in set_text
+
+    # Retired session settings print retirement notice
+    outputs.clear()
+    r.execute_line("set new_session = foo", output_fn=outputs.append)
+    assert "persistent disk sessions have been retired" in outputs[-1]
 
     # 2. max_rows / rows
     outputs.clear()
@@ -3457,168 +3119,43 @@ def test_repl_saved_commands_pure_replayability(tmp_path):
 
 
 def test_repl_set_checkpoint_format_convert_option(tmp_path):
-    """Verify set checkpoint_format supports future-only by default, and convert=all on demand."""
-    from pathlib import Path
+    """Verify retired checkpoint format settings output retirement notice."""
+    from pytae.repl import PytaeRepl
 
-    from pytae.repl import PytaeRepl, get_sessions_dir, set_sessions_dir
+    r = PytaeRepl()
+    outputs: list[str] = []
+    r.execute_line("set checkpoint_format = parquet", output_fn=outputs.append)
+    assert any("persistent disk sessions have been retired" in o for o in outputs)
 
-    orig_dir = get_sessions_dir()
-    sess_dir = tmp_path / "sessions"
-    sess_dir.mkdir(parents=True, exist_ok=True)
-    set_sessions_dir(sess_dir)
-
-    try:
-        r = PytaeRepl(session="convert_test")
-        outputs: list[str] = []
-
-        # 1. Load data and create two checkpoints in default IPC format
-        r.execute_line("df = sample:penguins", output_fn=outputs.append)
-        r.execute_line("checkpoint cp1", output_fn=outputs.append)
-        r.execute_line("df2 = sample:tips", output_fn=outputs.append)
-        r.execute_line("checkpoint cp2", output_fn=outputs.append)
-
-        assert len(r.checkpoints) == 2
-        assert r.checkpoints["cp1"]["format"] == "ipc"
-        assert r.checkpoints["cp2"]["format"] == "ipc"
-        cp1_file = Path(r.checkpoints["cp1"]["dir"]) / "df.ipc"
-        assert cp1_file.exists()
-
-        # 2. Switch format to parquet WITHOUT convert=all -> future-only with informative note
-        outputs.clear()
-        r.execute_line("set checkpoint_format = parquet", output_fn=outputs.append)
-        assert r.checkpoint_format == "parquet"
-        out_text = "\n".join(outputs)
-        assert "new checkpoints will be saved as compressed Parquet" in out_text
-        assert "2 existing checkpoint(s) remain in IPC format" in out_text
-        assert "convert = all" in out_text
-
-        # Existing checkpoints remain IPC
-        assert r.checkpoints["cp1"]["format"] == "ipc"
-        assert cp1_file.exists()
-
-        # 3. Create a new checkpoint -> it is saved as Parquet!
-        outputs.clear()
-        r.execute_line("checkpoint cp3", output_fn=outputs.append)
-        assert r.checkpoints["cp3"]["format"] == "parquet"
-        cp3_file = Path(r.checkpoints["cp3"]["dir"]) / "df.parquet"
-        assert cp3_file.exists()
-
-        # 4. Now run convert = all to convert previous IPC checkpoints to Parquet
-        outputs.clear()
-        r.execute_line("set checkpoint_format = parquet, convert = all", output_fn=outputs.append)
-        conv_text = "\n".join(outputs)
-        assert "Converting 2 existing checkpoint(s) to parquet" in conv_text
-        assert "cp1: converted" in conv_text
-        assert "cp2: converted" in conv_text
-        assert "All 2 checkpoint(s) converted" in conv_text
-
-        # Verify files on disk are converted
-        assert r.checkpoints["cp1"]["format"] == "parquet"
-        assert (Path(r.checkpoints["cp1"]["dir"]) / "df.parquet").exists()
-        assert not (Path(r.checkpoints["cp1"]["dir"]) / "df.ipc").exists()
-
-        # 5. Restore cp1 from converted Parquet checkpoint
-        outputs.clear()
-        r.execute_line("restore cp1", output_fn=outputs.append)
-        assert "df" in r.tables
-        assert r.current_df is not None
-        assert r.current_df.shape[0] == 344
-
-        # 6. Convert all back from Parquet to IPC
-        outputs.clear()
-        r.execute_line("set checkpoint_format = ipc, convert = all", output_fn=outputs.append)
-        back_text = "\n".join(outputs)
-        assert "Converting 3 existing checkpoint(s) to ipc" in back_text
-        assert r.checkpoints["cp1"]["format"] == "ipc"
-        assert (Path(r.checkpoints["cp1"]["dir"]) / "df.ipc").exists()
-        assert not (Path(r.checkpoints["cp1"]["dir"]) / "df.parquet").exists()
-
-        # 7. Convert when already matching
-        outputs.clear()
-        r.execute_line("set convert = all", output_fn=outputs.append)
-        assert "All existing checkpoints are already in ipc format" in outputs[0]
-
-        r.close()
-    finally:
-        set_sessions_dir(orig_dir)
+    outputs.clear()
+    r.execute_line("set convert = all", output_fn=outputs.append)
+    assert any("persistent disk sessions have been retired" in o for o in outputs)
+    r.close()
 
 
 def test_sessions_cli_and_repl_verbose_modes(tmp_path):
-    """Verify non-verbose vs verbose outputs in both REPL and CLI."""
+    """Verify sessions command and -sessions CLI flag output retirement notice."""
+    import contextlib
+    import io
+
     from pytae.cli import main
-    from pytae.repl import PytaeRepl, get_sessions_dir, set_sessions_dir
+    from pytae.repl import PytaeRepl
 
-    orig_dir = get_sessions_dir()
-    sess_dir = tmp_path / "sessions_test"
-    sess_dir.mkdir(parents=True, exist_ok=True)
-    set_sessions_dir(sess_dir)
+    r = PytaeRepl()
+    outputs: list[str] = []
+    r.execute_line("sessions", output_fn=outputs.append)
+    assert any("persistent disk sessions have been retired" in o for o in outputs)
 
-    try:
-        r = PytaeRepl(session="my_project")
-        outputs: list[str] = []
-        r.execute_line("df = sample:penguins", output_fn=outputs.append)
-        r.execute_line("checkpoint baseline", output_fn=outputs.append)
-        r.close()
+    outputs.clear()
+    r.execute_line("sessions -v", output_fn=outputs.append)
+    assert any("persistent disk sessions have been retired" in o for o in outputs)
+    r.close()
 
-        # 1. In-REPL non-verbose 'sessions'
-        r2 = PytaeRepl()
-        outputs.clear()
-        r2.execute_line("sessions", output_fn=outputs.append)
-        nv_text = "\n".join(outputs)
-        assert "my_project" in nv_text
-        assert "Status:      Ready" in nv_text
-        assert "Checkpoints (" not in nv_text
-
-        # 2. In-REPL verbose 'sessions -v'
-        outputs.clear()
-        r2.execute_line("sessions -v", output_fn=outputs.append)
-        v_text = "\n".join(outputs)
-        assert "my_project" in v_text
-        assert "Status:      Ready" in v_text
-        assert "Checkpoints (1):" in v_text
-        assert "baseline" in v_text
-        assert "[ipc]" in v_text
-        assert "df: 344 rows x 7 cols" in v_text
-
-        # 3. In-REPL verbose 'sessions verbose'
-        outputs.clear()
-        r2.execute_line("sessions verbose", output_fn=outputs.append)
-        v_word_text = "\n".join(outputs)
-        assert "Checkpoints (1):" in v_word_text
-
-        # 4. In-REPL 'session list -v'
-        outputs.clear()
-        r2.execute_line("session list -v", output_fn=outputs.append)
-        s_list_text = "\n".join(outputs)
-        assert "Checkpoints (1):" in s_list_text
-
-        r2.close()
-
-        # 5. CLI pytae -sessions (non-verbose)
-        import contextlib
-        import io
-
-        stdout_buf = io.StringIO()
-        with contextlib.redirect_stdout(stdout_buf):
-            ret = main(["-sessions"])
-        assert ret == 0
-        cli_nv = stdout_buf.getvalue()
-        assert "my_project" in cli_nv
-        assert "Status:      Ready" in cli_nv
-        assert "Checkpoints (" not in cli_nv
-
-        # 6. CLI pytae -sessions -v (verbose)
-        stdout_buf = io.StringIO()
-        with contextlib.redirect_stdout(stdout_buf):
-            ret = main(["-sessions", "-v"])
-        assert ret == 0
-        cli_v = stdout_buf.getvalue()
-        assert "my_project" in cli_v
-        assert "Checkpoints (1):" in cli_v
-        assert "baseline" in cli_v
-        assert "[ipc]" in cli_v
-    finally:
-        set_sessions_dir(orig_dir)
+    stdout_buf = io.StringIO()
+    with contextlib.redirect_stdout(stdout_buf):
+        ret = main(["-sessions"])
+    assert ret == 0
+    assert "persistent disk sessions have been retired" in stdout_buf.getvalue()
 
 
 def test_repl_does_not_abort_on_pipeline_errors():
@@ -3661,117 +3198,28 @@ def test_repl_does_not_abort_on_pipeline_errors():
 
 
 def test_sessions_ready_filter_and_pattern_inspection(tmp_path):
-    """Test -ready flag and pattern filtering in session listing across REPL and CLI."""
-    from pytae.repl import PytaeRepl, get_sessions_dir, list_saved_sessions, set_sessions_dir
-    orig_dir = get_sessions_dir()
-    sess_container = tmp_path / "sessions"
-    sess_container.mkdir(parents=True, exist_ok=True)
-    set_sessions_dir(sess_container)
-    try:
-        # Create 2 healthy sessions
-        r1 = PytaeRepl()
-        r1.execute_line("df = sample:penguins")
-        r1.execute_line("set save_session = finance_audit")
-        r1.execute_line("checkpoint cp1")
-        r1.close()
+    """Test sessions command and CLI output retirement notice."""
+    import contextlib
+    import io
 
-        r2 = PytaeRepl()
-        r2.execute_line("df = sample:tips")
-        r2.execute_line("set save_session = water_analysis")
-        r2.execute_line("checkpoint cp_water")
-        r2.close()
+    from pytae.cli import main
+    from pytae.repl import PytaeRepl, list_saved_sessions
 
-        # Create an offline/inaccessible session (a non-directory file)
-        offline_file = sess_container / "offline_sess"
-        offline_file.write_text("broken session")
+    outputs: list[str] = []
+    list_saved_sessions(outputs.append)
+    assert any("persistent disk sessions have been retired" in o for o in outputs)
 
-        # 1. Non-filtered listing displays all 3 (including offline)
-        outputs: list[str] = []
-        list_saved_sessions(outputs.append)
-        all_text = "\n".join(outputs)
-        assert "finance_audit" in all_text
-        assert "water_analysis" in all_text
-        assert "offline_sess" in all_text
-        assert "Status:      [Offline / Unreachable]" in all_text
+    r = PytaeRepl()
+    outputs.clear()
+    r.execute_line("sessions -ready", output_fn=outputs.append)
+    assert any("persistent disk sessions have been retired" in o for o in outputs)
+    r.close()
 
-        # 2. Filter with ready_only=True excludes offline_sess
-        outputs.clear()
-        list_saved_sessions(outputs.append, ready_only=True)
-        ready_text = "\n".join(outputs)
-        assert "finance_audit" in ready_text
-        assert "water_analysis" in ready_text
-        assert "offline_sess" not in ready_text
-        assert "1 offline omitted" in ready_text
-
-        # 3. Pattern filtering
-        outputs.clear()
-        list_saved_sessions(outputs.append, pattern="*audit*")
-        pat_text = "\n".join(outputs)
-        assert "finance_audit" in pat_text
-        assert "water_analysis" not in pat_text
-
-        # 4. Pattern + verbose
-        outputs.clear()
-        list_saved_sessions(outputs.append, pattern="water_analysis", verbose=True)
-        v_pat_text = "\n".join(outputs)
-        assert "water_analysis" in v_pat_text
-        assert "cp_water" in v_pat_text
-        assert "[ipc]" in v_pat_text
-
-        # 5. In-REPL sessions -ready and sessions <pattern>
-        r = PytaeRepl()
-        outputs.clear()
-        r.execute_line("sessions -ready", output_fn=outputs.append)
-        repl_ready = "\n".join(outputs)
-        assert "finance_audit" in repl_ready
-        assert "offline_sess" not in repl_ready
-
-        outputs.clear()
-        r.execute_line("sessions *audit*", output_fn=outputs.append)
-        repl_pat = "\n".join(outputs)
-        assert "finance_audit" in repl_pat
-        assert "water_analysis" not in repl_pat
-
-        # 6. Checkpoints rich output in REPL via status checkpoint
-        r.execute_line(f'set session_load = "{sess_container / "finance_audit"}"')
-        outputs.clear()
-        r.execute_line("status checkpoint", output_fn=outputs.append)
-        cp_out = "\n".join(outputs)
-        assert "cp1" in cp_out
-        assert "[ipc]" in cp_out
-        assert "344 rows x 7 cols" in cp_out
-
-        outputs.clear()
-        r.execute_line("status checkpoint -v", output_fn=outputs.append)
-        cp_v_out = "\n".join(outputs)
-        assert "cp1" in cp_v_out
-        assert "df.ipc" in cp_v_out
-        r.close()
-
-        # 7. CLI execution with -sessions -ready and pattern
-        import contextlib
-        import io
-
-        from pytae.cli import main
-
-        stdout_buf = io.StringIO()
-        with contextlib.redirect_stdout(stdout_buf):
-            ret = main(["-sessions", "-ready"])
-        assert ret == 0
-        cli_out = stdout_buf.getvalue()
-        assert "finance_audit" in cli_out
-        assert "offline_sess" not in cli_out
-
-        stdout_buf = io.StringIO()
-        with contextlib.redirect_stdout(stdout_buf):
-            ret = main(["-sessions", "*audit*", "-v"])
-        assert ret == 0
-        cli_v_out = stdout_buf.getvalue()
-        assert "finance_audit" in cli_v_out
-        assert "cp1" in cli_v_out
-        assert "water_analysis" not in cli_v_out
-    finally:
-        set_sessions_dir(orig_dir)
+    stdout_buf = io.StringIO()
+    with contextlib.redirect_stdout(stdout_buf):
+        ret = main(["-sessions", "-ready"])
+    assert ret == 0
+    assert "persistent disk sessions have been retired" in stdout_buf.getvalue()
 
 
 def test_repl_status_subcommands_and_verbose():
@@ -3896,15 +3344,15 @@ def test_repl_status_subcommands_and_verbose():
     r.execute_line("status checkpoint cp1", output_fn=outputs.append)
     st_cp1 = "\n".join(outputs)
     assert "Checkpoint     : cp1" in st_cp1
-    assert "Format         : ipc" in st_cp1
+    assert "Storage        : in-memory" in st_cp1
     assert "Tables (2):" in st_cp1
 
-    # 11. status checkpoint cp1 -v (includes file names)
+    # 11. status checkpoint cp1 -v
     outputs.clear()
     r.execute_line("status checkpoint cp1 -v", output_fn=outputs.append)
     st_cp1_v = "\n".join(outputs)
     assert "Checkpoint     : cp1" in st_cp1_v
-    assert "df1.ipc" in st_cp1_v
+    assert "Tables (2):" in st_cp1_v
 
     # 12. Bare tables & checkpoints rejected with guidance
     outputs.clear()
@@ -3919,224 +3367,57 @@ def test_repl_status_subcommands_and_verbose():
 
 
 def test_repl_set_fork_session_preserves_source(tmp_path, monkeypatch):
-    """Verify that 'set session_load = base, session_name = fork_app, sessions_dir = <dir>' creates an independent fork leaving base untouched."""
-    from pytae.repl import set_sessions_dir
-    set_sessions_dir(None)  # Reset module-level override to use env var
-    sess_dir = tmp_path / "sessions"
-    sess_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("PYTAE_SESSIONS_DIR", str(sess_dir))
+    """Verify that retired fork_session/session_load settings print retirement notice."""
+    from pytae.repl import PytaeRepl
 
+    r = PytaeRepl()
     outputs: list[str] = []
-    # 1. Create source session 'base_model' with checkpoint
-    r1 = PytaeRepl(session="base_model")
-    r1.execute_line("df = sample:penguins")
-    r1.execute_line("checkpoint v1")
-    r1.close()
-
-    assert (sess_dir / "base_model" / "checkpoints" / "v1").exists()
-
-    # 2. Fork into new session 'fork_run' at a new directory target
-    new_dir = tmp_path / "custom_dir"
-    new_dir.mkdir(parents=True, exist_ok=True)
-
-    r2 = PytaeRepl()
-    r2.execute_line(
-        f"set session_load = base_model, session_name = fork_run, sessions_dir = {new_dir}",
-        output_fn=outputs.append,
-    )
-    assert any("Forked session 'base_model' -> 'fork_run'" in o for o in outputs)
-    assert r2.session_name == "fork_run"
-    assert "v1" in r2.checkpoints
-
-    # Source session MUST remain completely intact!
-    assert (sess_dir / "base_model" / "checkpoints" / "v1").exists()
-    # Forked session exists at target directory!
-    assert (new_dir / "fork_run" / "checkpoints" / "v1").exists()
-
-    # 3. Mutate and checkpoint in fork_run
-    r2.execute_line("checkpoint v2_fork")
-    assert (new_dir / "fork_run" / "checkpoints" / "v2_fork").exists()
-    # Source session MUST NOT have v2_fork
-    assert not (sess_dir / "base_model" / "checkpoints" / "v2_fork").exists()
-    r2.close()
+    r.execute_line("set session_load = base_model, session_name = fork_run", output_fn=outputs.append)
+    assert any("persistent disk sessions have been retired" in o for o in outputs)
+    r.close()
 
 
 def test_repl_set_copy_session_same_name_to_different_dir_preserves_source(tmp_path):
-    """Verify that specifying session_load, session_name with same name, and different sessions_dir copies cleanly and preserves source."""
-    from pytae.repl import PytaeRepl, set_sessions_dir
+    """Verify that retired copy_session/session_load settings print retirement notice."""
+    from pytae.repl import PytaeRepl
 
-    src_dir = tmp_path / "src_sessions"
-    dst_dir = tmp_path / "dst_sessions"
-    src_dir.mkdir(parents=True, exist_ok=True)
-    dst_dir.mkdir(parents=True, exist_ok=True)
-
-    set_sessions_dir(src_dir)
-    r1 = PytaeRepl(session="rwa_analysis")
-    r1.execute_line("df = sample:penguins")
-    r1.execute_line("checkpoint cp1")
-    r1.close()
-
-    assert (src_dir / "rwa_analysis" / "checkpoints" / "cp1").exists()
-
-    r2 = PytaeRepl()
+    r = PytaeRepl()
     outputs: list[str] = []
-    r2.execute_line(
-        f'set session_load = "{src_dir / "rwa_analysis"}", session_name = rwa_analysis, sessions_dir = "{dst_dir}"',
-        output_fn=outputs.append,
-    )
-    assert any("Forked session 'rwa_analysis' -> 'rwa_analysis'" in o for o in outputs)
-    assert r2.session_name == "rwa_analysis"
-    assert "cp1" in r2.checkpoints
-
-    # Both source and destination directories must have the session intact
-    assert (src_dir / "rwa_analysis" / "checkpoints" / "cp1").exists()
-    assert (dst_dir / "rwa_analysis" / "checkpoints" / "cp1").exists()
-    r2.close()
+    r.execute_line('set copy_session = rwa_analysis', output_fn=outputs.append)
+    assert any("persistent disk sessions have been retired" in o for o in outputs)
+    r.close()
 
 
 def test_session_load_cwd_relative_and_hint(tmp_path, monkeypatch):
-    """Verify that bare session_load resolves relative to CWD, and missing sessions give hint if present in default directory."""
-    from pytae.repl import _DEFAULT_SESSIONS_DIR, PytaeRepl, set_sessions_dir
+    """Verify that retired session_load setting prints retirement notice."""
+    from pytae.repl import PytaeRepl
 
-    set_sessions_dir(None)
-    # 1. Create a session in CWD
-    cwd_dir = tmp_path / "my_work"
-    cwd_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.chdir(cwd_dir)
-
-    r1 = PytaeRepl()
-    r1.execute_line("df = sample:penguins")
-    r1.execute_line("set sessions_dir = '.', session_name = local_proj")
-    r1.execute_line("checkpoint cp_local")
-    r1.close()
-
-    assert (cwd_dir / "local_proj" / "checkpoints" / "cp_local").exists()
-
-    # 2. In a new REPL session in the same CWD, load by bare name
-    r2 = PytaeRepl()
-    outputs = []
-    r2.execute_line("set session_load = local_proj", output_fn=outputs.append)
-    assert r2.session_name == "local_proj"
-    assert "cp_local" in r2.checkpoints
-    r2.close()
-
-    # 3. Create a session in default directory ~/.pytae/sessions/
-    default_dir = _DEFAULT_SESSIONS_DIR.resolve()
-    mock_default = default_dir / "globally_saved_sess"
-    mock_default.mkdir(parents=True, exist_ok=True)
-    (mock_default / "session.json").write_text('{"name": "globally_saved_sess"}')
-
-    try:
-        r3 = PytaeRepl()
-        outputs.clear()
-        r3.execute_line("set session_load = globally_saved_sess", output_fn=outputs.append)
-        err_msg = "\n".join(outputs)
-        assert "not found" in err_msg
-        assert "Pass full path to load it" in err_msg
-        assert str(mock_default) in err_msg
-        r3.close()
-    finally:
-        import shutil
-        shutil.rmtree(mock_default, ignore_errors=True)
-        if default_dir.exists() and not list(default_dir.iterdir()):
-            shutil.rmtree(default_dir, ignore_errors=True)
+    r = PytaeRepl()
+    outputs: list[str] = []
+    r.execute_line("set session_load = local_proj", output_fn=outputs.append)
+    assert any("persistent disk sessions have been retired" in o for o in outputs)
+    r.close()
 
 
 def test_session_load_various_path_formats(tmp_path, monkeypatch):
-    """Verify that session_load handles trailing slashes, quotes, relative paths, and Git Bash format."""
-    from pytae.repl import PytaeRepl, set_sessions_dir
+    """Verify that retired session_load setting prints retirement notice across formats."""
+    from pytae.repl import PytaeRepl
 
-    set_sessions_dir(None)
-    sess_dir = tmp_path / "sessions_formats"
-    sess_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.chdir(sess_dir)
-
-    # 1. Create a session named 'analysis_run'
-    r1 = PytaeRepl()
-    r1.execute_line("df = sample:penguins")
-    r1.execute_line("set sessions_dir = '.', session_name = analysis_run")
-    r1.execute_line("checkpoint cp_base")
-    r1.close()
-
-    target_sess = sess_dir / "analysis_run"
-    assert (target_sess / "checkpoints" / "cp_base").exists()
-
-    # 2. Load with trailing slash
-    r2 = PytaeRepl()
-    outputs = []
-    r2.execute_line(f'set session_load = "{target_sess}/"', output_fn=outputs.append)
-    assert r2.session_name == "analysis_run"
-    assert "cp_base" in r2.checkpoints
-    r2.close()
-
-    # 3. Load with relative path './analysis_run'
-    r3 = PytaeRepl()
-    outputs.clear()
-    r3.execute_line('set session_load = "./analysis_run"', output_fn=outputs.append)
-    assert r3.session_name == "analysis_run"
-    assert "cp_base" in r3.checkpoints
-    r3.close()
-
-    # 4. Load with quotes and backslashes
-    win_style = str(target_sess).replace("/", "\\")
-    r4 = PytaeRepl()
-    outputs.clear()
-    r4.execute_line(f'set session_load = "{win_style}"', output_fn=outputs.append)
-    assert r4.session_name == "analysis_run"
-    assert "cp_base" in r4.checkpoints
-    r4.close()
+    r = PytaeRepl()
+    outputs: list[str] = []
+    r.execute_line('set session_load = "./analysis_run"', output_fn=outputs.append)
+    assert any("persistent disk sessions have been retired" in o for o in outputs)
+    r.close()
 
 
 def test_session_markers_and_directory_exploration(tmp_path):
-    """Verify is_session_dir accurately distinguishes session folders from ordinary project directories, and targeted exploration lists sessions cleanly."""
-    from pytae.repl import PytaeRepl, is_session_dir, list_saved_sessions, set_sessions_dir
+    """Verify list_saved_sessions prints retirement notice and is_session_dir behaves safely."""
+    from pytae.repl import is_session_dir, list_saved_sessions
 
-    proj_dir = tmp_path / "my_project"
-    proj_dir.mkdir(parents=True, exist_ok=True)
-
-    # Standard non-session project subdirectories
-    (proj_dir / "src").mkdir()
-    (proj_dir / "tests").mkdir()
-    (proj_dir / "data").mkdir()
-    (proj_dir / "README.md").write_text("# Project")
-
-    # None of these should be recognized as a session directory
-    assert not is_session_dir(proj_dir)
-    assert not is_session_dir(proj_dir / "src")
-    assert not is_session_dir(proj_dir / "tests")
-
-    # Creating a session inside the project
-    sess_dir = proj_dir / "experiment_1"
-    orig_sess = set_sessions_dir(proj_dir)
-    try:
-        r = PytaeRepl(session="experiment_1")
-        r.execute_line("df = sample:penguins")
-        r.execute_line("checkpoint cp1")
-        r.close()
-
-        # Session markers should now exist and be recognized
-        assert is_session_dir(sess_dir)
-        assert (sess_dir / "session.json").exists()
-        assert (sess_dir / ".pytae_session").exists()
-        assert (sess_dir / "checkpoints").is_dir()
-
-        # Listing proj_dir should ONLY discover experiment_1, ignoring src, tests, data
-        outputs: list[str] = []
-        list_saved_sessions(outputs.append, directory=proj_dir)
-        listed = "\n".join(outputs)
-        assert "experiment_1" in listed
-        assert "src" not in listed
-        assert "tests" not in listed
-        assert "data" not in listed
-
-        # Listing sess_dir directly should recognize it as a session and inspect it
-        outputs.clear()
-        list_saved_sessions(outputs.append, directory=sess_dir)
-        direct_listed = "\n".join(outputs)
-        assert "experiment_1" in direct_listed
-        assert "Ready" in direct_listed
-    finally:
-        set_sessions_dir(orig_sess)
+    outputs: list[str] = []
+    list_saved_sessions(outputs.append)
+    assert any("persistent disk sessions have been retired" in o for o in outputs)
+    assert not is_session_dir(tmp_path)
 
 
 def test_win_console_input_tab_completion_single_match():
@@ -4351,216 +3632,43 @@ def test_init_readline_binds_tab_complete(monkeypatch):
 
 
 def test_repl_named_session_status(tmp_path):
-    from pytae.repl import PytaeRepl, set_sessions_dir
-
-    orig = set_sessions_dir(tmp_path / "sessions")
-    try:
-        r = PytaeRepl(session="alpha_proj")
-        outputs: list[str] = []
-        r.execute_line("status session", output_fn=outputs.append)
-        st = "\n".join(outputs)
-        assert "=== REPL Session Status ===" in st
-        assert "Session Name  : alpha_proj (storage:" in st
-        assert "alpha_proj" in st
-        assert "Commands Run" not in st
-        r.close()
-    finally:
-        set_sessions_dir(orig)
-
-
-def test_repl_unified_path_first_sessions(tmp_path, monkeypatch):
-    """Test unified new_session, load_session, save_session (safe copy & move=true), and external status inspection."""
-    from pytae.repl import PytaeRepl, set_sessions_dir
-
-    # Reset any module-level sessions_dir override from prior tests
-    set_sessions_dir(None)
-
-    # Isolate CWD to tmp_path so CWD-relative sessions write to tmp_path
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("PYTAE_SESSIONS_DIR", raising=False)
-
+    r = PytaeRepl(session="alpha_proj")
     outputs: list[str] = []
-    r = PytaeRepl()
-
-    # 1. Start new session in CWD
-    r.execute_line("set new_session = fresh_lab", output_fn=outputs.append)
-    assert any("Started new session 'fresh_lab'" in o for o in outputs)
-    assert r.session_name == "fresh_lab"
-    assert (tmp_path / "fresh_lab" / "checkpoints").exists()
-
-    # Create table & checkpoint in fresh_lab
-    r.execute_line("df = sample:penguins")
-    r.execute_line("checkpoint cp_base")
-    assert (tmp_path / "fresh_lab" / "checkpoints" / "cp_base").exists()
-
-    # 2. Start new session at explicit path (checkpoints start fresh, in-memory tables preserved)
-    outputs.clear()
-    nested_dir = tmp_path / "custom_folder" / "custom_lab"
-    r.execute_line(f'set new_session = "{nested_dir}"', output_fn=outputs.append)
-    assert any("Started new session 'custom_lab'" in o for o in outputs)
-    assert r.session_name == "custom_lab"
-    assert (nested_dir / "checkpoints").exists()
-    assert len(r.checkpoints) == 0  # Fresh checkpoint history for new session
-    assert "df" in r.tables  # Loaded tables remain active in memory!
-
-    # Add second table and checkpoint in custom_lab
-    r.execute_line("df2 = sample:tips")
-    r.execute_line("checkpoint cp_tips")
-    assert (nested_dir / "checkpoints" / "cp_tips").exists()
-
-    # 3. Load session in-place from CWD
-    outputs.clear()
-    r.execute_line("set load_session = fresh_lab", output_fn=outputs.append)
-    assert r.session_name == "fresh_lab"
-    assert "df" in r.tables
-    assert "cp_base" in r.checkpoints
-
-    # 4. Safe copy session (save_session by default preserves source)
-    outputs.clear()
-    r.execute_line("set save_session = copied_lab", output_fn=outputs.append)
-    assert any("Session saved as 'copied_lab'" in o for o in outputs)
-    assert r.session_name == "copied_lab"
-    assert (tmp_path / "copied_lab" / "checkpoints" / "cp_base").exists()
-    # Source fresh_lab MUST remain completely intact!
-    assert (tmp_path / "fresh_lab" / "checkpoints" / "cp_base").exists()
-
-    # 5. Move session (save_session with move = true removes old directory)
-    outputs.clear()
-    r.execute_line("set save_session = moved_lab, move = true", output_fn=outputs.append)
-    assert any("Moved session 'moved_lab'" in o for o in outputs)
-    assert r.session_name == "moved_lab"
-    assert (tmp_path / "moved_lab" / "checkpoints" / "cp_base").exists()
-    # Old copied_lab directory MUST be cleaned up!
-    assert not (tmp_path / "copied_lab").exists()
-    # Original fresh_lab remains untouched!
-    assert (tmp_path / "fresh_lab" / "checkpoints" / "cp_base").exists()
-
-    # 6. External status inspection without loading into active REPL
-    outputs.clear()
-    r.execute_line(f'status session "{nested_dir}"', output_fn=outputs.append)
-    ext_st = "\n".join(outputs)
-    assert "=== Session Inspection: custom_lab ===" in ext_st
-    assert "Storage Path" in ext_st
-    assert "cp_tips" in ext_st
-    # Active REPL remains moved_lab!
-    assert r.session_name == "moved_lab"
-
-    # 7. External verbose status inspection with 'status session <path> -v'
-    outputs.clear()
-    r.execute_line(f'status session "{nested_dir}" -v', output_fn=outputs.append)
-    ext_st_v = "\n".join(outputs)
-    assert "=== Session Inspection: custom_lab ===" in ext_st_v
-    assert "cp_tips" in ext_st_v
-
-    # 8. Leading dash on status subcommands ('status -session') is strictly rejected
-    outputs.clear()
-    r.execute_line(f'status -session "{nested_dir}"', output_fn=outputs.append)
-    assert "Status subcommands do not use a leading '-'" in outputs[-1]
-    assert "Use 'status session' instead" in outputs[-1]
-
+    r.execute_line("status session", output_fn=outputs.append)
+    st = "\n".join(outputs)
+    assert "=== REPL Session Status ===" in st
+    assert "in-memory workbench" in st
     r.close()
 
 
-def test_repl_new_session_preserves_loaded_tables(tmp_path, monkeypatch):
-    """Verify that loading a dataset upfront in an ephemeral session and then running 'set new_session = <name>' keeps the dataset and allows checkpointing immediately."""
-    from pytae.repl import PytaeRepl, set_sessions_dir
-
-    set_sessions_dir(None)
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("PYTAE_SESSIONS_DIR", raising=False)
-
-    outputs: list[str] = []
+def test_repl_unified_path_first_sessions(tmp_path):
     r = PytaeRepl()
+    outputs: list[str] = []
+    for cmd in (
+        "set new_session = fresh_lab",
+        "set load_session = fresh_lab",
+        "set save_session = copied_lab",
+    ):
+        outputs.clear()
+        r.execute_line(cmd, output_fn=outputs.append)
+        assert any("persistent disk sessions have been retired" in o for o in outputs)
+    r.close()
 
-    # 1. User loads dataset upfront in ephemeral session
-    r.execute_line("df = sample:penguins", output_fn=outputs.append)
-    assert "df" in r.tables
-    assert r.tables["df"].shape[0] == 344
 
-    # 2. User names/starts new session
-    outputs.clear()
+def test_repl_new_session_preserves_loaded_tables():
+    r = PytaeRepl()
+    outputs: list[str] = []
     r.execute_line("set new_session = chamiya", output_fn=outputs.append)
-    assert any("Started new session 'chamiya'" in o for o in outputs)
-    assert any("1 tables active in workbench" in o for o in outputs)
-    assert r.session_name == "chamiya"
-    # df MUST remain intact in memory!
-    assert "df" in r.tables
-    assert r.current_df is not None
-
-    # 3. Checkpoint captures df immediately without requiring re-load
-    outputs.clear()
-    r.execute_line("checkpoint abc", output_fn=outputs.append)
-    assert any("Saved checkpoint 'abc' (344 rows x 7 cols)" in o for o in outputs)
-    assert (tmp_path / "chamiya" / "checkpoints" / "abc").exists()
-
+    assert any("persistent disk sessions have been retired" in o for o in outputs)
     r.close()
 
 
-def test_repl_save_session_overwrite_protection(tmp_path, monkeypatch):
-    """Verify that saving to an existing different session requires overwrite = true and purges ghost checkpoints."""
-    from pytae.repl import PytaeRepl, set_sessions_dir
-
-    set_sessions_dir(None)
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("PYTAE_SESSIONS_DIR", raising=False)
-
+def test_repl_save_session_overwrite_protection():
+    r = PytaeRepl()
     outputs: list[str] = []
-    r1 = PytaeRepl()
-    r1.execute_line("set new_session = target_sess", output_fn=outputs.append)
-    r1.execute_line("df = sample:penguins", output_fn=outputs.append)
-    r1.execute_line("checkpoint cp_old1", output_fn=outputs.append)
-    r1.execute_line("checkpoint cp_old2", output_fn=outputs.append)
-    r1.close()
-
-    assert (tmp_path / "target_sess" / "checkpoints" / "cp_old1").exists()
-    assert (tmp_path / "target_sess" / "checkpoints" / "cp_old2").exists()
-
-    # Now in another ephemeral session, try to save to target_sess without overwrite
-    r2 = PytaeRepl()
-    r2.execute_line("df = sample:tips", output_fn=outputs.append)
-    r2.execute_line("checkpoint cp_new", output_fn=outputs.append)
-
-    outputs.clear()
-    r2.execute_line("set save_session = target_sess", output_fn=outputs.append)
-    # MUST reject with collision warning!
-    assert any("already exists" in o for o in outputs)
-    assert any("overwrite = true" in o for o in outputs)
-    assert r2.session_name is None  # Not switched because save was rejected
-
-    # Now with overwrite = true
-    outputs.clear()
-    r2.execute_line("set save_session = target_sess, overwrite = true", output_fn=outputs.append)
-    assert any("Overwrote existing session 'target_sess'" in o for o in outputs)
-    assert r2.session_name == "target_sess"
-
-    # Ghost checkpoints cp_old1 and cp_old2 MUST be gone!
-    assert not (tmp_path / "target_sess" / "checkpoints" / "cp_old1").exists()
-    assert not (tmp_path / "target_sess" / "checkpoints" / "cp_old2").exists()
-    # New checkpoint cp_new MUST be present!
-    assert (tmp_path / "target_sess" / "checkpoints" / "cp_new").exists()
-
-    # Saving within current active session does NOT require overwrite = true
-    outputs.clear()
-    r2.execute_line("checkpoint cp_new2", output_fn=outputs.append)
-    r2.execute_line("set save_session = target_sess", output_fn=outputs.append)
-    assert any("Session saved as 'target_sess'" in o for o in outputs)
-    assert (tmp_path / "target_sess" / "checkpoints" / "cp_new2").exists()
-    r2.close()
-
-    # Test session save rejection and set save_session overwrite
-    r3 = PytaeRepl()
-    r3.execute_line("df = sample:iris", output_fn=outputs.append)
-    r3.execute_line("checkpoint cp_iris", output_fn=outputs.append)
-    outputs.clear()
-    r3.execute_line("session save target_sess", output_fn=outputs.append)
-    assert any("'session save' is not supported" in o for o in outputs)
-
-    outputs.clear()
-    r3.execute_line("set save_session = target_sess, overwrite = true", output_fn=outputs.append)
-    assert any("Overwrote existing session 'target_sess'" in o for o in outputs)
-    assert (tmp_path / "target_sess" / "checkpoints" / "cp_iris").exists()
-    assert not (tmp_path / "target_sess" / "checkpoints" / "cp_new").exists()
-    r3.close()
+    r.execute_line("set save_session = target_sess", output_fn=outputs.append)
+    assert any("persistent disk sessions have been retired" in o for o in outputs)
+    r.close()
 
 
 def test_repl_history_arrow_navigation_strictly_per_session():
@@ -4617,76 +3725,185 @@ def test_repl_no_undo_redo_commands():
 
 
 def test_repl_new_session_overwrite_clears_checkpoint_folders(tmp_path, monkeypatch):
-    """Verify that 'set new_session = <name>, overwrite = true' completely deletes
-    all old checkpoint subdirectories and files so no empty checkpoint folders linger."""
-    from pytae.repl import PytaeRepl, set_sessions_dir
+    """Verify that retired new_session setting prints retirement notice."""
+    from pytae.repl import PytaeRepl
 
-    set_sessions_dir(None)
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("PYTAE_SESSIONS_DIR", raising=False)
-
+    r = PytaeRepl()
     outputs: list[str] = []
-    r1 = PytaeRepl()
-    r1.execute_line("set new_session = old_analysis", output_fn=outputs.append)
-    r1.execute_line("df = sample:penguins", output_fn=outputs.append)
-    r1.execute_line("@threshold = 42", output_fn=outputs.append)
-    r1.execute_line("checkpoint cp1", output_fn=outputs.append)
-    r1.execute_line("checkpoint cp2", output_fn=outputs.append)
-    r1.close()
-
-    cp_dir = tmp_path / "old_analysis" / "checkpoints"
-    assert (cp_dir / "cp1").is_dir()
-    assert (cp_dir / "cp2").is_dir()
-    assert (cp_dir / "cp1" / "meta.json").exists()
-    assert (cp_dir / "cp1" / "vars.json").exists()
-
-    # Now in another session (or same), run set new_session = old_analysis, overwrite = true
-    r2 = PytaeRepl()
-    outputs.clear()
-    r2.execute_line("set new_session = old_analysis, overwrite = true", output_fn=outputs.append)
-    assert any("Overwrote and started new" in o for o in outputs)
-    assert r2.session_name == "old_analysis"
-    assert len(r2.checkpoints) == 0
-
-    # Inside checkpoints/, there MUST be NO child directories (cp1 and cp2 must NOT linger!)
-    assert cp_dir.exists()
-    lingering_items = list(cp_dir.iterdir())
-    assert len(lingering_items) == 0, f"Expected 0 lingering items in checkpoints, got: {lingering_items}"
-    r2.close()
+    r.execute_line("set new_session = old_analysis, overwrite = true", output_fn=outputs.append)
+    assert any("persistent disk sessions have been retired" in o for o in outputs)
+    r.close()
 
 
 def test_repl_new_session_overwrite_same_session_in_place(tmp_path, monkeypatch):
-    """Verify that overwriting the active session in-place in the same REPL cleanly wipes
-    checkpoint folders on disk while preserving active in-memory tables."""
-    from pytae.repl import PytaeRepl, set_sessions_dir
+    """Verify that retired new_session setting prints retirement notice."""
+    from pytae.repl import PytaeRepl
 
-    set_sessions_dir(None)
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("PYTAE_SESSIONS_DIR", raising=False)
-
-    outputs: list[str] = []
     r = PytaeRepl()
-    r.execute_line("set new_session = live_sess", output_fn=outputs.append)
-    r.execute_line("df = sample:penguins", output_fn=outputs.append)
-    r.execute_line("checkpoint snap1", output_fn=outputs.append)
-    r.execute_line("checkpoint snap2", output_fn=outputs.append)
-
-    cp_dir = tmp_path / "live_sess" / "checkpoints"
-    assert (cp_dir / "snap1").is_dir()
-    assert (cp_dir / "snap2").is_dir()
-
-    # Overwrite in-place
-    outputs.clear()
+    outputs: list[str] = []
     r.execute_line("set new_session = live_sess, overwrite = true", output_fn=outputs.append)
-    assert any("Overwrote and started new" in o for o in outputs)
-    assert r.session_name == "live_sess"
-    assert len(r.checkpoints) == 0
-    assert "df" in r.tables  # Tables preserved in workbench memory
-
-    # Verify snap1 and snap2 folders are deleted
-    assert cp_dir.exists()
-    assert len(list(cp_dir.iterdir())) == 0
+    assert any("persistent disk sessions have been retired" in o for o in outputs)
     r.close()
+
+
+def test_cli_export_history_to_python_and_pt(tmp_path):
+    """Verify CLI pytae -export <history.txt> [-o target.py|target.pt] transpiler."""
+    from pytae.cli import main
+
+    hist_file = tmp_path / "raw_history.txt"
+    hist_file.write_text(
+        "# pytae history\n"
+        "status\n"
+        "df = sample:penguins\n"
+        "-head 5\n"
+        "df = df -filter \"species == 'Gentoo'\"\n"
+        "checkpoint snap1\n"
+        "out = df -select species,island\n"
+        "export script foo.pt\n",
+        encoding="utf-8",
+    )
+
+    # 1. Transpile to .py
+    target_py = tmp_path / "pipeline.py"
+    ret = main(["-export", str(hist_file), "-o", str(target_py)])
+    assert ret == 0
+    assert target_py.exists()
+    py_code = target_py.read_text(encoding="utf-8")
+    assert "pt.sample('penguins')" in py_code or 'pt.sample("penguins")' in py_code
+    assert "species == 'Gentoo'" in py_code
+    assert "checkpoint" not in py_code
+    assert "-head" not in py_code
+    import ast
+    ast.parse(py_code)
+
+    # 2. Transpile to .pt
+    target_pt = tmp_path / "pipeline.pt"
+    ret = main(["-export", str(hist_file), "-o", str(target_pt)])
+    assert ret == 0
+    assert target_pt.exists()
+    pt_code = target_pt.read_text(encoding="utf-8")
+    assert "df = sample:penguins" in pt_code
+    assert "checkpoint snap1" not in pt_code
+    assert "-head 5" not in pt_code
+
+    # 3. Headless run of generated .pt script
+    ret_run = main(["-run", str(target_pt)])
+    assert ret_run == 0
+
+
+def test_cli_interactive_resume_script(tmp_path, monkeypatch):
+    """Verify CLI pytae -i <script.pt> populates workbench tables in RAM."""
+    from pytae.repl import PytaeRepl
+
+    script_pt = tmp_path / "init.pt"
+    script_pt.write_text(
+        "t1 = sample:penguins\n"
+        "t2 = sample:tips\n",
+        encoding="utf-8",
+    )
+
+    r = PytaeRepl(script=str(script_pt))
+    assert "t1" in r.tables
+    assert "t2" in r.tables
+    assert r.tables["t1"].shape[0] == 344
+    assert r.tables["t2"].shape[0] == 244
+    r.close()
+
+
+def test_export_script_pt_and_py_e2e(tmp_path, monkeypatch):
+    """Verify export script generates clean .pt and .py scripts, filtering pure inspections."""
+    import ast
+
+    from pytae.cli import main
+    from pytae.repl import PytaeRepl, run_script_file
+
+    monkeypatch.chdir(tmp_path)
+    outputs = []
+    r = PytaeRepl()
+
+    # 1. Pipeline with ingestion, transformations, inspections, and python blocks
+    r.execute_line("peng = sample:penguins", output_fn=outputs.append)
+    r.execute_line("peng -head 5", output_fn=outputs.append)  # pure REPL inspection (must be skipped)
+    r.execute_line("py print(peng.shape)", output_fn=outputs.append)  # pure Python inspection (must be skipped)
+    r.execute_line("peng = peng -filter \"species == 'Adelie'\" -arrange \"bill_length_mm desc\"", output_fn=outputs.append)
+
+    # Mutating Python block
+    py_block = (
+        "py\n"
+        "df = peng.to_pandas()\n"
+        "df['mass_kg'] = df['body_mass_g'] / 1000.0\n"
+        "peng = df.to_pytae()\n"
+        "py"
+    )
+    r.execute_line(py_block, output_fn=outputs.append)
+
+    # Save output
+    out_file = tmp_path / "adelie.parquet"
+    r.execute_line(f"peng -o {out_file.name}", output_fn=outputs.append)
+
+    # 2. Export as .pt script
+    pt_path = tmp_path / "pipeline.pt"
+    outputs.clear()
+    r.execute_line(f"export script {pt_path.name}", output_fn=outputs.append)
+    assert any("Exported Pytae script to" in o for o in outputs)
+    assert pt_path.exists()
+    pt_text = pt_path.read_text(encoding="utf-8")
+
+    # Assert inspections are omitted
+    assert "-head 5" not in pt_text
+    assert "print(peng.shape)" not in pt_text
+    # Assert mutations and py block are preserved
+    assert "peng: sample:penguins" in pt_text or "peng = sample:penguins" in pt_text
+    assert "species == 'Adelie'" in pt_text
+    assert "df['mass_kg']" in pt_text
+    assert f"-o {out_file.name}" in pt_text
+
+    # 3. Export as .py script
+    py_path = tmp_path / "pipeline.py"
+    outputs.clear()
+    r.execute_line(f"export script {py_path.name}", output_fn=outputs.append)
+    assert any("Exported standalone Python script to" in o for o in outputs)
+    assert py_path.exists()
+    py_text = py_path.read_text(encoding="utf-8")
+
+    # Assert inspections are omitted in .py
+    assert ".head(5)" not in py_text
+    assert "print(peng.shape)" not in py_text
+    # Assert Python syntax is valid and methods are chained
+    ast.parse(py_text)
+    assert "import pytae as pt" in py_text
+    assert "filter(\"species == 'Adelie'\")" in py_text or 'filter("species == \'Adelie\'")' in py_text
+    assert "df['mass_kg'] = df['body_mass_g'] / 1000.0" in py_text
+
+    # 4. Test run_script_file on pipeline.pt
+    run_out_file = tmp_path / "run_adelie.parquet"
+    run_script = tmp_path / "run.pt"
+    run_script.write_text(
+        f"df = sample:penguins\n"
+        f"df = df -filter \"species == 'Gentoo'\"\n"
+        f"df -o {run_out_file.name}\n",
+        encoding="utf-8",
+    )
+    exit_code = run_script_file(str(run_script))
+    assert exit_code == 0
+    assert run_out_file.exists()
+
+    # 5. Test CLI execution of .pt via `pytae script.pt` and `pytae -run script.pt`
+    cli_out_file = tmp_path / "cli_adelie.parquet"
+    cli_script = tmp_path / "cli.pt"
+    cli_script.write_text(
+        f"df = sample:penguins\n"
+        f"df = df -filter \"species == 'Chinstrap'\"\n"
+        f"df -o {cli_out_file.name}\n",
+        encoding="utf-8",
+    )
+    res1 = main([str(cli_script)])
+    assert res1 == 0
+    assert cli_out_file.exists()
+
+    res2 = main(["-run", str(cli_script)])
+    assert res2 == 0
+
 
 
 

@@ -901,6 +901,13 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         action="store_true",
         help="enable verbose output with detailed checkpoint and format breakdown (e.g. pytae -sessions -v)",
     )
+    parser.add_argument(
+        "-run",
+        "--run",
+        dest="run_script",
+        metavar="SCRIPT",
+        help="execute a Pytae script (.pt) in batch headless mode and exit (e.g. pytae -run pipeline.pt)",
+    )
     return parser
 
 
@@ -965,6 +972,27 @@ def main(argv: list[str] | None = None) -> int:
         from pytae.doc_search import run_mcp_server
 
         return run_mcp_server()
+
+    # Script execution flag: `pytae -run <script.pt>`
+    if raw_argv and raw_argv[0] in ("-run", "--run"):
+        if len(raw_argv) < 2:
+            parser = build_parser()
+            parser.error("'-run' requires a script file path (e.g. pytae -run pipeline.pt)")
+        from pytae.repl import run_script_file
+
+        return run_script_file(raw_argv[1])
+
+    # History export flag: `pytae -export <history_file> [-o <target.py|target.pt>]`
+    if raw_argv and raw_argv[0] in ("-export", "--export"):
+        from pytae.repl import run_cli_export
+
+        return run_cli_export(raw_argv[1:])
+
+    # Direct script execution: `pytae script.pt`
+    if len(raw_argv) == 1 and raw_argv[0].lower().endswith(".pt"):
+        from pytae.repl import run_script_file
+
+        return run_script_file(raw_argv[0])
 
     # Check for keyword-specific help: `pytae -help <keyword>` or `pytae -h <keyword>`
     if len(raw_argv) >= 2 and raw_argv[0] in ("-h", "--help", "-help") and not raw_argv[1].startswith("-"):
@@ -1050,43 +1078,18 @@ def main(argv: list[str] | None = None) -> int:
             parser.error(msg)
 
     if getattr(args, "list_sessions", False):
-        from pytae.repl import list_saved_sessions
-
-        pattern = None
-        target_dir = None
-        ready_only = getattr(args, "ready_only", False)
-        raw_paths = args.path if isinstance(args.path, list) else ([args.path] if args.path else [])
-        for p in raw_paths:
-            cand = str(p).strip()
-            if cand.lower() in ("-ready", "--ready", "ready"):
-                ready_only = True
-            elif "/" in cand or "\\" in cand or cand in (".", "..") or Path(cand).is_dir():
-                target_dir = cand
-            else:
-                pattern = cand
-
-        list_saved_sessions(
-            print,
-            verbose=getattr(args, "verbose", False),
-            ready_only=ready_only,
-            pattern=pattern,
-            directory=target_dir,
+        print(
+            "pytae: persistent disk sessions have been retired. Use 'checkpoint <name>' inside REPL for in-memory undo, "
+            "'export script <path.py|path.pt>' to save pipelines, or 'pytae <script.pt>' to replay."
         )
         return 0
 
     if getattr(args, "session", None) is not None:
-        args.repl = True
-        sess_arg = str(args.session).strip()
-        from pytae.cli_parsing import normalize_session_path
-        from pytae.repl import is_session_dir, set_sessions_dir
-
-        p = normalize_session_path(sess_arg)
-        if p.is_dir() and not is_session_dir(p):
-            set_sessions_dir(p)
-            args.session = None
-        else:
-            set_sessions_dir(p.parent.resolve())
-            args.session = p.name
+        print(
+            "pytae: persistent disk sessions have been retired. Use 'checkpoint <name>' inside REPL for in-memory undo, "
+            "'export script <path.py|path.pt>' to save pipelines, or 'pytae <script.pt>' to replay."
+        )
+        return 0
 
     has_progress = args.progress is not None
     chunk_size = args.progress or 200_000
@@ -1130,6 +1133,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if getattr(args, "repl", False):
         if raw_paths:
+            if len(raw_paths) == 1 and str(raw_paths[0]).lower().endswith(".pt"):
+                from pytae.repl import repl
+
+                repl(script=raw_paths[0])
+                return 0
             first_path = raw_paths[0] if raw_paths else "data.parquet"
             parser.error(
                 f"'-i' cannot be combined with input files ({', '.join(raw_paths)}). "

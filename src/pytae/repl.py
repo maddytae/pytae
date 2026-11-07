@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import argparse
 import ast
-import atexit
 import datetime
 import gc
 import json
@@ -16,13 +15,12 @@ import re
 import shlex
 import shutil
 import sys
-import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
 import polars as pl
 
-from pytae.cli_run import _format_bytes, _format_table, _process_path
+from pytae.cli_run import _format_table, _process_path
 from pytae.readers import DataFrameReader, get_reader
 
 
@@ -382,21 +380,15 @@ def _is_dedicated_sessions_dir(path: Path) -> bool:
     )
 
 
+_RETIRED_SESSION_MSG = (
+    "pytae: persistent disk sessions have been retired. Use 'checkpoint <name>' for in-memory undo, "
+    "'export script <path.py|path.pt>' to save pipelines, or 'pytae <script.pt>' to replay."
+)
+
+
 def _get_saved_session_names() -> list[str]:
-    """Return list of saved persistent session names on disk."""
-    s_dir = get_sessions_dir()
-    if not s_dir.exists():
-        return []
-    try:
-        # If in a dedicated sessions folder, list all subdirectories;
-        # otherwise, enforce is_session_dir check so project subfolders (src, tests) are omitted.
-        is_dedicated = _is_dedicated_sessions_dir(s_dir)
-        return sorted([
-            p.name for p in s_dir.iterdir()
-            if not p.name.startswith(".") and (is_dedicated and p.is_dir() or is_session_dir(p))
-        ])
-    except Exception:
-        return []
+    """Persistent sessions retired (returns empty list)."""
+    return []
 
 
 def list_saved_sessions(
@@ -407,157 +399,8 @@ def list_saved_sessions(
     pattern: str | None = None,
     directory: Path | str | None = None,
 ) -> None:
-    """List saved persistent Pytae sessions stored on disk, with optional ready-only, pattern, and directory filtering."""
-    import fnmatch
-
-    if directory is not None:
-        raw_target = str(directory).strip()
-        from pytae.cli_parsing import normalize_session_path
-        s_dir = Path.cwd().resolve() if raw_target.lower() == "default" else normalize_session_path(raw_target)
-    else:
-        s_dir = get_sessions_dir()
-
-    # If the target directory itself IS a session, display it directly
-    if is_session_dir(s_dir):
-        output_fn(f"Sessions Directory: {s_dir.parent}")
-        raw_sessions = [s_dir]
-    else:
-        output_fn(f"Sessions Directory: {s_dir}")
-        if not s_dir.exists():
-            output_fn("No saved sessions found. (Use 'session save <name>' or 'set session_name = <name>' in REPL to persist one.)")
-            return
-        try:
-            is_dedicated = _is_dedicated_sessions_dir(s_dir)
-            # If dedicated sessions folder (e.g. ~/.pytae/sessions or a folder named sessions),
-            # list all non-hidden entries so offline/inaccessible entries are visible.
-            # If general project directory (e.g. . or workspace), only list entries identified as sessions.
-            if is_dedicated:
-                raw_sessions = sorted([p for p in s_dir.iterdir() if not p.name.startswith(".")])
-            else:
-                raw_sessions = sorted([p for p in s_dir.iterdir() if not p.name.startswith(".") and is_session_dir(p)])
-        except (OSError, PermissionError) as exc:
-            output_fn(f"pytae: could not access sessions directory: {exc}")
-            return
-
-    if not raw_sessions:
-        output_fn("No saved sessions found. (Use 'session save <name>' or 'set session_name = <name>' in REPL to persist one.)")
-        return
-
-    # Check accessibility / readiness of each session
-    session_status: dict[Path, bool] = {}
-    for p in raw_sessions:
-        try:
-            session_status[p] = p.is_dir()
-        except (OSError, PermissionError):
-            session_status[p] = False
-
-    # Filter by pattern if provided
-    sessions = raw_sessions
-    if pattern:
-        sessions = [p for p in sessions if fnmatch.fnmatchcase(p.name, pattern) or p.name == pattern]
-        if not sessions:
-            avail = ", ".join(p.name for p in raw_sessions) if raw_sessions else "none"
-            output_fn(f"pytae: no saved sessions match pattern '{pattern}'. Available sessions: {avail}")
-            return
-
-    # Filter by ready_only if requested
-    if ready_only:
-        ready_sessions = [p for p in sessions if session_status.get(p, False)]
-        offline_count = len(sessions) - len(ready_sessions)
-        if not ready_sessions:
-            if pattern:
-                output_fn(f"pytae: no ready sessions match pattern '{pattern}' ({offline_count} offline omitted).")
-            else:
-                output_fn(f"No ready sessions found ({offline_count} offline omitted).")
-            return
-        sessions = ready_sessions
-
-    output_fn("")
-    if pattern:
-        ready_tag = " Ready" if ready_only else ""
-        output_fn(f"Saved Sessions matching '{pattern}' ({len(sessions)}{ready_tag} found):")
-    elif ready_only:
-        offline_count = len(raw_sessions) - len(sessions)
-        omitted = f", {offline_count} offline omitted" if offline_count > 0 else ""
-        output_fn(f"Saved Sessions ({len(sessions)} Ready found{omitted}):")
-    else:
-        output_fn(f"Saved Sessions ({len(sessions)} found):")
-
-    for s_path in sessions:
-        output_fn(f"  - {s_path.name}")
-        output_fn(f"    Path:        {s_path}")
-        is_ready = session_status.get(s_path, False)
-        if not is_ready:
-            output_fn("    Status:      [Offline / Unreachable]" if not verbose else "    Status:      [Offline / Unreachable] (path is not accessible or not a directory)")
-            continue
-
-        output_fn("    Status:      Ready")
-        if not verbose:
-            continue
-
-        meta_file = s_path / "session.json"
-        meta: dict[str, Any] = {}
-        if meta_file.exists():
-            try:
-                meta = json.loads(meta_file.read_text(encoding="utf-8"))
-            except Exception:
-                meta = {}
-
-        total_bytes = sum(f.stat().st_size for f in s_path.rglob("*") if f.is_file())
-        output_fn(f"    Size:        {_format_bytes(total_bytes)}")
-        up_date = meta.get("updated_at") or meta.get("created_at") or ""
-        if up_date:
-            output_fn(f"    Updated:     {up_date}")
-
-        cp_dir = s_path / "checkpoints"
-        cp_subdirs = sorted([p for p in cp_dir.iterdir() if p.is_dir()]) if cp_dir.exists() else []
-        if not cp_subdirs:
-            output_fn("    Checkpoints: None")
-        else:
-            output_fn(f"    Checkpoints ({len(cp_subdirs)}):")
-            for cp_folder in cp_subdirs:
-                cp_name = cp_folder.name
-                cp_bytes = sum(f.stat().st_size for f in cp_folder.rglob("*") if f.is_file())
-                m_file = cp_folder / "meta.json"
-                cp_m: dict[str, Any] = {}
-                if m_file.exists():
-                    try:
-                        cp_m = json.loads(m_file.read_text(encoding="utf-8"))
-                    except Exception:
-                        cp_m = {}
-
-                cp_fmt = cp_m.get("format")
-                if not cp_fmt:
-                    has_pq = any(f.suffix in (".parquet", ".pq") for f in cp_folder.iterdir() if f.is_file())
-                    cp_fmt = "parquet" if has_pq else "ipc"
-
-                created_at = cp_m.get("created_at")
-                if not created_at and cp_folder.exists():
-                    try:
-                        created_at = datetime.datetime.fromtimestamp(cp_folder.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-                    except Exception:
-                        created_at = ""
-                time_str = f"  {created_at}" if created_at else ""
-
-                act = cp_m.get("active_table")
-                active_tag = f" [active: {act}]" if act else ""
-                output_fn(f"      * {cp_name} [{cp_fmt}] ({_format_bytes(cp_bytes)}){time_str}{active_tag}")
-
-                tbls = cp_m.get("tables", {})
-                if isinstance(tbls, dict) and tbls:
-                    for tbl_name, tbl_info in tbls.items():
-                        if isinstance(tbl_info, dict):
-                            f_name = tbl_info.get("file", "")
-                            s = tbl_info.get("shape", [])
-                            shape_str = f": {s[0]:,} rows x {s[1]} cols" if len(s) == 2 else ""
-                            file_tag = f" ({f_name})" if f_name else ""
-                            output_fn(f"        - {tbl_name}{shape_str}{file_tag}")
-                        else:
-                            output_fn(f"        - {tbl_name}")
-                else:
-                    for f in sorted(cp_folder.iterdir()):
-                        if f.is_file() and f.name != "meta.json":
-                            output_fn(f"        - {f.name} ({_format_bytes(f.stat().st_size)})")
+    """Persistent disk sessions have been retired."""
+    output_fn(_RETIRED_SESSION_MSG)
 
 
 try:
@@ -1218,12 +1061,15 @@ INSPECTION & EXPORT:
   -diff [<tbl1>] <tbl2> [on=<key>] : Compare two tables or active table against <tbl2> (or checkpoint)
   -time [N]              : Benchmark execution over N runs (default: 1), e.g. -distinct -time 3
   -o <path> / -o clip    : Export table to file (Parquet/CSV/NDJSON) or clipboard
+  export <path> / clip   : Export table to file or clipboard (synonym for -o)
+  export script <path>   : Export reproducible pipeline to standalone Python (.py) or Pytae (.pt) script
   <cmd> | <shell_cmd>    : Pipe command output to shell tool (e.g. -cols | grep bill)
 
 STATE & WORKBENCH:
   reset                  : Revert to latest checkpoint (or initial read if no checkpoints)
   reset initial          : Strictly revert to initial read even if checkpoints exist
   history [N]            : Show numbered audit log of all commands executed in session
+  export script <path>   : Export session pipeline to runnable Python (.py) or Pytae (.pt) script
   checkpoint <name>      : Save snapshot of entire workbench (all tables in session)
   restore <name>         : Restore entire workbench to saved checkpoint
   status checkpoint [name] : Inspect checkpoint snapshot or list all saved checkpoints
@@ -1368,7 +1214,6 @@ _DISALLOWED_ALIASES: dict[str, str] = {
     "read": "load",
     "open": "load",
     "save": "-o <path>",
-    "export": "-o <path>",
     "quit": "exit",
     "q": "exit",
     ":q": "exit",
@@ -1579,6 +1424,16 @@ def _split_respecting_quotes(s: str, seps: str = ",;") -> list[str]:
 
 
 _SET_KNOWN_KEYS = {
+    "max_rows",
+    "rows",
+    "max_cols",
+    "cols",
+    "float_precision",
+    "precision",
+    "comma",
+}
+
+_SET_RETIRED_KEYS = {
     "new_session",
     "load_session",
     "save_session",
@@ -1590,19 +1445,9 @@ _SET_KNOWN_KEYS = {
     "checkpoint_fmt",
     "cp_format",
     "cp_fmt",
-    "save_code",
-    "save_commands",
-    "save_command",
     "sessions_dir",
     "session_dir",
     "convert",
-    "max_rows",
-    "rows",
-    "max_cols",
-    "cols",
-    "float_precision",
-    "precision",
-    "comma",
     "move",
     "overwrite",
     "force",
@@ -1751,6 +1596,390 @@ def _is_multiline_complete(buffer: str) -> bool:
     return True
 
 
+def _transpile_pipeline_tokens_to_python(tokens: list[str]) -> str:
+    """Convert REPL pipeline tokens into Python method chaining syntax."""
+    calls: list[str] = []
+    i = 0
+    n = len(tokens)
+    while i < n:
+        tok = tokens[i]
+        low = tok.lower()
+
+        # -filter <expr>
+        if low in ("-filter", "--filter") and i + 1 < n:
+            calls.append(f".filter({repr(tokens[i + 1])})")
+            i += 2
+            continue
+
+        # -select <cols>
+        if low in ("-select", "--select") and i + 1 < n:
+            cols_val = tokens[i + 1]
+            col_parts = [c.strip() for c in cols_val.split(",") if c.strip()]
+            formatted_cols = ", ".join(repr(c) for c in col_parts)
+            calls.append(f".select({formatted_cols})")
+            i += 2
+            continue
+
+        # -mutate <expr>
+        if low in ("-mutate", "--mutate") and i + 1 < n:
+            calls.append(f".mutate({repr(tokens[i + 1])})")
+            i += 2
+            continue
+
+        # -sort / -arrange <col> [desc]
+        if low in ("-sort", "--sort", "-arrange", "--arrange") and i + 1 < n:
+            col_val = tokens[i + 1]
+            if i + 2 < n and tokens[i + 2].lower() in ("desc", "descending"):
+                calls.append(f".sort({repr(col_val)}, descending=True)")
+                i += 3
+            else:
+                calls.append(f".sort({repr(col_val)})")
+                i += 2
+            continue
+
+        # -distinct
+        if low in ("-distinct", "--distinct"):
+            calls.append(".distinct()")
+            i += 1
+            continue
+
+        # -dropna
+        if low in ("-dropna", "--dropna"):
+            calls.append(".dropna()")
+            i += 1
+            continue
+
+        # -fillna <val>
+        if low in ("-fillna", "--fillna") and i + 1 < n:
+            calls.append(f".fillna({repr(tokens[i + 1])})")
+            i += 2
+            continue
+
+        # -head [N]
+        if low in ("-head", "--head"):
+            if i + 1 < n and tokens[i + 1].isdigit():
+                calls.append(f".head({int(tokens[i + 1])})")
+                i += 2
+            else:
+                calls.append(".head(10)")
+                i += 1
+            continue
+
+        # -tail [N]
+        if low in ("-tail", "--tail"):
+            if i + 1 < n and tokens[i + 1].isdigit():
+                calls.append(f".tail({int(tokens[i + 1])})")
+                i += 2
+            else:
+                calls.append(".tail(10)")
+                i += 1
+            continue
+
+        # -sample [N]
+        if low in ("-sample", "--sample"):
+            if i + 1 < n and tokens[i + 1].isdigit():
+                calls.append(f".sample({int(tokens[i + 1])})")
+                i += 2
+            else:
+                calls.append(".sample(5)")
+                i += 1
+            continue
+
+        # -join <other> [on=<key>] [how=<how>]
+        if low in ("-join", "--join") and i + 1 < n:
+            other_tbl = tokens[i + 1]
+            on_key = None
+            how = "inner"
+            j = i + 2
+            while j < n and not tokens[j].startswith("-"):
+                arg = tokens[j]
+                if arg.lower().startswith("on="):
+                    on_key = arg.split("=", 1)[1].strip("\"'")
+                elif arg.lower().startswith("how="):
+                    how = arg.split("=", 1)[1].strip("\"'")
+                j += 1
+            on_str = f", on={repr(on_key)}" if on_key else ""
+            calls.append(f".join({other_tbl}{on_str}, how={repr(how)})")
+            i = j
+            continue
+
+        # -o <dest>
+        if low == "-o" and i + 1 < n:
+            dest = tokens[i + 1].strip("\"'")
+            calls.append(f".save({repr(dest)})")
+            i += 2
+            continue
+
+        # Advance if unknown or unhandled flag
+        i += 1
+
+    return "".join(calls)
+
+
+def _compile_history_to_python(entries: list[str], table_sources: dict[str, str] | None = None) -> str:
+    """Compile replayable REPL history into a standalone, executable Python script."""
+    import ast
+    import shlex
+    from datetime import datetime
+
+    lines: list[str] = [
+        '"""Auto-generated standalone Python pipeline script from pytae REPL session."""',
+        f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        "",
+        "import polars as pl",
+        "import pytae as pt",
+        "",
+    ]
+
+    for raw_entry in entries:
+        clean = raw_entry.strip()
+        if not clean or clean.startswith("#"):
+            continue
+
+        # 1. Python blocks: emit Python code directly
+        if clean.startswith("py"):
+            py_body = clean[2:].strip()
+            if py_body.endswith("\npy"):
+                py_body = py_body[:-3].strip()
+            elif py_body.endswith(" py"):
+                py_body = py_body[:-3].strip()
+            if py_body:
+                lines.append("# Custom Python transformation")
+                lines.append(py_body)
+                lines.append("")
+            continue
+
+        # 2. Ingestion: `load <path> as <alias>` or `load <path>`
+        if clean.startswith("load "):
+            toks = clean.split()
+            if len(toks) >= 4 and toks[2].lower() == "as":
+                alias = toks[3]
+                path = toks[1].strip("\"'")
+                lines.append(f"{alias} = pt.read({repr(path)})")
+            elif len(toks) >= 2:
+                path = toks[1].strip("\"'")
+                alias = Path(path).stem or "df"
+                lines.append(f"{alias} = pt.read({repr(path)})")
+            continue
+
+        # 3. Colon ingestion: `<alias>: <path>`
+        if ":" in clean and not clean.startswith(("-", "*", "py")) and "=" not in clean:
+            parts = clean.split(":", 1)
+            alias = parts[0].strip()
+            path = parts[1].strip().strip("\"'")
+            if alias.isidentifier() and path:
+                lines.append(f"{alias} = pt.read({repr(path)})")
+                continue
+
+        # 4. Assignments: `<target> = <expression>`
+        if "=" in clean and not clean.startswith("-"):
+            target, expr = [p.strip() for p in clean.split("=", 1)]
+            if target.isidentifier():
+                if expr.startswith("sample:"):
+                    s_name = expr.split(":", 1)[1].strip()
+                    lines.append(f"{target} = pt.sample({repr(s_name)})")
+                    continue
+                if expr.startswith("load "):
+                    p = expr.split("load ", 1)[1].strip().strip("\"'")
+                    lines.append(f"{target} = pt.read({repr(p)})")
+                    continue
+                if expr.startswith(("-sql", "--sql")):
+                    q = expr.split(None, 1)[1].strip().strip("\"'") if len(expr.split(None, 1)) > 1 else ""
+                    lines.append(f"{target} = pt.sql({repr(q)})")
+                    continue
+
+                toks = shlex.split(expr)
+                if toks:
+                    src_token = toks[0]
+                    if "." in src_token or "/" in src_token or "\\" in src_token:
+                        src_code = f"pt.read({repr(src_token)})"
+                    else:
+                        src_code = src_token
+                    chain = _transpile_pipeline_tokens_to_python(toks[1:])
+                    lines.append(f"{target} = {src_code}{chain}")
+                    continue
+
+        # 5. Direct SQL: `-sql "<query>"`
+        if clean.startswith(("-sql", "--sql")):
+            parts = clean.split(None, 1)
+            q = parts[1].strip().strip("\"'") if len(parts) > 1 else ""
+            lines.append(f"res = pt.sql({repr(q)})")
+            continue
+
+        # 6. Output commands: `<tbl> -o <path>` or `export <path>`
+        toks = clean.split()
+        if len(toks) >= 2 and toks[-2] == "-o":
+            dest = toks[-1].strip("\"'")
+            src = toks[0] if len(toks) > 2 else "df"
+            lines.append(f"{src}.save({repr(dest)})")
+            continue
+        if len(toks) >= 2 and toks[0] in ("export", "save"):
+            dest = toks[1].strip("\"'")
+            lines.append(f"df.save({repr(dest)})")
+            continue
+
+    code_str = "\n".join(lines) + "\n"
+    try:
+        ast.parse(code_str)
+    except SyntaxError:
+        pass
+    return code_str
+
+
+def _compile_history_to_pt(entries: list[str], filename: str = "pipeline.pt") -> str:
+    """Compile replayable REPL history into a clean, replayable Pytae script."""
+    from datetime import datetime
+
+    lines: list[str] = [
+        f"# Pytae Script: {filename}",
+        f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        "",
+    ]
+    for raw_entry in entries:
+        clean = raw_entry.strip()
+        if not clean or clean.startswith("#"):
+            continue
+        lines.append(clean)
+
+    return "\n".join(lines) + "\n"
+
+
+def _is_replayable_entry_static(entry: str) -> bool:
+    """Determine if a history entry is a state-mutating transformation or artifact export.
+
+    Exploratory previews (bare -pivot, -head, -describe, inspection, etc.) and session
+    comments are excluded from exported replay scripts.
+    """
+    clean = entry.strip()
+    if not clean or clean.startswith("#"):
+        return False
+    if clean.startswith("*checkpoint:") and clean.endswith("*"):
+        return False
+    if clean.startswith("checkpoint "):
+        return False
+    if clean.startswith("history") or clean in ("tables", "checkpoints", "session", "sessions", "status", "clear", "help"):
+        return False
+    if clean.startswith("status "):
+        return False
+
+    # Script export commands themselves are excluded from exported replay scripts
+    if clean.startswith(("export script", "export code", "save script", "save code", "-export script", "-save script")):
+        return False
+
+    # Python snippets: only replayable if they perform state mutation via .to_pytae()
+    if clean.startswith("py"):
+        return ".to_pytae(" in clean
+
+    # Session configuration commands ('set ...') are excluded from exported scripts
+    if clean == "set" or clean.startswith("set ") or clean.startswith("set="):
+        return False
+
+    # Variable assignments (df = ..., df1 = df -pivot ..., etc.) are state mutations
+    if "=" in clean and not clean.startswith("-"):
+        left_part = clean.split("=", 1)[0].strip()
+        if left_part.isidentifier():
+            return True
+
+    # Ingestion commands: load <path> [as <alias>]
+    if clean.startswith("load "):
+        return True
+
+    # Colon-style ingestion: <alias>: <path>
+    if ":" in clean and not clean.startswith(("-", "*", "py")) and "=" not in clean:
+        parts = clean.split(":", 1)
+        if parts[0].strip().isidentifier() and not parts[1].strip().startswith("="):
+            return True
+
+    # Export commands: export <path>, save <path>
+    if clean.startswith(("export ", "save ", "-export ", "-save ")):
+        tokens = clean.split()
+        if len(tokens) >= 2:
+            target = tokens[1].lower().strip("'\"")
+            if target not in ("clip", "clipboard", "script", "code"):
+                return True
+        return False
+
+    tokens = clean.split()
+    for i, t in enumerate(tokens):
+        if t == "-o" and i + 1 < len(tokens):
+            target = tokens[i + 1].lower().strip("'\"")
+            if target in ("clip", "clipboard"):
+                continue
+            return True
+        if t.startswith("-o="):
+            target = t.split("=", 1)[1].lower().strip("'\"")
+            if target in ("clip", "clipboard"):
+                continue
+            return True
+
+    # SQL statements: -sql "<query>"
+    if clean.startswith(("-sql", "--sql")):
+        return True
+
+    # Explicit reset / restore / table removal or mutation of state
+    if clean.startswith("reset") or clean.startswith("restore "):
+        return True
+    if clean.startswith("rm table ") or clean == "rm table *":
+        return True
+    if clean.startswith("rename ") or clean.startswith("use "):
+        return True
+
+    return False
+
+
+def run_cli_export(argv: list[str]) -> int:
+    """Export a recorded history log file to a standalone Python (.py) or Pytae (.pt) script."""
+    if not argv:
+        print("Usage: pytae -export <history_file> [-o <target.py|target.pt>]")
+        return 1
+
+    history_file_str = argv[0]
+    out_target: str | None = None
+    i = 1
+    while i < len(argv):
+        arg = argv[i]
+        if arg in ("-o", "-output", "--output") and i + 1 < len(argv):
+            out_target = argv[i + 1]
+            i += 2
+        elif arg.startswith(("-o=", "-output=", "--output=")):
+            out_target = arg.split("=", 1)[1]
+            i += 1
+        elif out_target is None and not arg.startswith("-"):
+            out_target = arg
+            i += 1
+        else:
+            i += 1
+
+    hist_p = Path(os.path.expanduser(history_file_str)).resolve()
+    if not hist_p.exists():
+        print(f"pytae error: history file '{history_file_str}' not found.")
+        return 1
+
+    lines = hist_p.read_text(encoding="utf-8").splitlines()
+    replayable = [item.strip() for item in lines if _is_replayable_entry_static(item)]
+
+    if not replayable:
+        print(f"pytae: No state-mutating commands found in '{history_file_str}'.")
+        return 0
+
+    if out_target is None:
+        out_target = f"{hist_p.stem}.py"
+
+    out_p = Path(os.path.expanduser(out_target)).resolve()
+    out_p.parent.mkdir(parents=True, exist_ok=True)
+
+    if out_p.suffix.lower() == ".py":
+        content = _compile_history_to_python(replayable)
+        desc = "standalone Python script"
+    else:
+        content = _compile_history_to_pt(replayable, out_p.name)
+        desc = "Pytae script"
+
+    out_p.write_text(content, encoding="utf-8")
+    print(f"Exported {desc} to {out_p}.")
+    return 0
+
+
 class PytaeRepl:
     """Stateful interactive REPL environment for pytae."""
 
@@ -1768,10 +1997,11 @@ class PytaeRepl:
         reader_kwargs: dict[str, Any] | None = None,
         session: str | None = None,
         variables: dict[str, Any] | None = None,
+        script: Path | str | None = None,
         **kwargs: Any,
     ) -> None:
         self.prompt = prompt
-        self.session_name: str | None = session.strip() if session and str(session).strip() else None
+        self.session_name: str | None = None
         self.reader_kwargs: dict[str, Any] = dict(reader_kwargs or {})
         if encoding:
             self.reader_kwargs["encoding"] = encoding
@@ -1789,14 +2019,12 @@ class PytaeRepl:
         self.orig_tables: dict[str, pl.DataFrame] = {}
         self.initial_tables: dict[str, pl.DataFrame] = {}
         self.initial_df: pl.DataFrame | None = None
-        self.checkpoints: dict[str, Any] = {}
-        self.checkpoint_format: str = "ipc"
+        self.checkpoints: dict[str, dict[str, Any]] = {}
         self.save_history_file: str | None = None
         self.max_rows: int = 10
         self.max_cols: int | None = None
         self.float_precision: int | None = None
         self.comma: bool = False
-        self._cp_temp_dir: tempfile.TemporaryDirectory[str] | None = None
         self.table_sources: dict[str, str] = {}
         self.history: list[str] = []
         self._raw_history: list[str] = []
@@ -1852,9 +2080,6 @@ class PytaeRepl:
             self.initial_df = self.current_df
             self.table_sources[initial_name] = self.path.name
 
-        if self.session_name:
-            self._load_session_from_disk(self.session_name)
-
         import datetime
 
         self._session_start_time = datetime.datetime.now()
@@ -1888,62 +2113,40 @@ class PytaeRepl:
         except Exception:
             pass
 
+        if script:
+            self._load_and_run_script(script)
+
+    def _load_and_run_script(self, script_path_str: Path | str) -> bool:
+        """Load and execute a .pt script file into the REPL state before interactive prompt."""
+        p = Path(os.path.expanduser(str(script_path_str))).resolve()
+        if not p.exists():
+            return False
+        lines = p.read_text(encoding="utf-8").splitlines()
+        in_py = False
+        py_buf: list[str] = []
+        for raw_line in lines:
+            line = raw_line.rstrip()
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if stripped == "py":
+                if not in_py:
+                    in_py = True
+                    py_buf.clear()
+                else:
+                    in_py = False
+                    self.execute_line(f"py\n{chr(10).join(py_buf)}")
+                    py_buf.clear()
+                continue
+            if in_py:
+                py_buf.append(line)
+                continue
+            self.execute_line(stripped)
+        return True
+
     def _is_replayable_entry(self, entry: str) -> bool:
-        """Determine if a history entry is a state-mutating transformation or artifact export.
-
-        Exploratory previews (bare -pivot, -head, -describe, inspection, etc.) and session
-        checkpoints/comments are excluded from exported replay scripts.
-        """
-        clean = entry.strip()
-        if not clean or clean.startswith("#"):
-            return False
-        if clean.startswith("*checkpoint:") and clean.endswith("*"):
-            return False
-        if clean.startswith("checkpoint "):
-            return False
-        if clean.startswith("history") or clean == "tables" or clean == "checkpoints" or clean == "session":
-            return False
-
-        # Session configuration commands ('set ...') are REPL environment settings and are excluded from exported scripts
-        if clean == "set" or clean.startswith("set ") or clean.startswith("set="):
-            return False
-
-        # Variable assignments (df = ..., df1 = df -pivot ..., etc.) are state mutations
-        if "=" in clean and not clean.startswith("-"):
-            left_part = clean.split("=", 1)[0].strip()
-            if left_part.isidentifier():
-                return True
-
-        # Ingestion commands: load <path> [as <alias>]
-        if clean.startswith("load "):
-            return True
-
-        # Export commands: -o <path> or pipeline ending with -o <path>
-        # Must target an actual file on disk; clipboard exports ('clip' / 'clipboard')
-        # are transient interactive actions and excluded from replay scripts.
-        tokens = clean.split()
-        for i, t in enumerate(tokens):
-            if t == "-o" and i + 1 < len(tokens):
-                target = tokens[i + 1].lower().strip("'\"")
-                if target in ("clip", "clipboard"):
-                    continue
-                return True
-            if t.startswith("-o="):
-                target = t.split("=", 1)[1].lower().strip("'\"")
-                if target in ("clip", "clipboard"):
-                    continue
-                return True
-
-        # Explicit reset / restore / table removal or mutation of state
-        if clean.startswith("reset") or clean.startswith("restore "):
-            return True
-        if clean.startswith("rm table ") or clean == "rm table *":
-            return True
-        if clean.startswith("rename ") or clean.startswith("use "):
-            return True
-
-        # Otherwise, bare pipelines without assignment or -o (e.g. -pivot ..., -filter ..., -head 5) are exploratory previews
-        return False
+        """Determine if a history entry is a state-mutating transformation or artifact export."""
+        return _is_replayable_entry_static(entry)
 
     def _log_history_line(self, raw_line: str) -> None:
         """Faithfully record every input line to the session history file (~/.pytae/history/)."""
@@ -1983,34 +2186,57 @@ class PytaeRepl:
         """Evaluate a variable expression against session variables."""
         return _eval_var_reference(expr_str, self.variables)
 
+    def _cmd_export_script(self, target_path_str: str, output_fn: Callable[[str], None]) -> bool:
+        """Export session commands to an executable Python (.py) or Pytae (.pt) script."""
+        if not target_path_str:
+            output_fn("Usage: export script <path.py|path.pt>")
+            return False
+
+        from pytae.cli_parsing import normalize_git_bash_path
+
+        clean_path = normalize_git_bash_path(target_path_str.strip("'\""))
+        target_path = Path(os.path.expanduser(clean_path)).resolve()
+
+        replayable = [e for e in self.history if self._is_replayable_entry(e)]
+        if not replayable:
+            output_fn(f"pytae: No state-mutating commands executed; '{target_path.name}' not created.")
+            return False
+
+        try:
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            if target_path.suffix.lower() == ".py":
+                content = _compile_history_to_python(replayable, self.table_sources)
+                desc = "standalone Python script"
+            else:
+                content = _compile_history_to_pt(replayable, target_path.name)
+                desc = "Pytae script"
+
+            target_path.write_text(content, encoding="utf-8")
+            output_fn(f"Exported {desc} to {target_path}.")
+            return True
+        except Exception as exc:
+            output_fn(f"pytae: Error exporting script to '{target_path_str}': {exc}")
+            return False
+
     def _export_session_history(self, target_path_str: str, output_fn: Callable[[str], None]) -> bool:
         """Export session commands to a named file.
 
         Expands '~' and resolves paths. Relative paths are resolved against current working directory.
         """
-        if getattr(self, "session_cmd_count", 0) == 0:
+        if getattr(self, "session_cmd_count", 0) == 0 and not any(self._is_replayable_entry(e) for e in self.history):
             output_fn(f"pytae: No commands were executed; '{target_path_str}' not created.")
             return False
 
         target_path = Path(os.path.expanduser(target_path_str)).resolve()
         try:
             target_path.parent.mkdir(parents=True, exist_ok=True)
-            import shutil
-
-            if self.session_commands_path.exists():
-                shutil.copyfile(self.session_commands_path, target_path)
+            replayable = [e for e in self.history if self._is_replayable_entry(e)]
+            if target_path.suffix.lower() == ".py":
+                content = _compile_history_to_python(replayable, self.table_sources)
             else:
-                lines = [
-                    f"# Pytae REPL Code: {target_path.name}",
-                    f"# Started: {self._session_start_time.strftime('%Y-%m-%d %H:%M:%S')}",
-                    "",
-                ]
-                for entry in self.history:
-                    clean = entry.strip()
-                    if not self._is_replayable_entry(clean):
-                        continue
-                    lines.append(clean)
-                target_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                content = _compile_history_to_pt(replayable, target_path.name)
+
+            target_path.write_text(content, encoding="utf-8")
             output_fn(f"Session code saved to {target_path}.")
             return True
         except Exception as exc:
@@ -2030,154 +2256,63 @@ class PytaeRepl:
         self.orig_df = df
         self.current_df = df
 
-    def _get_cp_dir(self) -> Path:
-        """Return the checkpoint directory for disk-backed checkpoints, creating lazily if needed."""
-        if self.session_name:
-            p = get_sessions_dir() / self.session_name / "checkpoints"
-            p.mkdir(parents=True, exist_ok=True)
-            return p
-        if self._cp_temp_dir is None:
-            self._cp_temp_dir = tempfile.TemporaryDirectory(prefix="pytae_cp_")
-            atexit.register(self._cleanup_cp_dir)
-        return Path(self._cp_temp_dir.name)
-
-    def _cleanup_cp_dir(self) -> None:
-        """Clean up the temporary session checkpoint directory from disk."""
-        if self.session_name is not None:
-            return
-        if self._cp_temp_dir is not None:
-            try:
-                self._cp_temp_dir.cleanup()
-            except Exception:
-                pass
-            self._cp_temp_dir = None
-
     def _delete_checkpoint(self, name: str) -> bool:
-        """Delete a saved checkpoint and remove its files from disk."""
+        """Delete a saved checkpoint from in-memory workbench."""
         if name not in self.checkpoints:
             return False
-        snap = self.checkpoints.pop(name)
-        if isinstance(snap, dict) and "dir" in snap:
-            _safe_rmtree(snap["dir"])
-        if self.session_name:
-            self._save_session_metadata()
+        self.checkpoints.pop(name, None)
         return True
 
     def _clear_all_checkpoints(self) -> int:
-        """Delete all saved checkpoints and wipe their directory trees from disk."""
+        """Delete all saved checkpoints from in-memory workbench."""
         count = len(self.checkpoints)
-        for name in list(self.checkpoints.keys()):
-            self._delete_checkpoint(name)
+        self.checkpoints.clear()
         return count
 
     def _get_checkpoint_df(self, name: str) -> pl.DataFrame | None:
-        """Retrieve a DataFrame from a checkpoint (loads on-demand from disk IPC or memory)."""
+        """Retrieve a DataFrame from an in-memory checkpoint."""
         if name not in self.checkpoints:
             return None
         snap = self.checkpoints[name]
         if isinstance(snap, pl.DataFrame):
             return snap
         if isinstance(snap, dict):
-            if "dir" in snap:
-                cp_dir = Path(snap["dir"])
-                meta_file = cp_dir / "meta.json"
-                meta = json.loads(meta_file.read_text(encoding="utf-8")) if meta_file.exists() else snap
-                tbl_meta = meta.get("tables", {})
-                if not tbl_meta:
-                    return None
-                act = meta.get("active_table")
-                if act and act in tbl_meta:
-                    f_name = (
-                        tbl_meta[act].get("file", _safe_ipc_filename(act))
-                        if isinstance(tbl_meta[act], dict)
-                        else _safe_ipc_filename(act)
-                    )
-                    try:
-                        return _read_checkpoint_file(cp_dir / f_name)
-                    except Exception:
-                        pass
-                if len(tbl_meta) == 1:
-                    first_k, first_v = next(iter(tbl_meta.items()))
-                    f_name = (
-                        first_v.get("file", _safe_ipc_filename(first_k))
-                        if isinstance(first_v, dict)
-                        else _safe_ipc_filename(first_k)
-                    )
-                    try:
-                        return _read_checkpoint_file(cp_dir / f_name)
-                    except Exception:
-                        pass
-                if "_current_df" in tbl_meta:
-                    f_name = (
-                        tbl_meta["_current_df"].get("file", "_current_df.ipc")
-                        if isinstance(tbl_meta["_current_df"], dict)
-                        else "_current_df.ipc"
-                    )
-                    try:
-                        return _read_checkpoint_file(cp_dir / f_name)
-                    except Exception:
-                        pass
-                for k, v in tbl_meta.items():
-                    f_name = v.get("file", _safe_ipc_filename(k)) if isinstance(v, dict) else _safe_ipc_filename(k)
-                    try:
-                        return _read_checkpoint_file(cp_dir / f_name)
-                    except Exception:
-                        pass
-                return None
             tbls = snap.get("tables", {})
-            if snap.get("active_table") and snap["active_table"] in tbls:
-                return tbls[snap["active_table"]]
+            act = snap.get("active_table")
+            if act and act in tbls:
+                df = tbls[act]
+                if isinstance(df, pl.DataFrame):
+                    return df
             if len(tbls) == 1:
-                return next(iter(tbls.values()))
-            if snap.get("current_df") is not None:
+                df = next(iter(tbls.values()))
+                if isinstance(df, pl.DataFrame):
+                    return df
+            if snap.get("current_df") is not None and isinstance(snap["current_df"], pl.DataFrame):
                 return snap["current_df"]
         return None
 
     def _get_checkpoint_table_df(self, cp_name: str, table_name: str) -> pl.DataFrame | None:
-        """Retrieve a specific table's DataFrame from a named checkpoint."""
+        """Retrieve a specific table's DataFrame from a named in-memory checkpoint."""
         if cp_name not in self.checkpoints:
             return None
         snap = self.checkpoints[cp_name]
         if isinstance(snap, pl.DataFrame):
             return snap if table_name in ("df", "_current_df") else None
         if isinstance(snap, dict):
-            if "dir" in snap:
-                cp_dir = Path(snap["dir"])
-                meta_file = cp_dir / "meta.json"
-                meta = json.loads(meta_file.read_text(encoding="utf-8")) if meta_file.exists() else snap
-                tbl_meta = meta.get("tables", {})
-                for k, tbl_info in tbl_meta.items():
-                    if k == table_name or k.lower() == table_name.lower() or Path(k).stem.lower() == table_name.lower():
-                        f_name = (
-                            tbl_info.get("file", _safe_ipc_filename(k))
-                            if isinstance(tbl_info, dict)
-                            else _safe_ipc_filename(k)
-                        )
-                        try:
-                            return _read_checkpoint_file(cp_dir / f_name)
-                        except Exception:
-                            pass
-                if "_current_df" in tbl_meta and (len(tbl_meta) == 1 or meta.get("active_table") == table_name):
-                    try:
-                        return _read_checkpoint_file(cp_dir / "_current_df.ipc")
-                    except Exception:
-                        pass
-                return None
             tbls = snap.get("tables", {})
             for k, val in tbls.items():
-                if k == table_name or k.lower() == table_name.lower() or Path(k).stem.lower() == table_name.lower():
+                if k == table_name or k.lower() == table_name.lower():
                     return val.clone() if hasattr(val, "clone") else val
         return None
 
     def close(self) -> None:
-        """Clean up temporary checkpoint disk storage and release all in-memory tables."""
-        if self.session_name is None:
-            self._clear_all_checkpoints()
-            self._cleanup_cp_dir()
+        """Release all in-memory tables and checkpoints."""
+        self._clear_all_checkpoints()
         self.tables.clear()
         self.orig_tables.clear()
         self.initial_tables.clear()
         self.table_sources.clear()
+        self.variables.clear()
         self.current_df = None
         self.orig_df = None
         self.initial_df = None
@@ -2185,7 +2320,10 @@ class PytaeRepl:
         _release_memory()
 
     def __del__(self) -> None:
-        self._cleanup_cp_dir()
+        try:
+            self.close()
+        except Exception:
+            pass
 
     def _read_file_to_df(self, path: Path | str, **reader_opts: Any) -> tuple[Path, pl.DataFrame]:
         """Resolve a dataset path and load it into a Polars DataFrame using reader kwargs with schema fallback."""
@@ -2270,7 +2408,7 @@ class PytaeRepl:
         return None
 
     def _build_prompt(self) -> str:
-        prefix = f"{self.prompt}:{self.session_name}" if self.session_name else self.prompt
+        prefix = self.prompt
         if len(self.tables) > 1:
             table_names = ", ".join(self.tables.keys())
             return f"{prefix} [{table_names}]> "
@@ -2279,382 +2417,9 @@ class PytaeRepl:
             return f"{prefix} [{name}: {self._get_shape_str()}]> "
         return f"{prefix}> "
 
-    def _save_session_metadata(self) -> None:
-        """Save session manifest and pipeline history to disk under the session directory."""
-        if not self.session_name:
-            return
-        s_dir = get_sessions_dir() / self.session_name
-        s_dir.mkdir(parents=True, exist_ok=True)
-        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        meta: dict[str, Any] = {
-            "name": self.session_name,
-            "updated_at": now_str,
-            "checkpoint_format": self.checkpoint_format,
-            "checkpoints": list(self.checkpoints.keys()),
-            "latest_checkpoint": list(self.checkpoints.keys())[-1] if self.checkpoints else None,
-            "variables": {
-                "count": len(self.variables),
-                "names": list(self.variables.keys()),
-            },
-        }
-        meta_file = s_dir / "session.json"
-        if not meta_file.exists():
-            meta["created_at"] = now_str
-        else:
-            try:
-                old = json.loads(meta_file.read_text(encoding="utf-8"))
-                meta["created_at"] = old.get("created_at", now_str)
-            except Exception:
-                meta["created_at"] = now_str
-        meta_file.write_text(json.dumps(meta, indent=2), encoding="utf-8")
-        if self.variables:
-            (s_dir / "vars.json").write_text(json.dumps(self.variables, indent=2), encoding="utf-8")
-        elif (s_dir / "vars.json").exists():
-            try:
-                (s_dir / "vars.json").unlink()
-            except Exception:
-                pass
-        (s_dir / ".pytae_session").touch(exist_ok=True)
-        (s_dir / "history.json").write_text(json.dumps(self.history, indent=2), encoding="utf-8")
-
-    def _load_session_from_disk(
-        self,
-        name: str,
-        output_fn: Callable[[str], None] | None = None,
-        sess_dir: Path | None = None,
-    ) -> bool:
-        """Load session history and saved checkpoints from disk, activating the latest checkpoint."""
-        s_dir = (sess_dir if sess_dir is not None else (get_sessions_dir() / name)).resolve()
-        if not s_dir.exists():
-            return False
-
-        hist_file = s_dir / "history.json"
-        if hist_file.exists():
-            try:
-                loaded_hist = json.loads(hist_file.read_text(encoding="utf-8"))
-                if isinstance(loaded_hist, list):
-                    self.history = [str(x) for x in loaded_hist]
-            except Exception:
-                pass
-
-        cp_dir = s_dir / "checkpoints"
-        if cp_dir.exists():
-            cp_subdirs = sorted([p for p in cp_dir.iterdir() if p.is_dir() and not p.name.startswith(".")])
-            meta_file = s_dir / "session.json"
-            cp_order: list[str] = []
-            if meta_file.exists():
-                try:
-                    s_meta = json.loads(meta_file.read_text(encoding="utf-8"))
-                    cp_order = s_meta.get("checkpoints", [])
-                    if s_meta.get("checkpoint_format"):
-                        self.checkpoint_format = str(s_meta["checkpoint_format"]).lower()
-                    legacy_vars = s_meta.get("variables")
-                    if isinstance(legacy_vars, dict) and "count" not in legacy_vars and "names" not in legacy_vars:
-                        self.variables = dict(legacy_vars)
-                except Exception:
-                    pass
-
-            vars_file = s_dir / "vars.json"
-            if vars_file.exists():
-                try:
-                    self.variables = json.loads(vars_file.read_text(encoding="utf-8"))
-                except Exception:
-                    pass
-
-            ordered_subs: list[Path] = []
-            for cp_n in cp_order:
-                sub = cp_dir / cp_n
-                if sub.is_dir() and sub not in ordered_subs:
-                    ordered_subs.append(sub)
-            for sub in cp_subdirs:
-                if sub not in ordered_subs:
-                    ordered_subs.append(sub)
-
-            self.checkpoints.clear()
-            for sub in ordered_subs:
-                cp_name = sub.name
-                m_path = sub / "meta.json"
-                if m_path.exists():
-                    try:
-                        cp_meta = json.loads(m_path.read_text(encoding="utf-8"))
-                    except Exception:
-                        cp_meta = {"dir": str(sub)}
-                else:
-                    cp_meta = {"dir": str(sub)}
-                cp_meta["dir"] = str(sub)
-                self.checkpoints[cp_name] = cp_meta
-
-            if self.checkpoints:
-                latest_cp = list(self.checkpoints.keys())[-1]
-                self._cmd_restore(latest_cp, output_fn or (lambda s: None), record_history=False)
-                if output_fn:
-                    output_fn(f"Resumed session '{name}' from latest checkpoint '{latest_cp}'.")
-                return True
-        elif output_fn:
-            output_fn(f"Loaded session '{name}' from '{s_dir}'.")
-
-        return True
-
     def _cmd_session(self, tokens: list[str], output_fn: Callable[[str], None]) -> None:
-        """Handle session inspection, saving, loading, and deletion."""
-        if not tokens:
-            if self.session_name:
-                output_fn(
-                    f"Active session: '{self.session_name}' ({len(self.checkpoints)} checkpoints; "
-                    f"location: {get_sessions_dir() / self.session_name})"
-                )
-            else:
-                output_fn(
-                    "No active session (ephemeral). Use 'set new_session = <name>' or 'set save_session = <name>' to persist."
-                )
-            return
-
-        subcmd = tokens[0].lower()
-        if subcmd == "save":
-            output_fn("pytae: 'session save' is not supported. Use 'set save_session = <name|path>' instead.")
-            return
-
-        if subcmd == "load":
-            output_fn("pytae: 'session load' is not supported. Use 'set load_session = <path>' instead.")
-            return
-
-        if subcmd in ("list", "ls"):
-            verbose = any(t.lower() in ("-v", "-verbose", "--verbose", "verbose", "v") for t in tokens[1:])
-            ready_only = any(t.lower() in ("-ready", "--ready", "ready") for t in tokens[1:])
-            remaining = [
-                t for t in tokens[1:]
-                if t.lower() not in ("-v", "-verbose", "--verbose", "verbose", "v", "-ready", "--ready", "ready")
-            ]
-            pattern = remaining[0] if remaining else None
-            list_saved_sessions(output_fn, verbose=verbose, ready_only=ready_only, pattern=pattern)
-            return True
-
-        if subcmd == "rm":
-            output_fn(
-                "pytae: deleting sessions from inside the REPL is disabled to prevent session corruption. "
-                "Use your terminal or OS file manager to remove session directories (e.g. 'rm -rf <path>')."
-            )
-            return
-
-        output_fn(
-            f"pytae: unknown session action '{subcmd}'. "
-            "Usage: session or sessions (use 'set new_session = <name>', 'set save_session = <name>', or 'set load_session = <path>')"
-        )
-
-    def _cmd_new_session(self, target: str, output_fn: Callable[[str], None], overwrite: bool = False) -> bool:
-        from pytae.cli_parsing import normalize_session_path
-
-        clean_target = target.strip().strip("'\"")
-        if not clean_target:
-            output_fn("Usage: set new_session = <name_or_path>")
-            return False
-
-        dst_sess_dir = normalize_session_path(clean_target, base_dir=get_sessions_dir()).resolve()
-        target_name = dst_sess_dir.name or dst_sess_dir.stem
-        target_cp_dir = dst_sess_dir / "checkpoints"
-
-        if dst_sess_dir.exists() and any(dst_sess_dir.iterdir()):
-            if not overwrite:
-                output_fn(
-                    f"pytae: session '{target_name}' already exists at '{dst_sess_dir}'. "
-                    f"Use 'set load_session = {clean_target}' to resume it, or 'set new_session = {clean_target}, overwrite = true' to start fresh."
-                )
-                return False
-
-            # Start clean checkpoint history and decouple in-memory tables before deleting disk files
-            if self.session_name is None:
-                self._cleanup_cp_dir()
-            self.checkpoints.clear()
-            self.history.clear()
-
-            if self.tables:
-                self.tables = {k: v.clone() for k, v in self.tables.items()}
-                self.orig_tables = {k: v.clone() for k, v in self.orig_tables.items()}
-            if self.current_df is not None:
-                self.current_df = self.current_df.clone()
-            if self.orig_df is not None:
-                self.orig_df = self.orig_df.clone()
-            _release_memory()
-
-            # Clean out checkpoints and all existing session files completely
-            if target_cp_dir.exists():
-                _safe_rmtree(target_cp_dir)
-
-            for item in list(dst_sess_dir.iterdir()):
-                if item == target_cp_dir:
-                    continue
-                if item.is_dir():
-                    _safe_rmtree(item)
-                else:
-                    try:
-                        item.unlink()
-                    except Exception:
-                        pass
-        else:
-            if self.session_name is None:
-                self._cleanup_cp_dir()
-            self.checkpoints.clear()
-            self.history.clear()
-
-        target_cp_dir.mkdir(parents=True, exist_ok=True)
-        # Ensure target_cp_dir is completely empty with NO lingering checkpoint subdirectories
-        for child in list(target_cp_dir.iterdir()):
-            if child.is_dir():
-                _safe_rmtree(child)
-            else:
-                try:
-                    child.unlink()
-                except Exception:
-                    pass
-
-        set_sessions_dir(dst_sess_dir.parent.resolve())
-        self.session_name = target_name
-        self._save_session_metadata()
-        tbl_info = f" ({len(self.tables)} tables active in workbench)" if self.tables else ""
-        action = "Overwrote and started new" if (dst_sess_dir.exists() and overwrite) else "Started new"
-        output_fn(f"{action} session '{target_name}' at '{dst_sess_dir}'{tbl_info}.")
-        return True
-
-    def _cmd_session_save(
-        self,
-        target: str,
-        output_fn: Callable[[str], None],
-        is_move: bool = False,
-        overwrite: bool = False,
-    ) -> bool:
-        from pytae.cli_parsing import normalize_session_path
-
-        clean_target = target.strip().strip("'\"")
-        if not clean_target:
-            output_fn("Usage: set save_session = <name_or_path>")
-            return False
-
-        if clean_target.lower() in ("none", "off", "false", "0", ""):
-            self.session_name = None
-            output_fn("Session detached (reverted to ephemeral in-memory).")
-            return True
-
-        dst_sess_dir = normalize_session_path(clean_target, base_dir=get_sessions_dir()).resolve()
-        target_name = dst_sess_dir.name or dst_sess_dir.stem
-        target_cp_dir = dst_sess_dir / "checkpoints"
-
-        orig_dir = get_sessions_dir().resolve()
-        src_sess_dir = (orig_dir / self.session_name).resolve() if self.session_name else None
-
-        # Check if destination already exists and differs from the active session
-        target_is_different = src_sess_dir is None or src_sess_dir != dst_sess_dir
-        dest_exists = dst_sess_dir.exists() and any(dst_sess_dir.iterdir())
-        was_overwritten = False
-
-        if target_is_different and dest_exists:
-            if not overwrite:
-                output_fn(
-                    f"pytae: session '{target_name}' already exists at '{dst_sess_dir}'. "
-                    f"Use 'set save_session = {clean_target}, overwrite = true' to replace it, or choose a different name."
-                )
-                return False
-
-            # Overwrite requested: clean out checkpoints and session metadata
-            was_overwritten = True
-            if target_cp_dir.exists():
-                _safe_rmtree(target_cp_dir)
-            for item in list(dst_sess_dir.iterdir()):
-                if item == target_cp_dir:
-                    continue
-                if item.is_dir():
-                    _safe_rmtree(item)
-                else:
-                    try:
-                        item.unlink()
-                    except Exception:
-                        pass
-
-        target_cp_dir.mkdir(parents=True, exist_ok=True)
-
-        if self._cp_temp_dir is not None:
-            temp_p = Path(self._cp_temp_dir.name)
-            for cp_name, cp_meta in list(self.checkpoints.items()):
-                src_sub = temp_p / cp_name
-                dst_sub = target_cp_dir / cp_name
-                if src_sub.exists() and src_sub != dst_sub:
-                    if dst_sub.exists():
-                        _safe_rmtree(dst_sub)
-                    shutil.copytree(src_sub, dst_sub)
-                    if isinstance(cp_meta, dict):
-                        cp_meta["dir"] = str(dst_sub)
-                    m_json = dst_sub / "meta.json"
-                    if m_json.exists():
-                        try:
-                            m_data = json.loads(m_json.read_text(encoding="utf-8"))
-                            m_data["dir"] = str(dst_sub)
-                            m_json.write_text(json.dumps(m_data), encoding="utf-8")
-                        except Exception:
-                            pass
-            self._cleanup_cp_dir()
-        elif src_sess_dir and src_sess_dir.exists():
-            src_cp_dir = src_sess_dir / "checkpoints"
-            if src_cp_dir.exists():
-                for cp_name, cp_meta in list(self.checkpoints.items()):
-                    src_sub = src_cp_dir / cp_name
-                    dst_sub = target_cp_dir / cp_name
-                    if src_sub.exists() and src_sub != dst_sub:
-                        if dst_sub.exists():
-                            _safe_rmtree(dst_sub)
-                        shutil.copytree(src_sub, dst_sub)
-                        if isinstance(cp_meta, dict):
-                            cp_meta["dir"] = str(dst_sub)
-                        m_json = dst_sub / "meta.json"
-                        if m_json.exists():
-                            try:
-                                m_data = json.loads(m_json.read_text(encoding="utf-8"))
-                                m_data["dir"] = str(dst_sub)
-                                m_json.write_text(json.dumps(m_data), encoding="utf-8")
-                            except Exception:
-                                pass
-            if src_sess_dir != dst_sess_dir:
-                for item in src_sess_dir.iterdir():
-                    if item.is_file() and not (dst_sess_dir / item.name).exists():
-                        shutil.copy2(item, dst_sess_dir / item.name)
-
-        # Prune any stale checkpoints in destination that are not in current self.checkpoints
-        if target_cp_dir.exists():
-            for existing_sub in list(target_cp_dir.iterdir()):
-                if existing_sub.is_dir() and existing_sub.name not in self.checkpoints:
-                    _safe_rmtree(existing_sub)
-
-        set_sessions_dir(dst_sess_dir.parent.resolve())
-        self.session_name = target_name
-        self._save_session_metadata()
-
-        if is_move and src_sess_dir and src_sess_dir.exists() and src_sess_dir != dst_sess_dir:
-            _safe_rmtree(src_sess_dir)
-            output_fn(
-                f"Moved session '{target_name}' to '{dst_sess_dir}' ({len(self.checkpoints)} checkpoints moved). Old directory removed."
-            )
-        elif was_overwritten:
-            output_fn(
-                f"Overwrote existing session '{target_name}' at '{dst_sess_dir}' ({len(self.checkpoints)} checkpoints saved)."
-            )
-        elif src_sess_dir and src_sess_dir != dst_sess_dir:
-            output_fn(
-                f"Session saved as '{target_name}' at '{dst_sess_dir}' ({len(self.checkpoints)} checkpoints saved). Original preserved."
-            )
-        else:
-            output_fn(
-                f"Session saved as '{target_name}' at '{dst_sess_dir}' ({len(self.checkpoints)} checkpoints saved)."
-            )
-        return True
-
-    def _cmd_session_load(self, name: str, output_fn: Callable[[str], None]) -> None:
-        target_name = name.strip()
-        s_dir = get_sessions_dir() / target_name
-        if not s_dir.exists():
-            output_fn(f"pytae: session '{target_name}' not found. Use 'sessions' to list saved sessions.")
-            return
-
-        self.close()
-        self.session_name = target_name
-        self._load_session_from_disk(target_name, output_fn)
+        """Notice for retired persistent disk sessions."""
+        output_fn(_RETIRED_SESSION_MSG)
 
     def execute_line(self, raw_line: str, output_fn: Callable[[str], None] = print) -> bool:
         """Execute one REPL input line. Returns False if REPL should terminate."""
@@ -2864,6 +2629,25 @@ class PytaeRepl:
             self._cmd_history(output_fn, args=tokens[1:])
             return True
 
+        # Export / Save Script: export script <path>, save script <path>, export clip, export <path>
+        if first_lower in ("export", "-export") or (first_lower in ("save", "-save") and len(tokens) >= 2 and tokens[1].lower() in ("script", "code")):
+            if len(tokens) >= 2 and tokens[1].lower() in ("script", "code"):
+                if len(tokens) < 3:
+                    output_fn(f"Usage: {first_lower} script <path.py|path.pt>")
+                    return True
+                self._cmd_export_script(tokens[2], output_fn)
+                return True
+            if len(tokens) >= 2:
+                target = tokens[1]
+                if target.lower().endswith((".py", ".pt")):
+                    self._cmd_export_script(target, output_fn)
+                    return True
+                if self._cmd_save(target, output_fn):
+                    self._record_history(f"-o {target}")
+                return True
+            output_fn("Usage: export script <path.py|path.pt> or export <path.parquet|csv|ndjson|clip>")
+            return True
+
         # Reject disallowed aliases, legacy synonyms, or hyphenated inspection commands
         if first_lower in _DISALLOWED_ALIASES:
             canonical = _DISALLOWED_ALIASES[first_lower]
@@ -2881,20 +2665,9 @@ class PytaeRepl:
             self._cmd_set(tokens[1:], output_fn, raw_line=raw_args)
             return True
 
-        # Persistent REPL sessions
-        if first_lower == "sessions":
-            verbose = any(t.lower() in ("-v", "-verbose", "--verbose", "verbose", "v") for t in tokens[1:])
-            ready_only = any(t.lower() in ("-ready", "--ready", "ready") for t in tokens[1:])
-            remaining = [
-                t for t in tokens[1:]
-                if t.lower() not in ("-v", "-verbose", "--verbose", "verbose", "v", "-ready", "--ready", "ready")
-            ]
-            pattern = remaining[0] if remaining else None
-            list_saved_sessions(output_fn, verbose=verbose, ready_only=ready_only, pattern=pattern)
-            return True
-
-        if first_lower == "session":
-            self._cmd_session(tokens[1:], output_fn)
+        # Notice for retired persistent sessions
+        if first_lower in ("sessions", "session"):
+            output_fn(_RETIRED_SESSION_MSG)
             return True
 
         # Rename an in-memory table (`rename <old> <new>`)
@@ -2982,10 +2755,7 @@ class PytaeRepl:
                 return True
 
             if category in ("session", "sessions"):
-                output_fn(
-                    "pytae: deleting sessions from inside the REPL is disabled to prevent session corruption. "
-                    "Use your terminal or OS file manager to remove session directories (e.g. 'rm -rf ~/.pytae/sessions/<name>')."
-                )
+                output_fn(_RETIRED_SESSION_MSG)
                 return True
 
             if category == "table":
@@ -3594,33 +3364,19 @@ class PytaeRepl:
         self, cp_name: str, output_fn: Callable[[str], None], verbose: bool = False
     ) -> None:
         snap = self.checkpoints[cp_name]
-        cp_path = Path(snap["dir"]) if "dir" in snap else (self._get_cp_dir() / cp_name)
         created_at = snap.get("created_at", "unknown")
-        fmt = snap.get("format", "ipc")
         output_fn(f"Checkpoint     : {cp_name}")
         output_fn(f"Created        : {created_at}")
-        output_fn(f"Format         : {fmt}")
-        if cp_path.exists():
-            try:
-                total_b = sum(f.stat().st_size for f in cp_path.rglob("*") if f.is_file())
-                output_fn(f"Disk size      : {_format_bytes(total_b)}")
-            except Exception:
-                pass
+        output_fn("Storage        : in-memory (RAM copy-on-write)")
         tbls = snap.get("tables", {})
         if isinstance(tbls, dict) and tbls:
             output_fn(f"Tables ({len(tbls)}):")
             for t_name, val in tbls.items():
-                s = val.get("shape", []) if isinstance(val, dict) else getattr(val, "shape", [])
+                s = getattr(val, "shape", []) if hasattr(val, "shape") else val.get("shape", [])
                 shape_str = f"{s[0]:,} rows x {s[1]} cols" if len(s) == 2 else ""
-                if verbose and isinstance(val, dict):
-                    f_name = val.get("file", "")
-                    f_path = cp_path / f_name if f_name else None
-                    f_sz = f" ({_format_bytes(f_path.stat().st_size)})" if f_path and f_path.exists() else ""
-                    output_fn(f"  - {t_name:<14}: {shape_str} [{f_name}]{f_sz}")
-                else:
-                    output_fn(f"  - {t_name:<14}: {shape_str}")
+                output_fn(f"  - {t_name:<14}: {shape_str}")
 
-        vars_dict = self._get_checkpoint_vars(snap, cp_path)
+        vars_dict = snap.get("variables", {})
         if vars_dict:
             output_fn(f"Variables ({len(vars_dict)}):")
             for var_name, var_val in vars_dict.items():
@@ -3632,18 +3388,13 @@ class PytaeRepl:
             output_fn("Variables      : 0 defined")
 
     def _show_session_status(self, output_fn: Callable[[str], None], verbose: bool = False) -> None:
-        """Display REPL session status, storage directory, tables overview, and resource health."""
+        """Display REPL workbench status, loaded tables, and resource health."""
         rss = _get_process_rss_mb()
         rss_str = f"~{rss:.1f} MB (PID {os.getpid()})" if rss is not None else f"PID {os.getpid()}"
 
         output_fn("=== REPL Session Status ===")
-        if self.session_name:
-            sess_dir = get_sessions_dir() / self.session_name
-            storage_str = _format_friendly_path(sess_dir)
-            output_fn(f"Session Name  : {self.session_name} (storage: {storage_str})")
-        else:
-            storage_str = _format_friendly_path(get_sessions_dir())
-            output_fn(f"Session Name  : <none> (storage: {storage_str})")
+        output_fn("Session Name  : <none> (in-memory workbench)")
+        output_fn("Storage       : in-memory (zero disk footprint)")
 
         # Active Table
         if self.current_df is not None:
@@ -3706,23 +3457,20 @@ class PytaeRepl:
 
         if verbose and self.checkpoints:
             for cp_name, cp_meta in self.checkpoints.items():
-                fmt = cp_meta.get("format", "ipc")
                 created = cp_meta.get("created_at", "")
                 t_count = len(cp_meta.get("tables", {}))
-                output_fn(f"  - {cp_name:<12}: [{fmt}] created {created} ({t_count} tables)")
+                output_fn(f"  - {cp_name:<12}: in-memory created {created} ({t_count} tables)")
 
         # Session Logs & Settings in verbose mode
         if verbose:
             if getattr(self, "session_history_path", None) and self.session_history_path.exists():
                 hist_str = _format_friendly_path(self.session_history_path)
-                output_fn(f"Session Logs  : {hist_str}")
-            fmt = getattr(self, "checkpoint_format", "ipc")
-            sc = "on" if getattr(self, "save_commands", True) else "off"
+                output_fn(f"History Log   : {hist_str}")
             mr = getattr(self, "max_rows", "default")
             mc = getattr(self, "max_cols", "all")
             fp = getattr(self, "float_precision", "auto")
             output_fn(
-                f"Settings      : checkpoint_format={fmt}, save_code={sc}, max_rows={mr}, max_cols={mc}, float_precision={fp}"
+                f"Settings      : max_rows={mr}, max_cols={mc}, float_precision={fp}"
             )
 
         # Process RAM
@@ -3735,147 +3483,8 @@ class PytaeRepl:
         )
 
     def _show_external_session_status(self, path_or_name: str, output_fn: Callable[[str], None], verbose: bool = False) -> None:
-        """Inspect a saved session directory on disk without loading it into active memory."""
-        from pytae.cli_parsing import normalize_session_path
-
-        s_path = normalize_session_path(path_or_name, base_dir=get_sessions_dir())
-        if not s_path.exists() or not s_path.is_dir():
-            output_fn(f"pytae: session directory '{s_path}' not found.")
-            return
-
-        meta_file = s_path / "session.json"
-        sess_name = s_path.name
-        cp_format = "unknown"
-        created_at = "unknown"
-        cp_order: list[str] = []
-        if meta_file.exists():
-            try:
-                s_meta = json.loads(meta_file.read_text(encoding="utf-8"))
-                sess_name = s_meta.get("name", s_path.name)
-                cp_format = s_meta.get("checkpoint_format", "ipc")
-                created_at = s_meta.get("created_at", "unknown")
-                cp_order = s_meta.get("checkpoints", [])
-            except Exception:
-                pass
-
-        cp_dir = s_path / "checkpoints"
-        checkpoints_info: list[tuple[str, dict]] = []
-        if cp_dir.exists():
-            subdirs = sorted([p for p in cp_dir.iterdir() if p.is_dir() and not p.name.startswith(".")])
-            ordered_subs: list[Path] = []
-            for cp_n in cp_order:
-                sub = cp_dir / cp_n
-                if sub.is_dir() and sub not in ordered_subs:
-                    ordered_subs.append(sub)
-            for sub in subdirs:
-                if sub not in ordered_subs:
-                    ordered_subs.append(sub)
-
-            for sub in ordered_subs:
-                m_file = sub / "meta.json"
-                cp_meta: dict = {}
-                if m_file.exists():
-                    try:
-                        cp_meta = json.loads(m_file.read_text(encoding="utf-8"))
-                    except Exception:
-                        pass
-                checkpoints_info.append((sub.name, cp_meta))
-
-        output_fn(f"=== Session Inspection: {sess_name} ===")
-        output_fn(f"Storage Path  : {_format_friendly_path(s_path)}")
-        output_fn("Status        : Ready" if cp_dir.exists() else "Status        : Empty / Inactive")
-        output_fn(f"Default Format: {cp_format}")
-        if created_at != "unknown":
-            output_fn(f"Created       : {created_at}")
-
-        # Variables in external session
-        vars_dict: dict[str, Any] = {}
-        vars_names: list[str] = []
-        vars_file = s_path / "vars.json"
-        if vars_file.exists():
-            try:
-                vars_dict = json.loads(vars_file.read_text(encoding="utf-8"))
-                vars_names = list(vars_dict.keys())
-            except Exception:
-                pass
-        elif isinstance(s_meta.get("variables"), dict):
-            v_meta = s_meta["variables"]
-            if "names" in v_meta:
-                vars_names = list(v_meta.get("names", []))
-            else:
-                vars_dict = v_meta
-                vars_names = list(vars_dict.keys())
-
-        if not vars_names and not vars_dict:
-            output_fn("Variables     : 0 defined")
-        elif len(vars_names) == 1:
-            v_name = vars_names[0]
-            if v_name in vars_dict:
-                v_repr = repr(vars_dict[v_name])
-                if not verbose and len(v_repr) > 40:
-                    v_repr = v_repr[:37] + "..."
-                output_fn(f"Variables     : 1 defined [@{v_name} = {v_repr}]")
-            else:
-                output_fn(f"Variables     : 1 defined [@{v_name}]")
-        else:
-            output_fn(f"Variables     : {len(vars_names)} defined [{', '.join(f'@{k}' for k in vars_names)}]")
-
-        if verbose and vars_dict:
-            for v_name, v_val in vars_dict.items():
-                v_repr = repr(v_val)
-                if len(v_repr) > 60:
-                    v_repr = v_repr[:57] + "..."
-                output_fn(f"  * @{v_name:<14}: {v_repr} ({type(v_val).__name__})")
-
-        if not checkpoints_info:
-            output_fn("Checkpoints   : 0 saved")
-        else:
-            output_fn(f"Checkpoints ({len(checkpoints_info)}):")
-            for cp_name, cp_meta in checkpoints_info:
-                fmt = cp_meta.get("format", cp_format)
-                created = cp_meta.get("created_at", "")
-                created_str = f" created {created}" if created else ""
-                tables = cp_meta.get("tables", {})
-                sub_cp_dir = cp_dir / cp_name
-                var_count, var_names = self._get_checkpoint_var_summary(cp_meta, sub_cp_dir)
-
-                summary_parts: list[str] = []
-                if tables:
-                    summary_parts.append(f"{len(tables)} table{'s' if len(tables) != 1 else ''} [{', '.join(tables.keys())}]")
-                if var_count > 0:
-                    summary_parts.append(f"{var_count} var{'s' if var_count != 1 else ''} [{', '.join(f'@{k}' for k in var_names)}]")
-                t_str = f" ({', '.join(summary_parts)})" if summary_parts else ""
-                output_fn(f"  - {cp_name:<14}: [{fmt}]{t_str}{created_str}")
-
-                if tables:
-                    for t_n, t_info in tables.items():
-                        r = t_info.get("rows", "?")
-                        c = t_info.get("cols", "?")
-                        shape_desc = f"{r} rows x {c} cols" if r != "?" else ""
-                        if not shape_desc and "shape" in t_info and len(t_info["shape"]) == 2:
-                            shape_desc = f"{t_info['shape'][0]:,} rows x {t_info['shape'][1]} cols"
-                        shape_tag = f": {shape_desc}" if shape_desc else ""
-                        output_fn(f"      - {t_n}{shape_tag}")
-                        if verbose:
-                            cols = t_info.get("columns", [])
-                            if cols:
-                                col_preview = ", ".join(cols[:8]) + ("..." if len(cols) > 8 else "")
-                                output_fn(f"          columns: [{col_preview}]")
-                cp_vars = self._get_checkpoint_vars(cp_meta, sub_cp_dir)
-                if cp_vars:
-                    for v_n, v_v in cp_vars.items():
-                        v_repr = repr(v_v)
-                        if not verbose and len(v_repr) > 40:
-                            v_repr = v_repr[:37] + "..."
-                        output_fn(f"      * @{v_n}: {v_repr} ({type(v_v).__name__})")
-
-        hist_file = s_path / "history.json"
-        if hist_file.exists():
-            try:
-                hist_data = json.loads(hist_file.read_text(encoding="utf-8"))
-                output_fn(f"History Steps : {len(hist_data)} recorded commands")
-            except Exception:
-                pass
+        """Notice for retired external persistent session inspection."""
+        output_fn(_RETIRED_SESSION_MSG)
 
     def _cmd_status(self, output_fn: Callable[[str], None], args: list[str] | None = None) -> None:
         args = args or []
@@ -4149,14 +3758,9 @@ class PytaeRepl:
         if args:
             arg0 = args[0].strip()
             clean_arg0 = arg0.lower().lstrip("-")
-            if clean_arg0 in ("s", "save"):
+            if clean_arg0 in ("s", "save") or arg0.startswith("-s=") or arg0.startswith("-s:"):
                 output_fn(
-                    "pytae: 'history -s' is not supported. Use 'set save_code = <path>' upfront or 'exit -s [path]' on exit."
-                )
-                return
-            if arg0.startswith("-s=") or arg0.startswith("-s:"):
-                output_fn(
-                    "pytae: 'history -s' is not supported. Use 'set save_code = <path>' upfront or 'exit -s [path]' on exit."
+                    "pytae: 'history -s' is not supported. Use 'export script <path>' or 'exit -s [path]' on exit."
                 )
                 return
             if clean_arg0 in ("cli", "sh", "bash", "py", "python"):
@@ -4222,30 +3826,23 @@ class PytaeRepl:
                 self.initial_df = None
 
     def _cmd_set(self, args: list[str], output_fn: Callable[[str], None], raw_line: str = "") -> None:
-        """Handle REPL configuration settings (e.g. set new_session = <name>, set load_session = <path>, set save_session = <path>, set checkpoint_format = parquet)."""
+        """Handle REPL configuration settings (max_rows, max_cols, float_precision, comma)."""
         if not args:
-            sess_name = self.session_name or "none"
-            save_cmd_str = self.save_history_file or "none"
             max_cols_str = str(self.max_cols) if self.max_cols is not None else "all"
             prec_str = str(self.float_precision) if self.float_precision is not None else "auto"
             comma_str = "on" if self.comma else "off"
 
-            output_fn("new_session       = none (options: <name>, <path>, overwrite = true) (e.g. set new_session = rwa_analysis)")
-            output_fn("load_session      = none (options: <name>, <path>) (e.g. set load_session = rwa_analysis)")
-            output_fn(f"save_session      = {sess_name} (options: <name>, <path>, move = true, overwrite = true)")
-            output_fn(f"checkpoint_format = {self.checkpoint_format} (options: ipc, parquet)")
-            output_fn(f"save_code         = {save_cmd_str} (options: <path>, none)")
-            output_fn(f"max_rows          = {self.max_rows} (options: <int>, default)")
-            output_fn(f"max_cols          = {max_cols_str} (options: <int>, all, default)")
-            output_fn(f"float_precision   = {prec_str} (options: <int>, auto, default)")
-            output_fn(f"comma             = {comma_str} (options: on, off)")
+            output_fn(f"max_rows        = {self.max_rows} (options: <int>, default)")
+            output_fn(f"max_cols        = {max_cols_str} (options: <int>, all, default)")
+            output_fn(f"float_precision = {prec_str} (options: <int>, auto, default)")
+            output_fn(f"comma           = {comma_str} (options: on, off)")
             return
 
         line = raw_line if raw_line else " ".join(args).strip()
         pairs = _parse_set_pairs(line)
         if not pairs:
             output_fn(
-                "Usage: set [key [= value]] (e.g. set new_session = rwa_analysis, set load_session = rwa_analysis, set save_session = rwa_analysis, set checkpoint_format = parquet)"
+                "Usage: set [key [= value]] (e.g. set max_rows = 20, set max_cols = all, set comma = on)"
             )
             return
 
@@ -4253,216 +3850,16 @@ class PytaeRepl:
         for k, v in pairs:
             pair_map[k.lower().replace("-", "_")] = v
 
-        new_session_val = pair_map.pop("new_session", None)
-
-        load_session_val = None
-        for k_load in ("load_session", "session_load"):
-            if k_load in pair_map:
-                load_session_val = pair_map.pop(k_load)
-                break
-
-        save_session_val = None
-        for k_save in ("save_session", "session_save", "session_name"):
-            if k_save in pair_map:
-                save_session_val = pair_map.pop(k_save)
-                break
-        copy_session_val = pair_map.pop("copy_session", None) or pair_map.pop("session_copy", None)
-        move_session_val = pair_map.pop("move_session", None) or pair_map.pop("session_move", None)
-
-        move_flag_val = pair_map.pop("move", None)
-        is_move_flag = move_flag_val is not None and move_flag_val.strip("'\"").lower() in ("true", "1", "yes")
-
-        overwrite_flag_val = pair_map.pop("overwrite", None) or pair_map.pop("force", None)
-        is_overwrite_flag = (
-            overwrite_flag_val is not None
-            and overwrite_flag_val.strip("'\"").lower() in ("true", "1", "yes")
-        )
-
-        # Absorb legacy sessions_dir / session_dir if provided
-        session_dir_val = pair_map.pop("sessions_dir", None) or pair_map.pop("session_dir", None)
-        target_dir = None
-        if session_dir_val is not None:
-            clean_sdir = session_dir_val.strip("'\"")
-            from pytae.cli_parsing import normalize_session_path
-
-            target_dir = (
-                Path.cwd().resolve()
-                if clean_sdir.lower() == "default"
-                else normalize_session_path(clean_sdir)
-            )
-
-        # 1. Handle new_session
-        if new_session_val is not None:
-            clean_new = new_session_val.strip().strip("'\"")
-            if not clean_new:
-                output_fn(
-                    "new_session       = none (options: <name>, <path>, overwrite = true) (e.g. set new_session = rwa_analysis)"
-                )
-                return
-            if self._cmd_new_session(new_session_val, output_fn, overwrite=is_overwrite_flag):
-                rec = f"set new_session = {new_session_val}" + (", overwrite = true" if is_overwrite_flag else "")
-                self._record_history(rec)
-
-        # 2. Handle load_session (loading existing session in-place from CWD or path)
-        elif load_session_val is not None:
-            raw_path = load_session_val.strip().strip("'\"")
-            if not raw_path:
-                output_fn(
-                    "load_session      = none (options: <name>, <path>) (e.g. set load_session = rwa_analysis)"
-                )
+        # Check for retired session keys
+        for k in list(pair_map.keys()):
+            if k in _SET_RETIRED_KEYS or k.startswith(("session", "new_session", "load_session", "save_session")):
+                output_fn(_RETIRED_SESSION_MSG)
                 return
 
-            from pytae.cli_parsing import normalize_session_path
-
-            src_sess_dir = normalize_session_path(raw_path, base_dir=get_sessions_dir())
-            clean_name = src_sess_dir.name or src_sess_dir.stem
-
-            if not src_sess_dir.exists() or not src_sess_dir.is_dir():
-                hint_str = ""
-                legacy_candidate = Path.home() / ".pytae" / "sessions" / clean_name
-                if legacy_candidate.exists() and legacy_candidate.is_dir() and legacy_candidate != src_sess_dir:
-                    hint_str = f" (Note: found legacy session with this name in '{legacy_candidate}'. Pass full path to load it)."
-                output_fn(f"pytae: session directory '{src_sess_dir}' not found.{hint_str}")
-                return
-
-            self.close()
-            set_sessions_dir(src_sess_dir.parent.resolve())
-            self.session_name = clean_name
-            self._load_session_from_disk(clean_name, output_fn, sess_dir=src_sess_dir)
-            self._record_history(f"set load_session = {raw_path}")
-
-            # If save_session / session_name is ALSO specified with load_session, fork to target!
-            if save_session_val is not None or copy_session_val is not None or move_session_val is not None:
-                target_save = save_session_val or copy_session_val or move_session_val
-                is_move = is_move_flag or (move_session_val is not None)
-                if session_dir_val is not None and target_dir:
-                    target_save = str(target_dir / target_save)
-                if self._cmd_session_save(target_save, output_fn, is_move=is_move, overwrite=is_overwrite_flag):
-                    dst_loc = get_sessions_dir() / self.session_name
-                    output_fn(f"Forked session '{clean_name}' -> '{self.session_name}' at '{dst_loc}' ({len(self.checkpoints)} checkpoints copied). Original preserved.")
-                    hist_parts = [f"set save_session = {target_save}"]
-                    if is_move:
-                        hist_parts.append("move = true")
-                    if is_overwrite_flag:
-                        hist_parts.append("overwrite = true")
-                    self._record_history(", ".join(hist_parts))
-            elif session_dir_val is not None and target_dir and target_dir != src_sess_dir.parent:
-                if self._cmd_session_save(str(target_dir / clean_name), output_fn, is_move=False, overwrite=is_overwrite_flag):
-                    output_fn(f"Forked session '{clean_name}' -> '{self.session_name}' at '{target_dir / clean_name}' ({len(self.checkpoints)} checkpoints copied). Original preserved.")
-
-        # 3. Handle save_session / copy_session / move_session alone
-        elif save_session_val is not None or copy_session_val is not None or move_session_val is not None:
-            target_save = (save_session_val or copy_session_val or move_session_val or "").strip().strip("'\"")
-            if not target_save:
-                sess_name = self.session_name or "none"
-                output_fn(
-                    f"save_session      = {sess_name} (options: <name>, <path>, move = true, overwrite = true)"
-                )
-                return
-            is_move = is_move_flag or (move_session_val is not None)
-            if session_dir_val is not None and target_dir:
-                target_save = str(target_dir / target_save)
-            if self._cmd_session_save(target_save, output_fn, is_move=is_move, overwrite=is_overwrite_flag):
-                hist_parts = [f"set save_session = {target_save}"]
-                if is_move:
-                    hist_parts.append("move = true")
-                if is_overwrite_flag:
-                    hist_parts.append("overwrite = true")
-                self._record_history(", ".join(hist_parts))
-
-        # 3b. Handle sessions_dir alone when an active session is loaded
-        elif session_dir_val is not None:
-            if self.session_name:
-                orig_dir = get_sessions_dir().resolve()
-                if target_dir != orig_dir:
-                    dst_sess_path = target_dir / self.session_name
-                    self._cmd_session_save(str(dst_sess_path), output_fn, is_move=True)
-                    output_fn(f"Relocated active session '{self.session_name}' to '{dst_sess_path}' ({len(self.checkpoints)} checkpoints moved).")
-                else:
-                    output_fn(f"sessions_dir is already '{target_dir}'.")
-            else:
-                output_fn(
-                    "pytae: no active session. 'sessions_dir' must be accompanied by 'session_name = <name>' or 'session_load = <name>' (e.g. set session_name = my_project, sessions_dir = <path>)."
-                )
-
-        # 4. Handle remaining settings
-        convert_val = pair_map.pop("convert", None)
-        should_convert = False
-        if convert_val is not None:
-            clean_c = convert_val.strip("'\"").lower()
-            if clean_c in ("all", "true", "1", "yes", ""):
-                should_convert = True
-            elif clean_c in ("none", "false", "0", "no"):
-                should_convert = False
-            else:
-                output_fn(f"pytae: invalid convert option '{convert_val}'. Supported options: all, none.")
-                return
-
-        handled_cp_fmt = False
         for k, val in list(pair_map.items()):
-            if k in ("checkpoint_format", "checkpoint_fmt", "cp_format", "cp_fmt"):
-                handled_cp_fmt = True
+            if k in ("max_rows", "rows"):
                 if not val:
-                    output_fn(f"checkpoint_format = {self.checkpoint_format} (options: ipc, parquet)")
-                    continue
-                clean_val = val.lower().strip("'\"")
-                if clean_val in ("parquet", "pq"):
-                    target_fmt = "parquet"
-                    desc_fmt = "compressed Parquet"
-                    other_fmt = "IPC"
-                elif clean_val in ("ipc", "arrow", "feather"):
-                    target_fmt = "ipc"
-                    desc_fmt = "fast uncompressed Arrow IPC"
-                    other_fmt = "Parquet"
-                else:
-                    output_fn(f"pytae: unsupported checkpoint_format '{val}'. Supported formats: ipc, parquet.")
-                    continue
-
-                self.checkpoint_format = target_fmt
-                self._record_history(f"set checkpoint_format = {target_fmt}")
-
-                # Count how many existing checkpoints differ from target format
-                diff_count = sum(
-                    1
-                    for cp in self.checkpoints.values()
-                    if isinstance(cp, dict) and cp.get("format", "").lower() != target_fmt
-                )
-
-                if should_convert:
-                    if diff_count > 0:
-                        output_fn(f"Converting {diff_count} existing checkpoint(s) to {target_fmt}...")
-                        converted = self._convert_all_checkpoints(target_fmt, output_fn)
-                        output_fn(f"All {converted} checkpoint(s) converted. Set checkpoint_format = {target_fmt}.")
-                    else:
-                        output_fn(f"All existing checkpoints are already in {target_fmt} format. Set checkpoint_format = {target_fmt}.")
-                else:
-                    if diff_count > 0:
-                        output_fn(f"Set checkpoint_format = {target_fmt} (new checkpoints will be saved as {desc_fmt}).")
-                        output_fn(
-                            f"Note: {diff_count} existing checkpoint(s) remain in {other_fmt} format. Run 'set checkpoint_format = {target_fmt}, convert = all' to re-encode them."
-                        )
-                    else:
-                        output_fn(f"Set checkpoint_format = {target_fmt} (checkpoints will be saved as {desc_fmt}).")
-            elif k in ("save_code", "save_commands", "save_command"):
-                if not val:
-                    save_str = self.save_history_file or "none"
-                    output_fn(f"{k.ljust(18)}= {save_str} (options: <path>, none)")
-                    continue
-                from pytae.cli_parsing import normalize_git_bash_path
-
-                clean_val = normalize_git_bash_path(val.strip("'\""))
-                if clean_val.lower() in ("none", "off", "false", "0", ""):
-                    self.save_history_file = None
-                    output_fn("Disabled auto-saving commands on exit.")
-                elif clean_val.lower() in ("true", "on", "1"):
-                    self.save_history_file = "history.txt"
-                    output_fn(f"Set {k} = 'history.txt' (session commands will be auto-saved here on exit).")
-                else:
-                    self.save_history_file = clean_val
-                    output_fn(f"Set {k} = '{clean_val}' (session commands will be auto-saved here on exit).")
-            elif k in ("max_rows", "rows"):
-                if not val:
-                    output_fn(f"max_rows          = {self.max_rows} (options: <int>, default)")
+                    output_fn(f"max_rows        = {self.max_rows} (options: <int>, default)")
                     continue
                 clean_val = val.lower().strip("'\"")
                 if clean_val == "default":
@@ -4480,7 +3877,7 @@ class PytaeRepl:
             elif k in ("max_cols", "cols"):
                 if not val:
                     curr = str(self.max_cols) if self.max_cols is not None else "all"
-                    output_fn(f"max_cols          = {curr} (options: <int>, all, default)")
+                    output_fn(f"max_cols        = {curr} (options: <int>, all, default)")
                     continue
                 clean_val = val.lower().strip("'\"")
                 if clean_val in ("all", "default", "none"):
@@ -4498,7 +3895,7 @@ class PytaeRepl:
             elif k in ("float_precision", "precision"):
                 if not val:
                     curr = str(self.float_precision) if self.float_precision is not None else "auto"
-                    output_fn(f"float_precision   = {curr} (options: <int>, auto, default)")
+                    output_fn(f"float_precision = {curr} (options: <int>, auto, default)")
                     continue
                 clean_val = val.lower().strip("'\"")
                 if clean_val in ("auto", "default", "none"):
@@ -4516,7 +3913,7 @@ class PytaeRepl:
             elif k == "comma":
                 if not val:
                     curr = "on" if self.comma else "off"
-                    output_fn(f"comma             = {curr} (options: on, off)")
+                    output_fn(f"comma           = {curr} (options: on, off)")
                     continue
                 clean_val = val.lower().strip("'\"")
                 if clean_val in ("on", "true", "1", "yes"):
@@ -4529,200 +3926,30 @@ class PytaeRepl:
                     output_fn(f"pytae: invalid comma '{val}'. Supported options: on, off.")
             else:
                 output_fn(
-                    f"pytae: unknown setting '{k}'. Supported settings: new_session, load_session, save_session, save_code, checkpoint_format, max_rows, max_cols, float_precision, comma, convert."
+                    f"pytae: unknown setting '{k}'. Supported settings: max_rows, max_cols, float_precision, comma."
                 )
-
-        if convert_val is not None and not handled_cp_fmt:
-            if should_convert:
-                target_fmt = self.checkpoint_format
-                diff_count = sum(
-                    1
-                    for cp in self.checkpoints.values()
-                    if isinstance(cp, dict) and cp.get("format", "").lower() != target_fmt
-                )
-                if diff_count > 0:
-                    output_fn(f"Converting {diff_count} existing checkpoint(s) to {target_fmt}...")
-                    converted = self._convert_all_checkpoints(target_fmt, output_fn)
-                    output_fn(f"All {converted} checkpoint(s) converted to {target_fmt}.")
-                else:
-                    output_fn(f"All existing checkpoints are already in {target_fmt} format.")
-
-    def _convert_all_checkpoints(self, target_fmt: str, output_fn: Callable[[str], None]) -> int:
-        """Convert all existing checkpoints in the session to target_fmt ('parquet' or 'ipc')."""
-        if not self.checkpoints:
-            return 0
-
-        target_fmt = target_fmt.lower()
-        target_ext = ".parquet" if target_fmt == "parquet" else ".ipc"
-        converted_count = 0
-
-        for cp_name, cp_meta in list(self.checkpoints.items()):
-            if not isinstance(cp_meta, dict) or "dir" not in cp_meta:
-                continue
-            cp_dir = Path(cp_meta["dir"])
-            if not cp_dir.exists():
-                continue
-
-            tbl_meta = cp_meta.get("tables", {})
-            cp_needs_convert = False
-            cp_old_bytes = 0
-            cp_new_bytes = 0
-
-            # Check if any file in this checkpoint needs conversion
-            for tbl_name, info in tbl_meta.items():
-                if isinstance(info, dict):
-                    curr_fmt = info.get("format", "").lower()
-                    if curr_fmt != target_fmt:
-                        cp_needs_convert = True
-                        break
-
-            if not cp_needs_convert:
-                continue
-
-            # Convert each table file in checkpoint
-            new_tables: dict[str, Any] = {}
-            for tbl_name, info in tbl_meta.items():
-                if not isinstance(info, dict):
-                    continue
-                old_fname = info.get("file", "")
-                old_file = cp_dir / old_fname
-                curr_fmt = info.get("format", "").lower()
-
-                if curr_fmt == target_fmt and old_file.exists():
-                    new_tables[tbl_name] = info
-                    f_size = old_file.stat().st_size
-                    cp_old_bytes += f_size
-                    cp_new_bytes += f_size
-                    continue
-
-                if not old_file.exists():
-                    alt = old_file.with_suffix(target_ext)
-                    if alt.exists():
-                        f_size = alt.stat().st_size
-                        cp_old_bytes += f_size
-                        cp_new_bytes += f_size
-                        new_tables[tbl_name] = dict(info, file=alt.name, format=target_fmt)
-                        continue
-                    new_tables[tbl_name] = info
-                    continue
-
-                old_size = old_file.stat().st_size
-                cp_old_bytes += old_size
-
-                # Read existing dataframe using Pytae's checkpoint reader
-                df = _read_checkpoint_file(old_file)
-
-                # Write to new format
-                new_fname = _safe_table_filename(tbl_name, target_ext)
-                new_file = cp_dir / new_fname
-
-                if target_fmt == "parquet":
-                    df.write_parquet(new_file)
-                else:
-                    df.write_ipc(new_file)
-
-                new_size = new_file.stat().st_size
-                cp_new_bytes += new_size
-
-                # Remove old file if name changed
-                if old_file.exists() and old_file != new_file:
-                    try:
-                        old_file.unlink()
-                    except Exception:
-                        pass
-
-                new_tables[tbl_name] = {
-                    "file": new_fname,
-                    "format": target_fmt,
-                    "shape": list(df.shape),
-                }
-
-            # Update meta.json and in-memory checkpoint structure
-            cp_meta["format"] = target_fmt
-            cp_meta["tables"] = new_tables
-            m_json = cp_dir / "meta.json"
-            try:
-                m_json.write_text(json.dumps(cp_meta), encoding="utf-8")
-            except Exception:
-                pass
-
-            converted_count += 1
-            output_fn(
-                f"  - {cp_name}: converted ({_format_bytes(cp_old_bytes)} -> {_format_bytes(cp_new_bytes)})"
-            )
-
-        if self.session_name:
-            self._save_session_metadata()
-
-        return converted_count
 
     def _cmd_checkpoint(self, name: str, output_fn: Callable[[str], None]) -> None:
         if not self.tables and self.current_df is None and not self.variables:
             output_fn("pytae: no dataset or variables loaded to checkpoint.")
             return
 
-        # Prepare checkpoint directory on disk
-        cp_path = self._get_cp_dir() / name
-        if cp_path.exists():
-            _safe_rmtree(cp_path)
-        cp_path.mkdir(parents=True, exist_ok=True)
-
-        fmt = self.checkpoint_format.lower()
-        ext = ".parquet" if fmt == "parquet" else ".ipc"
-
-        saved_tables: dict[str, Any] = {}
-        if self.tables:
-            for tbl_name, tbl_df in self.tables.items():
-                f_name = _safe_table_filename(tbl_name, ext)
-                if fmt == "parquet":
-                    tbl_df.write_parquet(cp_path / f_name)
-                else:
-                    tbl_df.write_ipc(cp_path / f_name)
-                saved_tables[tbl_name] = {
-                    "file": f_name,
-                    "format": fmt,
-                    "shape": list(tbl_df.shape),
-                }
-        elif self.current_df is not None:
-            f_name = f"_current_df{ext}"
-            if fmt == "parquet":
-                self.current_df.write_parquet(cp_path / f_name)
-            else:
-                self.current_df.write_ipc(cp_path / f_name)
-            saved_tables["_current_df"] = {
-                "file": f_name,
-                "format": fmt,
-                "shape": list(self.current_df.shape),
-            }
-
-        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        meta = {
-            "dir": str(cp_path),
-            "format": fmt,
-            "created_at": now_str,
-            "tables": saved_tables,
+        self.checkpoints[name] = {
+            "tables": {k: v.clone() for k, v in self.tables.items()},
+            "orig_tables": {k: v.clone() for k, v in self.orig_tables.items()},
+            "initial_tables": {k: v.clone() for k, v in self.initial_tables.items()},
             "table_sources": dict(self.table_sources),
             "active_table": self.path_str,
-            "has_current_df": self.current_df is not None,
-            "current_df_shape": list(self.current_df.shape) if self.current_df is not None else None,
-            "variables": {
-                "count": len(self.variables),
-                "names": list(self.variables.keys()),
-            },
+            "current_df": self.current_df.clone() if self.current_df is not None else None,
+            "orig_df": self.orig_df.clone() if self.orig_df is not None else None,
+            "initial_df": self.initial_df.clone() if self.initial_df is not None else None,
+            "variables": dict(self.variables),
+            "created_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         }
-        (cp_path / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
-        if self.variables:
-            (cp_path / "vars.json").write_text(json.dumps(self.variables, indent=2), encoding="utf-8")
-        self.checkpoints[name] = meta
 
-        # Record checkpoint banner in history
         self._record_history(f"checkpoint {name}")
-        if self.session_name:
-            self._save_session_metadata()
-
         _release_memory()
 
-        fmt_tag = f" [{fmt}]" if fmt == "parquet" else ""
         parts_saved = []
         if len(self.tables) > 1:
             table_names = ", ".join(self.tables.keys())
@@ -4733,7 +3960,7 @@ class PytaeRepl:
             var_names = ", ".join(f"@{k}" for k in self.variables.keys())
             parts_saved.append(f"{len(self.variables)} variables: {var_names}")
         detail_tag = f" ({', '.join(parts_saved)})" if parts_saved else ""
-        output_fn(f"Saved checkpoint '{name}'{fmt_tag}{detail_tag}.")
+        output_fn(f"Saved checkpoint '{name}'{detail_tag}.")
 
     def _cmd_restore(self, name: str, output_fn: Callable[[str], None], record_history: bool = True) -> None:
         if name not in self.checkpoints:
@@ -4743,80 +3970,48 @@ class PytaeRepl:
 
         snap = self.checkpoints[name]
 
-        # Purge active session tables to guarantee RAM strictly reflects checkpoint
         self.tables.clear()
         self.orig_tables.clear()
+        self.initial_tables.clear()
         self.table_sources.clear()
         self.variables.clear()
         self.current_df = None
         self.orig_df = None
+        self.initial_df = None
         self.path_str = None
 
-        if isinstance(snap, dict) and "dir" in snap:
-            cp_dir = Path(snap["dir"])
-            meta_file = cp_dir / "meta.json"
-            meta = json.loads(meta_file.read_text(encoding="utf-8")) if meta_file.exists() else snap
-
-            self.table_sources = dict(meta.get("table_sources", {}))
-            self.path_str = meta.get("active_table")
-
-            # Restore variables from vars.json (single source of truth) or legacy meta
-            vars_file = cp_dir / "vars.json"
-            if vars_file.exists():
-                try:
-                    self.variables = json.loads(vars_file.read_text(encoding="utf-8"))
-                except Exception:
-                    pass
-            elif isinstance(meta.get("variables"), dict):
-                legacy_vars = meta["variables"]
-                if "count" not in legacy_vars and "names" not in legacy_vars:
-                    self.variables = dict(legacy_vars)
-
-            tbl_meta = meta.get("tables", {})
-            for tbl_name, tbl_info in tbl_meta.items():
-                if tbl_name == "_current_df":
-                    target_file = tbl_info.get("file", "_current_df.ipc") if isinstance(tbl_info, dict) else "_current_df.ipc"
-                    try:
-                        self.current_df = _read_checkpoint_file(cp_dir / target_file)
-                        self.orig_df = self.current_df
-                        if self.initial_df is None:
-                            self.initial_df = self.current_df
-                    except Exception:
-                        pass
-                    continue
-                target_file = (
-                    tbl_info.get("file", _safe_ipc_filename(tbl_name))
-                    if isinstance(tbl_info, dict)
-                    else _safe_ipc_filename(tbl_name)
-                )
-                try:
-                    df = _read_checkpoint_file(cp_dir / target_file)
-                    self.tables[tbl_name] = df
-                    self.orig_tables[tbl_name] = df
-                    if tbl_name not in self.initial_tables:
-                        self.initial_tables[tbl_name] = df
-                except Exception:
-                    pass
-
-            if self.path_str and self.path_str in self.tables:
+        if isinstance(snap, dict):
+            self.tables = {k: v.clone() for k, v in snap.get("tables", {}).items()}
+            self.orig_tables = {k: v.clone() for k, v in snap.get("orig_tables", self.tables).items()}
+            self.initial_tables = {k: v.clone() for k, v in snap.get("initial_tables", self.tables).items()}
+            self.table_sources = dict(snap.get("table_sources", {}))
+            self.path_str = snap.get("active_table")
+            if snap.get("current_df") is not None and isinstance(snap["current_df"], pl.DataFrame):
+                self.current_df = snap["current_df"].clone()
+            elif self.path_str and self.path_str in self.tables:
                 self.current_df = self.tables[self.path_str]
-                self.orig_df = self.orig_tables[self.path_str]
-                self.initial_df = self.initial_tables.get(self.path_str)
             elif self.tables:
-                first_tbl = next(iter(self.tables.keys()))
-                self.path_str = first_tbl
-                self.current_df = self.tables[first_tbl]
-                self.orig_df = self.orig_tables[first_tbl]
-                self.initial_df = self.initial_tables.get(first_tbl)
-        else:
-            self._apply_session_state(snap)
+                first_k = next(iter(self.tables.keys()))
+                self.path_str = first_k
+                self.current_df = self.tables[first_k]
+            self.orig_df = snap.get("orig_df", self.current_df)
+            if self.orig_df is not None and hasattr(self.orig_df, "clone"):
+                self.orig_df = self.orig_df.clone()
+            self.initial_df = snap.get("initial_df", self.orig_df)
+            if self.initial_df is not None and hasattr(self.initial_df, "clone"):
+                self.initial_df = self.initial_df.clone()
+            self.variables = dict(snap.get("variables", {}))
+        elif isinstance(snap, pl.DataFrame):
+            self.current_df = snap.clone()
+            self.orig_df = self.current_df
+            self.initial_df = self.current_df
+            self.tables["df"] = self.current_df
+            self.orig_tables["df"] = self.current_df
+            self.initial_tables["df"] = self.current_df
+            self.path_str = "df"
 
         if record_history:
             self._record_history(f"restore {name}")
-        if self.session_name:
-            self._save_session_metadata()
-
-        # Explicitly release any memory held by pre-restore intermediate tables
         _release_memory()
 
         parts_restored = []
@@ -4838,22 +4033,8 @@ class PytaeRepl:
         for name, snap in self.checkpoints.items():
             if isinstance(snap, dict):
                 tbls = snap.get("tables", {})
-                fmt = snap.get("format", "ipc")
-                fmt_tag = f" [{fmt}]"
-                cp_path = Path(snap["dir"]) if "dir" in snap else (self._get_cp_dir() / name)
-                size_str = ""
                 created_at = snap.get("created_at")
-                if cp_path.exists():
-                    try:
-                        total_b = sum(f.stat().st_size for f in cp_path.rglob("*") if f.is_file())
-                        size_str = f" ({_format_bytes(total_b)})"
-                        if not created_at:
-                            created_at = datetime.datetime.fromtimestamp(cp_path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-                    except Exception:
-                        pass
                 time_str = f"  {created_at}" if created_at else ""
-
-                var_count, var_names = self._get_checkpoint_var_summary(snap, cp_path)
 
                 summary_parts: list[str] = []
                 if isinstance(tbls, dict) and tbls:
@@ -4862,7 +4043,7 @@ class PytaeRepl:
                         summary_parts.append(f"1 table [{t_name}]")
                     else:
                         summary_parts.append(f"{len(tbls)} tables [{', '.join(tbls.keys())}]")
-                elif snap.get("current_df_shape") is not None or snap.get("current_df") is not None:
+                elif snap.get("current_df") is not None:
                     summary_parts.append("1 table [df]")
                 else:
                     summary_parts.append("0 tables")
@@ -4873,37 +4054,31 @@ class PytaeRepl:
                     else:
                         summary_parts.append(f"[active: {snap['active_table']}]")
 
-                if var_count > 0:
-                    v_names = ", ".join(f"@{k}" for k in var_names)
-                    summary_parts.append(f"{var_count} var{'s' if var_count != 1 else ''} [{v_names}]")
+                vars_dict = snap.get("variables", {})
+                if vars_dict:
+                    summary_parts.append(f"{len(vars_dict)} var{'s' if len(vars_dict) != 1 else ''} [{', '.join(f'@{k}' for k in vars_dict.keys())}]")
 
                 summary = ", ".join(summary_parts) if summary_parts else "(empty checkpoint)"
-                output_fn(f"  - {name:<15}: {summary}{fmt_tag}{size_str}{time_str}")
+                output_fn(f"  - {name:<15}: {summary}{time_str}")
 
-                # Tables under checkpoint
                 if isinstance(tbls, dict) and tbls:
                     for t_name, val in tbls.items():
-                        s = val.get("shape", []) if isinstance(val, dict) else getattr(val, "shape", [])
+                        s = getattr(val, "shape", []) if hasattr(val, "shape") else val.get("shape", [])
                         shape_info = f": {s[0]:,} rows x {s[1]} cols" if len(s) == 2 else ""
-                        if verbose and isinstance(val, dict) and cp_path.exists():
-                            f_name = val.get("file", "")
-                            f_path = cp_path / f_name if f_name else None
-                            f_sz = f" ({_format_bytes(f_path.stat().st_size)})" if f_path and f_path.exists() else ""
-                            output_fn(f"      - {t_name}{shape_info} [{f_name}]{f_sz}")
-                        else:
-                            output_fn(f"      - {t_name}{shape_info}")
-                elif snap.get("current_df_shape") is not None:
-                    s = snap["current_df_shape"]
+                        output_fn(f"      - {t_name}{shape_info}")
+                elif snap.get("current_df") is not None:
+                    s = snap["current_df"].shape
                     output_fn(f"      - df: {s[0]:,} rows x {s[1]} cols")
 
-                # Variables under checkpoint
-                cp_vars = self._get_checkpoint_vars(snap, cp_path)
-                if cp_vars:
-                    for v_name, v_val in cp_vars.items():
+                if vars_dict:
+                    for v_name, v_val in vars_dict.items():
                         v_repr = repr(v_val)
                         if not verbose and len(v_repr) > 40:
                             v_repr = v_repr[:37] + "..."
                         output_fn(f"      * @{v_name}: {v_repr} ({type(v_val).__name__})")
+            elif isinstance(snap, pl.DataFrame):
+                output_fn(f"  - {name:<15}: 1 table [df] (in-memory)")
+                output_fn(f"      - df: {snap.shape[0]:,} rows x {snap.shape[1]} cols ({snap.shape[0]:,}x{snap.shape[1]})")
             elif isinstance(snap, pl.DataFrame):
                 output_fn(f"  - {name:<15}: 1 table [df] (in-memory)")
                 output_fn(f"      - df: {snap.shape[0]:,} rows x {snap.shape[1]} cols ({snap.shape[0]:,}x{snap.shape[1]})")
@@ -5730,6 +4905,11 @@ class PytaeRepl:
         if not expr:
             output_fn("Usage: py <expression> (or enter 'py' on an empty line for multi-line block mode)")
             return
+        lines = expr.splitlines()
+        if lines and lines[-1].strip() == "py":
+            expr = "\n".join(lines[:-1]).strip()
+        if not expr:
+            return
         local_scope: dict[str, Any] = {}
         try:
             import pytae as pt
@@ -5779,6 +4959,7 @@ class PytaeRepl:
                     output_fn(out_val)
 
             # Model A registration: Only keep dataframes explicitly converted via .to_pytae()
+            mutated = False
             # 1. Active table update: check if 'df' was modified or reassigned to a PytaeDataFrame
             current_df_val = local_scope.get("df")
             if isinstance(current_df_val, _BasePtAccessor):
@@ -5798,6 +4979,7 @@ class PytaeRepl:
                 target_key = self.path_str or "df"
                 self.tables[target_key] = new_pl
                 output_fn(f"Updated active table '{target_key}' ({new_pl.shape[0]:,} rows x {new_pl.shape[1]} cols).")
+                mutated = True
 
             # 2. Check for newly assigned or updated variables in local_scope
             for k, val in list(local_scope.items()):
@@ -5820,6 +5002,11 @@ class PytaeRepl:
                     self.table_sources[k] = "python"
                     action_word = "Updated" if k in orig_table_instances else "Registered"
                     output_fn(f"{action_word} table '{k}' ({new_pl.shape[0]:,} rows x {new_pl.shape[1]} cols).")
+                    mutated = True
+
+            if mutated:
+                rec_entry = f"py\n{expr}\npy" if "\n" in expr else f"py {expr}"
+                self._record_history(rec_entry)
 
         except Exception as exc:
             output_fn(f"pytae Python Error: {exc}")
@@ -6082,11 +5269,9 @@ class PytaeRepl:
                     "new_session",
                     "load_session",
                     "save_session",
-                    "save_code",
                     "checkpoint_format",
                     "session_load",
                     "sessions_dir",
-                    "save_commands",
                     "convert",
                     "max_rows",
                     "max_cols",
@@ -6115,7 +5300,7 @@ class PytaeRepl:
                 return [opt for opt in ("all", "default", "5", "10", "20") if opt.startswith(text)]
             if any(k in [t.lower() for t in prefix_tokens] for k in ("float_precision", "precision")):
                 return [opt for opt in ("auto", "default", "2", "4", "6") if opt.startswith(text)]
-            if any(k in [t.lower() for t in prefix_tokens] for k in ("sessions_dir", "save_commands", "save_code", "save_session", "new_session")):
+            if any(k in [t.lower() for t in prefix_tokens] for k in ("sessions_dir", "save_session", "new_session")):
                 return _complete_paths(text)
 
         # Case 0: 'sessions ' -> complete flags and session names
@@ -6130,7 +5315,16 @@ class PytaeRepl:
                 opts = ["-v", "-verbose", "-ready"] + _get_saved_session_names()
                 return [opt for opt in opts if opt.startswith(text)]
 
-        # Case 0b: 'help ' or '-help ' -> complete available topics and keywords
+        # Case 0b: 'export ' or 'save ' -> complete subcommands and paths
+        if first_token in ("export", "save"):
+            if len(prefix_tokens) == 1:
+                opts = ["script", "clip"] + list(self.tables.keys())
+                return [opt for opt in opts if opt.startswith(text)]
+            if len(prefix_tokens) >= 2 and prefix_tokens[1].lower() in ("script", "code"):
+                return _complete_paths(text)
+            return _complete_paths(text)
+
+        # Case 0c: 'help ' or '-help ' -> complete available topics and keywords
         if first_token in ("help", "-help"):
             from pytae.cli_help import KEYWORD_DOCS
             topics = sorted(list(KEYWORD_DOCS.keys()))
@@ -6204,7 +5398,7 @@ class PytaeRepl:
 
         # Case 7: 'set ' -> complete configuration keys
         if last_token == "set":
-            configs = ["session_name", "new_session", "load_session", "save_session", "save_code", "checkpoint_format", "save_commands"]
+            configs = ["session_name", "new_session", "load_session", "save_session", "checkpoint_format"]
             return [c for c in configs if c.startswith(text)]
         if "set" in [t.lower() for t in prefix_tokens]:
             if "checkpoint_format" in [t.lower() for t in prefix_tokens]:
@@ -6214,7 +5408,7 @@ class PytaeRepl:
             if any(k in [t.lower() for t in prefix_tokens] for k in ("session_name", "save_session")):
                 avail = ["none"] + _get_saved_session_names()
                 return [s for s in avail if s.startswith(text)]
-            if any(k in [t.lower() for t in prefix_tokens] for k in ("sessions_dir", "save_commands", "save_code", "save_session", "new_session")):
+            if any(k in [t.lower() for t in prefix_tokens] for k in ("sessions_dir", "save_session", "new_session")):
                 return _complete_paths(text)
 
         # Case 8: 'session ' -> complete subcommands
@@ -6536,8 +5730,7 @@ class PytaeRepl:
                         self.session_history_path.unlink()
                     except Exception:
                         pass
-            # Interactive arrow history is strictly per-session; no cross-session replay
-            self._cleanup_cp_dir()
+            # Release in-memory resources
             _release_memory()
         return self.current_df
 
@@ -6554,6 +5747,7 @@ def repl(
     chunk_size: int | None = None,
     reader_kwargs: dict[str, Any] | None = None,
     session: str | None = None,
+    script: Path | str | None = None,
     **kwargs: Any,
 ) -> Any:
     """Launch the interactive Pytae REPL.
@@ -6579,7 +5773,9 @@ def repl(
     reader_kwargs : dict, optional
         Additional keyword arguments to pass to dataset reader.
     session : str, optional
-        Persistent session name (saves checkpoints across restarts in ~/.pytae/sessions/<name>).
+        Deprecated parameter retained for backwards compatibility.
+    script : str | Path, optional
+        Path to a .pt script file to execute and populate memory before prompt.
 
     Returns
     -------
@@ -6598,6 +5794,67 @@ def repl(
         chunk_size=chunk_size,
         reader_kwargs=reader_kwargs,
         session=session,
+        script=script,
         **kwargs,
     )
     return runner.run()
+
+
+def run_script_file(script_path_str: str, output_fn: Callable[[str], None] = print) -> int:
+    """Execute a Pytae (.pt) script file line-by-line in batch headless mode.
+
+    Parameters
+    ----------
+    script_path_str : str
+        Path to the .pt script file.
+    output_fn : Callable[[str], None], optional
+        Function to handle output messages (defaults to print).
+
+    Returns
+    -------
+    int
+        Exit code: 0 on success, non-zero on failure.
+    """
+    from pytae.cli_parsing import normalize_git_bash_path
+
+    clean_path = normalize_git_bash_path(script_path_str.strip("'\""))
+    script_path = Path(clean_path).resolve()
+    if not script_path.exists():
+        output_fn(f"pytae error: script file '{script_path_str}' not found.")
+        return 1
+
+    repl_inst = PytaeRepl()
+    lines = script_path.read_text(encoding="utf-8").splitlines()
+    in_py = False
+    py_buffer: list[str] = []
+
+    for raw_line in lines:
+        line = raw_line.rstrip()
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+
+        if stripped == "py":
+            if not in_py:
+                in_py = True
+                py_buffer.clear()
+            else:
+                in_py = False
+                py_code = "\n".join(py_buffer)
+                py_buffer.clear()
+                ok = repl_inst.execute_line(f"py\n{py_code}", output_fn=output_fn)
+                if not ok:
+                    return 1
+            continue
+
+        if in_py:
+            py_buffer.append(line)
+            continue
+
+        ok = repl_inst.execute_line(stripped, output_fn=output_fn)
+        if not ok:
+            if stripped.lower().startswith("exit"):
+                return 0
+            return 1
+
+    return 0
