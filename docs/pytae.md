@@ -288,19 +288,19 @@ Pytae was designed to synthesize the best strengths of the modern data engineeri
 
 For exhaustive syntax mappings, feature-by-feature Rosetta stones, and migration walkthroughs, see the dedicated guides:
 
-- **[Pytae vs. Pandas Deep Dive & Rosetta Stone](comparison_to_pandas.md)**:
+- **[Pytae vs. Pandas Deep Dive & Rosetta Stone](comparisons_with_other_tools/comparison_to_pandas.md)**:
   - Eliminating the `MultiIndex` nightmare and index management overhead.
   - Avoiding Pandas silent data loss traps (`dropna=True` in groupby).
   - Performance benchmarks: single-threaded Python GIL vs. native Polars Rust SIMD.
   - Complete 14-task syntax translation table and end-to-end pipeline comparison.
 
-- **[Pytae vs. dplyr (R / Tidyverse) Deep Dive & Rosetta Stone](comparison_to_dplyr.md)**:
+- **[Pytae vs. dplyr (R / Tidyverse) Deep Dive & Rosetta Stone](comparisons_with_other_tools/comparison_to_dplyr.md)**:
   - Bringing Tidyverse elegance to Python without Non-Standard Evaluation (NSE) quoting headaches.
   - Why `ungroup()` is obsolete: comparing dplyr's sticky grouping with Pytae's single-shot auto-clearing `df.by()`.
   - Multi-column transformations: `across()` vs. Pytae's concise `(a, b)_cm = _ * 10`.
   - Full Tidyverse-to-Pytae Rosetta stone and Unix CLI parity.
 
-- **[Pytae vs. SAS Deep Dive & Migration Guide](comparison_to_sas.md)**:
+- **[Pytae vs. SAS Deep Dive & Migration Guide](comparisons_with_other_tools/comparison_to_sas.md)**:
   - Transitioning from the procedural Program Data Vector (PDV) to modern vectorized SIMD execution.
   - The dangerous SAS missing value trap (numeric `.` sorting below negative infinity).
   - Eliminating the mandatory pre-sorting requirement of SAS `MERGE ... BY ...`.
@@ -329,15 +329,62 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 | **Reshaping** | **[reshape.ipynb](detailed_docs/library/reshape.ipynb)** | **[reshape.md](detailed_docs/cli/reshape.md)** | `long` (unpivoting), `wide` (1:1 pivoting), and `explode` (unnesting list/array columns) |
 | **Relational Joins**| **[join.ipynb](detailed_docs/library/join.ipynb)** | **[join.md](detailed_docs/cli/join.md)** | `df.join`, `pt.join`, `pt.concat`, inner/left/right/full/semi/anti/cross, colon keys, `validate` |
 | **Masking & Privacy**| **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[mask.md](detailed_docs/cli/mask.md)** | `mask`, `unmask`, `-mask`, `-unmask`, SHA-256 hash, salt, redact, key encryption, vault tokenization |
-| **Interactive REPL**| — | **[repl.md](repl.md)** | `pytae -i`, session flight recorder `~/.pytae_history/`, `history`, `reset`, `checkpoint`, `restore`, `rm *`, `clear` |
+| **Interactive REPL**| — | **[detailed_docs/repl/](detailed_docs/repl/ingestion_tables.md)** | `pytae -i`, in-memory workbench, Model A RAM isolation, `.to_pytae()`, `checkpoint`, `restore`, `rm table`, `exit -s` |
 | **Utilities** | **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[clean_replace.md](detailed_docs/cli/clean_replace.md)**<br>**[diff.md](detailed_docs/cli/diff.md)** | `fillna`, `dropna`, `clean_columns`, `diff` (key-aware with `on=`, `tol=`), `glimpse`, `cols`, `to_clip` |
 | **Inspection** | **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[inspect.md](detailed_docs/cli/inspect.md)** | `-cols`, `-dtype`, `-shape`, `-nulls`, `-head`, `-tail`, `-glimpse`, `-summary`, `-freq`, `-hist`, `-bar`, `-scatter`, `-corr` |
 | **Multi-File** | **[join.ipynb](detailed_docs/library/join.ipynb)** | **[multi_file.md](detailed_docs/cli/multi_file.md)** | Multi-table pipelines (`alias=source`), multi-file globbing (`*.parquet`), multi-table joining, batch inputs, pipes, Unix redirection |
 | **SQL Engine** | **[sql.ipynb](detailed_docs/library/sql.ipynb)** | **[sql.md](detailed_docs/cli/sql.md)** | `df.sql()`, `pt.sql()`, `-sql` native Polars SQL engine (SQLContext) on data and files |
 | **Plotting** | **[plotting.ipynb](detailed_docs/plotting/plotting.ipynb)** | **[cli_plots.md](detailed_docs/cli/cli_plots.md)** | `df.plot()`, `-plot`, `-finalize`, terminal `-bar`, `-scatter`, `-corr`, headless figures |
 | **Doc Search & MCP** | — | — | `pytae -doc <query>`, `pt.doc()`, `pytae -mcp` stdio JSON-RPC 2.0 server for Copilot/Cursor |
-| **Comparisons** | **[vs. Pandas](comparison_to_pandas.md)**<br>**[vs. dplyr](comparison_to_dplyr.md)**<br>**[vs. SAS](comparison_to_sas.md)** | — | Pytae vs. Pandas vs. dplyr vs. SAS, naming rationale, "one and only one obvious way" |
+| **Comparisons** | **[vs. Pandas](comparisons_with_other_tools/comparison_to_pandas.md)**<br>**[vs. dplyr](comparisons_with_other_tools/comparison_to_dplyr.md)**<br>**[vs. SAS](comparisons_with_other_tools/comparison_to_sas.md)** | — | Pytae vs. Pandas vs. dplyr vs. SAS, naming rationale, "one and only one obvious way" |
 | **Benchmarks** | **[benchmarks.ipynb](benchmarks/benchmarks.ipynb)** | **[run_benchmarks.py](benchmarks/run_benchmarks.py)**<br>**[README](benchmarks/README.md)** | Reproducible 5M-row speed benchmarks: Pytae vs. Pandas/dplyr/SAS, timings & plots |
+
+---
+
+## Interactive REPL Shell (`pytae -i`)
+
+The **Pytae REPL** provides stateful, iterative in-memory data manipulation and exploratory data analysis. In standard one-shot CLI usage, running multiple queries on a 1 GB file requires re-reading and re-parsing from disk every time. The Pytae REPL loads your dataset into RAM **once**, executing subsequent filters, aggregations, feature mutations, ANSI SQL queries, and Python logic at multithreaded Polars SIMD speeds.
+
+### Core Architecture & Guarantees
+
+1. **Dedicated Entrypoint (`pytae -i`)**: Interactive sessions launch cleanly with `pytae -i`. Datasets are loaded explicitly with `df = file.parquet`, guaranteeing that session logs and exported replay scripts are 100% reproducible and self-contained.
+2. **Subject-First Multi-Table Workbench**: Load multiple datasets simultaneously (`df1`, `df2`, `orders`, `cust`). Run commands with clear prefixes (`df1 -head 5`, `orders -join cust on=id`), or switch active tables with `use <name>`.
+3. **Non-Destructive by Default**: Bare exploratory queries (`-pivot`, `-filter`, `-head`) format and display previews in the terminal without altering underlying tables in memory. State changes require explicit assignment (`df = df -filter ...`).
+4. **Model A Python RAM Isolation**: Embedded Python execution (`py <expr>`) provides an extensibility escape hatch. Transient Python variables and intermediate pandas objects are immediately deallocated upon exit via `gc.collect()`. Only tables explicitly converted via `.to_pytae()` are registered in the workbench.
+5. **Disk-Backed Checkpoints (0 MB RAM Overhead)**: Checkpoints serialize frozen table states to disk (`.ipc` or `.parquet`). They consume **0 MB of RAM**, allowing safe instant rollbacks via `restore <name>` or `reset`.
+
+### Quick Reference of REPL Commands
+
+| Category | Command | Example | Description |
+|:---|:---|:---|:---|
+| **Ingestion** | Assignment / `load` | `df = sales.parquet`<br>`load cust.csv as cust -dlim ";"` | Ingest file into named table variable |
+| **Workbench** | `status table` | `status table [-v]` | View loaded tables, shapes, memory, and columns |
+| | `use` | `use cust` | Switch active dataset cursor |
+| | `rename` | `rename df1 customers` | Zero-copy $O(1)$ in-memory table pointer rename |
+| | Subject-First | `cust -head 5`, `cust -shape` | Execute command directly on named table |
+| | `rm table` | `rm table df1`, `rm table *` | Free table memory and trigger immediate OS page trim |
+| **Transform** | Pipelines | `-filter "x > 1" -mutate "y = x * 2"` | Full 1:1 parity with Pytae CLI transformation flags |
+| | Relational Joins | `orders -join cust on=id how=left` | Relational join across workbench tables |
+| **Inspection** | Metadata | `-shape`, `-cols [asc\|desc\|pattern]`, `-schema`, `-nulls` | Non-destructive structural inspection |
+| | Previews | `-head 10`, `-tail 5`, `-sample 10`, `-diff df1 df2` | Non-destructive formatted row previews |
+| **SQL & Python**| `-sql` | `-sql "SELECT * FROM orders JOIN cust ..."` | Pure ANSI SQL across all loaded workbench tables |
+| | `py` (Model A) | `py k = df.to_pandas(); k = k.to_pytae()` | Embedded Python with immediate RAM cleanup & `.to_pytae()` |
+| **Checkpoints** | `checkpoint` | `checkpoint baseline` | Save disk snapshot (0 MB RAM overhead) |
+| | `restore` / `reset` | `restore baseline`, `reset` | Instantly revert workbench state to checkpoint |
+| **Parameters** | `@var` | `min_val = 3500`, `@cfg.threshold` | Session variables substituted in `-filter`, `-mutate`, `-sql` |
+| **Export & Replay**| `exit -s` | `exit -s pipeline.txt` | Export clean, reproducible batch replay script on exit |
+| | Batch Replay | `pytae -i < pipeline.txt` | Execute exported pipeline headlessly line by line |
+
+### Detailed REPL Documentation Directory
+
+For complete guides, configuration flags, edge cases, and cookbooks, see the dedicated topic documentation under **[`docs/detailed_docs/repl/`](detailed_docs/repl/)**:
+
+- [**Ingestion & Multi-Table Operations**](detailed_docs/repl/ingestion_tables.md) — Reader options (`-encoding`, `-dlim`, `-nrows`, `-opts`), glob loading, sample datasets, zero-copy `rename`, and relational joins.
+- [**Pipelines & Non-Destructive Inspection**](detailed_docs/repl/pipelines_inspection.md) — 1:1 CLI verbs in RAM, assignment vs bare exploration semantics, `-cols` sorting/filtering, and `-diff`.
+- [**SQL & Python Interop (Model A)**](detailed_docs/repl/sql_python.md) — ANSI SQL across tables, single-line & bare `py` block mode, Model A RAM zeroing, and explicit `.to_pytae()` conversion.
+- [**Multi-Line Input & Session Variables**](detailed_docs/repl/multiline_variables.md) — Line continuation with `\`, multi-line SQL/variables, typed session `@var` parameters, and namespace protection.
+- [**Checkpoints & Persistent Sessions**](detailed_docs/repl/checkpoints_sessions.md) — Disk-backed checkpoints, ephemeral temp cleanup, persistent project directories, and `set` configuration hub.
+- [**Memory Management, History & Replay**](detailed_docs/repl/memory_history_replay.md) — Explicit `rm table`, OS page trimming (malloc_trim/mach_task/working set), `history`, `exit -s`, and Unix shell pipes (`|`).
 
 ---
 

@@ -13,7 +13,7 @@ Fast, ergonomic tabular data manipulation, feature engineering, and visualizatio
 2. **Interactive REPL Shell (`pytae -i`)**: Stateful in-memory workbench with disk-backed checkpoints, multi-table joins, and ANSI SQL.
 3. **Python & Jupyter SDK (`pt.DataFrame` / `df.pt`)**: High-performance Polars-native DataFrame library with `.pt` accessor for pandas/polars DataFrames.
 
-👉 **Quick Links**: [**CLI Cheat Sheet & Cookbook**](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md) | [**Interactive REPL Guide**](https://github.com/maddytae/pytae/blob/master/docs/repl.md) | [**Standalone Binaries (Zero-Python)**](docs/binary_distribution.md) | [**Master Reference & Architecture Hub**](https://github.com/maddytae/pytae/blob/master/docs/pytae.md) | [**vs. Pandas**](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas.md) | [**vs. dplyr**](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_dplyr.md) | [**vs. SAS**](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_sas.md)
+👉 **Quick Links**: [**CLI Cheat Sheet & Cookbook**](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md) | [**Interactive REPL Guide**](https://github.com/maddytae/pytae/blob/master/docs/pytae.md#interactive-repl-shell-pytae--i) | [**Standalone Binaries (Zero-Python)**](docs/binary_distribution.md) | [**Master Reference & Architecture Hub**](https://github.com/maddytae/pytae/blob/master/docs/pytae.md) | [**vs. Pandas**](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas.md) | [**vs. dplyr**](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_dplyr.md) | [**vs. SAS**](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_sas.md)
 
 ---
 
@@ -81,7 +81,7 @@ pytae> exit -s                   # Save self-contained session history to ./hist
 > [!TIP]
 > **Reproducible Sessions**: Because datasets are loaded interactively (e.g. `df = penguins.parquet`), every command is saved to session history. You can replay the entire session at any time with `pytae -i < history.txt`.
 
-👉 **Read the Full REPL Manual**: [Interactive REPL Guide](https://github.com/maddytae/pytae/blob/master/docs/repl.md)
+👉 **Read the Full REPL Manual**: [Interactive REPL Guide](docs/pytae.md#interactive-repl-shell-pytae--i)
 
 ---
 
@@ -182,8 +182,8 @@ plotter.finalize(title="Penguin Morphology Dashboard", save="dashboard.png")
 
 ### Architecture & Comparisons
 - **Master Reference & Architecture Hub**: [docs/pytae.md](https://github.com/maddytae/pytae/blob/master/docs/pytae.md)
-- **Ecosystem Comparisons**: [vs. Pandas](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_pandas.md) | [vs. dplyr](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_dplyr.md) | [vs. SAS](https://github.com/maddytae/pytae/blob/master/docs/comparison_to_sas.md)
-- **Interactive Shell Manual**: [Interactive REPL Guide](https://github.com/maddytae/pytae/blob/master/docs/repl.md)
+- **Ecosystem Comparisons**: [vs. Pandas](docs/comparisons_with_other_tools/comparison_to_pandas.md) | [vs. dplyr](docs/comparisons_with_other_tools/comparison_to_dplyr.md) | [vs. SAS](docs/comparisons_with_other_tools/comparison_to_sas.md)
+- **Interactive Shell Manual**: [Interactive REPL Guide](docs/pytae.md#interactive-repl-shell-pytae--i)
 - **Command-Line Quick Reference**: [CLI Cheat Sheet & Cookbook](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md)
 
 

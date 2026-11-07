@@ -1767,11 +1767,11 @@ pytae a=portfolio.xlsx b=portfolio.xlsx \
 │   │   ├── benchmarks.ipynb
 │   │   └── run_benchmarks.py
 │   ├── cli_cheatsheet.md
-│   ├── comparison_to_dplyr.md
-│   ├── comparison_to_pandas.md
-│   ├── comparison_to_sas.md
+│   ├── comparisons_with_other_tools
+│   │   ├── comparison_to_dplyr.md
+│   │   ├── comparison_to_pandas.md
+│   │   └── comparison_to_sas.md
 │   ├── pytae.md
-│   ├── repl.md
 │   ├── detailed_docs
 │   │   ├── cli
 │   │   │   ├── agg.md
@@ -1793,6 +1793,13 @@ pytae a=portfolio.xlsx b=portfolio.xlsx \
 │   │   │   ├── reshape.md
 │   │   │   ├── select.md
 │   │   │   └── sql.md
+│   │   ├── repl
+│   │   │   ├── checkpoints_sessions.md
+│   │   │   ├── ingestion_tables.md
+│   │   │   ├── memory_history_replay.md
+│   │   │   ├── multiline_variables.md
+│   │   │   ├── pipelines_inspection.md
+│   │   │   └── sql_python.md
 │   │   ├── library
 │   │   │   ├── agg.ipynb
 │   │   │   ├── arrange.ipynb
@@ -1965,7 +1972,6 @@ def generate_reference() -> None:
     )
     pytae_md = REPO_ROOT / "docs" / "pytae.md"
     cheatsheet_md = REPO_ROOT / "docs" / "cli_cheatsheet.md"
-    repl_md = REPO_ROOT / "docs" / "repl.md"
     pyproject_path = REPO_ROOT / "pyproject.toml"
     pyproject_content = pyproject_path.read_text(encoding="utf-8").strip()
 
@@ -1982,14 +1988,6 @@ def generate_reference() -> None:
     for doc_path in detailed_docs:
         rel_path = doc_path.relative_to(REPO_ROOT)
         copilot_parts.append("################################################################################")
-        if doc_path.suffix == ".ipynb":
-            copilot_parts.append(f"# NOTEBOOK: {rel_path}")
-            copilot_parts.append("################################################################################")
-            copilot_parts.append(_format_notebook(doc_path).rstrip() + "\n")
-        else:
-            copilot_parts.append(f"# FILE: {rel_path}")
-            copilot_parts.append("################################################################################")
-            copilot_parts.append(doc_path.read_text(encoding="utf-8").rstrip() + "\n")
         if doc_path.suffix == ".ipynb":
             copilot_parts.append(f"# NOTEBOOK: {rel_path}")
             copilot_parts.append("################################################################################")
@@ -2017,20 +2015,14 @@ def generate_reference() -> None:
         copilot_parts.append("################################################################################")
         copilot_parts.append(cheatsheet_md.read_text(encoding="utf-8").rstrip() + "\n")
 
-    if repl_md.exists():
-        copilot_parts.append("================================================================================")
-        copilot_parts.append("INTERACTIVE REPL SHELL GUIDE (docs/repl.md)")
-        copilot_parts.append("================================================================================\n")
-        copilot_parts.append("################################################################################")
-        copilot_parts.append(f"# FILE: {repl_md.relative_to(REPO_ROOT)}")
-        copilot_parts.append("################################################################################")
-        copilot_parts.append(repl_md.read_text(encoding="utf-8").rstrip() + "\n")
 
     copilot_parts.append("================================================================================")
     copilot_parts.append("10. ECOSYSTEM COMPARISONS & MIGRATION GUIDES (Pandas, dplyr, SAS)")
     copilot_parts.append("================================================================================\n")
     for comp_name in ["comparison_to_pandas.md", "comparison_to_dplyr.md", "comparison_to_sas.md"]:
         comp_md = REPO_ROOT / "docs" / comp_name
+        if not comp_md.exists():
+            comp_md = REPO_ROOT / "docs" / "comparisons_with_other_tools" / comp_name
         if comp_md.exists():
             copilot_parts.append("################################################################################")
             copilot_parts.append(f"# FILE: {comp_md.relative_to(REPO_ROOT)}")
