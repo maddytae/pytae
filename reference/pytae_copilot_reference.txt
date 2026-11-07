@@ -14093,6 +14093,8 @@ To guarantee predictable execution and prevent confusing state collisions:
    - Assigning a table or loading a dataset with the name of an existing variable produces an explicit error:
      `pytae: '<name>' is already a session variable; cannot assign as a table. Use 'rm var <name>' first.`
    - Renaming a table to match an existing variable is similarly rejected.
+3. **No `@` Prefix in Definitions**: Variables must be defined bare (`min_spend = 50.0`). Attempting to define a variable with a leading `@` (`@min_spend = 50.0`) is strictly rejected with educational guidance:
+   `pytae: session variables must be defined without '@' (use 'min_spend = ...'; '@' is for referencing like '@min_spend').`
 
 ################################################################################
 # FILE: docs/detailed_docs/repl/pipelines_inspection.md

@@ -3241,9 +3241,14 @@ class PytaeRepl:
         # Variable Assignment: `df1 = orders.parquet` or `df3 = df1 -filter "..."` or `df3 = -sql ...` or `min_mass = 3500`
         if "=" in line and not line.startswith("-"):
             left_part, right_part = line.split("=", 1)
-            var_name = left_part.strip()
-            if var_name.startswith("@"):
-                var_name = var_name[1:].strip()
+            raw_left = left_part.strip()
+            if raw_left.startswith("@"):
+                clean_name = raw_left.lstrip("@").strip()
+                output_fn(
+                    f"pytae: session variables must be defined without '@' (use '{clean_name} = ...'; '@' is for referencing like '@{clean_name}')."
+                )
+                return True
+            var_name = raw_left
             if (
                 var_name.isidentifier()
                 and not right_part.startswith("=")

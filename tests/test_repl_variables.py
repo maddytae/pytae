@@ -28,6 +28,24 @@ def test_repl_variable_scalar_assignment():
     assert r.variables["empty"] is None
 
 
+def test_repl_variable_at_prefix_rejected():
+    outputs: list[str] = []
+    r = PytaeRepl()
+
+    # Attempting to define a variable with @ prefix is strictly rejected
+    r.execute_line("@min_spend = 50.0", output_fn=outputs.append)
+    assert any("session variables must be defined without '@'" in o for o in outputs)
+    assert any("use 'min_spend = ...'" in o for o in outputs)
+    assert "min_spend" not in r.variables
+    assert "@min_spend" not in r.variables
+
+    # Standard definition succeeds
+    outputs.clear()
+    r.execute_line("min_spend = 50.0", output_fn=outputs.append)
+    assert "Set @min_spend = 50.0" in outputs[-1]
+    assert r.variables["min_spend"] == 50.0
+
+
 def test_repl_variable_collection_assignment():
     outputs: list[str] = []
     r = PytaeRepl()
