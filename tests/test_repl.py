@@ -2259,19 +2259,42 @@ def test_repl_history_save_and_exit_save(tmp_path, monkeypatch):
     assert res is True  # Does not exit
     assert any("Usage: exit [-s [path]]" in o for o in outputs)
 
-    # Case 4: Bare exit -s saves to ./history.txt and terminates REPL
+    # Case 4: Bare exit -s saves to ./session.pt and terminates REPL
     r_exit = PytaeRepl()
     r_exit.execute_line("df = sample:penguins", output_fn=outputs.append)
-    default_hist = work_dir / "history.txt"
-    if default_hist.exists():
-        default_hist.unlink()
+    default_pt = work_dir / "session.pt"
+    if default_pt.exists():
+        default_pt.unlink()
     outputs.clear()
     res = r_exit.execute_line("exit -s", output_fn=outputs.append)
     assert res is False  # Exits!
-    assert default_hist.exists()
-    assert "df = sample:penguins" in default_hist.read_text(encoding="utf-8")
-    assert any("Session code saved to" in o or "Session commands saved to" in o or "Session history saved to" in o for o in outputs)
+    assert default_pt.exists()
+    assert "df = sample:penguins" in default_pt.read_text(encoding="utf-8")
+    assert any("Session code saved to" in o for o in outputs)
     assert any("Exiting pytae REPL." in o for o in outputs)
+
+    # Case 4b: exit -s py saves to ./session.py (executable Python script)
+    r_py = PytaeRepl()
+    r_py.execute_line("df = sample:penguins", output_fn=outputs.append)
+    session_py = work_dir / "session.py"
+    if session_py.exists():
+        session_py.unlink()
+    outputs.clear()
+    res = r_py.execute_line("exit -s py", output_fn=outputs.append)
+    assert res is False
+    assert session_py.exists()
+    py_text = session_py.read_text(encoding="utf-8")
+    assert "import polars as pl" in py_text
+
+    # Case 4c: exit -s pt explicitly saves to ./session.pt
+    r_pt = PytaeRepl()
+    r_pt.execute_line("df = sample:penguins", output_fn=outputs.append)
+    if default_pt.exists():
+        default_pt.unlink()
+    outputs.clear()
+    res = r_pt.execute_line("exit -s pt", output_fn=outputs.append)
+    assert res is False
+    assert default_pt.exists()
 
     # Case 5: exit -s with named path saves and terminates REPL
     r3 = PytaeRepl()

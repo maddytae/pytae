@@ -2858,7 +2858,7 @@ class PytaeRepl:
                     output_fn(f"Pipe error: {exc}")
             return cont
 
-        # Check for exit (supports 'exit' and 'exit -s <path>')
+        # Check for exit (supports 'exit' and 'exit -s [pt|py|path]')
         clean_line_lower = line.lower()
         if clean_line_lower == "exit":
             if self.save_history_file:
@@ -2874,17 +2874,29 @@ class PytaeRepl:
 
         if exit_tokens and exit_tokens[0].lower() == "exit":
             if len(exit_tokens) >= 3 and exit_tokens[1] in ("-s", "-save", "save"):
-                target = exit_tokens[2]
+                sub = exit_tokens[2].lower()
+                if sub == "py":
+                    target = "session.py"
+                elif sub == "pt":
+                    target = "session.pt"
+                else:
+                    target = exit_tokens[2]
                 self._export_session_history(target, output_fn)
                 output_fn("Exiting pytae REPL.")
                 return False
             elif len(exit_tokens) == 2 and exit_tokens[1] in ("-s", "-save", "save"):
-                target = "history.txt"
+                target = "session.pt"
                 self._export_session_history(target, output_fn)
                 output_fn("Exiting pytae REPL.")
                 return False
             elif len(exit_tokens) == 2 and (exit_tokens[1].startswith("-s=") or exit_tokens[1].startswith("-s:")):
-                target = exit_tokens[1][3:]
+                val = exit_tokens[1][3:].strip()
+                if val.lower() == "py":
+                    target = "session.py"
+                elif val.lower() in ("pt", ""):
+                    target = "session.pt"
+                else:
+                    target = val
                 self._export_session_history(target, output_fn)
                 output_fn("Exiting pytae REPL.")
                 return False
