@@ -120,3 +120,21 @@ def test_plotter_show_non_interactive_no_warning():
         w for w in recorded if "non-interactive" in str(w.message).lower()
     ]
     assert not interactive_warnings, f"Unexpected non-interactive warning: {interactive_warnings}"
+
+
+def test_repl_unregistered_bare_word_not_recognized():
+    """Verify that typing an unregistered bare word in REPL is cleanly rejected without crashing on args.stats."""
+    import polars as pl
+
+    from pytae.repl import PytaeRepl
+
+    r = PytaeRepl(df=pl.DataFrame({"a": [1, 2, 3]}))
+    outs: list[str] = []
+    r.execute_line("py k=df.to_pandas()", output_fn=outs.append)
+    r.execute_line("k", output_fn=outs.append)
+    r.close()
+
+    assert any(
+        "is not recognized as a command, table, or flag" in o for o in outs
+    ), f"Expected clean rejection message, got: {outs}"
+

@@ -3340,6 +3340,11 @@ class PytaeRepl:
                     self._record_history(line)
                 return True
 
+        # Reject unrecognized bare commands/tokens that do not start with a pipeline flag '-'
+        if tokens and not tokens[0].startswith("-"):
+            output_fn(f"pytae: '{tokens[0]}' is not recognized as a command, table, or flag. Use 'status table' to list loaded tables.")
+            return True
+
         # Otherwise, process as a pytae pipeline command
         self._cmd_pipeline(line, tokens, output_fn)
         return True
@@ -5850,7 +5855,6 @@ class PytaeRepl:
                 args.head is not None,
                 args.tail is not None,
                 args.sample is not None,
-                args.stats,
                 getattr(args, "diff", None) is not None,
                 getattr(args, "meta", False),
                 getattr(args, "plot", None) is not None,

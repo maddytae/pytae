@@ -818,7 +818,7 @@ def test_repl_reader_options_on_assignment_and_load(tmp_path):
 
 
 def test_repl_cols_sorting_and_filtering(sample_df):
-    r = PytaeRepl(df=sample_df)
+    r = PytaeRepl(df=sample_df, path="peng.parquet")
     outputs = []
 
     # Default file order
@@ -956,7 +956,7 @@ def test_repl_rm_checkpoint(sample_df):
 
 def test_repl_shell_pipe(sample_df):
     outputs = []
-    r = PytaeRepl(df=sample_df)
+    r = PytaeRepl(df=sample_df, path="peng.parquet")
 
     # Shell pipe: -cols | grep mass
     r.execute_line("-cols | grep mass", output_fn=outputs.append)
