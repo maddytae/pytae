@@ -2322,8 +2322,8 @@ class PytaeRepl:
         self._session_start_time = datetime.datetime.now()
         timestamp_str = self._session_start_time.strftime("%Y_%m_%d_%H_%M_%S")
         self.session_history_path: Path = _get_history_dir() / f"history_{timestamp_str}.txt"
-        self.session_commands_path: Path = _get_history_dir() / f"commands_{timestamp_str}.txt"
-        self.session_code_path: Path = self.session_commands_path
+        self.session_commands_path: Path | None = None
+        self.session_code_path: Path | None = None
         self.session_log_path: Path = self.session_history_path
         self.session_raw_cmd_count: int = 0
         self.session_cmd_count: int = 0
@@ -2337,16 +2337,6 @@ class PytaeRepl:
         ]
         try:
             self.session_history_path.write_text("\n".join(hist_header), encoding="utf-8")
-        except Exception:
-            pass
-
-        cmd_header = [
-            f"# Pytae REPL Commands: started {self._session_start_time.strftime('%Y-%m-%d %H:%M:%S')}",
-            f"# Target: {init_target}",
-            "",
-        ]
-        try:
-            self.session_commands_path.write_text("\n".join(cmd_header), encoding="utf-8")
         except Exception:
             pass
 
@@ -2400,17 +2390,18 @@ class PytaeRepl:
             pass
 
     def _log_session_line(self, entry: str) -> None:
-        """Record replayable commands to the session commands file (~/.pytae/commands/)."""
+        """Record replayable commands to the session command count."""
         clean = entry.strip()
         if not self._is_replayable_entry(clean):
             return
         self.session_cmd_count += 1
-        try:
-            with open(self.session_commands_path, "a", encoding="utf-8") as f:
-                f.write(f"{clean}\n")
-                f.flush()
-        except Exception:
-            pass
+        if self.session_commands_path is not None:
+            try:
+                with open(self.session_commands_path, "a", encoding="utf-8") as f:
+                    f.write(f"{clean}\n")
+                    f.flush()
+            except Exception:
+                pass
 
     def _record_history(self, entry: str) -> None:
         self.history.append(entry)

@@ -2126,13 +2126,9 @@ def test_repl_session_history_logging(tmp_path, monkeypatch):
     assert '-filter "species == \'Gentoo\'"' in hist_content
     assert 'df = -mutate "m = 1"' in hist_content
 
-    # Check commands file on disk: exploratory previews and comments omitted
-    cmds_content = r.session_commands_path.read_text(encoding="utf-8")
-    assert "# Pytae REPL Commands" in cmds_content
-    assert "df = sample:penguins" in cmds_content
-    assert '-filter "species == \'Gentoo\'"' not in cmds_content  # Exploratory preview omitted from commands!
-    assert "# my custom comment" not in cmds_content  # Comments omitted from commands!
-    assert 'df = -mutate "m = 1"' in cmds_content  # State mutation preserved in commands!
+    # Verify only single session history file exists (commands_*.txt is not auto-saved)
+    assert r.session_commands_path is None or not r.session_commands_path.exists()
+    assert len(list(hist_dir.glob("commands_*.txt"))) == 0
 
     # Test in-REPL history command: clean sequential numbering without comments
     outputs.clear()
@@ -3105,8 +3101,8 @@ def test_repl_saved_commands_pure_replayability(tmp_path):
             assert not clean_l.startswith("set="), f"Found unexpected set command in replay script: {clean_l}"
             assert "-o clip" not in clean_l
 
-    # Also verify live session_commands_path in ~/.pytae/commands/
-    if r.session_commands_path.exists():
+    # Also verify live session_commands_path if configured
+    if r.session_commands_path is not None and r.session_commands_path.exists():
         live_content = r.session_commands_path.read_text(encoding="utf-8")
         assert "-o clip" not in live_content
         for line in live_content.splitlines():
