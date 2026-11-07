@@ -365,6 +365,9 @@ def get_commands_dir() -> Path:
     return get_code_dir()
 
 
+_CONFIGURED_SESSIONS_DIR: Path | None = None
+
+
 def get_sessions_dir() -> Path:
     """Return the base directory for persistent Pytae sessions (defaults to current working directory)."""
     global _CONFIGURED_SESSIONS_DIR

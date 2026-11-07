@@ -2811,6 +2811,7 @@ def test_list_saved_sessions_output_and_directories(tmp_path, monkeypatch) -> No
     from pytae.repl import (
         _get_history_dir,
         get_commands_dir,
+        get_sessions_dir,
         list_saved_sessions,
     )
 
@@ -2824,6 +2825,9 @@ def test_list_saved_sessions_output_and_directories(tmp_path, monkeypatch) -> No
     cmd_dir = get_commands_dir()
     assert cmd_dir.name in ("code", "commands", "history")
     assert cmd_dir.parent.name == ".pytae"
+
+    sess_dir = get_sessions_dir()
+    assert sess_dir.exists()
 
     # 2. Test list_saved_sessions outputs retirement notice
     outputs: list[str] = []
