@@ -236,7 +236,7 @@ Removed all session variables (2 removed).
 
 ### Checkpoint & Script Export
 1. When you run `checkpoint <name>`, Pytae saves all in-memory variables alongside active table states.
-2. When you run `rollback [name]`, Pytae restores the exact variable snapshot from the checkpoint.
+2. When you run `restore [name]`, Pytae restores the exact variable snapshot from the checkpoint.
 3. Variable assignments are preserved across pipeline exports (`export script pipeline.pt`), ensuring parameter thresholds and configuration values replay faithfully.
 
 ```text

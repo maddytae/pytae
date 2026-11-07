@@ -1206,8 +1206,8 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ),
         options=[
             "status session [-v] : Inspect active in-memory session status, tables, and memory usage.",
-            "checkpoint <name> : Create an in-memory snapshot of all active tables.",
-            "rollback [name] : Revert active tables to previous checkpoint.",
+            "checkpoint <name> : Create an ephemeral IPC snapshot of all active tables.",
+            "restore [name] : Revert active tables to previous checkpoint (or latest).",
             "export script <path.pt | path.py> : Export executed pipeline to reproducible script.",
             "-sessions : Shell CLI notice that disk sessions have been retired in favor of script exports.",
         ],
@@ -1217,34 +1217,35 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "pytae -i  # Inside REPL: checkpoint snapshot1",
             "pytae -i  # Inside REPL: export script pipeline.pt",
         ],
-        see_also=["-i", "status", "set", "checkpoint", "rollback"],
+        see_also=["-i", "status", "set", "checkpoint", "restore"],
     ),
     "checkpoint": KeywordHelp(
         name="checkpoint",
         flag="checkpoint <name>",
         syntax="checkpoint <name>",
-        summary="Freeze in-memory workbench state into an immutable snapshot.",
+        summary="Freeze active workbench state into an ephemeral disk IPC snapshot (0 MB RAM).",
         description=(
-            "Takes an in-memory snapshot of all active tables, variables, and pipeline history.\n"
-            "- 'checkpoint <name>': Freezes active tables in memory (e.g. checkpoint cp1).\n"
-            "- 'rollback [name]': Reverts workbench tables to the specified checkpoint (or latest).\n"
-            "- 'status checkpoint [name]': Inspects checkpoint inventory and details.\n"
-            "- 'rm checkpoint <name>': Removes a saved checkpoint from memory.\n"
+            "Takes an ephemeral Arrow IPC snapshot of all active tables, variables, and workbench state.\n"
+            "- 'checkpoint <name>': Freezes active tables to ephemeral disk IPC (e.g. checkpoint cp1).\n"
+            "- 'restore [name]': Reverts workbench tables to the specified checkpoint (or latest).\n"
+            "- 'status checkpoint [name]': Inspects checkpoint inventory, disk sizes, and table details.\n"
+            "- 'rm checkpoint <name>': Removes a saved checkpoint and purges its IPC files.\n"
+            "- Ephemeral storage: Checkpoints consume 0 MB RAM and are automatically deleted on session exit.\n"
             "- Legacy disk settings ('checkpoint_format', 'convert = all') have been retired in favor of zero-overhead in-memory snapshots."
         ),
         options=[
-            "checkpoint <name> : Freeze active workbench state under a named checkpoint in memory.",
-            "rollback [name] : Restore in-memory tables and state to a saved checkpoint.",
+            "checkpoint <name> : Freeze active workbench state under an ephemeral IPC checkpoint (0 MB RAM).",
+            "restore [name] : Restore in-memory tables and state to a saved checkpoint (or latest).",
             "status checkpoint [name] : List saved checkpoints or view specific checkpoint metadata.",
             "rm checkpoint <name | *> : Delete a named checkpoint or purge all checkpoints.",
         ],
         examples=[
             "pytae -i  # Inside REPL: checkpoint baseline",
-            "pytae -i  # Inside REPL: rollback baseline",
+            "pytae -i  # Inside REPL: restore baseline",
             "pytae -i  # Inside REPL: status checkpoint",
             "pytae -i  # Inside REPL: rm checkpoint baseline",
         ],
-        see_also=["rollback", "session", "status", "-i"],
+        see_also=["restore", "session", "status", "-i"],
     ),
     "restore": KeywordHelp(
         name="restore",
@@ -1412,23 +1413,41 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         see_also=["status", "checkpoint", "tables"],
     ),
-    "use": KeywordHelp(
-        name="use",
-        flag="use <table_name>",
-        syntax="use <table_name>",
+    "switch": KeywordHelp(
+        name="switch",
+        flag="switch <table_name>",
+        syntax="switch <table_name>",
         summary="Switch the active in-memory table cursor.",
         description=(
             "Switches the active default table without reloading files.\n"
-            "All subsequent verb commands (-filter, -head, -select, etc.) execute on this table."
+            "All subsequent verb commands (-filter, -head, -select, etc.) execute on this table.\n"
+            "(Note: Legacy 'use <table_name>' is deprecated in favor of 'switch <table_name>')."
         ),
         options=[
             "<table_name> : Name of an existing loaded table.",
         ],
         examples=[
-            "pytae -i  # Inside REPL: use df2",
+            "pytae -i  # Inside REPL: switch df2",
             "pytae -i  # Inside REPL: status table",
         ],
         see_also=["status", "load", "tables"],
+    ),
+    "use": KeywordHelp(
+        name="use",
+        flag="use <table_name>",
+        syntax="use <table_name>",
+        summary="Switch the active in-memory table cursor (Deprecated; use 'switch').",
+        description=(
+            "Deprecated command for switching active dataset cursor.\n"
+            "Use 'switch <table_name>' instead."
+        ),
+        options=[
+            "<table_name> : Name of an existing loaded table.",
+        ],
+        examples=[
+            "pytae -i  # Inside REPL: switch df2  (preferred over 'use df2')",
+        ],
+        see_also=["switch", "status", "load"],
     ),
     "load": KeywordHelp(
         name="load",
@@ -1499,6 +1518,16 @@ KEYWORD_ALIASES: dict[str, str] = {
     "--cp_format": "checkpoint",
     "-restore": "restore",
     "--restore": "restore",
+    "revert": "restore",
+    "-revert": "restore",
+    "--revert": "restore",
+    "rollback": "restore",
+    "-rollback": "restore",
+    "--rollback": "restore",
+    "-switch": "switch",
+    "--switch": "switch",
+    "-use": "use",
+    "--use": "use",
     "-reset": "reset",
     "--reset": "reset",
     "-status": "status",

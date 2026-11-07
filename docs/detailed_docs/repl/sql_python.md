@@ -158,7 +158,7 @@ body_mass_kg
 
 # 3. Target 'k' or switch to it
 pytae [df: 344x7]> k -head 3
-pytae [df: 344x7]> use k
+pytae [df: 344x7]> switch k
 Switched active dataset to 'k'. Active shape: (344, 8)
 ```
 

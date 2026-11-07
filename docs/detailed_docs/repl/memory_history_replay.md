@@ -196,9 +196,9 @@ pytae [df: 344x7]> -head 50 | wc -l
 
 The Pytae REPL provides context-aware autocompletion via standard `readline`:
 
-- **Commands & Verbs**: Press `[Tab]` at an empty prompt to view top-level commands (`use`, `diff`, `rename`, `rm`, `set`, `checkpoint`, `rollback`, `export`, etc.).
+- **Commands & Verbs**: Press `[Tab]` at an empty prompt to view top-level commands (`switch`, `use`, `diff`, `rename`, `rm`, `set`, `checkpoint`, `restore`, `export`, etc.).
 - **Flags**: Type `-` and press `[Tab]` to autocomplete CLI pipeline verbs (`-filter`, `-select`, `-mutate`, `-arrange`, `-pivot`, etc.).
-- **Table & Checkpoint Names**: Autocompletes loaded tables after `use `, `rename `, `diff `, and `rm table `, or checkpoints after `rollback `.
+- **Table & Checkpoint Names**: Autocompletes loaded tables after `switch `, `use `, `rename `, `diff `, and `rm table `, or checkpoints after `restore `.
 - **Column Names**: Inside pipeline flags (`-select `, `-filter `, `-by `, `-arrange `), autocompletes column names of the active dataset or specified table prefix.
 - **File Paths**: Autocompletes local filesystem files and directories after `load `, `-o `, or assignment (`df = `).
 - **Settings**: Autocompletes configuration keys and options after `set ` (e.g. `set comma = ` -> `on`, `off`, or `set save`).

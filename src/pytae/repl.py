@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import atexit
 import datetime
 import gc
 import json
@@ -15,12 +16,13 @@ import re
 import shlex
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
 import polars as pl
 
-from pytae.cli_run import _format_table, _process_path
+from pytae.cli_run import _format_bytes, _format_table, _process_path
 from pytae.readers import DataFrameReader, get_reader
 
 
@@ -1001,7 +1003,7 @@ DATASET INGEST & MANAGEMENT:
   scan <path> [as <alias>]: Scan dataset into lazy table (e.g. scan large.parquet as df)
   load <path> as <var>... : Load dataset with alias and options (-encoding, -dlim, -nrows)
   status table [name] [-v] : Inspect active table or loaded table inventory with RAM
-  use <name>             : Switch active dataset (e.g. use df, use orders)
+  switch <name>          : Switch active dataset (e.g. switch df, switch orders; 'use' deprecated)
   rename <old> <new>     : Rename in-memory table (zero-copy alias reassignment)
   rm table <table_name>  : Remove in-memory table (e.g. rm table df1, or rm table *)
 
@@ -1039,18 +1041,14 @@ STATE & WORKBENCH:
   reset initial          : Strictly revert to initial read even if checkpoints exist
   history [N]            : Show numbered audit log of all commands executed in session
   export script <path>   : Export session pipeline to runnable Python (.py) or Pytae (.pt) script
-  checkpoint <name>      : Save snapshot of entire workbench (all tables in session)
-  restore <name>         : Restore entire workbench to saved checkpoint
+  checkpoint <name>      : Save ephemeral IPC snapshot of entire workbench to disk (0 MB RAM)
+  restore [name]         : Restore entire workbench to saved checkpoint (or bare 'restore' for latest)
   status checkpoint [name] : Inspect checkpoint snapshot or list all saved checkpoints
   rm table <name>        : Delete an in-memory table (or 'rm table *')
   rm checkpoint <name>   : Delete a saved checkpoint (or 'rm checkpoint *')
   rm var <name>          : Delete a session variable (or 'rm var *')
-  set [key [= value]]    : Configure session & display settings (e.g. set save_session = proj, max_rows = 20, comma = on)
-  status session [path]  : Show persistent session status (or inspect external session)
-  set new_session = <nm> : Start a fresh persistent session from scratch
-  set save_session = <nm>: Persist active session checkpoints to disk (move=true, overwrite=true)
-  set load_session = <nm>: Load persistent session checkpoints from disk
-  sessions [-v]          : List all saved persistent sessions on disk (-v for checkpoint & format details)
+  set [key [= value]]    : Configure display settings (max_rows, max_cols, float_precision, comma)
+  set save               : Save current display settings permanently to ~/.pytae/config.json
   clear                  : Clear the terminal screen
   exit [-s [path]]       : Exit REPL (optionally save session history to ./history.txt or <path>)
 
@@ -1101,8 +1099,10 @@ _DISALLOWED_ALIASES: dict[str, str] = {
     "--session": "session",
     "-sessions": "sessions",
     "--sessions": "sessions",
-    "-use": "use",
-    "--use": "use",
+    "-switch": "switch",
+    "--switch": "switch",
+    "-use": "switch",
+    "--use": "switch",
     "-load": "load",
     "--load": "load",
     # Double-hyphen data inspection forms
@@ -1172,7 +1172,6 @@ _DISALLOWED_ALIASES: dict[str, str] = {
     "--cps": "checkpoints",
     "tag": "checkpoint",
     "tags": "checkpoints",
-    "switch": "use",
     "-interactive": "-i",
     "--interactive": "-i",
     "-repl": "-i",
@@ -2068,7 +2067,7 @@ def _is_replayable_entry_static(entry: str) -> bool:
         return True
     if clean.startswith("rm table ") or clean == "rm table *":
         return True
-    if clean.startswith("rename ") or clean.startswith("use "):
+    if clean.startswith("rename ") or clean.startswith(("switch ", "use ")):
         return True
     if clean.endswith(" -collect") or clean == "-collect":
         return True
@@ -2180,6 +2179,11 @@ class PytaeRepl:
         self.initial_tables: dict[str, pl.DataFrame] = {}
         self.initial_df: pl.DataFrame | None = None
         self.checkpoints: dict[str, dict[str, Any]] = {}
+        self._cp_dir: Path | None = None
+        try:
+            atexit.register(self._cleanup_cp_dir)
+        except Exception:
+            pass
         self.save_history_file: str | None = None
         self.max_rows: int = 10
         self.max_cols: int | None = None
@@ -2428,43 +2432,81 @@ class PytaeRepl:
         self.orig_df = df
         self.current_df = df
 
+    def _get_or_create_cp_dir(self) -> Path:
+        """Get or create the ephemeral process-bound temporary directory for IPC checkpoints."""
+        if self._cp_dir is None or not self._cp_dir.exists():
+            self._cp_dir = Path(tempfile.mkdtemp(prefix="pytae_cp_"))
+        return self._cp_dir
+
+    def _cleanup_cp_dir(self) -> None:
+        """Wipe the ephemeral temporary checkpoint directory completely."""
+        if self._cp_dir is not None:
+            try:
+                if self._cp_dir.exists():
+                    shutil.rmtree(self._cp_dir, ignore_errors=True)
+            except Exception:
+                pass
+            self._cp_dir = None
+
+    def _delete_checkpoint_files(self, name: str) -> None:
+        """Delete disk IPC and JSON files for a specific checkpoint."""
+        if self._cp_dir is None or not self._cp_dir.exists():
+            return
+        prefix = f"{name}__"
+        for p in self._cp_dir.glob(f"{prefix}*"):
+            try:
+                p.unlink(missing_ok=True)
+            except Exception:
+                pass
+
     def _delete_checkpoint(self, name: str) -> bool:
-        """Delete a saved checkpoint from in-memory workbench."""
+        """Delete a saved checkpoint from ephemeral disk and registry."""
         if name not in self.checkpoints:
             return False
+        self._delete_checkpoint_files(name)
         self.checkpoints.pop(name, None)
         return True
 
     def _clear_all_checkpoints(self) -> int:
-        """Delete all saved checkpoints from in-memory workbench."""
+        """Delete all saved checkpoints from ephemeral disk and registry."""
         count = len(self.checkpoints)
+        for name in list(self.checkpoints.keys()):
+            self._delete_checkpoint_files(name)
         self.checkpoints.clear()
+        self._cleanup_cp_dir()
         return count
 
     def _get_checkpoint_df(self, name: str) -> pl.DataFrame | None:
-        """Retrieve a DataFrame from an in-memory checkpoint."""
+        """Retrieve a DataFrame from a checkpoint (reading from ephemeral IPC disk)."""
         if name not in self.checkpoints:
             return None
         snap = self.checkpoints[name]
         if isinstance(snap, pl.DataFrame):
             return snap
         if isinstance(snap, dict):
+            # Check ephemeral disk IPC tables
             tbls = snap.get("tables", {})
             act = snap.get("active_table")
             if act and act in tbls:
-                df = tbls[act]
-                if isinstance(df, pl.DataFrame):
-                    return df
-            if len(tbls) == 1:
-                df = next(iter(tbls.values()))
-                if isinstance(df, pl.DataFrame):
-                    return df
+                val = tbls[act]
+                if isinstance(val, pl.DataFrame):
+                    return val
+                if isinstance(val, dict) and "path" in val and Path(val["path"]).exists():
+                    return pl.read_ipc(val["path"])
+            if tbls:
+                for k, val in tbls.items():
+                    if isinstance(val, pl.DataFrame):
+                        return val
+                    if isinstance(val, dict) and "path" in val and Path(val["path"]).exists():
+                        return pl.read_ipc(val["path"])
+            if snap.get("current_df_path") and Path(snap["current_df_path"]).exists():
+                return pl.read_ipc(snap["current_df_path"])
             if snap.get("current_df") is not None and isinstance(snap["current_df"], pl.DataFrame):
                 return snap["current_df"]
         return None
 
     def _get_checkpoint_table_df(self, cp_name: str, table_name: str) -> pl.DataFrame | None:
-        """Retrieve a specific table's DataFrame from a named in-memory checkpoint."""
+        """Retrieve a specific table's DataFrame from a named checkpoint."""
         if cp_name not in self.checkpoints:
             return None
         snap = self.checkpoints[cp_name]
@@ -2474,7 +2516,10 @@ class PytaeRepl:
             tbls = snap.get("tables", {})
             for k, val in tbls.items():
                 if k == table_name or k.lower() == table_name.lower():
-                    return val.clone() if hasattr(val, "clone") else val
+                    if isinstance(val, pl.DataFrame):
+                        return val.clone()
+                    if isinstance(val, dict) and "path" in val and Path(val["path"]).exists():
+                        return pl.read_ipc(val["path"])
         return None
 
     def _cleanup_empty_session_dirs(self) -> None:
@@ -2505,9 +2550,10 @@ class PytaeRepl:
                 pass
 
     def close(self) -> None:
-        """Release all in-memory tables and checkpoints."""
+        """Release all in-memory tables, ephemeral disk checkpoints, and sessions."""
         self._cleanup_empty_session_dirs()
-        self._clear_all_checkpoints()
+        self._cleanup_cp_dir()
+        self.checkpoints.clear()
         self.tables.clear()
         self.orig_tables.clear()
         self.initial_tables.clear()
@@ -2984,13 +3030,15 @@ class PytaeRepl:
             output_fn("pytae: bare 'vars' is not recognized; use 'status var' (or 'status var -v').")
             return True
 
-        # Switch active dataset (`use <name>`)
-        if first_lower == "use":
+        # Switch active dataset (`switch <name>`, or deprecated `use <name>`)
+        if first_lower in ("switch", "use"):
+            is_use = (first_lower == "use")
             if len(tokens) >= 2:
-                self._cmd_use(tokens[1], output_fn)
+                self._cmd_switch(tokens[1], output_fn, is_deprecated_use=is_use)
             else:
                 avail = ", ".join(self.tables.keys()) if self.tables else "none"
-                output_fn(f"Usage: use <table_name> (available: {avail})")
+                cmd_name = "use" if is_use else "switch"
+                output_fn(f"Usage: {cmd_name} <table_name> (available: {avail})")
             return True
 
         # Remove entity: `rm table <name>`, `rm table *`, `rm checkpoint <name>`, `rm checkpoint *`, `rm var <name>`, `rm var *`
@@ -3263,7 +3311,7 @@ class PytaeRepl:
                     timing_str = f" | {_format_timing_summary(durations)}"
 
             is_active = self.path_str == resolved_table
-            active_info = " [active]" if is_active else f" (tip: 'use {resolved_table}' to switch active dataset)"
+            active_info = " [active]" if is_active else f" (tip: 'switch {resolved_table}' to switch active dataset)"
             shape_desc = f"lazy, {n_cols} cols" if is_lazy else f"{n_rows:,} rows x {n_cols} cols"
             output_fn(f"{resolved_table}: {shape_desc}{timing_str}{active_info}")
             return True
@@ -3274,10 +3322,13 @@ class PytaeRepl:
             and len(tokens) > 1
             and first_lower
             not in (
+                "switch",
                 "use",
                 "rm",
                 "checkpoint",
                 "restore",
+                "revert",
+                "rollback",
                 "session",
                 "sessions",
                 "reset",
@@ -3330,11 +3381,24 @@ class PytaeRepl:
             self._cmd_checkpoint(tokens[1], output_fn)
             return True
 
-        if first_lower == "restore":
+        if first_lower in ("restore", "revert"):
             if len(tokens) < 2:
-                output_fn("Usage: restore <name> (e.g. restore baseline)")
+                if self.checkpoints:
+                    latest_cp = list(self.checkpoints.keys())[-1]
+                    self._cmd_restore(latest_cp, output_fn)
+                else:
+                    output_fn("Usage: restore <name> (e.g. restore baseline)")
                 return True
             self._cmd_restore(tokens[1], output_fn)
+            return True
+
+        if first_lower == "rollback":
+            target_cp = tokens[1] if len(tokens) >= 2 else (list(self.checkpoints.keys())[-1] if self.checkpoints else None)
+            if target_cp is None:
+                output_fn("pytae: no saved checkpoints to restore. (Note: 'rollback' is deprecated; use 'restore [name]' instead.)")
+                return True
+            output_fn("(Note: 'rollback' is deprecated; use 'restore [name]' instead.)")
+            self._cmd_restore(target_cp, output_fn)
             return True
 
         if first_lower == "checkpoints":
@@ -3666,7 +3730,7 @@ class PytaeRepl:
         src = self.table_sources.get(resolved, "")
         src_str = f" ({src})" if src else ""
         act_str = " [active]" if is_active else ""
-        status_desc = "active" if is_active else "inactive (tip: 'use " + resolved + "' to switch active cursor)"
+        status_desc = "active" if is_active else "inactive (tip: 'switch " + resolved + "' to switch active cursor)"
 
         if isinstance(tbl_df, pl.LazyFrame):
             lazy_cols = _get_frame_columns(tbl_df)
@@ -3741,9 +3805,10 @@ class PytaeRepl:
     ) -> None:
         snap = self.checkpoints[cp_name]
         created_at = snap.get("created_at", "unknown")
+        size_bytes = snap.get("size_bytes", 0)
         output_fn(f"Checkpoint     : {cp_name}")
         output_fn(f"Created        : {created_at}")
-        output_fn("Storage        : in-memory (RAM copy-on-write)")
+        output_fn(f"Storage        : ephemeral disk IPC ({_format_bytes(size_bytes)} on disk, 0 MB RAM)")
         tbls = snap.get("tables", {})
         if isinstance(tbls, dict) and tbls:
             output_fn(f"Tables ({len(tbls)}):")
@@ -3845,7 +3910,7 @@ class PytaeRepl:
             for cp_name, cp_meta in self.checkpoints.items():
                 created = cp_meta.get("created_at", "")
                 t_count = len(cp_meta.get("tables", {}))
-                output_fn(f"  - {cp_name:<12}: in-memory created {created} ({t_count} tables)")
+                output_fn(f"  - {cp_name:<12}: ephemeral IPC created {created} ({t_count} tables, 0 MB RAM)")
 
         # Session Logs & Settings in verbose mode
         if verbose:
@@ -4417,17 +4482,84 @@ class PytaeRepl:
             output_fn("pytae: no dataset or variables loaded to checkpoint.")
             return
 
+        self._delete_checkpoint_files(name)
+        cp_dir = self._get_or_create_cp_dir()
+
+        snap_tables: dict[str, dict[str, Any]] = {}
+        snap_orig_tables: dict[str, dict[str, Any]] = {}
+        snap_initial_tables: dict[str, dict[str, Any]] = {}
+        total_bytes = 0
+
+        for tbl_name, tbl_df in self.tables.items():
+            if isinstance(tbl_df, pl.LazyFrame):
+                snap_tables[tbl_name] = {
+                    "is_lazy": True,
+                    "frame": tbl_df,
+                    "shape": [-1, len(_get_frame_columns(tbl_df))],
+                    "size_bytes": 0,
+                }
+            else:
+                p = cp_dir / f"{name}__tbl__{tbl_name}.ipc"
+                tbl_df.write_ipc(p)
+                sz = p.stat().st_size
+                total_bytes += sz
+                snap_tables[tbl_name] = {
+                    "is_lazy": False,
+                    "path": str(p),
+                    "shape": list(tbl_df.shape),
+                    "size_bytes": sz,
+                }
+
+        for tbl_name, tbl_df in self.orig_tables.items():
+            if tbl_name in self.tables and tbl_df is self.tables[tbl_name]:
+                snap_orig_tables[tbl_name] = {"same_as": "tables", "shape": list(tbl_df.shape) if not isinstance(tbl_df, pl.LazyFrame) else [-1, 0]}
+            elif isinstance(tbl_df, pl.LazyFrame):
+                snap_orig_tables[tbl_name] = {"is_lazy": True, "frame": tbl_df, "shape": [-1, len(_get_frame_columns(tbl_df))], "size_bytes": 0}
+            else:
+                p = cp_dir / f"{name}__orig__{tbl_name}.ipc"
+                tbl_df.write_ipc(p)
+                sz = p.stat().st_size
+                total_bytes += sz
+                snap_orig_tables[tbl_name] = {"is_lazy": False, "path": str(p), "shape": list(tbl_df.shape), "size_bytes": sz}
+
+        for tbl_name, tbl_df in self.initial_tables.items():
+            if tbl_name in self.tables and tbl_df is self.tables[tbl_name]:
+                snap_initial_tables[tbl_name] = {"same_as": "tables", "shape": list(tbl_df.shape) if not isinstance(tbl_df, pl.LazyFrame) else [-1, 0]}
+            elif tbl_name in self.orig_tables and tbl_df is self.orig_tables[tbl_name]:
+                snap_initial_tables[tbl_name] = {"same_as": "orig_tables", "shape": list(tbl_df.shape) if not isinstance(tbl_df, pl.LazyFrame) else [-1, 0]}
+            elif isinstance(tbl_df, pl.LazyFrame):
+                snap_initial_tables[tbl_name] = {"is_lazy": True, "frame": tbl_df, "shape": [-1, len(_get_frame_columns(tbl_df))], "size_bytes": 0}
+            else:
+                p = cp_dir / f"{name}__init__{tbl_name}.ipc"
+                tbl_df.write_ipc(p)
+                sz = p.stat().st_size
+                total_bytes += sz
+                snap_initial_tables[tbl_name] = {"is_lazy": False, "path": str(p), "shape": list(tbl_df.shape), "size_bytes": sz}
+
+        cur_df_path = None
+        cur_df_shape = None
+        if self.current_df is not None:
+            if not isinstance(self.current_df, pl.LazyFrame):
+                cur_df_shape = list(self.current_df.shape)
+            if not any(self.current_df is t for t in self.tables.values()):
+                if not isinstance(self.current_df, pl.LazyFrame):
+                    p = cp_dir / f"{name}__current_df.ipc"
+                    self.current_df.write_ipc(p)
+                    sz = p.stat().st_size
+                    total_bytes += sz
+                    cur_df_path = str(p)
+
         self.checkpoints[name] = {
-            "tables": {k: v.clone() for k, v in self.tables.items()},
-            "orig_tables": {k: v.clone() for k, v in self.orig_tables.items()},
-            "initial_tables": {k: v.clone() for k, v in self.initial_tables.items()},
+            "tables": snap_tables,
+            "orig_tables": snap_orig_tables,
+            "initial_tables": snap_initial_tables,
             "table_sources": dict(self.table_sources),
             "active_table": self.path_str,
-            "current_df": self.current_df.clone() if self.current_df is not None else None,
-            "orig_df": self.orig_df.clone() if self.orig_df is not None else None,
-            "initial_df": self.initial_df.clone() if self.initial_df is not None else None,
+            "current_df_path": cur_df_path,
+            "current_df_shape": cur_df_shape,
             "variables": dict(self.variables),
             "created_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "size_bytes": total_bytes,
         }
 
         self._record_history(f"checkpoint {name}")
@@ -4438,7 +4570,8 @@ class PytaeRepl:
             table_names = ", ".join(self.tables.keys())
             parts_saved.append(f"{len(self.tables)} tables: {table_names}")
         elif self.current_df is not None:
-            parts_saved.append(f"{self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols")
+            s = cur_df_shape or [0, 0]
+            parts_saved.append(f"{s[0]:,} rows x {s[1]} cols")
         if self.variables:
             var_names = ", ".join(f"@{k}" for k in self.variables.keys())
             parts_saved.append(f"{len(self.variables)} variables: {var_names}")
@@ -4464,26 +4597,59 @@ class PytaeRepl:
         self.path_str = None
 
         if isinstance(snap, dict):
-            self.tables = {k: v.clone() for k, v in snap.get("tables", {}).items()}
-            self.orig_tables = {k: v.clone() for k, v in snap.get("orig_tables", self.tables).items()}
-            self.initial_tables = {k: v.clone() for k, v in snap.get("initial_tables", self.tables).items()}
+            tbls_meta = snap.get("tables", {})
+            for t_name, t_info in tbls_meta.items():
+                if isinstance(t_info, pl.DataFrame):
+                    self.tables[t_name] = t_info.clone()
+                elif isinstance(t_info, dict):
+                    if t_info.get("is_lazy") and "frame" in t_info:
+                        self.tables[t_name] = t_info["frame"]
+                    elif "path" in t_info and Path(t_info["path"]).exists():
+                        self.tables[t_name] = pl.read_ipc(t_info["path"])
+
+            orig_meta = snap.get("orig_tables", {})
+            for t_name, t_info in orig_meta.items():
+                if isinstance(t_info, pl.DataFrame):
+                    self.orig_tables[t_name] = t_info.clone()
+                elif isinstance(t_info, dict):
+                    if t_info.get("same_as") == "tables" and t_name in self.tables:
+                        self.orig_tables[t_name] = self.tables[t_name]
+                    elif t_info.get("is_lazy") and "frame" in t_info:
+                        self.orig_tables[t_name] = t_info["frame"]
+                    elif "path" in t_info and Path(t_info["path"]).exists():
+                        self.orig_tables[t_name] = pl.read_ipc(t_info["path"])
+
+            init_meta = snap.get("initial_tables", {})
+            for t_name, t_info in init_meta.items():
+                if isinstance(t_info, pl.DataFrame):
+                    self.initial_tables[t_name] = t_info.clone()
+                elif isinstance(t_info, dict):
+                    if t_info.get("same_as") == "tables" and t_name in self.tables:
+                        self.initial_tables[t_name] = self.tables[t_name]
+                    elif t_info.get("same_as") == "orig_tables" and t_name in self.orig_tables:
+                        self.initial_tables[t_name] = self.orig_tables[t_name]
+                    elif t_info.get("is_lazy") and "frame" in t_info:
+                        self.initial_tables[t_name] = t_info["frame"]
+                    elif "path" in t_info and Path(t_info["path"]).exists():
+                        self.initial_tables[t_name] = pl.read_ipc(t_info["path"])
+
             self.table_sources = dict(snap.get("table_sources", {}))
             self.path_str = snap.get("active_table")
-            if snap.get("current_df") is not None and isinstance(snap["current_df"], pl.DataFrame):
-                self.current_df = snap["current_df"].clone()
-            elif self.path_str and self.path_str in self.tables:
+            if self.path_str and self.path_str in self.tables:
                 self.current_df = self.tables[self.path_str]
+            elif snap.get("current_df_path") and Path(snap["current_df_path"]).exists():
+                self.current_df = pl.read_ipc(snap["current_df_path"])
+            elif snap.get("current_df") is not None and isinstance(snap["current_df"], pl.DataFrame):
+                self.current_df = snap["current_df"].clone()
             elif self.tables:
                 first_k = next(iter(self.tables.keys()))
                 self.path_str = first_k
                 self.current_df = self.tables[first_k]
-            self.orig_df = snap.get("orig_df", self.current_df)
-            if self.orig_df is not None and hasattr(self.orig_df, "clone"):
-                self.orig_df = self.orig_df.clone()
-            self.initial_df = snap.get("initial_df", self.orig_df)
-            if self.initial_df is not None and hasattr(self.initial_df, "clone"):
-                self.initial_df = self.initial_df.clone()
+
+            self.orig_df = self.orig_tables.get(self.path_str, self.current_df)
+            self.initial_df = self.initial_tables.get(self.path_str, self.orig_df)
             self.variables = dict(snap.get("variables", {}))
+
         elif isinstance(snap, pl.DataFrame):
             self.current_df = snap.clone()
             self.orig_df = self.current_df
@@ -4526,7 +4692,7 @@ class PytaeRepl:
                         summary_parts.append(f"1 table [{t_name}]")
                     else:
                         summary_parts.append(f"{len(tbls)} tables [{', '.join(tbls.keys())}]")
-                elif snap.get("current_df") is not None:
+                elif snap.get("current_df") is not None or snap.get("current_df_path") is not None:
                     summary_parts.append("1 table [df]")
                 else:
                     summary_parts.append("0 tables")
@@ -4542,15 +4708,17 @@ class PytaeRepl:
                     summary_parts.append(f"{len(vars_dict)} var{'s' if len(vars_dict) != 1 else ''} [{', '.join(f'@{k}' for k in vars_dict.keys())}]")
 
                 summary = ", ".join(summary_parts) if summary_parts else "(empty checkpoint)"
-                output_fn(f"  - {name:<15}: {summary}{time_str}")
+                size_bytes = snap.get("size_bytes", 0)
+                storage_str = f" ({_format_bytes(size_bytes)} disk, 0 MB RAM)" if size_bytes > 0 else " (0 MB RAM)"
+                output_fn(f"  - {name:<15}: {summary}{storage_str}{time_str}")
 
                 if isinstance(tbls, dict) and tbls:
                     for t_name, val in tbls.items():
-                        s = getattr(val, "shape", []) if hasattr(val, "shape") else val.get("shape", [])
-                        shape_info = f": {s[0]:,} rows x {s[1]} cols" if len(s) == 2 else ""
+                        s = getattr(val, "shape", []) if hasattr(val, "shape") else (val.get("shape", []) if isinstance(val, dict) else [])
+                        shape_info = f": {s[0]:,} rows x {s[1]} cols" if len(s) == 2 and s[0] >= 0 else ""
                         output_fn(f"      - {t_name}{shape_info}")
-                elif snap.get("current_df") is not None:
-                    s = snap["current_df"].shape
+                elif snap.get("current_df_shape") is not None:
+                    s = snap["current_df_shape"]
                     output_fn(f"      - df: {s[0]:,} rows x {s[1]} cols")
 
                 if vars_dict:
@@ -4561,10 +4729,7 @@ class PytaeRepl:
                         output_fn(f"      * @{v_name}: {v_repr} ({type(v_val).__name__})")
             elif isinstance(snap, pl.DataFrame):
                 output_fn(f"  - {name:<15}: 1 table [df] (in-memory)")
-                output_fn(f"      - df: {snap.shape[0]:,} rows x {snap.shape[1]} cols ({snap.shape[0]:,}x{snap.shape[1]})")
-            elif isinstance(snap, pl.DataFrame):
-                output_fn(f"  - {name:<15}: 1 table [df] (in-memory)")
-                output_fn(f"      - df: {snap.shape[0]:,} rows x {snap.shape[1]} cols ({snap.shape[0]:,}x{snap.shape[1]})")
+                output_fn(f"      - df: {snap.shape[0]:,} rows x {snap.shape[1]} cols")
 
     def _cmd_list_tables(self, output_fn: Callable[[str], None], *, verbose: bool = False) -> None:
         if not self.tables:
@@ -4783,7 +4948,7 @@ class PytaeRepl:
         except Exception as exc:
             output_fn(f"pytae diff error: {exc}")
 
-    def _cmd_use(self, name: str, output_fn: Callable[[str], None]) -> None:
+    def _cmd_switch(self, name: str, output_fn: Callable[[str], None], is_deprecated_use: bool = False) -> None:
         resolved = self._resolve_table_name(name)
         if resolved is None:
             avail = ", ".join(self.tables.keys()) if self.tables else "none"
@@ -4793,9 +4958,14 @@ class PytaeRepl:
         self.orig_df = self.orig_tables.get(resolved)
         self.initial_df = self.initial_tables.get(resolved)
         self.path_str = resolved
-        output_fn(
-            f"Switched active dataset to '{resolved}'. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})"
-        )
+        msg = f"Switched active dataset to '{resolved}'. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})"
+        if is_deprecated_use:
+            msg += "\n(Note: 'use' is deprecated and will be removed in a future release; use 'switch <name>' instead.)"
+        output_fn(msg)
+
+    def _cmd_use(self, name: str, output_fn: Callable[[str], None]) -> None:
+        """Deprecated: use switch <table_name> instead."""
+        self._cmd_switch(name, output_fn, is_deprecated_use=True)
 
     def _cmd_assign(self, var_name: str, right_expr: str, output_fn: Callable[[str], None]) -> None:
         if var_name.lower() in _RESERVED_VARIABLE_NAMES:
@@ -5981,16 +6151,16 @@ class PytaeRepl:
         if text.startswith(("./", "../", "/", "~")):
             return _complete_paths(text)
 
-        # Case 2: 'use ' -> complete table names
-        if last_token == "use":
+        # Case 2: 'switch ' (or 'use ') -> complete table names
+        if last_token in ("switch", "use"):
             return [t for t in self.tables if t.startswith(text)]
 
         # Case 3: 'rename ' -> complete table names (for first argument)
         if last_token == "rename":
             return [t for t in self.tables if t.startswith(text)]
 
-        # Case 4: 'restore ' -> complete checkpoint names
-        if last_token == "restore":
+        # Case 4: 'restore ' (or 'revert ', 'rollback ') -> complete checkpoint names
+        if last_token in ("restore", "revert", "rollback"):
             return [c for c in self.checkpoints if c.startswith(text)]
 
         # Case 5: 'rm ' -> complete categories: table, checkpoint, var

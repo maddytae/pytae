@@ -144,9 +144,10 @@ CHEATSHEET_TEXT = """\
   #   set save                Persist current display settings to ~/.pytae/config.json
   #   history [-s [path]]     Show session audit log or export to named file
   #   exit [-s [path]]        Exit REPL (optionally save session history to file)
+  #   switch <name>           Switch active table cursor (use deprecated)
   #   reset                   Restore original dataset from disk (instant O(1))
-  #   checkpoint <name>       Save named snapshot across all session tables
-  #   rollback [name]         Restore entire workbench to named snapshot
+  #   checkpoint <name>       Save ephemeral IPC snapshot across all session tables (0 MB RAM)
+  #   restore [name]          Restore entire workbench to named snapshot (or latest)
   #   rm table <tbl>          Remove in-memory table (or rm table *)
   #   rm checkpoint <name>    Delete a saved checkpoint (or rm checkpoint *)
   #   -cols [asc|desc]        List column names (file order or sorted)

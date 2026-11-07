@@ -18,7 +18,7 @@ This guide covers ingesting files, managing multiple tables simultaneously in RA
 - [Multi-Table Workbench Operations](#multi-table-workbench-operations)
   - [Listing Loaded Tables (`status table`)](#listing-loaded-tables-status-table)
   - [Inspecting Table Dimensions without Switching](#inspecting-table-dimensions-without-switching)
-  - [Switching Active Tables (`use <name>`)](#switching-active-tables-use-name)
+  - [Switching Active Tables (`switch <name>`)](#switching-active-tables-switch-name)
   - [Zero-Copy Table Renaming (`rename <old> <new>`)](#zero-copy-table-renaming-rename-old-new)
   - [Subject-First Execution (`<tbl> -<verb>`)](#subject-first-execution-tbl--verb)
   - [Multi-Table Relational Joins (`-join`)](#multi-table-relational-joins--join)
@@ -157,18 +157,20 @@ Typing a bare table name inspects its dimensions without altering the active tab
 
 ```text
 pytae [orders, cust]> cust
-cust: 15,000 rows x 5 cols (tip: 'use cust' to switch active dataset)
+cust: 15,000 rows x 5 cols (tip: 'switch cust' to switch active dataset)
 ```
 
-### Switching Active Tables (`use <name>`)
+### Switching Active Tables (`switch <name>`)
 
-Switch the active cursor to another table using `use <name>` (e.g. `use orders`, `use df`, `use cust`):
+Switch the active cursor to another table using `switch <name>` (e.g. `switch orders`, `switch df`, `switch cust`):
 
 ```text
-pytae [orders, cust]> use cust
+pytae [orders, cust]> switch cust
 Switched active dataset to 'cust'. Active shape: (15,000, 5)
 pytae [cust: 15,000x5]> 
 ```
+
+*(Note: The legacy command `use <name>` is deprecated and will be removed in a future release).*
 
 ### Zero-Copy Table Renaming (`rename <old> <new>`)
 

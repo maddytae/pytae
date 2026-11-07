@@ -215,3 +215,79 @@ def test_repl_py_ram_cleanup_and_rss_release():
     r.close()
 
 
+def test_repl_ephemeral_ipc_checkpoint_and_switch():
+    """Verify ephemeral Arrow IPC disk checkpoints (0 MB RAM) and switch/restore commands."""
+    from pytae.repl import PytaeRepl
+
+    r = PytaeRepl()
+    outs: list[str] = []
+
+    r.execute_line("t1 = sample:penguins", output_fn=outs.append)
+    r.execute_line("t2 = sample:tips", output_fn=outs.append)
+    r.execute_line("val_limit = 50", output_fn=outs.append)
+
+    # 1. Switch active dataset with 'switch'
+    outs.clear()
+    r.execute_line("switch t2", output_fn=outs.append)
+    assert r.path_str == "t2"
+    assert "Switched active dataset to 't2'" in outs[0]
+    assert "deprecated" not in outs[0]
+
+    # 2. Legacy 'use' works with deprecation notice
+    outs.clear()
+    r.execute_line("use t1", output_fn=outs.append)
+    assert r.path_str == "t1"
+    assert "Switched active dataset to 't1'" in outs[0]
+    assert "'use' is deprecated" in outs[0]
+
+    # 3. Save ephemeral IPC checkpoint
+    outs.clear()
+    r.execute_line("checkpoint v1", output_fn=outs.append)
+    assert "Saved checkpoint 'v1'" in outs[0]
+    assert "v1" in r.checkpoints
+
+    # Verify temp dir and .ipc files on disk
+    assert r._cp_dir is not None
+    assert r._cp_dir.exists()
+    ipc_files = list(r._cp_dir.glob("v1__*.ipc"))
+    assert len(ipc_files) >= 2  # at least t1 and t2
+    for f in ipc_files:
+        assert f.stat().st_size > 0
+
+    # 4. Status checkpoint shows disk size and 0 MB RAM
+    outs.clear()
+    r.execute_line("status checkpoint", output_fn=outs.append)
+    st = "\n".join(outs)
+    assert "v1" in st
+    assert "0 MB RAM" in st
+
+    # 5. Mutate table
+    r.execute_line('t1 = -mutate "extra_col = 12345"', output_fn=outs.append)
+    assert "extra_col" in r.tables["t1"].columns
+
+    # 6. Restore checkpoint reverts state
+    outs.clear()
+    r.execute_line("restore v1", output_fn=outs.append)
+    assert "Restored checkpoint 'v1'" in outs[0]
+    assert "extra_col" not in r.tables["t1"].columns
+
+    # 7. Rollback works as deprecated alias
+    outs.clear()
+    r.execute_line('t1 = -mutate "temp_col = 999"', output_fn=outs.append)
+    r.execute_line("rollback v1", output_fn=outs.append)
+    assert any("'rollback' is deprecated" in o for o in outs)
+    assert "extra_col" not in r.tables["t1"].columns
+    assert "temp_col" not in r.tables["t1"].columns
+
+    # 8. Bare restore restores latest checkpoint
+    outs.clear()
+    r.execute_line("restore", output_fn=outs.append)
+    assert any("Restored checkpoint 'v1'" in o for o in outs)
+
+    # 9. Clean exit purges ephemeral IPC temp dir completely
+    cp_temp_path = r._cp_dir
+    r.close()
+    assert not cp_temp_path.exists()
+
+
+

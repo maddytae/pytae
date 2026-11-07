@@ -12893,16 +12893,16 @@ kind='hist': unsupported=[], controls=['annot', 'by', 'clip_data', 'column', 'dr
 
 [← Back to Master Reference](../../pytae.md)
 
-This guide covers in-memory snapshotting (`checkpoint`), instant workbench recovery (`rollback`), session status inspection, pipeline script export (`export script`), and configuration (`set`, `set save`) in the Pytae interactive REPL (`pytae -i`).
+This guide covers ephemeral IPC snapshotting (`checkpoint`), instant workbench recovery (`restore`), session status inspection, pipeline script export (`export script`), and configuration (`set`, `set save`) in the Pytae interactive REPL (`pytae -i`).
 
 ---
 
 ## Contents
 
 - [In-Memory Workbench Architecture](#in-memory-workbench-architecture)
-- [Checkpoints & Rollbacks](#checkpoints--rollbacks)
-  - [Saving In-Memory Checkpoints (`checkpoint <name>`)](#saving-in-memory-checkpoints-checkpoint-name)
-  - [Restoring Workbench State (`rollback [name]`)](#restoring-workbench-state-rollback-name)
+- [Checkpoints & Restoration](#checkpoints--restoration)
+  - [Saving Ephemeral IPC Checkpoints (`checkpoint <name>`)](#saving-ephemeral-ipc-checkpoints-checkpoint-name)
+  - [Restoring Workbench State (`restore [name]`)](#restoring-workbench-state-restore-name)
   - [Listing & Deleting Checkpoints (`status checkpoint`, `rm checkpoint`)](#listing--deleting-checkpoints-status-checkpoint-rm-checkpoint)
   - [Reverting to Disk Source (`reset`)](#reverting-to-disk-source-reset)
 - [Session Status & Diagnostics (`status session`)](#session-status--diagnostics-status-session)
@@ -12918,38 +12918,41 @@ This guide covers in-memory snapshotting (`checkpoint`), instant workbench recov
 ## In-Memory Workbench Architecture
 
 The Pytae REPL operates as a pure **in-memory workbench**:
-- **Zero Disk Footprint**: Interactive sessions run in RAM without generating persistent disk session directories.
+- **Zero RAM Overhead for Checkpoints**: Checkpoints serialize tables to an ephemeral process-bound temp directory in Arrow IPC format, consuming **0 MB of RAM**.
+- **Automatic Lifecycle Cleanup**: All checkpoint temp files are wiped clean immediately upon session exit.
 - **Flight Recorder History**: All commands entered during a session are auto-logged to `~/.pytae/history/history_<timestamp>.txt`. Exiting an empty session immediately purges empty history files.
-- **Multi-Table Workspace**: Load datasets into named tables (`df1 = orders.parquet`, `df2 = sample:tips`), query them via fluent verbs or ANSI SQL (`-sql "SELECT * FROM df1 JOIN df2..."`), and manage multiple frames concurrently.
+- **Multi-Table Workspace**: Load datasets into named tables (`df1 = orders.parquet`, `df2 = sample:tips`), query them via fluent verbs or ANSI SQL (`-sql "SELECT * FROM df1 JOIN df2..."`), and switch between them with `switch <name>` (`use` deprecated).
 
 ---
 
-## Checkpoints & Rollbacks
+## Checkpoints & Restoration
 
-### Saving In-Memory Checkpoints (`checkpoint <name>`)
+### Saving Ephemeral IPC Checkpoints (`checkpoint <name>`)
 
-Take an in-memory snapshot of all active tables, variables, and pipeline state:
+Take an ephemeral snapshot of all active tables, variables, and pipeline state:
 
 ```text
 pytae [orders, cust]> checkpoint baseline
 Saved checkpoint 'baseline' (2 tables: orders, cust).
 ```
 
-Checkpoints freeze table states in memory via zero-copy / deep-copy semantics, allowing instant milestone recovery without writing to disk.
+Checkpoints freeze table states to fast Arrow IPC on disk in a process-bound temporary folder. They consume **0 MB of RAM** and provide instant recovery without permanent disk clutter.
 
-### Restoring Workbench State (`rollback [name]`)
+### Restoring Workbench State (`restore [name]`)
 
 Revert the workbench to any previously saved checkpoint:
 
 ```text
 # Revert to specific checkpoint
-pytae [orders, cust, scratch_df]> rollback baseline
+pytae [orders, cust, scratch_df]> restore baseline
 Restored checkpoint 'baseline' (2 tables: orders, cust; active: cust).
 
 # Revert to the most recent checkpoint
-pytae [orders, cust]> rollback
+pytae [orders, cust]> restore
 Restored checkpoint 'baseline' (2 tables: orders, cust).
 ```
+
+*(Note: `revert` is available as a synonym. The legacy verb `rollback` is deprecated and automatically routes to `restore`).*
 
 All post-checkpoint scratch tables and uncommitted mutations are automatically dropped.
 
@@ -13082,7 +13085,7 @@ The JSON configuration file is loaded automatically on subsequent REPL launches:
 
 > [!NOTE]
 > Legacy persistent disk sessions (`set new_session = ...`, `set load_session = ...`, `set save_session = ...`, `set checkpoint_format = ...`) have been retired.
-> - Use in-memory checkpoints (`checkpoint <name>`, `rollback [name]`) for instant undo and branching.
+> - Use ephemeral checkpoints (`checkpoint <name>`, `restore [name]`) for instant undo and branching (0 MB RAM).
 > - Use `export script <path.pt | path.py>` to persist, version-control, and share data pipelines.
 > - Run exported scripts in batch mode via `pytae <script.pt>` or `pytae -run <script.pt>`.
 
@@ -13109,7 +13112,7 @@ This guide covers ingesting files, managing multiple tables simultaneously in RA
 - [Multi-Table Workbench Operations](#multi-table-workbench-operations)
   - [Listing Loaded Tables (`status table`)](#listing-loaded-tables-status-table)
   - [Inspecting Table Dimensions without Switching](#inspecting-table-dimensions-without-switching)
-  - [Switching Active Tables (`use <name>`)](#switching-active-tables-use-name)
+  - [Switching Active Tables (`switch <name>`)](#switching-active-tables-switch-name)
   - [Zero-Copy Table Renaming (`rename <old> <new>`)](#zero-copy-table-renaming-rename-old-new)
   - [Subject-First Execution (`<tbl> -<verb>`)](#subject-first-execution-tbl--verb)
   - [Multi-Table Relational Joins (`-join`)](#multi-table-relational-joins--join)
@@ -13248,18 +13251,20 @@ Typing a bare table name inspects its dimensions without altering the active tab
 
 ```text
 pytae [orders, cust]> cust
-cust: 15,000 rows x 5 cols (tip: 'use cust' to switch active dataset)
+cust: 15,000 rows x 5 cols (tip: 'switch cust' to switch active dataset)
 ```
 
-### Switching Active Tables (`use <name>`)
+### Switching Active Tables (`switch <name>`)
 
-Switch the active cursor to another table using `use <name>` (e.g. `use orders`, `use df`, `use cust`):
+Switch the active cursor to another table using `switch <name>` (e.g. `switch orders`, `switch df`, `switch cust`):
 
 ```text
-pytae [orders, cust]> use cust
+pytae [orders, cust]> switch cust
 Switched active dataset to 'cust'. Active shape: (15,000, 5)
 pytae [cust: 15,000x5]> 
 ```
+
+*(Note: The legacy command `use <name>` is deprecated and will be removed in a future release).*
 
 ### Zero-Copy Table Renaming (`rename <old> <new>`)
 
@@ -13520,9 +13525,9 @@ pytae [df: 344x7]> -head 50 | wc -l
 
 The Pytae REPL provides context-aware autocompletion via standard `readline`:
 
-- **Commands & Verbs**: Press `[Tab]` at an empty prompt to view top-level commands (`use`, `diff`, `rename`, `rm`, `set`, `checkpoint`, `rollback`, `export`, etc.).
+- **Commands & Verbs**: Press `[Tab]` at an empty prompt to view top-level commands (`switch`, `use`, `diff`, `rename`, `rm`, `set`, `checkpoint`, `restore`, `export`, etc.).
 - **Flags**: Type `-` and press `[Tab]` to autocomplete CLI pipeline verbs (`-filter`, `-select`, `-mutate`, `-arrange`, `-pivot`, etc.).
-- **Table & Checkpoint Names**: Autocompletes loaded tables after `use `, `rename `, `diff `, and `rm table `, or checkpoints after `rollback `.
+- **Table & Checkpoint Names**: Autocompletes loaded tables after `switch `, `use `, `rename `, `diff `, and `rm table `, or checkpoints after `restore `.
 - **Column Names**: Inside pipeline flags (`-select `, `-filter `, `-by `, `-arrange `), autocompletes column names of the active dataset or specified table prefix.
 - **File Paths**: Autocompletes local filesystem files and directories after `load `, `-o `, or assignment (`df = `).
 - **Settings**: Autocompletes configuration keys and options after `set ` (e.g. `set comma = ` -> `on`, `off`, or `set save`).
@@ -13769,7 +13774,7 @@ Removed all session variables (2 removed).
 
 ### Checkpoint & Script Export
 1. When you run `checkpoint <name>`, Pytae saves all in-memory variables alongside active table states.
-2. When you run `rollback [name]`, Pytae restores the exact variable snapshot from the checkpoint.
+2. When you run `restore [name]`, Pytae restores the exact variable snapshot from the checkpoint.
 3. Variable assignments are preserved across pipeline exports (`export script pipeline.pt`), ensuring parameter thresholds and configuration values replay faithfully.
 
 ```text
@@ -14105,7 +14110,7 @@ body_mass_kg
 
 # 3. Target 'k' or switch to it
 pytae [df: 344x7]> k -head 3
-pytae [df: 344x7]> use k
+pytae [df: 344x7]> switch k
 Switched active dataset to 'k'. Active shape: (344, 8)
 ```
 
@@ -14490,10 +14495,10 @@ The **Pytae REPL** provides stateful, iterative in-memory data manipulation and 
 ### Core Architecture & Guarantees
 
 1. **Dedicated Entrypoint (`pytae -i`)**: Interactive sessions launch cleanly with `pytae -i`. Datasets are loaded explicitly with `df = file.parquet`, guaranteeing that session logs and exported replay scripts are 100% reproducible and self-contained.
-2. **Subject-First Multi-Table Workbench**: Load multiple datasets simultaneously (`df1`, `df2`, `orders`, `cust`). Run commands with clear prefixes (`df1 -head 5`, `orders -join cust on=id`), or switch active tables with `use <name>`.
+2. **Subject-First Multi-Table Workbench**: Load multiple datasets simultaneously (`df1`, `df2`, `orders`, `cust`). Run commands with clear prefixes (`df1 -head 5`, `orders -join cust on=id`), or switch active tables with `switch <name>` (`use` deprecated).
 3. **Non-Destructive by Default**: Bare exploratory queries (`-pivot`, `-filter`, `-head`) format and display previews in the terminal without altering underlying tables in memory. State changes require explicit assignment (`df = df -filter ...`).
 4. **Model A Python RAM Isolation**: Embedded Python execution (`py <expr>`) provides an extensibility escape hatch. Transient Python variables and intermediate pandas objects are immediately deallocated upon exit via `gc.collect()`. Only tables explicitly converted via `.to_pytae()` are registered in the workbench.
-5. **Disk-Backed Checkpoints (0 MB RAM Overhead)**: Checkpoints serialize frozen table states to disk (`.ipc` or `.parquet`). They consume **0 MB of RAM**, allowing safe instant rollbacks via `restore <name>` or `reset`.
+5. **Ephemeral IPC Checkpoints (0 MB RAM Overhead)**: Checkpoints serialize frozen table states to ephemeral Arrow IPC format on disk. They consume **0 MB of RAM** and are automatically purged upon session exit, allowing safe instant restoration via `restore [name]` or `reset`.
 
 ### Quick Reference of REPL Commands
 
@@ -14501,7 +14506,7 @@ The **Pytae REPL** provides stateful, iterative in-memory data manipulation and 
 |:---|:---|:---|:---|
 | **Ingestion** | Assignment / `load` | `df = sales.parquet`<br>`load cust.csv as cust -dlim ";"` | Ingest file into named table variable |
 | **Workbench** | `status table` | `status table [-v]` | View loaded tables, shapes, memory, and columns |
-| | `use` | `use cust` | Switch active dataset cursor |
+| | `switch` | `switch cust` | Switch active dataset cursor (`use` deprecated) |
 | | `rename` | `rename df1 customers` | Zero-copy $O(1)$ in-memory table pointer rename |
 | | Subject-First | `cust -head 5`, `cust -shape` | Execute command directly on named table |
 | | `rm table` | `rm table df1`, `rm table *` | Free table memory and trigger immediate OS page trim |
@@ -14511,7 +14516,7 @@ The **Pytae REPL** provides stateful, iterative in-memory data manipulation and 
 | | Previews | `-head 10`, `-tail 5`, `-sample 10`, `-diff df1 df2` | Non-destructive formatted row previews |
 | **SQL & Python**| `-sql` | `-sql "SELECT * FROM orders JOIN cust ..."` | Pure ANSI SQL across all loaded workbench tables |
 | | `py` (Model A) | `py k = df.to_pandas(); k = k.to_pytae()` | Embedded Python with immediate RAM cleanup & `.to_pytae()` |
-| **Checkpoints** | `checkpoint` | `checkpoint baseline` | Save disk snapshot (0 MB RAM overhead) |
+| **Checkpoints** | `checkpoint` | `checkpoint baseline` | Save ephemeral IPC snapshot (0 MB RAM overhead) |
 | | `restore` / `reset` | `restore baseline`, `reset` | Instantly revert workbench state to checkpoint |
 | **Parameters** | `@var` | `min_val = 3500`, `@cfg.threshold` | Session variables substituted in `-filter`, `-mutate`, `-sql` |
 | **Export & Replay**| `exit -s` | `exit -s pipeline.txt` | Export clean, reproducible batch replay script on exit |
@@ -14978,16 +14983,16 @@ pytae> sessions
 # Inside the REPL prompt:
 # 1. State Management & Checkpoints
 status table [-v]    # Inspect active table and list all loaded tables (-v for cols & RAM)
-use orders           # Switch active dataset cursor to 'orders'
+switch orders        # Switch active dataset cursor to 'orders' ('use' deprecated)
 rename df1 customers # Zero-copy O(1) in-memory table rename
 diff df1 df2         # Compare two tables or active dataset against target (or checkpoint)
 reset                # Revert to latest checkpoint (or initial dataset if none)
 reset initial        # Revert strictly to initial dataset read (bypassing checkpoints)
 history              # Show session audit log (all steps auto-logged to ~/.pytae/history/)
 history 5            # Show last 5 steps from current session audit log
-checkpoint v1        # Save in-memory snapshot across all active tables
-rm checkpoint v1     # Delete a saved checkpoint from memory (or rm checkpoint *)
-rollback v1          # Restore workbench to snapshot (or bare rollback for latest)
+checkpoint v1        # Save ephemeral IPC snapshot across all active tables (0 MB RAM)
+rm checkpoint v1     # Delete a saved checkpoint from disk (or rm checkpoint *)
+restore v1           # Restore workbench to snapshot (or bare restore for latest)
 status session [-v]  # Display active workbench tables, RAM consumption, and history
 export script p.pt   # Export executed pipeline to reproducible Pytae script
 export script p.py   # Export executed pipeline to reproducible Python script

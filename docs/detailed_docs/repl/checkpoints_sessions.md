@@ -2,16 +2,16 @@
 
 [← Back to Master Reference](../../pytae.md)
 
-This guide covers in-memory snapshotting (`checkpoint`), instant workbench recovery (`rollback`), session status inspection, pipeline script export (`export script`), and configuration (`set`, `set save`) in the Pytae interactive REPL (`pytae -i`).
+This guide covers ephemeral IPC snapshotting (`checkpoint`), instant workbench recovery (`restore`), session status inspection, pipeline script export (`export script`), and configuration (`set`, `set save`) in the Pytae interactive REPL (`pytae -i`).
 
 ---
 
 ## Contents
 
 - [In-Memory Workbench Architecture](#in-memory-workbench-architecture)
-- [Checkpoints & Rollbacks](#checkpoints--rollbacks)
-  - [Saving In-Memory Checkpoints (`checkpoint <name>`)](#saving-in-memory-checkpoints-checkpoint-name)
-  - [Restoring Workbench State (`rollback [name]`)](#restoring-workbench-state-rollback-name)
+- [Checkpoints & Restoration](#checkpoints--restoration)
+  - [Saving Ephemeral IPC Checkpoints (`checkpoint <name>`)](#saving-ephemeral-ipc-checkpoints-checkpoint-name)
+  - [Restoring Workbench State (`restore [name]`)](#restoring-workbench-state-restore-name)
   - [Listing & Deleting Checkpoints (`status checkpoint`, `rm checkpoint`)](#listing--deleting-checkpoints-status-checkpoint-rm-checkpoint)
   - [Reverting to Disk Source (`reset`)](#reverting-to-disk-source-reset)
 - [Session Status & Diagnostics (`status session`)](#session-status--diagnostics-status-session)
@@ -27,38 +27,41 @@ This guide covers in-memory snapshotting (`checkpoint`), instant workbench recov
 ## In-Memory Workbench Architecture
 
 The Pytae REPL operates as a pure **in-memory workbench**:
-- **Zero Disk Footprint**: Interactive sessions run in RAM without generating persistent disk session directories.
+- **Zero RAM Overhead for Checkpoints**: Checkpoints serialize tables to an ephemeral process-bound temp directory in Arrow IPC format, consuming **0 MB of RAM**.
+- **Automatic Lifecycle Cleanup**: All checkpoint temp files are wiped clean immediately upon session exit.
 - **Flight Recorder History**: All commands entered during a session are auto-logged to `~/.pytae/history/history_<timestamp>.txt`. Exiting an empty session immediately purges empty history files.
-- **Multi-Table Workspace**: Load datasets into named tables (`df1 = orders.parquet`, `df2 = sample:tips`), query them via fluent verbs or ANSI SQL (`-sql "SELECT * FROM df1 JOIN df2..."`), and manage multiple frames concurrently.
+- **Multi-Table Workspace**: Load datasets into named tables (`df1 = orders.parquet`, `df2 = sample:tips`), query them via fluent verbs or ANSI SQL (`-sql "SELECT * FROM df1 JOIN df2..."`), and switch between them with `switch <name>` (`use` deprecated).
 
 ---
 
-## Checkpoints & Rollbacks
+## Checkpoints & Restoration
 
-### Saving In-Memory Checkpoints (`checkpoint <name>`)
+### Saving Ephemeral IPC Checkpoints (`checkpoint <name>`)
 
-Take an in-memory snapshot of all active tables, variables, and pipeline state:
+Take an ephemeral snapshot of all active tables, variables, and pipeline state:
 
 ```text
 pytae [orders, cust]> checkpoint baseline
 Saved checkpoint 'baseline' (2 tables: orders, cust).
 ```
 
-Checkpoints freeze table states in memory via zero-copy / deep-copy semantics, allowing instant milestone recovery without writing to disk.
+Checkpoints freeze table states to fast Arrow IPC on disk in a process-bound temporary folder. They consume **0 MB of RAM** and provide instant recovery without permanent disk clutter.
 
-### Restoring Workbench State (`rollback [name]`)
+### Restoring Workbench State (`restore [name]`)
 
 Revert the workbench to any previously saved checkpoint:
 
 ```text
 # Revert to specific checkpoint
-pytae [orders, cust, scratch_df]> rollback baseline
+pytae [orders, cust, scratch_df]> restore baseline
 Restored checkpoint 'baseline' (2 tables: orders, cust; active: cust).
 
 # Revert to the most recent checkpoint
-pytae [orders, cust]> rollback
+pytae [orders, cust]> restore
 Restored checkpoint 'baseline' (2 tables: orders, cust).
 ```
+
+*(Note: `revert` is available as a synonym. The legacy verb `rollback` is deprecated and automatically routes to `restore`).*
 
 All post-checkpoint scratch tables and uncommitted mutations are automatically dropped.
 
@@ -191,6 +194,6 @@ The JSON configuration file is loaded automatically on subsequent REPL launches:
 
 > [!NOTE]
 > Legacy persistent disk sessions (`set new_session = ...`, `set load_session = ...`, `set save_session = ...`, `set checkpoint_format = ...`) have been retired.
-> - Use in-memory checkpoints (`checkpoint <name>`, `rollback [name]`) for instant undo and branching.
+> - Use ephemeral checkpoints (`checkpoint <name>`, `restore [name]`) for instant undo and branching (0 MB RAM).
 > - Use `export script <path.pt | path.py>` to persist, version-control, and share data pipelines.
 > - Run exported scripts in batch mode via `pytae <script.pt>` or `pytae -run <script.pt>`.

@@ -670,9 +670,10 @@ def test_repl_disallowed_aliases_and_hyphenated_commands():
         ("--cps", "checkpoints"),
         ("vars", "tables"),
         ("datasets", "tables"),
-        ("switch", "use"),
-        ("-use", "use"),
-        ("--use", "use"),
+        ("-switch", "switch"),
+        ("--switch", "switch"),
+        ("-use", "switch"),
+        ("--use", "switch"),
         ("checkout", "restore"),
         ("-restore", "restore"),
         ("--restore", "restore"),
@@ -1942,18 +1943,25 @@ def test_repl_time_bare_table_switch(sample_df):
     assert r.path_str == "df2"
     assert len(outputs) == 1
     assert "df1: 5 rows x 3 cols | Elapsed:" in outputs[0]
-    assert "tip: 'use df1'" in outputs[0]
+    assert "tip: 'switch df1'" in outputs[0]
 
     outputs.clear()
     r.execute_line("df1 -time 3", output_fn=outputs.append)
     assert len(outputs) == 1
     assert "df1: 5 rows x 3 cols | Elapsed (3 runs): avg" in outputs[0]
 
-    # Explicit 'use df1' switches active dataset
+    # Explicit 'switch df1' switches active dataset
     outputs.clear()
-    r.execute_line("use df1", output_fn=outputs.append)
+    r.execute_line("switch df1", output_fn=outputs.append)
     assert r.path_str == "df1"
     assert "Switched active dataset to 'df1'" in outputs[0]
+
+    # Deprecated 'use df2' also works with deprecation notice
+    outputs.clear()
+    r.execute_line("use df2", output_fn=outputs.append)
+    assert r.path_str == "df2"
+    assert "Switched active dataset to 'df2'" in outputs[0]
+    assert "use' is deprecated" in outputs[0]
 
     r.close()
 
@@ -2591,7 +2599,9 @@ def test_repl_tab_autocompletions():
     r.execute_line("orders = sample:tips")
     r.execute_line("checkpoint cp_v1")
 
-    # Table completion after 'use '
+    # Table completion after 'switch ' and 'use '
+    matches = r._get_completions("cu", "switch cu")
+    assert matches == ["customers"]
     matches = r._get_completions("cu", "use cu")
     assert matches == ["customers"]
 
@@ -2641,8 +2651,9 @@ def test_repl_tab_autocompletions():
     matches = r._get_completions("par", "set checkpoint_format = par")
     assert "parquet" in matches
 
-    # Replay entry includes rename and use
+    # Replay entry includes rename, switch, and use
     assert r._is_replayable_entry("rename df1 customers") is True
+    assert r._is_replayable_entry("switch customers") is True
     assert r._is_replayable_entry("use customers") is True
 
     r.close()
@@ -3344,7 +3355,7 @@ def test_repl_status_subcommands_and_verbose():
     r.execute_line("status checkpoint cp1", output_fn=outputs.append)
     st_cp1 = "\n".join(outputs)
     assert "Checkpoint     : cp1" in st_cp1
-    assert "Storage        : in-memory" in st_cp1
+    assert "Storage        : ephemeral disk IPC" in st_cp1
     assert "Tables (2):" in st_cp1
 
     # 11. status checkpoint cp1 -v
