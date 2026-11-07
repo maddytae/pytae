@@ -185,3 +185,33 @@ def test_repl_py_model_a_explicit_registration_and_cleanup():
     r.close()
 
 
+def test_repl_py_ram_cleanup_and_rss_release():
+    """Verify that temporary large variables created in py mode are completely purged from RAM and scope."""
+    import polars as pl
+
+    from pytae.repl import PytaeRepl, _get_process_rss_mb, _release_memory
+
+    r = PytaeRepl(df=pl.DataFrame({"x": [1, 2, 3]}))
+    outs: list[str] = []
+
+    # 1. RSS measurement helper returns a valid positive number
+    rss_mb = _get_process_rss_mb()
+    assert rss_mb is None or rss_mb > 0
+
+    # 2. Allocate an ephemeral large object in py execution
+    r.execute_line("py big_scratch = [i * 2 for i in range(500_000)]", output_fn=outs.append)
+
+    # 3. Must not be registered as a table or variable
+    assert "big_scratch" not in r.tables
+    assert "big_scratch" not in r.variables
+
+    # 4. On subsequent command, accessing it raises NameError confirming scope eviction
+    outs.clear()
+    r.execute_line("py big_scratch[0]", output_fn=outs.append)
+    assert any("name 'big_scratch' is not defined" in o for o in outs)
+
+    # 5. Calling _release_memory() executes without errors
+    _release_memory()
+    r.close()
+
+

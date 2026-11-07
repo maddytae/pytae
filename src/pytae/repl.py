@@ -5634,9 +5634,7 @@ class PytaeRepl:
             # Model A: Immediately remove everything associated from RAM
             local_scope.clear()
             del local_scope
-            import gc
-
-            gc.collect()
+            _release_memory()
 
     def _run_pipeline_on_df(
         self,
