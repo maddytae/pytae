@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [3.13.6] - 2026-11-07
 
 ### Fixed
 - **Hermetic REPL Test Isolation (`tests/conftest.py`)**:
