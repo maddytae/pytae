@@ -434,7 +434,9 @@ pytae> -sql "SELECT species, AVG(body_mass_g) FROM df GROUP BY 1" # Query loaded
 pytae> py df.shape
 pytae> -o clean.parquet
 pytae> -o clip                                               # Copy active table to system clipboard
-pytae> exit -s run.txt                                       # Exit and export session history to file
+pytae> exit -s                                                # Exit and export session to ./session.pt
+pytae> exit -s py                                             # Exit and export session to ./session.py
+pytae> exit -s pipeline.py                                    # Exit and export session to custom file path
 # Up / Down arrow keys recall command history from current session
 ```
 

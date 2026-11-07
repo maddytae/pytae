@@ -1472,22 +1472,28 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "exit": KeywordHelp(
         name="exit",
-        flag="exit [-s [path]]",
-        syntax="exit [-s [path]]",
-        summary="Exit the interactive REPL workbench.",
+        flag="exit [-s [pt|py|path]]",
+        syntax="exit [-s [pt|py|path]]",
+        summary="Exit the interactive REPL workbench, optionally saving session pipeline scripts.",
         description=(
-            "Terminates the interactive session and releases resources.\n"
-            "Using '-s' automatically saves all commands from the session into a replayable script."
+            "Terminates the interactive session and releases resources (automatically purging ephemeral temp files).\n"
+            "Using '-s' automatically compiles all state-mutating commands into a clean, reproducible script\n"
+            "with rolled-back or undone branches pruned."
         ),
         options=[
-            "-s : Save session commands to ./history.txt.",
-            "-s <path> : Save session commands to specified file path.",
+            "-s : Save session commands to executable ./session.pt in cwd.",
+            "-s py : Compile session commands to standalone Python script ./session.py in cwd.",
+            "-s pt : Explicitly save session commands to ./session.pt in cwd.",
+            "-s <path> : Save session commands to specified file path (.pt or .py).",
         ],
         examples=[
             "pytae -i  # Inside REPL: exit",
             "pytae -i  # Inside REPL: exit -s",
+            "pytae -i  # Inside REPL: exit -s py",
+            "pytae -i  # Inside REPL: exit -s pt",
+            "pytae -i  # Inside REPL: exit -s pipeline.py",
         ],
-        see_also=["history", "session"],
+        see_also=["history", "session", "checkpoint"],
     ),
 }
 

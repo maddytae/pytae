@@ -142,8 +142,8 @@ CHEATSHEET_TEXT = """\
   #   df1 = "parts/*.parquet" Load globbed partitions into single table
   #   export script <path>    Export pipeline to reproducible .pt or .py script
   #   set save                Persist current display settings to ~/.pytae/config.json
-  #   history [-s [path]]     Show session audit log or export to named file
-  #   exit [-s [path]]        Exit REPL (optionally save session history to file)
+  #   history                 Show session audit log
+  #   exit [-s [pt|py|path]]  Exit REPL (default: session.pt, py: session.py)
   #   switch <name>           Switch active table cursor (use deprecated)
   #   reset                   Restore original dataset from disk (instant O(1))
   #   checkpoint <name>       Save ephemeral IPC snapshot across all session tables (0 MB RAM)

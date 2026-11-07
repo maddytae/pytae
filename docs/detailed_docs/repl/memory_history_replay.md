@@ -77,15 +77,16 @@ Table memory   : ~0.02 MB
 Status         : active
 ```
 
-Inspect active session state, storage path, checkpoints, and RAM:
+Inspect active session state, checkpoints, disk usage, and RAM:
 ```text
-pytae:my_lab [df: 344x7]> status session
+pytae [df*]> status session
 === REPL Session Status ===
-Session Name  : my_lab (storage: ./my_lab)
-Active Table  : df
-Loaded Tables : 1 tables loaded
-Checkpoints   : 2 saved
+Active Table  : df (344 rows x 7 cols, ~0.02 MB)
+Loaded Tables : 1 tables loaded [df*] (~0.02 MB in memory)
+Variables     : 0 defined
+Checkpoints   : 2 saved (latest: baseline) [18.4 KB ephemeral disk, 0 MB RAM]
 Process RAM   : ~129.2 MB (PID 7158)
+------------------------------------------------------------
 ```
 
 ---
@@ -124,19 +125,29 @@ The REPL maintains persistent readline history stored in `~/.pytae_history`. Use
 
 Pytae provides a powerful workflow to turn interactive exploration into portable, automated pipeline scripts that run anywhere.
 
-### Exit-Time Export (`exit -s [path]`)
+### Exit-Time Export (`exit -s [pt|py|path]`)
 
-Save pure data transformation commands directly when exiting. Output paths always resolve to the **current working directory (`cwd`)**, and Pytae prints the full absolute path as an unambiguous reminder and clickable terminal link:
+Save pure data transformation commands directly into a standalone, executable script when exiting. Output paths always resolve to the **current working directory (`cwd`)**, and Pytae prints the full absolute path as an unambiguous reminder and clickable terminal link:
 
 ```text
-# Save to default ./history.txt in the current working directory
+# Default: saves to ./session.pt in the current working directory
 pytae> exit -s
-Session commands saved to /Users/maddy/my_analysis/history.txt.
+Session code saved to /Users/maddy/my_analysis/session.pt.
+Exiting pytae REPL.
+
+# Export as standalone Python script (Polars / Pytae pipeline)
+pytae> exit -s py
+Session code saved to /Users/maddy/my_analysis/session.py.
+Exiting pytae REPL.
+
+# Explicit Pytae script export
+pytae> exit -s pt
+Session code saved to /Users/maddy/my_analysis/session.pt.
 Exiting pytae REPL.
 
 # Save to custom script file in the current working directory
-pytae> exit -s transform_orders.txt
-Session commands saved to /Users/maddy/my_analysis/transform_orders.txt.
+pytae> exit -s transform_orders.py
+Session code saved to /Users/maddy/my_analysis/transform_orders.py.
 Exiting pytae REPL.
 ```
 

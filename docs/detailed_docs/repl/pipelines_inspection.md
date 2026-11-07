@@ -121,6 +121,15 @@ pytae [orders]> -diff orders_backup
 # Explicitly compare two loaded tables
 pytae> -diff df1 df2
 
+# Compare active table against a saved checkpoint (resolves active table inside snapshot)
+pytae [orders]> -diff baseline
+
+# Milestone diffing targeting a specific table in a checkpoint
+pytae [orders]> -diff baseline:cust
+
+# Milestone diffing across two checkpoints
+pytae> -diff v1:orders v2:orders
+
 # Align rows by primary key before comparing values (reports added/removed keys & mismatched cells)
 pytae> -diff df1 df2 on=customer_id
 

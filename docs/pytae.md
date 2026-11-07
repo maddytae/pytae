@@ -372,7 +372,7 @@ The **Pytae REPL** provides stateful, iterative in-memory data manipulation and 
 | **Checkpoints** | `checkpoint` | `checkpoint baseline` | Save ephemeral IPC snapshot (0 MB RAM overhead) |
 | | `restore` / `reset` | `restore baseline`, `reset` | Instantly revert workbench state to checkpoint |
 | **Parameters** | `@var` | `min_val = 3500`, `@cfg.threshold` | Session variables substituted in `-filter`, `-mutate`, `-sql` |
-| **Export & Replay**| `exit -s` | `exit -s pipeline.txt` | Export clean, reproducible batch replay script on exit |
+| **Export & Replay**| `exit -s` | `exit -s`, `exit -s py`, `exit -s pt` | Export reproducible script (default: session.pt, py: session.py) on exit |
 | | Batch Replay | `pytae -i < pipeline.txt` | Execute exported pipeline headlessly line by line |
 
 ### Detailed REPL Documentation Directory
