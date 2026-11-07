@@ -423,22 +423,10 @@ def is_session_dir(path: Path | str) -> bool:
         return False
 
 
-def _is_dedicated_sessions_dir(path: Path) -> bool:
-    """Check if a directory is a dedicated sessions container folder."""
-    return (
-        path.name.lower() in ("sessions", ".sessions", "pytae_sessions", ".pytae")
-    )
-
-
 _RETIRED_SESSION_MSG = (
     "pytae: persistent disk sessions have been retired. Use 'checkpoint <name>' for in-memory undo, "
     "'export script <path.py|path.pt>' to save pipelines, or 'pytae <script.pt>' to replay."
 )
-
-
-def _get_saved_session_names() -> list[str]:
-    """Persistent sessions retired (returns empty list)."""
-    return []
 
 
 def list_saved_sessions(
@@ -2782,10 +2770,6 @@ class PytaeRepl:
             return f"{prefix} [{name}: {self._get_shape_str()}]> "
         return f"{prefix}> "
 
-    def _cmd_session(self, tokens: list[str], output_fn: Callable[[str], None]) -> None:
-        """Notice for retired persistent disk sessions."""
-        output_fn(_RETIRED_SESSION_MSG)
-
     def execute_line(self, raw_line: str, output_fn: Callable[[str], None] = print) -> bool:
         """Execute one REPL input line. Returns False if REPL should terminate."""
         line = raw_line.strip()
@@ -3113,15 +3097,11 @@ class PytaeRepl:
                     count = len(self.variables)
                     self.variables.clear()
                     self._record_history("rm var *")
-                    if self.session_name:
-                        self._save_session_metadata()
                     output_fn(f"Removed all session variables ({count} removed).")
                     return True
                 if target in self.variables:
                     del self.variables[target]
                     self._record_history(f"rm var {target}")
-                    if self.session_name:
-                        self._save_session_metadata()
                     output_fn(f"Removed variable '@{target}'.")
                     return True
                 avail = ", ".join(f"@{k}" for k in self.variables) if self.variables else "none"
@@ -4095,8 +4075,6 @@ class PytaeRepl:
                 self._cmd_restore(latest_cp, output_fn, record_history=False)
                 self._record_history("reset")
                 output_fn(f"Reset to latest checkpoint '{latest_cp}'.")
-                if self.session_name:
-                    self._save_session_metadata()
                 return
 
             self._reset_to_initial(output_fn, is_explicit_initial=False)
@@ -4141,8 +4119,6 @@ class PytaeRepl:
                     self.current_df = cp_df
                     self.orig_df = cp_df
                 self._record_history(f"reset {table_name}")
-                if self.session_name:
-                    self._save_session_metadata()
                 _release_memory()
                 output_fn(f"Reset table '{table_name}' to latest checkpoint '{latest_cp}'.")
                 return
@@ -4170,8 +4146,6 @@ class PytaeRepl:
             self.initial_df = restored_df
 
         self._record_history(f"reset {table_name} initial" if is_explicit_initial else f"reset {table_name}")
-        if self.session_name:
-            self._save_session_metadata()
         _release_memory()
         output_fn(
             f"Reset table '{table_name}' to initial state ({restored_df.shape[0]:,} rows x {restored_df.shape[1]} cols)."
@@ -4223,9 +4197,6 @@ class PytaeRepl:
         else:
             self._record_history("reset")
             desc = "initial dataset (no checkpoints exist)"
-
-        if self.session_name:
-            self._save_session_metadata()
 
         if self.current_df is not None:
             output_fn(f"Restored {desc}. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})")
@@ -6018,33 +5989,14 @@ class PytaeRepl:
         if first_token == "set":
             if last_token == "set":
                 configs = [
-                    "session_name",
-                    "new_session",
-                    "load_session",
-                    "save_session",
-                    "checkpoint_format",
-                    "session_load",
-                    "sessions_dir",
-                    "convert",
                     "max_rows",
                     "max_cols",
                     "float_precision",
                     "comma",
-                    "move",
-                    "overwrite",
                 ]
                 return [c for c in configs if c.startswith(text)]
             if "checkpoint_format" in [t.lower() for t in prefix_tokens]:
                 return [fmt for fmt in ("ipc", "parquet", "arrow") if fmt.startswith(text)]
-            if "convert" in [t.lower() for t in prefix_tokens]:
-                return [opt for opt in ("all", "none") if opt.startswith(text)]
-            if any(k in [t.lower() for t in prefix_tokens] for k in ("session_load", "load_session")):
-                return [s for s in _get_saved_session_names() if s.startswith(text)]
-            if any(k in [t.lower() for t in prefix_tokens] for k in ("session_name", "save_session")):
-                avail = ["none"] + _get_saved_session_names()
-                return [s for s in avail if s.startswith(text)]
-            if any(k in [t.lower() for t in prefix_tokens] for k in ("overwrite", "move")):
-                return [opt for opt in ("true", "false") if opt.startswith(text)]
             if "comma" in [t.lower() for t in prefix_tokens]:
                 return [opt for opt in ("on", "off") if opt.startswith(text)]
             if any(k in [t.lower() for t in prefix_tokens] for k in ("max_rows", "rows")):
@@ -6053,20 +6005,6 @@ class PytaeRepl:
                 return [opt for opt in ("all", "default", "5", "10", "20") if opt.startswith(text)]
             if any(k in [t.lower() for t in prefix_tokens] for k in ("float_precision", "precision")):
                 return [opt for opt in ("auto", "default", "2", "4", "6") if opt.startswith(text)]
-            if any(k in [t.lower() for t in prefix_tokens] for k in ("sessions_dir", "save_session", "new_session")):
-                return _complete_paths(text)
-
-        # Case 0: 'sessions ' -> complete flags and session names
-        if first_token == "sessions":
-            opts = ["-v", "-verbose", "-ready"] + _get_saved_session_names()
-            return [opt for opt in opts if opt.startswith(text)]
-
-        if first_token == "session":
-            if last_token == "session":
-                return [sub for sub in ("list",) if sub.startswith(text)]
-            if len(prefix_tokens) >= 2 and prefix_tokens[1].lower() in ("list", "ls"):
-                opts = ["-v", "-verbose", "-ready"] + _get_saved_session_names()
-                return [opt for opt in opts if opt.startswith(text)]
 
         # Case 0b: 'export ' or 'save ' -> complete subcommands and paths
         if first_token in ("export", "save"):
@@ -6149,28 +6087,7 @@ class PytaeRepl:
             candidates = list(self.tables.keys()) + list(self.checkpoints.keys()) + ["-tol", "on="]
             return [c for c in candidates if c.startswith(text)]
 
-        # Case 7: 'set ' -> complete configuration keys
-        if last_token == "set":
-            configs = ["session_name", "new_session", "load_session", "save_session", "checkpoint_format"]
-            return [c for c in configs if c.startswith(text)]
-        if "set" in [t.lower() for t in prefix_tokens]:
-            if "checkpoint_format" in [t.lower() for t in prefix_tokens]:
-                return [fmt for fmt in ("ipc", "parquet", "arrow") if fmt.startswith(text)]
-            if any(k in [t.lower() for t in prefix_tokens] for k in ("session_load", "load_session")):
-                return [s for s in _get_saved_session_names() if s.startswith(text)]
-            if any(k in [t.lower() for t in prefix_tokens] for k in ("session_name", "save_session")):
-                avail = ["none"] + _get_saved_session_names()
-                return [s for s in avail if s.startswith(text)]
-            if any(k in [t.lower() for t in prefix_tokens] for k in ("sessions_dir", "save_session", "new_session")):
-                return _complete_paths(text)
-
-        # Case 8: 'session ' -> complete subcommands
-        if last_token == "session":
-            return [cmd for cmd in ("save", "load") if cmd.startswith(text)]
-        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "session" and prefix_tokens[-1].lower() == "load":
-            return [s for s in _get_saved_session_names() if s.startswith(text)]
-
-        # Case 9: Flag completion (starts with '-')
+        # Case 7: Flag completion (starts with '-')
         if text.startswith("-"):
             flags = [
                 "-filter", "-select", "-mutate", "-arrange", "-group_by", "-by",

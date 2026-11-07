@@ -2628,15 +2628,15 @@ def test_repl_tab_autocompletions():
     assert "this" not in matches
 
     # Config completion after 'set '
-    matches = r._get_completions("ch", "set ch")
-    assert "checkpoint_format" in matches
+    matches = r._get_completions("m", "set m")
+    assert "max_rows" in matches
+    assert "max_cols" in matches
 
-    matches = r._get_completions("session_", "set session_")
-    assert "session_name" in matches
-    assert "session_load" in matches
+    matches = r._get_completions("fl", "set fl")
+    assert "float_precision" in matches
 
-    matches = r._get_completions("load_", "set load_")
-    assert "load_session" in matches
+    matches = r._get_completions("co", "set co")
+    assert "comma" in matches
 
     matches = r._get_completions("par", "set checkpoint_format = par")
     assert "parquet" in matches
@@ -3591,7 +3591,7 @@ def test_repl_complete_handles_none_begidx(monkeypatch):
     # Should not raise TypeError and successfully compute completions
     first_match = r._complete("", 0)
     assert first_match is not None
-    assert first_match == "session_name"
+    assert first_match == "max_rows"
     r.close()
 
 
