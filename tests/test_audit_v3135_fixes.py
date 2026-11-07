@@ -346,13 +346,13 @@ def test_repl_audit_ux_polish_improvements():
 
     outputs.clear()
     r.execute_line("min_spend", output_fn=outputs.append)
-    assert "@min_spend = 50.0 (float)" in outputs[-1]
+    assert outputs[-1] == "50.0"
 
     # Nested config bare evaluation
     r.execute_line("cfg = {'mode': 'fast', 'limit': 100}", output_fn=outputs.append)
     outputs.clear()
     r.execute_line("cfg.mode", output_fn=outputs.append)
-    assert "@cfg.mode = 'fast' (str)" in outputs[-1]
+    assert outputs[-1] == "'fast'"
 
     # 2. Bare 'status' displays unified session status overview
     outputs.clear()

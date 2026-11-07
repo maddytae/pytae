@@ -68,23 +68,36 @@ def test_repl_bare_variable_inspection():
 
     outputs.clear()
     r.execute_line("@min_mass", output_fn=outputs.append)
-    assert "@min_mass = 3500 (int)" in outputs[0]
+    assert outputs[0] == "3500"
+
+    # Bare variable inspection (without @) prints raw value
+    outputs.clear()
+    r.execute_line("min_mass", output_fn=outputs.append)
+    assert outputs[0] == "3500"
 
     outputs.clear()
     r.execute_line("@species[0]", output_fn=outputs.append)
-    assert "@species[0] = 'Gentoo' (str)" in outputs[0]
+    assert outputs[0] == "'Gentoo'"
+
+    outputs.clear()
+    r.execute_line("species[0]", output_fn=outputs.append)
+    assert outputs[0] == "'Gentoo'"
 
     outputs.clear()
     r.execute_line("@cfg.island", output_fn=outputs.append)
-    assert "@cfg.island = 'Biscoe' (str)" in outputs[0]
+    assert outputs[0] == "'Biscoe'"
+
+    outputs.clear()
+    r.execute_line("cfg.island", output_fn=outputs.append)
+    assert outputs[0] == "'Biscoe'"
 
     outputs.clear()
     r.execute_line("@cfg['island']", output_fn=outputs.append)
-    assert "@cfg['island'] = 'Biscoe' (str)" in outputs[0]
+    assert outputs[0] == "'Biscoe'"
 
     outputs.clear()
     r.execute_line("@cfg.scores[1]", output_fn=outputs.append)
-    assert "@cfg.scores[1] = 20 (int)" in outputs[0]
+    assert outputs[0] == "20"
 
     outputs.clear()
     r.execute_line("@not_found", output_fn=outputs.append)

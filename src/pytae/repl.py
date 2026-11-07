@@ -2935,7 +2935,7 @@ class PytaeRepl:
             if clean_strip.startswith("@"):
                 try:
                     val = self._eval_var_expr(clean_strip[1:])
-                    output_fn(f"{clean_strip} = {repr(val)} ({type(val).__name__})")
+                    output_fn(repr(val))
                     return True
                 except KeyError as exc:
                     output_fn(f"pytae: {exc}")
@@ -2945,7 +2945,7 @@ class PytaeRepl:
                 if base_var in self.variables:
                     try:
                         val = self._eval_var_expr(clean_strip)
-                        output_fn(f"@{clean_strip} = {repr(val)} ({type(val).__name__})")
+                        output_fn(repr(val))
                         return True
                     except KeyError as exc:
                         output_fn(f"pytae: {exc}")
