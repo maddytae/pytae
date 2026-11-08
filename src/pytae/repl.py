@@ -361,7 +361,7 @@ def is_session_dir(path: Path | str) -> bool:
 
 _RETIRED_SESSION_MSG = (
     "pytae: persistent disk sessions have been retired. Use 'checkpoint <name>' for in-memory undo, "
-    "'export script <path.py|path.pt>' to save pipelines, or 'pytae <script.pt>' to replay."
+    "'export <path.pt|path.py>' to save pipelines, or 'pytae <script.pt>' to replay."
 )
 
 
@@ -1030,7 +1030,7 @@ INSPECTION & EXPORT:
   -diff [<tbl1>] <tbl2> [on=<key>] : Compare two tables or active table against <tbl2> (or checkpoint)
   -time [N]              : Benchmark execution over N runs (default: 1), e.g. -distinct -time 3
   -o <path> / -o clip    : Export table to file (Parquet/CSV/NDJSON) or clipboard
-  export script <path> [-relative] : Export reproducible pipeline to standalone Python (.py) or Pytae (.pt) script
+  export <path> [-relative] : Export reproducible pipeline to standalone Python (.py) or Pytae (.pt) script
   -cheatsheet            : Display quick start cheatsheet and command reference
   -collect               : Materialize active lazy table into memory
   -explain               : Display optimized Polars query execution plan for lazy table
@@ -1040,7 +1040,7 @@ STATE & WORKBENCH:
   reset                  : Revert to latest checkpoint (or initial read if no checkpoints)
   reset initial          : Strictly revert to initial read even if checkpoints exist
   history [N]            : Show numbered audit log of all commands executed in session
-  export script <path>   : Export session pipeline to runnable Python (.py) or Pytae (.pt) script
+  export <path>          : Export session pipeline to runnable Python (.py) or Pytae (.pt) script
   checkpoint <name>      : Save ephemeral IPC snapshot of entire workbench to disk (0 MB RAM)
   restore [name]         : Restore entire workbench to saved checkpoint (or bare 'restore' for latest)
   status checkpoint [name] : Inspect checkpoint snapshot or list all saved checkpoints
@@ -2038,6 +2038,8 @@ def _is_replayable_entry_static(entry: str) -> bool:
         if len(tokens) >= 2:
             target = tokens[1].lower().strip("'\"")
             if target not in ("clip", "clipboard", "script", "code"):
+                if target.endswith((".pt", ".py")):
+                    return False
                 return True
         return False
 
@@ -2266,10 +2268,38 @@ class PytaeRepl:
             self._load_and_run_script(script)
 
     def _load_and_run_script(self, script_path_str: Path | str) -> bool:
-        """Load and execute a .pt script file into the REPL state before interactive prompt."""
+        """Load and execute a .pt or .py script file into the REPL state before interactive prompt."""
         p = Path(os.path.expanduser(str(script_path_str))).resolve()
         if not p.exists():
             return False
+        if p.suffix.lower() == ".py":
+            import runpy
+            try:
+                mod_vars = runpy.run_path(str(p), run_name="__main__")
+                for var_name, val in mod_vars.items():
+                    if var_name.startswith("_") or var_name in ("pt", "pd", "pl", "pytae"):
+                        continue
+                    if hasattr(val, "columns") and hasattr(val, "shape"):
+                        try:
+                            t_df = val if isinstance(val, pl.DataFrame) else pl.from_pandas(val.to_pandas() if hasattr(val, "to_pandas") else val)
+                            self.tables[var_name] = t_df
+                            self.orig_tables[var_name] = t_df
+                            self.initial_tables[var_name] = t_df
+                            self.table_sources[var_name] = p.name
+                            self.current_df = t_df
+                            self.orig_df = t_df
+                            if self.initial_df is None:
+                                self.initial_df = t_df
+                            self.path_str = var_name
+                        except Exception:
+                            pass
+                    elif isinstance(val, (int, float, str, bool)):
+                        self.variables[var_name] = val
+                return True
+            except Exception as exc:
+                print(f"pytae error: failed to run '{p.name}': {exc}")
+                return False
+
         lines = p.read_text(encoding="utf-8").splitlines()
         in_py = False
         py_buf: list[str] = []
@@ -2358,7 +2388,7 @@ class PytaeRepl:
     ) -> bool:
         """Export session commands to an executable Python (.py) or Pytae (.pt) script."""
         if not target_path_str:
-            output_fn("Usage: export script <path.py|path.pt> [-relative]")
+            output_fn("Usage: export <path.py|path.pt> [-relative]")
             return False
 
         from pytae.cli_parsing import normalize_git_bash_path
@@ -2389,8 +2419,14 @@ class PytaeRepl:
             output_fn(f"pytae: Error exporting script to '{target_path_str}': {exc}")
             return False
 
-    def _export_session_history(self, target_path_str: str, output_fn: Callable[[str], None]) -> bool:
-        """Export session commands to a named file (used by exit -s [path])."""
+    def _export_session_history(
+        self,
+        target_path_str: str,
+        output_fn: Callable[[str], None],
+        *,
+        relative: bool = False,
+    ) -> bool:
+        """Export session commands to a named file (used by exit -s [path] [-relative])."""
         from pytae.cli_parsing import normalize_git_bash_path
 
         clean_path = normalize_git_bash_path(target_path_str.strip("'\""))
@@ -2404,12 +2440,13 @@ class PytaeRepl:
         try:
             target_path.parent.mkdir(parents=True, exist_ok=True)
             if target_path.suffix.lower() == ".py":
-                content = _compile_history_to_python(replayable, self.table_sources)
+                content = _compile_history_to_python(replayable, self.table_sources, relative=relative)
             else:
-                content = _compile_history_to_pt(replayable, target_path.name)
+                content = _compile_history_to_pt(replayable, target_path.name, relative=relative)
 
             target_path.write_text(content, encoding="utf-8")
-            output_fn(f"Session code saved to {target_path}.")
+            path_desc = " (-relative)" if relative else ""
+            output_fn(f"Session code saved to {target_path}{path_desc}.")
             return True
         except Exception as exc:
             output_fn(f"pytae: Error saving code to '{target_path_str}': {exc}")
@@ -2871,35 +2908,42 @@ class PytaeRepl:
             exit_tokens = norm_exit_line.split()
 
         if exit_tokens and exit_tokens[0].lower() == "exit":
-            if len(exit_tokens) >= 3 and exit_tokens[1] in ("-s", "-save", "save"):
-                sub = exit_tokens[2].lower()
+            relative = any(t in ("-relative", "--relative") for t in exit_tokens[1:])
+            clean_exit_tokens = [t for t in exit_tokens if t not in ("-relative", "--relative")]
+            if len(clean_exit_tokens) >= 3 and clean_exit_tokens[1] in ("-s", "-save", "save"):
+                sub = clean_exit_tokens[2].lower()
                 if sub == "py":
                     target = "session.py"
                 elif sub == "pt":
                     target = "session.pt"
                 else:
-                    target = exit_tokens[2]
-                self._export_session_history(target, output_fn)
+                    target = clean_exit_tokens[2]
+                self._export_session_history(target, output_fn, relative=relative)
                 output_fn("Exiting pytae REPL.")
                 return False
-            elif len(exit_tokens) == 2 and exit_tokens[1] in ("-s", "-save", "save"):
+            elif len(clean_exit_tokens) == 2 and clean_exit_tokens[1] in ("-s", "-save", "save"):
                 target = "session.pt"
-                self._export_session_history(target, output_fn)
+                self._export_session_history(target, output_fn, relative=relative)
                 output_fn("Exiting pytae REPL.")
                 return False
-            elif len(exit_tokens) == 2 and (exit_tokens[1].startswith("-s=") or exit_tokens[1].startswith("-s:")):
-                val = exit_tokens[1][3:].strip()
+            elif len(clean_exit_tokens) == 2 and (clean_exit_tokens[1].startswith("-s=") or clean_exit_tokens[1].startswith("-s:")):
+                val = clean_exit_tokens[1][3:].strip()
                 if val.lower() == "py":
                     target = "session.py"
                 elif val.lower() in ("pt", ""):
                     target = "session.pt"
                 else:
                     target = val
-                self._export_session_history(target, output_fn)
+                self._export_session_history(target, output_fn, relative=relative)
+                output_fn("Exiting pytae REPL.")
+                return False
+            elif len(clean_exit_tokens) == 1:
+                if self.save_history_file:
+                    self._export_session_history(self.save_history_file, output_fn, relative=relative)
                 output_fn("Exiting pytae REPL.")
                 return False
             else:
-                output_fn(f"Usage: exit [-s [path]] (unrecognized option: '{' '.join(exit_tokens[1:])}')")
+                output_fn(f"Usage: exit [-s [path]] [-relative] (unrecognized option: '{' '.join(clean_exit_tokens[1:])}')")
                 return True
 
         # Shell command execution: !<command> (e.g. !ls, !dir)
@@ -2996,14 +3040,14 @@ class PytaeRepl:
             self._cmd_history(output_fn, args=tokens[1:])
             return True
 
-        # Export / Save Script: export script <path> [-relative], save script <path> (deprecated)
+        # Export / Save Script: export <path> [-relative], export script <path> [-relative]
         is_save_cmd = first_lower in ("save", "-save")
         if first_lower in ("export", "-export") or (is_save_cmd and len(tokens) >= 2 and tokens[1].lower() in ("script", "code")):
             if is_save_cmd:
                 output_fn("(Note: 'save script' is deprecated; use 'export script <path>' instead.)")
             if len(tokens) >= 2 and tokens[1].lower() in ("script", "code"):
                 if len(tokens) < 3:
-                    output_fn("Usage: export script <path.py|path.pt> [-relative]")
+                    output_fn("Usage: export <path.py|path.pt> [-relative]")
                     return True
                 target = tokens[2]
                 if any(t == "--relative" for t in tokens[3:]):
@@ -3025,7 +3069,7 @@ class PytaeRepl:
                 if self._cmd_save(target, output_fn):
                     self._record_history(f"-o {target}")
                 return True
-            output_fn("Usage: export script <path.py|path.pt> [-relative]")
+            output_fn("Usage: export <path.py|path.pt> [-relative]")
             return True
 
         # Reject disallowed aliases, legacy synonyms, or hyphenated inspection commands
@@ -4257,7 +4301,7 @@ class PytaeRepl:
             clean_arg0 = arg0.lower().lstrip("-")
             if clean_arg0 in ("s", "save") or arg0.startswith("-s=") or arg0.startswith("-s:"):
                 output_fn(
-                    "pytae: 'history -s' is not supported (deprecated). Use 'export script <path>' or 'exit -s [path]' on exit."
+                    "pytae: 'history -s' is not supported (deprecated). Use 'export <path>' or 'exit -s [path]' on exit."
                 )
                 return
             if clean_arg0 in ("cli", "sh", "bash", "py", "python"):
@@ -4455,7 +4499,7 @@ class PytaeRepl:
                 if clean_v and clean_v not in ("true", "on", "1", "yes", ""):
                     output_fn(
                         "pytae: unknown setting 'save'. Legacy 'set save = <path>' has been retired; "
-                        "use 'set save' to persist settings to config.json, or 'export script <path>' to save pipelines."
+                        "use 'set save' to persist settings to config.json, or 'export <path>' to save pipelines."
                     )
                 else:
                     self._save_config()
@@ -6722,3 +6766,39 @@ def run_script_file(script_path_str: str, output_fn: Callable[[str], None] = pri
             return 1
 
     return 0
+
+
+def run_python_file(script_path_str: str, output_fn: Callable[[str], None] = print) -> int:
+    """Execute a Python (.py) script file in batch headless mode.
+
+    Parameters
+    ----------
+    script_path_str : str
+        Path to the .py script file.
+    output_fn : Callable[[str], None], optional
+        Function to handle output messages (defaults to print).
+
+    Returns
+    -------
+    int
+        Exit code: 0 on success, non-zero on failure.
+    """
+    import runpy
+
+    from pytae.cli_parsing import normalize_git_bash_path
+
+    clean_path = normalize_git_bash_path(script_path_str.strip("'\""))
+    script_path = Path(clean_path).resolve()
+    if not script_path.exists():
+        output_fn(f"pytae error: script file '{script_path_str}' not found.")
+        return 1
+
+    try:
+        runpy.run_path(str(script_path), run_name="__main__")
+        return 0
+    except SystemExit as se:
+        return se.code if isinstance(se.code, int) else 0
+    except Exception as exc:
+        output_fn(f"pytae error: execution of '{script_path.name}' failed: {exc}")
+        return 1
+

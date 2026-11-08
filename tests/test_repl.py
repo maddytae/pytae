@@ -4419,3 +4419,81 @@ def test_repl_config_json_defaults_and_saving(tmp_path, monkeypatch):
     r_new.close()
 
 
+def test_bare_export_syntax_and_relative(tmp_path):
+    """Test bare 'export <path.pt|path.py> [-relative]' and 'exit -s [-relative]'."""
+    from pytae.repl import PytaeRepl
+
+    r = PytaeRepl()
+    outputs: list[str] = []
+    sample_file = tmp_path / "orders.parquet"
+    import polars as pl
+    pl.DataFrame({"id": [1, 2, 3], "amt": [10.0, 20.0, 30.0]}).write_parquet(sample_file)
+
+    r.execute_line(f"orders = {sample_file}")
+    r.execute_line('orders = orders -filter "amt > 15"')
+
+    # 1. Bare export to .pt
+    pt_target = tmp_path / "pipeline.pt"
+    r.execute_line(f"export {pt_target}", output_fn=outputs.append)
+    assert pt_target.exists()
+    pt_content = pt_target.read_text(encoding="utf-8")
+    assert str(sample_file.resolve()) in pt_content
+    assert 'orders = orders -filter "amt > 15"' in pt_content
+
+    # 2. Bare export to .pt with -relative
+    pt_rel_target = tmp_path / "pipeline_rel.pt"
+    r.execute_line(f"export {pt_rel_target} -relative", output_fn=outputs.append)
+    assert pt_rel_target.exists()
+    pt_rel_content = pt_rel_target.read_text(encoding="utf-8")
+    assert "orders.parquet" in pt_rel_content
+
+    # 3. Bare export to .py
+    py_target = tmp_path / "pipeline.py"
+    r.execute_line(f"export {py_target}", output_fn=outputs.append)
+    assert py_target.exists()
+    py_content = py_target.read_text(encoding="utf-8")
+    assert "import pytae as pt" in py_content
+
+    # 4. Exit with -relative
+    exit_rel_target = tmp_path / "exit_rel.pt"
+    r.execute_line(f"exit -s {exit_rel_target} -relative", output_fn=outputs.append)
+    assert exit_rel_target.exists()
+    exit_rel_content = exit_rel_target.read_text(encoding="utf-8")
+    assert "orders.parquet" in exit_rel_content
+    r.close()
+
+
+def test_cli_headless_python_and_pt_execution(tmp_path):
+    """Test 'pytae script.py' and 'pytae script.pt' direct execution."""
+    from pytae.cli import main
+
+    out_file = tmp_path / "output.txt"
+    py_script = tmp_path / "test_run.py"
+    py_script.write_text(f"""
+from pathlib import Path
+Path({repr(str(out_file))}).write_text("headless python executed", encoding="utf-8")
+""", encoding="utf-8")
+
+    # Run pytae script.py headlessly
+    ret = main([str(py_script)])
+    assert ret == 0
+    assert out_file.exists()
+    assert out_file.read_text(encoding="utf-8") == "headless python executed"
+
+    # Test pytae -i script.py initializes REPL
+    from pytae.repl import PytaeRepl
+    py_init_script = tmp_path / "init_test.py"
+    py_init_script.write_text("""
+import pytae as pt
+import polars as pl
+test_df = pl.DataFrame({"x": [10, 20]})
+my_threshold = 100
+""", encoding="utf-8")
+
+    r = PytaeRepl(script=py_init_script)
+    assert "test_df" in r.tables
+    assert r.variables.get("my_threshold") == 100
+    r.close()
+
+
+

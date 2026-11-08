@@ -1009,8 +1009,8 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ),
         options=[
             "reset : Restore the original dataset as loaded from disk.",
-            "history [N] : Show numbered session audit log (use 'export script <path>' or 'exit -s' to export scripts).",
-            "exit [-s [path]] : Exit REPL (optionally save session history to ./history.txt or <path>).",
+            "history [N] : Show numbered session audit log (use 'export <path>' or 'exit -s' to export scripts).",
+            "exit [-s [path]] [-relative] : Exit REPL (optionally save session script to ./session.pt or <path>).",
             "status : Show active table shape, columns, and memory usage.",
             "checkpoint <name> : Freeze and save current state with a name.",
             "restore <name> : Restore table to a saved checkpoint.",
@@ -1193,29 +1193,30 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "session": KeywordHelp(
         name="session",
-        flag="status session | checkpoint <name> | export script <path>",
-        syntax="pytae -i (then 'status session', 'checkpoint <name>', or 'export script <path>' in REPL)",
+        flag="status | checkpoint <name> | export <path>",
+        syntax="pytae -i (then 'status', 'checkpoint <name>', or 'export <path>' in REPL)",
         summary="In-memory interactive REPL workbench session management and inspection.",
         description=(
             "In-memory workbench framework for interactive data manipulation.\n"
             "Preserves table states, variables, and checkpoints in RAM during the session.\n"
-            "- 'status session [-v]': Inspect active workbench tables, RAM consumption, and history.\n"
+            "- 'status [-v]' (or 'status session'): Inspect active workbench tables, RAM consumption, and history.\n"
             "- 'checkpoint <name>': Save in-memory snapshot for instant undo / rollback.\n"
-            "- 'export script <path.py|path.pt>': Save reproducible pipeline script.\n"
+            "- 'export <path.pt | path.py> [-relative]': Save reproducible pipeline script.\n"
             "- 'session save' / persistent disk sessions have been retired in favor of lightweight in-memory checkpoints and script exports."
         ),
         options=[
-            "status session [-v] : Inspect active in-memory session status, tables, and memory usage.",
+            "status [-v] (or status session) : Inspect active in-memory session status, tables, and memory usage.",
             "checkpoint <name> : Create an ephemeral IPC snapshot of all active tables.",
             "restore [name] : Revert active tables to previous checkpoint (or latest).",
-            "export script <path.pt | path.py> : Export executed pipeline to reproducible script.",
+            "export <path.pt | path.py> [-relative] : Export executed pipeline to reproducible script.",
             "-sessions : Shell CLI notice that disk sessions have been retired in favor of script exports.",
         ],
         examples=[
             "pytae -i  # Launch interactive REPL workbench",
-            "pytae -i  # Inside REPL: status session",
+            "pytae -i  # Inside REPL: status",
             "pytae -i  # Inside REPL: checkpoint snapshot1",
-            "pytae -i  # Inside REPL: export script pipeline.pt",
+            "pytae -i  # Inside REPL: export pipeline.pt",
+            "pytae -i  # Inside REPL: export pipeline.pt -relative",
         ],
         see_also=["-i", "status", "set", "checkpoint", "restore"],
     ),

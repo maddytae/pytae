@@ -244,28 +244,38 @@ When finishing an exploration session, you can save your commands directly into 
 
 | Command | Output File | Description |
 | :--- | :--- | :--- |
-| **`exit -s`** | `./session.pt` in cwd | **Default**: Saves clean, pruned commands to an executable Pytae script. Run with `pytae session.pt`. |
-| **`exit -s py`** | `./session.py` in cwd | Compiles the session into a standalone Polars/Pytae Python script. Run with `python session.py`. |
+| **`exit -s`** | `./session.pt` in cwd | **Default**: Saves clean, pruned commands to an executable Pytae script. Run headlessly with `pytae session.pt`, or stay in REPL with `pytae -i session.pt`. |
+| **`exit -s py`** | `./session.py` in cwd | Compiles the session into a standalone Polars/Pytae Python script. Run headlessly with `pytae session.py` or `python session.py`. |
 | **`exit -s pt`** | `./session.pt` in cwd | Explicit shortcut for `./session.pt`. |
-| **`exit -s <custom_path>`** | `<custom_path>` | Saves to any custom path (e.g. `exit -s pipeline.py` or `exit -s etl.pt`). |
+| **`exit -s <path> [-relative]`** | `<path>` | Saves to any custom path with optional relative file paths (e.g. `exit -s pipeline.pt -relative`). |
 
 #### Automatic Branch Pruning
-Both `exit -s` and `export script` automatically **prune rolled-back branches and undo paths**. If you tested a mutation, restored a checkpoint, and went down another path, only the final reproducible pipeline is exported!
+Both `exit -s` and `export` automatically **prune rolled-back branches and undo paths**. If you tested a mutation, restored a checkpoint, and went down another path, only the final reproducible pipeline is exported!
 
-### In-Session Script Export (`export script`)
+### In-Session Script Export (`export <path> [-relative]`)
 
 You can also export your pipeline at any time during an active session without exiting:
 
 ```text
-# Export to a Pytae script (replayable via `pytae pipeline.pt`)
+# Export to a Pytae script (canonical)
+pytae> export pipeline.pt
+
+# Export with relative file paths (portable across machines & Git repos)
+pytae> export pipeline.pt -relative
+
+# Export to a standalone Python script
+pytae> export pipeline.py
+
+# Legacy alias (also supported):
 pytae> export script pipeline.pt
-
-# Export with relative file paths (portable across machines)
-pytae> export script pipeline.pt -relative
-
-# Export to a standalone Python script using Polars / Pytae DataFrame
-pytae> export script pipeline.py
 ```
+
+### Replaying Exported Pipelines: "One and Only One Obvious Way"
+
+| Execution Goal | Canonical Command | Description |
+| :--- | :--- | :--- |
+| **Headless Batch Execution** | `pytae pipeline.pt`<br>`pytae pipeline.py` | Runs script to completion and exits `0` (ideal for cron, Airflow, CI/CD). |
+| **Interactive Replay** | `pytae -i pipeline.pt`<br>`pytae -i pipeline.py` | Replays all script steps and drops directly into the interactive REPL prompt with tables loaded. |
 
 ---
 

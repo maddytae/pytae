@@ -140,7 +140,7 @@ CHEATSHEET_TEXT = """\
   # Inside REPL session:
   #   df = data.parquet       Load dataset into active table
   #   df1 = "parts/*.parquet" Load globbed partitions into single table
-  #   export script <path>    Export pipeline to reproducible .pt or .py script
+  #   export <path>           Export pipeline to reproducible .pt or .py script (-relative optional)
   #   set save                Persist current display settings to ~/.pytae/config.json
   #   history                 Show session audit log
   #   exit [-s [pt|py|path]]  Exit REPL (default: session.pt, py: session.py)

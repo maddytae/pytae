@@ -973,11 +973,15 @@ def main(argv: list[str] | None = None) -> int:
 
         return run_mcp_server()
 
-    # Script execution flag: `pytae -run <script.pt>`
+    # Script execution flag: `pytae -run <script.pt|script.py>`
     if raw_argv and raw_argv[0] in ("-run", "--run"):
         if len(raw_argv) < 2:
             parser = build_parser()
             parser.error("'-run' requires a script file path (e.g. pytae -run pipeline.pt)")
+        if raw_argv[1].lower().endswith(".py"):
+            from pytae.repl import run_python_file
+
+            return run_python_file(raw_argv[1])
         from pytae.repl import run_script_file
 
         return run_script_file(raw_argv[1])
@@ -993,8 +997,12 @@ def main(argv: list[str] | None = None) -> int:
 
         return run_cli_export(raw_argv[1:])
 
-    # Direct script execution: `pytae script.pt`
-    if len(raw_argv) == 1 and raw_argv[0].lower().endswith(".pt"):
+    # Direct script execution: `pytae script.pt` or `pytae script.py`
+    if len(raw_argv) == 1 and raw_argv[0].lower().endswith((".pt", ".py")):
+        if raw_argv[0].lower().endswith(".py"):
+            from pytae.repl import run_python_file
+
+            return run_python_file(raw_argv[0])
         from pytae.repl import run_script_file
 
         return run_script_file(raw_argv[0])
@@ -1085,7 +1093,7 @@ def main(argv: list[str] | None = None) -> int:
     if getattr(args, "list_sessions", False):
         print(
             "pytae: persistent disk sessions have been retired. Use 'checkpoint <name>' inside REPL for in-memory undo, "
-            "'export script <path.py|path.pt>' to save pipelines, or 'pytae <script.pt>' to replay."
+            "'export <path.pt|path.py>' to save pipelines, or 'pytae <script.pt>' to replay."
         )
         return 0
 
@@ -1131,7 +1139,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if getattr(args, "repl", False):
         if raw_paths:
-            if len(raw_paths) == 1 and str(raw_paths[0]).lower().endswith(".pt"):
+            if len(raw_paths) == 1 and str(raw_paths[0]).lower().endswith((".pt", ".py")):
                 from pytae.repl import repl
 
                 repl(script=raw_paths[0])

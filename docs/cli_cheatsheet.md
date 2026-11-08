@@ -407,14 +407,14 @@ history [N]          # Show session audit log (all steps auto-logged to ~/.pytae
 checkpoint v1        # Save ephemeral IPC snapshot across all active tables (0 MB RAM)
 rm checkpoint v1     # Delete a saved checkpoint from disk (or rm checkpoint *)
 restore [v1]         # Restore workbench to snapshot (or bare restore for latest)
-export script p.pt   # Export executed pipeline to reproducible Pytae script
-export script p.py   # Export executed pipeline to reproducible Python script
-set save             # Persist current display settings to ~/.pytae/config.json
-status checkpoint    # List saved in-memory checkpoints
-status table <name>  # Inspect specific table shape and memory (-v for column dtypes)
-rm table orders      # Remove specific table from memory and free RAM (or rm table *)
-clear                # Clear the terminal screen
-[Tab]                # Autocomplete commands, flags, tables, columns, and paths
+export p.pt [-relative]   # Export executed pipeline to reproducible Pytae script
+export p.py [-relative]   # Export executed pipeline to reproducible Python script
+set save                  # Persist current display settings to ~/.pytae/config.json
+status checkpoint         # List saved in-memory checkpoints
+status table <name>       # Inspect specific table shape and memory (-v for column dtypes)
+rm table orders           # Remove specific table from memory and free RAM (or rm table *)
+clear                     # Clear the terminal screen
+[Tab]                     # Autocomplete commands, flags, tables, columns, and paths
 
 # 2. Pipeline Execution & Inspection (RAM-speed with zero file re-reads)
 pytae> -filter "species == 'Gentoo'"
@@ -435,8 +435,16 @@ pytae> -o clean.parquet
 pytae> -o clip                                               # Copy active table to system clipboard
 pytae> exit -s                                                # Exit and export session to ./session.pt
 pytae> exit -s py                                             # Exit and export session to ./session.py
-pytae> exit -s pipeline.py                                    # Exit and export session to custom file path
+pytae> exit -s pipeline.pt -relative                          # Exit and export session with relative paths
 # Up / Down arrow keys recall command history from current session
+```
+
+```bash
+# Replaying Exported Pipelines:
+pytae pipeline.pt       # Headless execution of Pytae script
+pytae pipeline.py       # Headless execution of Python script
+pytae -i pipeline.pt    # Replay Pytae script and drop into interactive REPL
+pytae -i pipeline.py    # Replay Python script and drop into interactive REPL
 ```
 
 ---
