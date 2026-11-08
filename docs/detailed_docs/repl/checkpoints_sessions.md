@@ -270,12 +270,14 @@ pytae> export pipeline.py
 pytae> export script pipeline.pt
 ```
 
-### Replaying Exported Pipelines: "One and Only One Obvious Way"
+### Replaying Exported Pipelines & CLI Conversion: "One and Only One Obvious Way"
 
 | Execution Goal | Canonical Command | Description |
 | :--- | :--- | :--- |
-| **Headless Batch Execution** | `pytae pipeline.pt`<br>`pytae pipeline.py` | Runs script to completion and exits `0` (ideal for cron, Airflow, CI/CD). |
-| **Interactive Replay** | `pytae -i pipeline.pt`<br>`pytae -i pipeline.py` | Replays all script steps and drops directly into the interactive REPL prompt with tables loaded. |
+| **Pytae Script (Headless)** | `pytae pipeline.pt` | Runs `.pt` script to completion and exits `0` (ideal for cron, Airflow, CI/CD). |
+| **Pytae Script (Interactive)** | `pytae -i pipeline.pt` | Replays all script steps and drops directly into the interactive REPL prompt with tables loaded. |
+| **Python Script Execution** | `python pipeline.py` | Executes exported Python script via standard Python interpreter. |
+| **CLI Post-Hoc Export** | `pytae -export <history.txt> -o <target.pt\|target.py> [-relative]` | Rescues raw flight-recorder history logs into clean, pruned `.pt` or `.py` scripts. |
 
 ---
 

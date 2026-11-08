@@ -172,15 +172,36 @@ When exporting a replay script, Pytae automatically filters out noise:
 1. **Absolute Paths**: Relative input paths (`df = ../data/orders.parquet`) are automatically canonicalized to absolute paths in the replay script.
 2. **Windows Mapped Drives to UNC**: On Windows, mapped network drives (`Z:\shared\data.parquet`) are automatically resolved to universal UNC network paths (`\\server\share\data.parquet`) using Windows `WNetGetConnectionW`. The script can run on any machine with network access without requiring drive letter mappings.
 
-### Batch Replay Execution (`pytae -i < script.txt`)
+### Script Execution & CLI Post-Hoc Conversion ("One and Only One Obvious Way")
 
-Replay your exported script non-interactively or in batch:
+Pytae enforces strict domain execution:
 
-```bash
-pytae -i < pipeline.txt
-```
+1. **Headless Batch Execution**:
+   ```bash
+   pytae pipeline.pt
+   ```
+   Executes the `.pt` script to completion and exits `0`. Ideal for automated cron jobs, Airflow, and CI/CD pipelines.
 
-Pytae executes every transformation line by line, freeing memory on `rm`, and exporting your final outputs.
+2. **Interactive Replay**:
+   ```bash
+   pytae -i pipeline.pt
+   ```
+   Replays the script line by line and drops you directly into the active REPL prompt with all tables and state loaded.
+
+3. **Python Script Execution**:
+   ```bash
+   python pipeline.py       # Headless execution
+   python -i pipeline.py    # Interactive Python session
+   ```
+
+4. **CLI Post-Hoc Export (`pytae -export`)**:
+   If you closed a session without exporting, you can rescue any recorded flight-recorder log (`~/.pytae/history/`) into a clean `.pt` or `.py` script:
+   ```bash
+   pytae -export ~/.pytae/history/history_2026_11_07.txt -o pipeline.pt
+   pytae -export ~/.pytae/history/history_2026_11_07.txt -o pipeline.py
+   # Or with portable relative paths:
+   pytae -export history.txt -o pipeline.pt -relative
+   ```
 
 ---
 

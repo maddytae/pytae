@@ -4463,37 +4463,88 @@ def test_bare_export_syntax_and_relative(tmp_path):
     r.close()
 
 
-def test_cli_headless_python_and_pt_execution(tmp_path):
-    """Test 'pytae script.py' and 'pytae script.pt' direct execution."""
+def test_cli_headless_pt_and_python_redirection(tmp_path, capsys):
+    """Test 'pytae script.pt' headless execution and 'pytae script.py' redirection to python."""
     from pytae.cli import main
 
-    out_file = tmp_path / "output.txt"
+    # 1. 'pytae script.py' directly rejects and redirects to 'python script.py'
     py_script = tmp_path / "test_run.py"
-    py_script.write_text(f"""
-from pathlib import Path
-Path({repr(str(out_file))}).write_text("headless python executed", encoding="utf-8")
+    py_script.write_text("print('hello')", encoding="utf-8")
+    ret_py = main([str(py_script)])
+    assert ret_py == 1
+    err = capsys.readouterr().err
+    assert "is a Python script; run with 'python" in err
+
+    # 2. 'pytae -i script.py' directly rejects and redirects to 'python -i script.py'
+    ret_i_py = main(["-i", str(py_script)])
+    assert ret_i_py == 1
+    err_i = capsys.readouterr().err
+    assert "To run interactive Python, use 'python -i" in err_i
+
+    # 3. 'pytae script.pt' executes headlessly
+    orders_file = tmp_path / "orders.parquet"
+    import polars as pl
+    pl.DataFrame({"id": [1, 2], "val": [100, 200]}).write_parquet(orders_file)
+
+    out_file = tmp_path / "result.parquet"
+    pt_script = tmp_path / "pipeline.pt"
+    pt_script.write_text(f"""
+df = {orders_file}
+df = -filter "val > 150"
+df -o {out_file}
 """, encoding="utf-8")
 
-    # Run pytae script.py headlessly
-    ret = main([str(py_script)])
-    assert ret == 0
+    ret_pt = main([str(pt_script)])
+    assert ret_pt == 0
     assert out_file.exists()
-    assert out_file.read_text(encoding="utf-8") == "headless python executed"
+    res_df = pl.read_parquet(out_file)
+    assert res_df.shape == (1, 2)
+    assert res_df["val"][0] == 200
 
-    # Test pytae -i script.py initializes REPL
+    # 4. 'pytae -i script.pt' preloads state into REPL
     from pytae.repl import PytaeRepl
-    py_init_script = tmp_path / "init_test.py"
-    py_init_script.write_text("""
-import pytae as pt
-import polars as pl
-test_df = pl.DataFrame({"x": [10, 20]})
-my_threshold = 100
+    r = PytaeRepl(script=pt_script)
+    assert "df" in r.tables
+    assert r.tables["df"].shape == (1, 2)
+    r.close()
+
+
+def test_cli_export_history_to_pt_and_py(tmp_path):
+    """Test 'pytae -export <history.txt> [-o target.pt|target.py] [-relative]'."""
+    from pytae.cli import main
+
+    hist_file = tmp_path / "history_test.txt"
+    sample_data = tmp_path / "data.parquet"
+    import polars as pl
+    pl.DataFrame({"x": [1, 2, 3]}).write_parquet(sample_data)
+
+    hist_file.write_text(f"""
+# Pytae session history
+df = {sample_data}
+-head 5
+df = -mutate "y = x * 10"
+status table
 """, encoding="utf-8")
 
-    r = PytaeRepl(script=py_init_script)
-    assert "test_df" in r.tables
-    assert r.variables.get("my_threshold") == 100
-    r.close()
+    # 1. Default export (omitting -o) generates .pt
+    ret1 = main(["-export", str(hist_file)])
+    assert ret1 == 0
+    default_pt = tmp_path / "history_test.pt"
+    assert default_pt.exists()
+    pt_text = default_pt.read_text(encoding="utf-8")
+    assert "-head 5" not in pt_text
+    assert "status table" not in pt_text
+    assert 'df = -mutate "y = x * 10"' in pt_text
+
+    # 2. Export to Python with -relative
+    target_py = tmp_path / "custom.py"
+    ret2 = main(["-export", str(hist_file), "-o", str(target_py), "-relative"])
+    assert ret2 == 0
+    assert target_py.exists()
+    py_text = target_py.read_text(encoding="utf-8")
+    assert "import pytae as pt" in py_text
+    assert "data.parquet" in py_text
+
 
 
 

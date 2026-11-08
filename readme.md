@@ -187,7 +187,13 @@ pytae> exit -s                   # Save clean, pruned pipeline on exit to ./sess
 ```
 
 > [!TIP]
-> **Reproducible Pipelines**: You can export your pipeline at any time inside the REPL using `export pipeline.pt` (or `export pipeline.py`), or automatically upon exit using `exit -s` (default `./session.pt`). Pass `-relative` to generate portable relative paths across machines and Git repos. Replay headlessly with `pytae pipeline.pt` (or `pytae pipeline.py`), or stay inside the interactive REPL with `pytae -i pipeline.pt` (or `pytae -i pipeline.py`).
+> **Reproducible Pipelines & Code Handoffs**:
+> - **In-Session Export**: Run `export pipeline.pt` (or `export pipeline.py`). Add `-relative` for portable paths across machines and Git repos.
+> - **Export on Exit**: Run `exit -s` (saves clean `./session.pt`), `exit -s py`, or `exit -s <path> [-relative]`.
+> - **CLI Post-Hoc Export**: Rescue any flight-recorder session log with `pytae -export <history.txt> -o pipeline.pt` (or `-o pipeline.py`).
+> - **Strict Domain Execution**:
+>   - Pytae pipelines: Run headlessly with `pytae pipeline.pt`, or stay inside REPL with `pytae -i pipeline.pt`.
+>   - Python scripts: Run with standard Python via `python pipeline.py` (or `python -i pipeline.py`).
 
 👉 **Read the Full REPL Manual**: [Interactive REPL Guide](docs/pytae.md#interactive-repl-shell-pytae--i) | [REPL Topic Guides](docs/detailed_docs/repl/)
 

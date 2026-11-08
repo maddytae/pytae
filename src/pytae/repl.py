@@ -2119,9 +2119,9 @@ def run_cli_export(argv: list[str]) -> int:
         return 0
 
     if out_target is None:
-        out_target = f"{hist_p.stem}.py"
-
-    out_p = Path(os.path.expanduser(out_target)).resolve()
+        out_p = hist_p.with_suffix(".pt")
+    else:
+        out_p = Path(os.path.expanduser(out_target)).resolve()
     out_p.parent.mkdir(parents=True, exist_ok=True)
 
     if out_p.suffix.lower() == ".py":
@@ -2268,37 +2268,13 @@ class PytaeRepl:
             self._load_and_run_script(script)
 
     def _load_and_run_script(self, script_path_str: Path | str) -> bool:
-        """Load and execute a .pt or .py script file into the REPL state before interactive prompt."""
+        """Load and execute a .pt script file into the REPL state before interactive prompt."""
         p = Path(os.path.expanduser(str(script_path_str))).resolve()
         if not p.exists():
             return False
         if p.suffix.lower() == ".py":
-            import runpy
-            try:
-                mod_vars = runpy.run_path(str(p), run_name="__main__")
-                for var_name, val in mod_vars.items():
-                    if var_name.startswith("_") or var_name in ("pt", "pd", "pl", "pytae"):
-                        continue
-                    if hasattr(val, "columns") and hasattr(val, "shape"):
-                        try:
-                            t_df = val if isinstance(val, pl.DataFrame) else pl.from_pandas(val.to_pandas() if hasattr(val, "to_pandas") else val)
-                            self.tables[var_name] = t_df
-                            self.orig_tables[var_name] = t_df
-                            self.initial_tables[var_name] = t_df
-                            self.table_sources[var_name] = p.name
-                            self.current_df = t_df
-                            self.orig_df = t_df
-                            if self.initial_df is None:
-                                self.initial_df = t_df
-                            self.path_str = var_name
-                        except Exception:
-                            pass
-                    elif isinstance(val, (int, float, str, bool)):
-                        self.variables[var_name] = val
-                return True
-            except Exception as exc:
-                print(f"pytae error: failed to run '{p.name}': {exc}")
-                return False
+            print(f"pytae error: '{p.name}' is a Python script; run with 'python -i {p.name}'. For native Pytae pipelines, use 'pytae -i <script.pt>'.")
+            return False
 
         lines = p.read_text(encoding="utf-8").splitlines()
         in_py = False
@@ -6766,39 +6742,4 @@ def run_script_file(script_path_str: str, output_fn: Callable[[str], None] = pri
             return 1
 
     return 0
-
-
-def run_python_file(script_path_str: str, output_fn: Callable[[str], None] = print) -> int:
-    """Execute a Python (.py) script file in batch headless mode.
-
-    Parameters
-    ----------
-    script_path_str : str
-        Path to the .py script file.
-    output_fn : Callable[[str], None], optional
-        Function to handle output messages (defaults to print).
-
-    Returns
-    -------
-    int
-        Exit code: 0 on success, non-zero on failure.
-    """
-    import runpy
-
-    from pytae.cli_parsing import normalize_git_bash_path
-
-    clean_path = normalize_git_bash_path(script_path_str.strip("'\""))
-    script_path = Path(clean_path).resolve()
-    if not script_path.exists():
-        output_fn(f"pytae error: script file '{script_path_str}' not found.")
-        return 1
-
-    try:
-        runpy.run_path(str(script_path), run_name="__main__")
-        return 0
-    except SystemExit as se:
-        return se.code if isinstance(se.code, int) else 0
-    except Exception as exc:
-        output_fn(f"pytae error: execution of '{script_path.name}' failed: {exc}")
-        return 1
 

@@ -440,11 +440,12 @@ pytae> exit -s pipeline.pt -relative                          # Exit and export 
 ```
 
 ```bash
-# Replaying Exported Pipelines:
-pytae pipeline.pt       # Headless execution of Pytae script
-pytae pipeline.py       # Headless execution of Python script
-pytae -i pipeline.pt    # Replay Pytae script and drop into interactive REPL
-pytae -i pipeline.py    # Replay Python script and drop into interactive REPL
+# Replaying & Converting Pipelines ("One and Only One Obvious Way"):
+pytae pipeline.pt                                     # Headless batch execution of Pytae script
+pytae -i pipeline.pt                                  # Replay Pytae script and drop into interactive REPL
+python pipeline.py                                    # Execute standalone Python script via Python
+pytae -export ~/.pytae/history/hist.txt -o pipe.pt   # Post-hoc convert flight-recorder log to .pt
+pytae -export ~/.pytae/history/hist.txt -o pipe.py   # Post-hoc convert flight-recorder log to .py
 ```
 
 ---

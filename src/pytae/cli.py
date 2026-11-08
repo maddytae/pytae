@@ -973,15 +973,17 @@ def main(argv: list[str] | None = None) -> int:
 
         return run_mcp_server()
 
-    # Script execution flag: `pytae -run <script.pt|script.py>`
+    # Script execution flag: `pytae -run <script.pt>`
     if raw_argv and raw_argv[0] in ("-run", "--run"):
         if len(raw_argv) < 2:
             parser = build_parser()
             parser.error("'-run' requires a script file path (e.g. pytae -run pipeline.pt)")
         if raw_argv[1].lower().endswith(".py"):
-            from pytae.repl import run_python_file
-
-            return run_python_file(raw_argv[1])
+            sys.stderr.write(
+                f"pytae error: '{raw_argv[1]}' is a Python script; run with 'python {raw_argv[1]}'. "
+                "For native Pytae pipelines, use 'pytae <script.pt>'.\n"
+            )
+            return 1
         from pytae.repl import run_script_file
 
         return run_script_file(raw_argv[1])
@@ -997,12 +999,16 @@ def main(argv: list[str] | None = None) -> int:
 
         return run_cli_export(raw_argv[1:])
 
-    # Direct script execution: `pytae script.pt` or `pytae script.py`
-    if len(raw_argv) == 1 and raw_argv[0].lower().endswith((".pt", ".py")):
-        if raw_argv[0].lower().endswith(".py"):
-            from pytae.repl import run_python_file
+    # Direct Python script detection: redirect to python
+    if len(raw_argv) == 1 and raw_argv[0].lower().endswith(".py"):
+        sys.stderr.write(
+            f"pytae error: '{raw_argv[0]}' is a Python script; run with 'python {raw_argv[0]}'. "
+            "For native Pytae pipelines, use 'pytae <script.pt>'.\n"
+        )
+        return 1
 
-            return run_python_file(raw_argv[0])
+    # Direct script execution: `pytae script.pt`
+    if len(raw_argv) == 1 and raw_argv[0].lower().endswith(".pt"):
         from pytae.repl import run_script_file
 
         return run_script_file(raw_argv[0])
@@ -1139,11 +1145,18 @@ def main(argv: list[str] | None = None) -> int:
 
     if getattr(args, "repl", False):
         if raw_paths:
-            if len(raw_paths) == 1 and str(raw_paths[0]).lower().endswith((".pt", ".py")):
+            if len(raw_paths) == 1 and str(raw_paths[0]).lower().endswith(".pt"):
                 from pytae.repl import repl
 
                 repl(script=raw_paths[0])
                 return 0
+            if len(raw_paths) == 1 and str(raw_paths[0]).lower().endswith(".py"):
+                sys.stderr.write(
+                    f"pytae error: '-i' cannot be combined with Python script '{raw_paths[0]}'. "
+                    f"To run interactive Python, use 'python -i {raw_paths[0]}'. "
+                    "For native Pytae pipelines, use 'pytae -i <pipeline.pt>'.\n"
+                )
+                return 1
             first_path = raw_paths[0] if raw_paths else "data.parquet"
             parser.error(
                 f"'-i' cannot be combined with input files ({', '.join(raw_paths)}). "
