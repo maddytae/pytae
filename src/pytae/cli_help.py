@@ -1014,7 +1014,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "status : Show active table shape, columns, and memory usage.",
             "checkpoint <name> : Freeze and save current state with a name.",
             "restore <name> : Restore table to a saved checkpoint.",
-            "load <path> : Load a new dataset (or glob pattern) from disk into the REPL.",
+            "<var> = <path> : Load a new dataset (or glob pattern) into named table (replaces deprecated 'load').",
             "-o <path> : Save active table to Parquet/CSV/Feather or clipboard (-o clip).",
             "-sql <query> : Run ANSI SQL queries against in-memory table `df`.",
             "py <expr> : Evaluate arbitrary Python expressions on `df` / `pldf`.",
@@ -1452,24 +1452,24 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "load": KeywordHelp(
         name="load",
-        flag="load <path> [as <alias>] [options]",
-        syntax="load <path> [as <alias>] [-encoding <enc>] [-dlim <char>] [-nrows <N>]",
-        summary="Load a dataset file into memory as a named table.",
+        flag="<var> = <path> [options] | load <path> [as <alias>] [options]",
+        syntax="<var> = <path> [-encoding <enc>] [-dlim <char>] [-nrows <N>]",
+        summary="Load a dataset file into memory as a named table (replaces deprecated 'load').",
         description=(
             "Loads a Parquet, CSV, IPC/Feather, or Excel dataset into the workbench.\n"
-            "Can also be written with shorthand assignment: `<alias> = <path>`."
+            "Use direct variable assignment: `<alias> = <path>` ('load' syntax is deprecated)."
         ),
         options=[
-            "as <alias> : Assign loaded dataset to named table variable.",
             "-encoding <enc> : File text encoding (e.g. latin1, utf-8).",
             "-dlim <char> : Delimiter character for text files (e.g. ';', '|').",
             "-nrows <N> : Read only first N rows.",
         ],
         examples=[
-            "pytae -i  # Inside REPL: load orders.parquet as orders",
+            "pytae -i  # Inside REPL: orders = orders.parquet",
             "pytae -i  # Inside REPL: df = sample:penguins",
+            "pytae -i  # Inside REPL: cust = customers.csv -dlim ','",
         ],
-        see_also=["use", "status", "rm"],
+        see_also=["switch", "status", "rm"],
     ),
     "exit": KeywordHelp(
         name="exit",

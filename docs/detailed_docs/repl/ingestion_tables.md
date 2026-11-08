@@ -85,21 +85,24 @@ Loaded 'notes' from sales_2024.xlsx (1,200 rows x 5 cols).
 > - Sheet names must strictly be specified via `-opts "sheet=..."`. Colon sheet syntax (`file.xlsx:Sheet`) is not supported to ensure path integrity and eliminate ambiguity.
 > - Reader options apply strictly to the specific assignment command on that line. Options do not persist across future assignments, ensuring clean, predictable data loading.
 
-### The `load` Keyword
+### Direct Variable Assignment with Options
 
-Alternatively, use the `load` keyword with optional aliases:
+Ingest datasets directly into named tables using standard assignment syntax:
 
 ```text
-pytae> load customers.csv as cust -dlim ","
+pytae> cust = customers.csv -dlim ","
 Loaded customers.csv as 'cust' (15,000 rows x 5 cols) [sep=,].
 ```
+
+> [!NOTE]
+> The legacy `load <path> [as <alias>]` command syntax is deprecated in favor of direct variable assignment (`<alias> = <path>`).
 
 ### Glob Ingestion
 
 Ingest multiple partition files matching a glob pattern into a single unified table:
 
 ```text
-pytae> load "sales_2025/part_*.parquet" as sales_2025
+pytae> sales_2025 = "sales_2025/part_*.parquet"
 Loaded 12 files matching 'sales_2025/part_*.parquet' as 'sales_2025' (1,200,000 rows x 8 cols).
 ```
 

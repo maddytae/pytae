@@ -1000,8 +1000,8 @@ REPL_HELP = """\
 DATASET INGEST & MANAGEMENT:
   <var> = <path> [options]: Load dataset into named table (e.g. df = data.parquet, df = clip)
   <var> = scan <path>...  : Lazily scan dataset (Parquet, CSV, IPC, NDJSON) without RAM overhead
-  scan <path> [as <alias>]: Scan dataset into lazy table (e.g. scan large.parquet as df)
-  load <path> as <var>... : Load dataset with alias and options (-encoding, -dlim, -nrows)
+  scan <path> [as <alias>]: Scan dataset into lazy table (deprecated; use '<var> = scan <path>')
+  load <path> [as <var>]  : Load dataset into memory (deprecated; use '<var> = <path>')
   status table [name] [-v] : Inspect active table or loaded table inventory with RAM
   switch <name>          : Switch active dataset (e.g. switch df, switch orders; 'use' deprecated)
   rename <old> <new>     : Rename in-memory table (zero-copy alias reassignment)
@@ -1885,15 +1885,30 @@ def _compile_history_to_python(
                     lines.append(f"{target} = pt.sql({repr(q)})")
                     continue
 
-                if toks:
-                    src_token = toks[0]
+                cleaned_src_tokens, src_reader_kwargs, src_nrows = _parse_reader_options(toks)
+                if cleaned_src_tokens:
+                    src_token = cleaned_src_tokens[0]
                     if "." in src_token or "/" in src_token or "\\" in src_token:
                         raw_src = src_token.strip("\"'")
                         in_src = _to_relative_path(raw_src) if relative else raw_src
-                        src_code = f"pt.read({repr(in_src)})"
+                        opts_call = []
+                        if src_reader_kwargs:
+                            for k, v in src_reader_kwargs.items():
+                                if k == "separator":
+                                    opts_call.append(f"separator={repr(v)}")
+                                elif k == "encoding":
+                                    opts_call.append(f"encoding={repr(v)}")
+                                else:
+                                    opts_call.append(f"{k}={repr(v)}")
+                        if src_nrows is not None:
+                            opts_call.append(f"nrows={src_nrows}")
+                        extra_args = f", {', '.join(opts_call)}" if opts_call else ""
+                        src_code = f"pt.read({repr(in_src)}{extra_args})"
+                        pipe_toks = cleaned_src_tokens[1:]
                     else:
                         src_code = src_token
-                    chain = _transpile_pipeline_tokens_to_python(toks[1:])
+                        pipe_toks = toks[1:]
+                    chain = _transpile_pipeline_tokens_to_python(pipe_toks)
                     lines.append(f"{target} = {src_code}{chain}")
                     continue
 
@@ -3445,7 +3460,7 @@ class PytaeRepl:
         # Load file as table
         if first_lower == "load":
             if len(tokens) < 2:
-                output_fn("Usage: load <path> [as <alias>] (e.g. load penguins.parquet as peng)")
+                output_fn("Usage: load <path> [as <alias>] (deprecated; use '<var> = <path>')")
                 return True
             self._cmd_load(tokens, output_fn)
             return True
@@ -3453,7 +3468,7 @@ class PytaeRepl:
         # Scan file as lazy table
         if first_lower == "scan":
             if len(tokens) < 2:
-                output_fn("Usage: scan <path> [as <alias>] (e.g. scan penguins.parquet as peng)")
+                output_fn("Usage: scan <path> [as <alias>] (deprecated; use '<var> = scan <path>')")
                 return True
             self._cmd_scan(tokens, output_fn)
             return True
@@ -5424,6 +5439,7 @@ class PytaeRepl:
         cleaned_tokens, reader_kwargs, nrows_val = _parse_reader_options(tokens)
         if len(cleaned_tokens) < 2:
             output_fn("Usage: load <path> [as <alias>] [-encoding <enc>] [-dlim <char>] [-nrows <N>]")
+            output_fn("(Note: 'load' is deprecated; use '<var> = <path>' instead.)")
             return
         path_str = cleaned_tokens[1].strip("\"' ")
         alias: str | None = None
@@ -5483,6 +5499,7 @@ class PytaeRepl:
                 output_fn(
                     f"Loaded {p.name} as '{alias}' ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols){opts_desc}."
                 )
+                output_fn("(Note: 'load' is deprecated; use '<alias> = <path>' instead.)")
             else:
                 hist_line = f"load {quoted_canon}"
                 self._record_history(hist_line)
@@ -5490,6 +5507,7 @@ class PytaeRepl:
                 output_fn(
                     f"Loaded {p.name} ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols){opts_desc}."
                 )
+                output_fn("(Note: 'load' is deprecated; use '<var> = <path>' instead.)")
         except Exception as exc:
             output_fn(f"pytae: {exc}" if is_clip else f"pytae: failed to load {path_str}: {exc}")
 
@@ -5497,6 +5515,7 @@ class PytaeRepl:
         cleaned_tokens, reader_kwargs, _ = _parse_reader_options(tokens)
         if len(cleaned_tokens) < 2:
             output_fn("Usage: scan <path> [as <alias>] [-dlim <char>]")
+            output_fn("(Note: 'scan' is deprecated; use '<var> = scan <path>' instead.)")
             return
         path_str = cleaned_tokens[1].strip("\"' ")
         alias: str | None = None
@@ -5534,9 +5553,11 @@ class PytaeRepl:
             if alias:
                 hist_line = f"scan {quoted_canon} as {alias}{opts_str}"
                 output_fn(f"Scanned {p.name} as '{alias}' (lazy, {len(lazy_cols)} cols).")
+                output_fn("(Note: 'scan <path> as <alias>' is deprecated; use '<alias> = scan <path>' instead.)")
             else:
                 hist_line = f"scan {quoted_canon}{opts_str}"
                 output_fn(f"Scanned {p.name} (lazy, {len(lazy_cols)} cols).")
+                output_fn("(Note: 'scan' is deprecated; use '<var> = scan <path>' instead.)")
             self._record_history(hist_line)
             self._update_last_history_log_line(hist_line)
         except Exception as exc:

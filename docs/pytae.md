@@ -357,7 +357,7 @@ The **Pytae REPL** provides stateful, iterative in-memory data manipulation and 
 
 | Category | Command | Example | Description |
 |:---|:---|:---|:---|
-| **Ingestion** | Assignment / `load` | `df = sales.parquet`<br>`load cust.csv as cust -dlim ";"` | Ingest file into named table variable |
+| **Ingestion** | Assignment | `df = sales.parquet`<br>`cust = cust.csv -dlim ";"` | Ingest file into named table variable |
 | **Workbench** | `status table` | `status table [-v]` | View loaded tables, shapes, memory, and columns |
 | | `switch` | `switch cust` | Switch active dataset cursor (`use` deprecated) |
 | | `rename` | `rename df1 customers` | Zero-copy $O(1)$ in-memory table pointer rename |

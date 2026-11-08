@@ -389,4 +389,47 @@ def test_repl_audit_ux_polish_improvements():
     assert "bonus" in diff_out
 
 
+def test_load_and_scan_deprecation(tmp_path):
+    """Test deprecation notes for 'load' and 'scan' in favor of direct variable assignment."""
+    csv_file = tmp_path / "customers.csv"
+    csv_file.write_text("id,name\n1,Alice\n2,Bob\n", encoding="utf-8")
+
+    r = PytaeRepl()
+    outputs = []
+
+    # 1. 'load <path> as <alias>' emits deprecation note
+    r.execute_line(f"load {csv_file} as cust", output_fn=outputs.append)
+    load_out = "\n".join(outputs)
+    assert "Loaded customers.csv as 'cust'" in load_out
+    assert "(Note: 'load' is deprecated; use '<alias> = <path>' instead.)" in load_out
+
+    # 2. 'load <path>' emits deprecation note
+    outputs.clear()
+    r.execute_line(f"load {csv_file}", output_fn=outputs.append)
+    load_bare = "\n".join(outputs)
+    assert "(Note: 'load' is deprecated; use '<var> = <path>' instead.)" in load_bare
+
+    # 3. Bare 'load' usage emits deprecation note
+    outputs.clear()
+    r.execute_line("load", output_fn=outputs.append)
+    usage_out = "\n".join(outputs)
+    assert "deprecated; use '<var> = <path>'" in usage_out
+
+    # 4. 'scan <path> as <alias>' emits deprecation note
+    outputs.clear()
+    r.execute_line(f"scan {csv_file} as cust_lazy", output_fn=outputs.append)
+    scan_out = "\n".join(outputs)
+    assert "(Note: 'scan <path> as <alias>' is deprecated; use '<alias> = scan <path>' instead.)" in scan_out
+
+    # 5. Preferred direct assignment '<alias> = <path> [options]' loads cleanly without deprecation note
+    outputs.clear()
+    r.execute_line(f'direct_cust = {csv_file} -dlim ","', output_fn=outputs.append)
+    direct_out = "\n".join(outputs)
+    assert "Loaded customers.csv as 'direct_cust'" in direct_out
+    assert "deprecated" not in direct_out
+    assert "direct_cust" in r.tables
+    assert r.tables["direct_cust"].shape == (2, 2)
+
+
+
 
