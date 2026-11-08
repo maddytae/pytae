@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.13.7] - 2026-11-08
+
+### Changed & Enforced
+- **Canonical Script Execution Boundaries & Python Script Interception (`src/pytae/cli.py`)**:
+  - Enforced "one and only one obvious way" for script execution: executing Python scripts via `pytae script.py` or `pytae -i script.py` is actively intercepted and halted with a clear diagnostic directing users to standard `python script.py` (headless) or `python -i script.py` (interactive Python REPL).
+  - Clarified that `pytae pipeline.pt` (headless) and `pytae -i pipeline.pt` (replay and stay inside interactive REPL) are the exclusive mechanisms for native Pytae pipeline scripts.
+- **Simplified In-Session Script Export (`src/pytae/repl.py`)**:
+  - Canonicalized `export <path.pt|path.py> [-relative]` inside the REPL shell, removing the redundant `script` keyword (`export script <path>`) while preserving it as a backward-compatible alias.
+  - Added optional `-relative` flag to `exit -s [path] [-relative]` for emitting portable relative dataset paths.
+
+### Added
+- **Flight Recorder CLI History Conversion (`pytae -export`)**:
+  - Added CLI command `pytae -export <history.txt> -o <target.pt|target.py> [-relative]` to convert raw interactive flight recorder session logs into clean, reproducible `.pt` or `.py` scripts post-hoc.
+- **Automated Regression Test Coverage (`tests/test_repl.py`)**:
+  - Added test coverage for bare `export <path>` syntax, `-relative` path generation, Python script execution redirection diagnostics, and flight recorder CLI history exports.
+
+### Documentation & Reference
+- **Comprehensive Documentation Restructuring**:
+  - Reorganized `readme.md`, `docs/pytae.md`, and `docs/cli_cheatsheet.md` to prioritize Python SDK, CLI pipelines, and REPL workflows with zero loss of recipes.
+  - Fixed relative documentation links across `docs/comparisons_with_other_tools/` and `docs/benchmarks/`.
+  - Updated detailed documentation in `docs/detailed_docs/repl/checkpoints_sessions.md` and `docs/detailed_docs/repl/memory_history_replay.md`.
+  - Untracked workspace-specific configuration (`GEMINI.md`) from Git tracking.
+  - Regenerated all reference databases and instructions (`reference/pytae_copilot_reference.txt`, `reference/pytae_copilot_instructions.txt`, `reference/pytae_docs.db`).
+
 ## [3.13.6] - 2026-11-07
 
 ### Fixed
