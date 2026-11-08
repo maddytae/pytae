@@ -1288,7 +1288,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         examples=[
             "pytae -i  # Inside REPL: reset",
-            "pytae -i data.parquet  # Inside REPL: reset initial",
+            "pytae -i  # Inside REPL: reset initial",
         ],
         see_also=["checkpoint", "restore", "status"],
     ),
@@ -1315,7 +1315,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         examples=[
             "pytae -i  # Inside REPL: status",
             "pytae -i  # Inside REPL: status -v",
-            "pytae -i data.parquet  # Inside REPL: status table -v",
+            "pytae -i  # Inside REPL: status table -v",
             "pytae -i  # Inside REPL: status checkpoint",
         ],
         see_also=["checkpoint", "restore", "tables", "diff"],

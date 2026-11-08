@@ -266,7 +266,7 @@ def _extract_doc_chunks() -> list[dict[str, str]]:
             "topic": "repl",
             "title": "Interactive REPL Shell: pytae -i / pt.repl()",
             "category": "repl",
-            "syntax": "pytae -i / pytae data.parquet -i / pt.repl(df)",
+            "syntax": "pytae -i / pytae -i sample.pt / pt.repl(df)",
             "keywords": "repl interactive shell checkpoint session history cli py export",
             "content": (
                 "Stateful in-memory exploratory data analysis without reloading files from disk.\n\n"

@@ -14146,12 +14146,12 @@ Launch the interactive workbench by invoking `pytae` with the `-i` flag:
 # Launch empty workbench
 pytae -i
 
-# Launch with one or more files preloaded
-pytae -i orders.parquet customers.csv
-
-# Launch with explicit variable aliases
-pytae -i ord=orders.parquet cust=customers.csv
+# Launch workbench and preload an existing pipeline script
+pytae -i sample.pt
 ```
+
+> [!NOTE]
+> `pytae -i` does not preload data files directly on launch (e.g. `pytae -i orders.parquet customers.csv`). Only an empty workbench (`pytae -i`) or an existing native pipeline script (`pytae -i sample.pt`) can be launched. Datasets are loaded interactively inside the workbench using assignment syntax (`orders = orders.parquet`), ensuring exported replay scripts remain 100% reproducible and self-contained.
 
 ---
 
