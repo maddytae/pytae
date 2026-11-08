@@ -181,11 +181,12 @@ pytae [df1, df2, df3]> df4 = -sql "SELECT df1.species, count(*) as n FROM df1 GR
 pytae> reset                      # Revert to baseline
 pytae> checkpoint baseline       # Save named snapshot
 pytae> restore baseline          # Revert to snapshot
-pytae> exit -s                   # Save clean, pruned pipeline to ./session.pt (or 'exit -s py')
+pytae> export script pipeline.pt # Export active pipeline in-session (or .py)
+pytae> exit -s                   # Save clean, pruned pipeline on exit to ./session.pt
 ```
 
 > [!TIP]
-> **Reproducible Pipelines**: Running `exit -s` (or `export script pipeline.pt`) automatically prunes rollbacks, previews, and checkpoints, exporting a clean, standalone script. You can replay the entire pipeline at any time with `pytae session.pt` (or `pytae -i < session.pt`). To export a standalone Python script, use `exit -s py`.
+> **Reproducible Pipelines**: You can export your pipeline at any time inside the REPL using `export script pipeline.pt` (or `export script pipeline.py`), or automatically upon exit using `exit -s` (default `./session.pt`) or `exit -s py`. Both commands automatically prune rollbacks, previews, and checkpoints. You can replay the entire pipeline at any time via `pytae pipeline.pt` (or `pytae -i < pipeline.pt`).
 
 👉 **Read the Full REPL Manual**: [Interactive REPL Guide](docs/pytae.md#interactive-repl-shell-pytae--i) | [REPL Topic Guides](docs/detailed_docs/repl/)
 
