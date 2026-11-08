@@ -441,7 +441,7 @@ pytae> exit -s pipeline.py                                    # Exit and export 
 
 ---
 
-## 13. 📖 Documentation Search & MCP Server (`doc`, `mcp`)
+## 14. 📖 Documentation Search & MCP Server (`doc`, `mcp`)
 
 Search documentation, CLI flags, Python API verbs, and syntax rules instantly from your terminal or AI coding assistant:
 

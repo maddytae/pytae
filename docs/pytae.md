@@ -61,6 +61,50 @@ Yet for over a decade, tabular data engineering and data science have drifted fa
 
 ---
 
+## 30-Second Quickstart
+
+### In Python:
+```python
+import pytae as pt
+
+# Eager read or lazy scan
+penguins = pt.read_parquet("penguins.parquet")
+
+report = (
+    penguins.filter("body_mass_g > 3500 & sex.is_not_null()")
+    .mutate(
+        body_mass_kg="body_mass_g / 1000",
+        bill_ratio="bill_length_mm / bill_depth_mm",
+        status="'verified'"
+    )
+    .by("species", "island")
+    .agg(
+        n="count",
+        avg_mass_kg="body_mass_kg:mean",
+        max_ratio="bill_ratio:max"
+    )
+    .arrange("avg_mass_kg desc")
+)
+
+# Export results
+report.to_parquet("summary.parquet")
+```
+
+### On the Command Line:
+The exact same logic translates directly to the terminal:
+
+```bash
+pytae penguins.parquet \
+  -filter "body_mass_g > 3500 and sex.is_not_null()" \
+  -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm, status = 'verified'" \
+  -by species,island \
+  -agg "n = count, avg_mass_kg = body_mass_kg:mean, max_ratio = bill_ratio:max" \
+  -arrange "avg_mass_kg desc" \
+  -o summary.parquet
+```
+
+---
+
 ## Naming Rationale: Why `filter`, `distinct`, `by`, `arrange`, `agg`, `long`/`wide`?
 
 Pytae carefully chooses concise, intention-revealing names that eliminate ambiguity, prevent keyword collisions, and adhere strictly to *"One and Only One Obvious Way"*:
@@ -386,46 +430,3 @@ For complete guides, configuration flags, edge cases, and cookbooks, see the ded
 - [**Checkpoints & Persistent Sessions**](detailed_docs/repl/checkpoints_sessions.md) — Disk-backed checkpoints, ephemeral temp cleanup, persistent project directories, and `set` configuration hub.
 - [**Memory Management, History & Replay**](detailed_docs/repl/memory_history_replay.md) — Explicit `rm table`, OS page trimming (malloc_trim/mach_task/working set), `history`, `exit -s`, and Unix shell pipes (`|`).
 
----
-
-## 30-Second Quickstart
-
-### In Python:
-```python
-import pytae as pt
-
-# Eager read or lazy scan
-penguins = pt.read_parquet("penguins.parquet")
-
-report = (
-    penguins.filter("body_mass_g > 3500 & sex.is_not_null()")
-    .mutate(
-        body_mass_kg="body_mass_g / 1000",
-        bill_ratio="bill_length_mm / bill_depth_mm",
-        status="'verified'"
-    )
-    .by("species", "island")
-    .agg(
-        n="count",
-        avg_mass_kg="body_mass_kg:mean",
-        max_ratio="bill_ratio:max"
-    )
-    .arrange("avg_mass_kg desc")
-)
-
-# Export results
-report.to_parquet("summary.parquet")
-```
-
-### On the Command Line:
-The exact same logic translates directly to the terminal:
-
-```bash
-pytae penguins.parquet \
-  -filter "body_mass_g > 3500 and sex.is_not_null()" \
-  -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm, status = 'verified'" \
-  -by species,island \
-  -agg "n = count, avg_mass_kg = body_mass_kg:mean, max_ratio = bill_ratio:max" \
-  -arrange "avg_mass_kg desc" \
-  -o summary.parquet
-```

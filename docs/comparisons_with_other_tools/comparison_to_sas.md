@@ -1,6 +1,6 @@
 # Pytae vs. SAS — Deep Dive & Migration Guide
 
-[← Back to Master Reference](pytae.md) | [Comparison with Pandas](comparison_to_pandas.md) | [Comparison with dplyr](comparison_to_dplyr.md)
+[← Back to Master Reference](../pytae.md) | [Comparison with Pandas](comparison_to_pandas.md) | [Comparison with dplyr](comparison_to_dplyr.md)
 
 For over four decades, **SAS (Statistical Analysis System)** has been the foundational analytical engine in regulated enterprise environments: clinical trials, biostatistics, pharmaceutical submissions (CDISC SDTM / ADaM), banking risk models (Basel / CECL / CCAR), insurance actuarial analysis, and government statistics.
 
@@ -206,7 +206,7 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 - **Hardware Saturated Concurrency**: While a SAS `DATA` step utilizes only 1 CPU core at 100%, Pytae saturates all 8, 16, or 64 cores simultaneously.
 
 > [!TIP]
-> **Reproducibility**: Complete, self-contained benchmark scripts and interactive notebooks are available in **[`docs/benchmarks/`](benchmarks/README.md)** (executable CLI script: [`run_benchmarks.py`](benchmarks/run_benchmarks.py), interactive notebook: [`benchmarks.ipynb`](benchmarks/benchmarks.ipynb)).
+> **Reproducibility**: Complete, self-contained benchmark scripts and interactive notebooks are available in **[`docs/benchmarks/`](../benchmarks/README.md)** (executable CLI script: [`run_benchmarks.py`](../benchmarks/run_benchmarks.py), interactive notebook: [`benchmarks.ipynb`](../benchmarks/benchmarks.ipynb)).
 
 ---
 

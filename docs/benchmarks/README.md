@@ -1,6 +1,6 @@
 # Pytae Performance Benchmarks
 
-[← Back to Master Reference](../pytae.md) | [Comparison with Pandas](../comparison_to_pandas.md) | [Comparison with dplyr](../comparison_to_dplyr.md) | [Comparison with SAS](../comparison_to_sas.md)
+[← Back to Master Reference](../pytae.md) | [Comparison with Pandas](../comparisons_with_other_tools/comparison_to_pandas.md) | [Comparison with dplyr](../comparisons_with_other_tools/comparison_to_dplyr.md) | [Comparison with SAS](../comparisons_with_other_tools/comparison_to_sas.md)
 
 This directory contains self-contained, reproducible benchmark scripts and interactive notebooks measuring **Pytae** (powered by native Polars Rust SIMD) against standard **Pandas** across realistic 5,000,000-row analytical workloads.
 

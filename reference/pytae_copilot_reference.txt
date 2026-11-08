@@ -14536,6 +14536,50 @@ Yet for over a decade, tabular data engineering and data science have drifted fa
 
 ---
 
+## 30-Second Quickstart
+
+### In Python:
+```python
+import pytae as pt
+
+# Eager read or lazy scan
+penguins = pt.read_parquet("penguins.parquet")
+
+report = (
+    penguins.filter("body_mass_g > 3500 & sex.is_not_null()")
+    .mutate(
+        body_mass_kg="body_mass_g / 1000",
+        bill_ratio="bill_length_mm / bill_depth_mm",
+        status="'verified'"
+    )
+    .by("species", "island")
+    .agg(
+        n="count",
+        avg_mass_kg="body_mass_kg:mean",
+        max_ratio="bill_ratio:max"
+    )
+    .arrange("avg_mass_kg desc")
+)
+
+# Export results
+report.to_parquet("summary.parquet")
+```
+
+### On the Command Line:
+The exact same logic translates directly to the terminal:
+
+```bash
+pytae penguins.parquet \
+  -filter "body_mass_g > 3500 and sex.is_not_null()" \
+  -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm, status = 'verified'" \
+  -by species,island \
+  -agg "n = count, avg_mass_kg = body_mass_kg:mean, max_ratio = bill_ratio:max" \
+  -arrange "avg_mass_kg desc" \
+  -o summary.parquet
+```
+
+---
+
 ## Naming Rationale: Why `filter`, `distinct`, `by`, `arrange`, `agg`, `long`/`wide`?
 
 Pytae carefully chooses concise, intention-revealing names that eliminate ambiguity, prevent keyword collisions, and adhere strictly to *"One and Only One Obvious Way"*:
@@ -14860,50 +14904,6 @@ For complete guides, configuration flags, edge cases, and cookbooks, see the ded
 - [**Multi-Line Input & Session Variables**](detailed_docs/repl/multiline_variables.md) — Line continuation with `\`, multi-line SQL/variables, typed session `@var` parameters, and namespace protection.
 - [**Checkpoints & Persistent Sessions**](detailed_docs/repl/checkpoints_sessions.md) — Disk-backed checkpoints, ephemeral temp cleanup, persistent project directories, and `set` configuration hub.
 - [**Memory Management, History & Replay**](detailed_docs/repl/memory_history_replay.md) — Explicit `rm table`, OS page trimming (malloc_trim/mach_task/working set), `history`, `exit -s`, and Unix shell pipes (`|`).
-
----
-
-## 30-Second Quickstart
-
-### In Python:
-```python
-import pytae as pt
-
-# Eager read or lazy scan
-penguins = pt.read_parquet("penguins.parquet")
-
-report = (
-    penguins.filter("body_mass_g > 3500 & sex.is_not_null()")
-    .mutate(
-        body_mass_kg="body_mass_g / 1000",
-        bill_ratio="bill_length_mm / bill_depth_mm",
-        status="'verified'"
-    )
-    .by("species", "island")
-    .agg(
-        n="count",
-        avg_mass_kg="body_mass_kg:mean",
-        max_ratio="bill_ratio:max"
-    )
-    .arrange("avg_mass_kg desc")
-)
-
-# Export results
-report.to_parquet("summary.parquet")
-```
-
-### On the Command Line:
-The exact same logic translates directly to the terminal:
-
-```bash
-pytae penguins.parquet \
-  -filter "body_mass_g > 3500 and sex.is_not_null()" \
-  -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm, status = 'verified'" \
-  -by species,island \
-  -agg "n = count, avg_mass_kg = body_mass_kg:mean, max_ratio = bill_ratio:max" \
-  -arrange "avg_mass_kg desc" \
-  -o summary.parquet
-```
 
 ================================================================================
 CLI CHEATSHEET & COOKBOOK (docs/cli_cheatsheet.md)
@@ -15355,7 +15355,7 @@ pytae> exit -s pipeline.py                                    # Exit and export 
 
 ---
 
-## 13. 📖 Documentation Search & MCP Server (`doc`, `mcp`)
+## 14. 📖 Documentation Search & MCP Server (`doc`, `mcp`)
 
 Search documentation, CLI flags, Python API verbs, and syntax rules instantly from your terminal or AI coding assistant:
 
@@ -15391,7 +15391,7 @@ pytae -check "pytae data.parquet -filter 'amount > 0' -select id,amount"
 ################################################################################
 # Pytae vs. Pandas — Deep Dive & Rosetta Stone
 
-[← Back to Master Reference](pytae.md) | [Comparison with dplyr](comparison_to_dplyr.md) | [Comparison with SAS](comparison_to_sas.md)
+[← Back to Master Reference](../pytae.md) | [Comparison with dplyr](comparison_to_dplyr.md) | [Comparison with SAS](comparison_to_sas.md)
 
 Pandas has been the cornerstone of data analysis in Python for over fifteen years. However, its expansive, organically grown API has accumulated significant friction: competing ways to perform identical operations, complex index hierarchies, silent data loss traps, and single-threaded performance bottlenecks.
 
@@ -15548,7 +15548,7 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 3. **Zero Intermediate Memory Duplication**: Pandas frequently requires `.copy()` to avoid `SettingWithCopyWarning`, multiplying memory footprint. Pytae utilizes copy-on-write and Arrow buffer slicing.
 
 > [!TIP]
-> **Reproducibility**: Complete, self-contained benchmark scripts and interactive notebooks are available in **[`docs/benchmarks/`](benchmarks/README.md)** (executable CLI script: [`run_benchmarks.py`](benchmarks/run_benchmarks.py), interactive notebook: [`benchmarks.ipynb`](benchmarks/benchmarks.ipynb)).
+> **Reproducibility**: Complete, self-contained benchmark scripts and interactive notebooks are available in **[`docs/benchmarks/`](../benchmarks/README.md)** (executable CLI script: [`run_benchmarks.py`](../benchmarks/run_benchmarks.py), interactive notebook: [`benchmarks.ipynb`](../benchmarks/benchmarks.ipynb)).
 
 ---
 
@@ -15754,7 +15754,7 @@ Notice the stark contrast: Pytae eliminates intermediate variables, eliminates `
 ################################################################################
 # Pytae vs. dplyr (R / Tidyverse) — Deep Dive & Rosetta Stone
 
-[← Back to Master Reference](pytae.md) | [Comparison with Pandas](comparison_to_pandas.md) | [Comparison with SAS](comparison_to_sas.md)
+[← Back to Master Reference](../pytae.md) | [Comparison with Pandas](comparison_to_pandas.md) | [Comparison with SAS](comparison_to_sas.md)
 
 R's **`dplyr`** and the broader **Tidyverse** revolutionized data analysis by introducing a consistent, readable, and pipe-friendly grammar of data manipulation (`filter`, `mutate`, `select`, `arrange`, `summarise`).
 
@@ -15891,7 +15891,7 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 3. **No Non-Standard Evaluation (NSE) Overhead**: Eliminates `rlang` expression parsing and NSE unquoting cycles, providing direct execution on Apache Arrow buffers.
 
 > [!TIP]
-> **Reproducibility**: Complete, self-contained benchmark scripts and interactive notebooks are available in **[`docs/benchmarks/`](benchmarks/README.md)** (executable CLI script: [`run_benchmarks.py`](benchmarks/run_benchmarks.py), interactive notebook: [`benchmarks.ipynb`](benchmarks/benchmarks.ipynb)).
+> **Reproducibility**: Complete, self-contained benchmark scripts and interactive notebooks are available in **[`docs/benchmarks/`](../benchmarks/README.md)** (executable CLI script: [`run_benchmarks.py`](../benchmarks/run_benchmarks.py), interactive notebook: [`benchmarks.ipynb`](../benchmarks/benchmarks.ipynb)).
 
 ---
 
@@ -16072,7 +16072,7 @@ Pytae provides everything Tidyverse users love about `dplyr`—fluent method cha
 ################################################################################
 # Pytae vs. SAS — Deep Dive & Migration Guide
 
-[← Back to Master Reference](pytae.md) | [Comparison with Pandas](comparison_to_pandas.md) | [Comparison with dplyr](comparison_to_dplyr.md)
+[← Back to Master Reference](../pytae.md) | [Comparison with Pandas](comparison_to_pandas.md) | [Comparison with dplyr](comparison_to_dplyr.md)
 
 For over four decades, **SAS (Statistical Analysis System)** has been the foundational analytical engine in regulated enterprise environments: clinical trials, biostatistics, pharmaceutical submissions (CDISC SDTM / ADaM), banking risk models (Basel / CECL / CCAR), insurance actuarial analysis, and government statistics.
 
@@ -16278,7 +16278,7 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 - **Hardware Saturated Concurrency**: While a SAS `DATA` step utilizes only 1 CPU core at 100%, Pytae saturates all 8, 16, or 64 cores simultaneously.
 
 > [!TIP]
-> **Reproducibility**: Complete, self-contained benchmark scripts and interactive notebooks are available in **[`docs/benchmarks/`](benchmarks/README.md)** (executable CLI script: [`run_benchmarks.py`](benchmarks/run_benchmarks.py), interactive notebook: [`benchmarks.ipynb`](benchmarks/benchmarks.ipynb)).
+> **Reproducibility**: Complete, self-contained benchmark scripts and interactive notebooks are available in **[`docs/benchmarks/`](../benchmarks/README.md)** (executable CLI script: [`run_benchmarks.py`](../benchmarks/run_benchmarks.py), interactive notebook: [`benchmarks.ipynb`](../benchmarks/benchmarks.ipynb)).
 
 ---
 

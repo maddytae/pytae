@@ -1,6 +1,6 @@
 # Pytae vs. Pandas — Deep Dive & Rosetta Stone
 
-[← Back to Master Reference](pytae.md) | [Comparison with dplyr](comparison_to_dplyr.md) | [Comparison with SAS](comparison_to_sas.md)
+[← Back to Master Reference](../pytae.md) | [Comparison with dplyr](comparison_to_dplyr.md) | [Comparison with SAS](comparison_to_sas.md)
 
 Pandas has been the cornerstone of data analysis in Python for over fifteen years. However, its expansive, organically grown API has accumulated significant friction: competing ways to perform identical operations, complex index hierarchies, silent data loss traps, and single-threaded performance bottlenecks.
 
@@ -157,7 +157,7 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 3. **Zero Intermediate Memory Duplication**: Pandas frequently requires `.copy()` to avoid `SettingWithCopyWarning`, multiplying memory footprint. Pytae utilizes copy-on-write and Arrow buffer slicing.
 
 > [!TIP]
-> **Reproducibility**: Complete, self-contained benchmark scripts and interactive notebooks are available in **[`docs/benchmarks/`](benchmarks/README.md)** (executable CLI script: [`run_benchmarks.py`](benchmarks/run_benchmarks.py), interactive notebook: [`benchmarks.ipynb`](benchmarks/benchmarks.ipynb)).
+> **Reproducibility**: Complete, self-contained benchmark scripts and interactive notebooks are available in **[`docs/benchmarks/`](../benchmarks/README.md)** (executable CLI script: [`run_benchmarks.py`](../benchmarks/run_benchmarks.py), interactive notebook: [`benchmarks.ipynb`](../benchmarks/benchmarks.ipynb)).
 
 ---
 

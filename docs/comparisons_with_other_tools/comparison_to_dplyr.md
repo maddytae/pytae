@@ -1,6 +1,6 @@
 # Pytae vs. dplyr (R / Tidyverse) — Deep Dive & Rosetta Stone
 
-[← Back to Master Reference](pytae.md) | [Comparison with Pandas](comparison_to_pandas.md) | [Comparison with SAS](comparison_to_sas.md)
+[← Back to Master Reference](../pytae.md) | [Comparison with Pandas](comparison_to_pandas.md) | [Comparison with SAS](comparison_to_sas.md)
 
 R's **`dplyr`** and the broader **Tidyverse** revolutionized data analysis by introducing a consistent, readable, and pipe-friendly grammar of data manipulation (`filter`, `mutate`, `select`, `arrange`, `summarise`).
 
@@ -137,7 +137,7 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 3. **No Non-Standard Evaluation (NSE) Overhead**: Eliminates `rlang` expression parsing and NSE unquoting cycles, providing direct execution on Apache Arrow buffers.
 
 > [!TIP]
-> **Reproducibility**: Complete, self-contained benchmark scripts and interactive notebooks are available in **[`docs/benchmarks/`](benchmarks/README.md)** (executable CLI script: [`run_benchmarks.py`](benchmarks/run_benchmarks.py), interactive notebook: [`benchmarks.ipynb`](benchmarks/benchmarks.ipynb)).
+> **Reproducibility**: Complete, self-contained benchmark scripts and interactive notebooks are available in **[`docs/benchmarks/`](../benchmarks/README.md)** (executable CLI script: [`run_benchmarks.py`](../benchmarks/run_benchmarks.py), interactive notebook: [`benchmarks.ipynb`](../benchmarks/benchmarks.ipynb)).
 
 ---
 
