@@ -1009,7 +1009,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ),
         options=[
             "reset : Restore the original dataset as loaded from disk.",
-            "history [N] : Show numbered session audit log (or export with 'history -s [path]').",
+            "history [N] : Show numbered session audit log (use 'export script <path>' or 'exit -s' to export scripts).",
             "exit [-s [path]] : Exit REPL (optionally save session history to ./history.txt or <path>).",
             "status : Show active table shape, columns, and memory usage.",
             "checkpoint <name> : Freeze and save current state with a name.",

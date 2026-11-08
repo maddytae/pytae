@@ -1030,8 +1030,8 @@ INSPECTION & EXPORT:
   -diff [<tbl1>] <tbl2> [on=<key>] : Compare two tables or active table against <tbl2> (or checkpoint)
   -time [N]              : Benchmark execution over N runs (default: 1), e.g. -distinct -time 3
   -o <path> / -o clip    : Export table to file (Parquet/CSV/NDJSON) or clipboard
-  export <path> / clip   : Export table to file or clipboard (synonym for -o)
   export script <path> [-relative] : Export reproducible pipeline to standalone Python (.py) or Pytae (.pt) script
+  -cheatsheet            : Display quick start cheatsheet and command reference
   -collect               : Materialize active lazy table into memory
   -explain               : Display optimized Polars query execution plan for lazy table
   <cmd> | <shell_cmd>    : Pipe command output to shell tool (e.g. -cols | grep bill)
@@ -1819,25 +1819,12 @@ def _compile_history_to_python(
                 lines.append(f"{alias} = pl.{scan_fn}({repr(in_path)}{scan_extra})")
             continue
 
-        # 3. Colon ingestion: `<alias>: <path>`
-        if ":" in clean and not clean.startswith(("-", "*", "py")) and "=" not in clean:
-            parts = clean.split(":", 1)
-            alias = parts[0].strip()
-            path = parts[1].strip().strip("\"'")
-            if alias.isidentifier() and path:
-                in_path = _to_relative_path(path) if relative else path
-                if path.lower() in ("clip", "clipboard"):
-                    lines.append(f"{alias} = pl.from_pandas(pd.read_clipboard())")
-                else:
-                    lines.append(f"{alias} = pt.read({repr(in_path)})")
-                continue
-
-        # 4. Assignments: `<target> = <expression>`
+        # 3. Assignments: `<target> = <expression>`
         if "=" in clean and not clean.startswith("-"):
             target, expr = [p.strip() for p in clean.split("=", 1)]
             if target.isidentifier():
-                if expr.startswith(("scan ", "scan:")):
-                    scan_tail = expr[4:].lstrip(": ").strip()
+                if expr.startswith("scan "):
+                    scan_tail = expr[5:].strip()
                     scan_parts = shlex.split(scan_tail)
                     raw_sp = scan_parts[0].strip("\"'") if scan_parts else ""
                     in_sp = _to_relative_path(raw_sp) if relative else raw_sp
@@ -2044,12 +2031,6 @@ def _is_replayable_entry_static(entry: str) -> bool:
     # Ingestion commands: load <path> [as <alias>] or scan <path> [as <alias>]
     if clean.startswith(("load ", "scan ")):
         return True
-
-    # Colon-style ingestion: <alias>: <path>
-    if ":" in clean and not clean.startswith(("-", "*", "py")) and "=" not in clean:
-        parts = clean.split(":", 1)
-        if parts[0].strip().isidentifier() and not parts[1].strip().startswith("="):
-            return True
 
     # Export commands: export <path>, save <path>
     if clean.startswith(("export ", "save ", "-export ", "-save ")):
@@ -2971,10 +2952,26 @@ class PytaeRepl:
         tokens = shlex.split(norm_line)
         first_lower = tokens[0].lower()
 
-        # Quick start cheat sheet (e.g. -quick_start, quick_start, -cheatsheet)
-        if first_lower in ("quick_start", "-quick_start", "--quick_start", "quickstart", "-quickstart", "--quickstart", "-cheatsheet", "cheatsheet"):
+        # Quick start cheat sheet (canonical: -cheatsheet)
+        if first_lower == "-cheatsheet":
             from pytae.cheatsheet import CHEATSHEET_TEXT
+
             output_fn(CHEATSHEET_TEXT)
+            return True
+        if first_lower in (
+            "quick_start",
+            "-quick_start",
+            "--quick_start",
+            "quickstart",
+            "-quickstart",
+            "--quickstart",
+            "cheatsheet",
+            "--cheatsheet",
+        ):
+            from pytae.cheatsheet import CHEATSHEET_TEXT
+
+            output_fn(CHEATSHEET_TEXT)
+            output_fn(f"(Note: '{first_lower}' is deprecated; use '-cheatsheet' instead.)")
             return True
 
         # Help commands: 'help', '-help', '--help', 'help <topic>', '-help <topic>'
@@ -2999,11 +2996,14 @@ class PytaeRepl:
             self._cmd_history(output_fn, args=tokens[1:])
             return True
 
-        # Export / Save Script: export script <path> [-relative], save script <path>, export clip, export <path>
-        if first_lower in ("export", "-export") or (first_lower in ("save", "-save") and len(tokens) >= 2 and tokens[1].lower() in ("script", "code")):
+        # Export / Save Script: export script <path> [-relative], save script <path> (deprecated)
+        is_save_cmd = first_lower in ("save", "-save")
+        if first_lower in ("export", "-export") or (is_save_cmd and len(tokens) >= 2 and tokens[1].lower() in ("script", "code")):
+            if is_save_cmd:
+                output_fn("(Note: 'save script' is deprecated; use 'export script <path>' instead.)")
             if len(tokens) >= 2 and tokens[1].lower() in ("script", "code"):
                 if len(tokens) < 3:
-                    output_fn(f"Usage: {first_lower} script <path.py|path.pt> [-relative]")
+                    output_fn("Usage: export script <path.py|path.pt> [-relative]")
                     return True
                 target = tokens[2]
                 if any(t == "--relative" for t in tokens[3:]):
@@ -3021,10 +3021,11 @@ class PytaeRepl:
                     relative = any(t == "-relative" for t in tokens[2:])
                     self._cmd_export_script(target, output_fn, relative=relative)
                     return True
+                output_fn(f"(Note: 'export <path>' for data is deprecated; use '-o {target}' instead.)")
                 if self._cmd_save(target, output_fn):
                     self._record_history(f"-o {target}")
                 return True
-            output_fn("Usage: export script <path.py|path.pt> [-relative] or export <path.parquet|csv|ndjson|clip>")
+            output_fn("Usage: export script <path.py|path.pt> [-relative]")
             return True
 
         # Reject disallowed aliases, legacy synonyms, or hyphenated inspection commands
@@ -3407,13 +3408,12 @@ class PytaeRepl:
 
         if first_lower == "checkpoint":
             if len(tokens) < 2:
-                output_fn(
-                    "Usage: checkpoint <name> (e.g. checkpoint baseline), checkpoint rm <name>, or checkpoint rm *"
-                )
+                output_fn("Usage: checkpoint <name> (e.g. checkpoint baseline)")
                 return True
             if tokens[1].lower() == "rm":
+                output_fn("(Note: 'checkpoint rm' is deprecated; use 'rm checkpoint <name>' or 'rm checkpoint *' instead.)")
                 if len(tokens) < 3:
-                    output_fn("Usage: checkpoint rm <name> or checkpoint rm *")
+                    output_fn("Usage: rm checkpoint <name> or rm checkpoint *")
                     return True
                 cp_name = tokens[2]
                 if cp_name == "*":
@@ -3421,7 +3421,7 @@ class PytaeRepl:
                     output_fn(f"Cleared all {count} saved checkpoints.")
                     return True
                 if cp_name in ("-all", "--all", "all", "-*"):
-                    output_fn(f"pytae: 'checkpoint rm {cp_name}' is not recognized; use 'checkpoint rm *'.")
+                    output_fn(f"pytae: 'checkpoint rm {cp_name}' is not recognized; use 'rm checkpoint *'.")
                     return True
                 if cp_name in self.checkpoints:
                     self._delete_checkpoint(cp_name)
@@ -3434,6 +3434,8 @@ class PytaeRepl:
             return True
 
         if first_lower in ("restore", "revert"):
+            if first_lower == "revert":
+                output_fn("(Note: 'revert' is deprecated; use 'restore [name]' instead.)")
             if len(tokens) < 2:
                 if self.checkpoints:
                     latest_cp = list(self.checkpoints.keys())[-1]
@@ -4255,7 +4257,7 @@ class PytaeRepl:
             clean_arg0 = arg0.lower().lstrip("-")
             if clean_arg0 in ("s", "save") or arg0.startswith("-s=") or arg0.startswith("-s:"):
                 output_fn(
-                    "pytae: 'history -s' is not supported. Use 'export script <path>' or 'exit -s [path]' on exit."
+                    "pytae: 'history -s' is not supported (deprecated). Use 'export script <path>' or 'exit -s [path]' on exit."
                 )
                 return
             if clean_arg0 in ("cli", "sh", "bash", "py", "python"):

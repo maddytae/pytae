@@ -431,5 +431,101 @@ def test_load_and_scan_deprecation(tmp_path):
     assert r.tables["direct_cust"].shape == (2, 2)
 
 
+def test_syntax_deduplication_audit(tmp_path):
+    """Test deprecations and deduplications for export, save, checkpoint rm, revert, cheatsheet, and colon removal."""
+    csv_file = tmp_path / "test.csv"
+    csv_file.write_text("a,b\n1,2\n3,4\n", encoding="utf-8")
+
+    r = PytaeRepl()
+    outputs = []
+
+    # 1. export for data file emits deprecation note; -o is preferred
+    r.execute_line(f"df = {csv_file}", output_fn=outputs.append)
+    outputs.clear()
+    out_pq = tmp_path / "out.parquet"
+    r.execute_line(f"export {out_pq}", output_fn=outputs.append)
+    export_out = "\n".join(outputs)
+    assert "(Note: 'export <path>' for data is deprecated; use '-o " in export_out
+
+    # 1b. export script works cleanly
+    outputs.clear()
+    script_out = tmp_path / "pipeline.pt"
+    r.execute_line(f"export script {script_out}", output_fn=outputs.append)
+    assert any("Exported Pytae script" in o for o in outputs)
+
+    # 2. save script <path> emits deprecation note pointing to export script
+    outputs.clear()
+    script_py = tmp_path / "pipeline.py"
+    r.execute_line(f"save script {script_py}", output_fn=outputs.append)
+    save_script_out = "\n".join(outputs)
+    assert "(Note: 'save script' is deprecated; use 'export script <path>' instead.)" in save_script_out
+
+    # 2b. history -s emits deprecation note
+    outputs.clear()
+    r.execute_line("history -s", output_fn=outputs.append)
+    hist_out = "\n".join(outputs)
+    assert "'history -s' is not supported (deprecated)" in hist_out
+
+    # 3. checkpoint rm emits deprecation note pointing to rm checkpoint
+    r.execute_line("checkpoint cp1", output_fn=outputs.append)
+    assert "cp1" in r.checkpoints
+    outputs.clear()
+    r.execute_line("checkpoint rm cp1", output_fn=outputs.append)
+    cp_rm_out = "\n".join(outputs)
+    assert "(Note: 'checkpoint rm' is deprecated; use 'rm checkpoint <name>' or 'rm checkpoint *' instead.)" in cp_rm_out
+    assert "cp1" not in r.checkpoints
+
+    # 4. revert emits deprecation note pointing to restore
+    r.execute_line("checkpoint cp2", output_fn=outputs.append)
+    r.execute_line('df = -mutate "c = a + 10"', output_fn=outputs.append)
+    outputs.clear()
+    r.execute_line("revert cp2", output_fn=outputs.append)
+    revert_out = "\n".join(outputs)
+    assert "(Note: 'revert' is deprecated; use 'restore [name]' instead.)" in revert_out
+
+    # 4b. restore works cleanly without deprecation note
+    outputs.clear()
+    r.execute_line("restore cp2", output_fn=outputs.append)
+    restore_out = "\n".join(outputs)
+    assert "deprecated" not in restore_out
+
+    # 5. -cheatsheet works cleanly, while legacy quick_start / cheatsheet emit deprecation notes
+    outputs.clear()
+    r.execute_line("-cheatsheet", output_fn=outputs.append)
+    cs_out = "\n".join(outputs)
+    assert "PYTAE CLI CHEAT SHEET" in cs_out
+    assert "(Note: " not in cs_out
+
+    outputs.clear()
+    r.execute_line("cheatsheet", output_fn=outputs.append)
+    cs_bare_out = "\n".join(outputs)
+    assert "(Note: 'cheatsheet' is deprecated; use '-cheatsheet' instead.)" in cs_bare_out
+
+    outputs.clear()
+    r.execute_line("quick_start", output_fn=outputs.append)
+    qs_out = "\n".join(outputs)
+    assert "(Note: 'quick_start' is deprecated; use '-cheatsheet' instead.)" in qs_out
+
+
+def test_cli_rejects_save_flag():
+    """Verify that CLI explicitly rejects '-save' with guidance to '-export' and '-o'."""
+    import io
+    import sys
+
+    from pytae.cli import main
+
+    old_stderr = sys.stderr
+    sys.stderr = io.StringIO()
+    try:
+        ret = main(["-save", "something"])
+        err_msg = sys.stderr.getvalue()
+        assert ret == 1
+        assert "'-save' is not a CLI option" in err_msg
+    finally:
+        sys.stderr = old_stderr
+
+
+
+
 
 

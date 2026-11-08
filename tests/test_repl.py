@@ -941,7 +941,7 @@ def test_repl_rm_checkpoint(sample_df):
 
     outputs.clear()
     r.execute_line("checkpoint rm -all", output_fn=outputs.append)
-    assert "use 'checkpoint rm *'" in outputs[-1]
+    assert "use 'rm checkpoint *'" in outputs[-1]
     assert len(r.checkpoints) == 2
 
     r.execute_line("rm checkpoint *", output_fn=outputs.append)

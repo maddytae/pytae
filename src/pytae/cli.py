@@ -982,6 +982,11 @@ def main(argv: list[str] | None = None) -> int:
 
         return run_script_file(raw_argv[1])
 
+    # Explicit rejection of legacy or non-existent `-save`:
+    if raw_argv and raw_argv[0] in ("-save", "--save"):
+        sys.stderr.write("pytae error: '-save' is not a CLI option; use '-export <history_file> [-o <target.py|target.pt>]' or '-o <file>'.\n")
+        return 1
+
     # History export flag: `pytae -export <history_file> [-o <target.py|target.pt>]`
     if raw_argv and raw_argv[0] in ("-export", "--export"):
         from pytae.repl import run_cli_export
