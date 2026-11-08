@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.13.8] - 2026-11-08
+
+### Fixed
+- **PyPI Documentation Link Resolution (`readme.md`)**:
+  - Replaced relative documentation paths in `readme.md` with fully-qualified GitHub repository URLs (`https://github.com/maddytae/pytae/blob/master/...` and `tree/master/...`), resolving 404 dead links when rendered on PyPI project pages (`https://pypi.org/project/pytae/`).
+
 ## [3.13.7] - 2026-11-08
 
 ### Changed & Enforced
