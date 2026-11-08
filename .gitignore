@@ -73,6 +73,6 @@ Thumbs.db
 *.mov
 *.wmv
 
-
-
+# Agent instructions (local workspace only)
+GEMINI.md
 gemini.md
