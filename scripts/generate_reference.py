@@ -1793,12 +1793,12 @@ pytae a=portfolio.xlsx b=portfolio.xlsx \
 │   │   ├── select.md
 │   │   └── sql.md
 │   ├── repl
-│   │   ├── checkpoints_sessions.md
-│   │   ├── ingestion_tables.md
-│   │   ├── memory_history_replay.md
-│   │   ├── multiline_variables.md
+│   │   ├── README.md
+│   │   ├── checkpoints_history_replay.md
 │   │   ├── pipelines_inspection.md
-│   │   └── sql_python.md
+│   │   ├── sql_python_interop.md
+│   │   ├── variables_config.md
+│   │   └── workbench_tables.md
 │   └── notebooks
 │       ├── library
 │       │   ├── agg.ipynb
