@@ -177,15 +177,15 @@ pytae [df1: 188x3]> df2 = sample:tips
 pytae [df1, df2]> df3 = -join "left=df1,right=df2,how=cross"
 pytae [df1, df2, df3]> df4 = -sql "SELECT df1.species, count(*) as n FROM df1 GROUP BY 1"
 
-# Instant rollbacks, checkpoints & reproducible history
+# Instant rollbacks, checkpoints & reproducible pipeline export
 pytae> reset                      # Revert to baseline
 pytae> checkpoint baseline       # Save named snapshot
 pytae> restore baseline          # Revert to snapshot
-pytae> exit -s                   # Save self-contained session history to ./history.txt
+pytae> exit -s                   # Save clean, pruned pipeline to ./session.pt (or 'exit -s py')
 ```
 
 > [!TIP]
-> **Reproducible Sessions**: Because datasets are loaded interactively (e.g. `df = penguins.parquet`), every command is saved to session history. You can replay the entire session at any time with `pytae -i < history.txt`.
+> **Reproducible Pipelines**: Running `exit -s` (or `export script pipeline.pt`) automatically prunes rollbacks, previews, and checkpoints, exporting a clean, standalone script. You can replay the entire pipeline at any time with `pytae session.pt` (or `pytae -i < session.pt`). To export a standalone Python script, use `exit -s py`.
 
 👉 **Read the Full REPL Manual**: [Interactive REPL Guide](docs/pytae.md#interactive-repl-shell-pytae--i) | [REPL Topic Guides](docs/detailed_docs/repl/)
 
