@@ -141,7 +141,7 @@ def test_repl_unregistered_bare_word_not_recognized():
 
 
 def test_repl_py_model_a_explicit_registration_and_cleanup():
-    """Verify Model A: only dataframes explicitly converted to Pytae DataFrame are registered; RAM is cleaned."""
+    """Verify Ephemeral Python Sandboxing: only dataframes explicitly converted to Pytae DataFrame are registered; RAM is cleaned."""
     import polars as pl
 
     from pytae.repl import PytaeRepl

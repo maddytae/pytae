@@ -1,8 +1,8 @@
-# REPL Guide: SQL & Python Interop (Model A RAM Isolation)
+# REPL Guide: SQL & Python Interop (Ephemeral Python Sandboxing)
 
 [← Back to REPL Hub](README.md) | [Master Reference](../pytae.md)
 
-This guide covers ANSI SQL querying across loaded tables, embedded Python execution (`py <expr>`), the **Model A RAM Isolation architecture**, and explicit `.to_pytae()` table registration in the Pytae interactive REPL (`pytae -i`).
+This guide covers ANSI SQL querying across loaded tables, embedded Python execution (`py <expr>`), the **Ephemeral Python Sandboxing architecture**, and explicit `.to_pytae()` table registration in the Pytae interactive REPL (`pytae -i`).
 
 ---
 
@@ -16,7 +16,7 @@ This guide covers ANSI SQL querying across loaded tables, embedded Python execut
 - [Python Execution (`py <expr>`)](#python-execution-py-expr)
   - [Single-Line Evaluation](#single-line-evaluation)
   - [Bare `py` Multi-Line Block Mode](#bare-py-multi-line-block-mode)
-- [Model A Architecture & RAM Isolation](#model-a-architecture--ram-isolation)
+- [Ephemeral Python Sandboxing & RAM Isolation](#ephemeral-python-sandboxing--ram-isolation)
   - [The Design Philosophy](#the-design-philosophy)
   - [Immediate Garbage Collection & Memory Zeroing](#immediate-garbage-collection--memory-zeroing)
   - [Explicit `.to_pytae()` Table Registration](#explicit-to_pytae-table-registration)
@@ -122,13 +122,13 @@ Mean rate: 0.08333333333333333
 
 ---
 
-## Model A Architecture & RAM Isolation
+## Ephemeral Python Sandboxing & RAM Isolation
 
 ### The Design Philosophy
 
 In standard interactive shells (such as IPython or Jupyter), every variable created in Python lingers in the global namespace indefinitely, creating memory leaks that bloat process RSS.
 
-Pytae implements the **Model A RAM Isolation Architecture**:
+Pytae implements the **Ephemeral Python Sandboxing Architecture**:
 1. When entering Python mode (`py <expr>` or multi-line `py`), Pytae injects all active tables as standard `pytae.DataFrame` objects into an **isolated local dictionary**.
 2. Python execution occurs within this sandboxed scope.
 3. Upon block completion, Pytae immediately executes a clean-up sweep:
@@ -140,7 +140,7 @@ Pytae implements the **Model A RAM Isolation Architecture**:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                        MODEL A RAM ZEROING ARCHITECTURE                                │
+│                   EPHEMERAL PYTHON SANDBOXING ARCHITECTURE                             │
 ├────────────────────────────────────────────────────────────────────────────────────────┤
 │ 1. INGEST TABLES  │ Active Pytae tables exposed as read-only references in py dict.    │
 │ 2. EXECUTE SCRIPT │ User trains ML models, allocates 2 GB scratch tensors, etc.        │

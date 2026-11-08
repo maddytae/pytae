@@ -5851,7 +5851,7 @@ class PytaeRepl:
                 if out_val:
                     output_fn(out_val)
 
-            # Model A registration: Only keep dataframes explicitly converted via .to_pytae()
+            # Ephemeral Python Sandboxing: Only keep dataframes explicitly converted via .to_pytae()
             mutated = False
             # 1. Active table update: check if 'df' was modified or reassigned to a PytaeDataFrame
             current_df_val = local_scope.get("df")
@@ -5904,7 +5904,7 @@ class PytaeRepl:
         except Exception as exc:
             output_fn(f"pytae Python Error: {exc}")
         finally:
-            # Model A: Immediately remove everything associated from RAM
+            # Ephemeral Sandboxing: Immediately remove everything associated from RAM
             local_scope.clear()
             del local_scope
             _release_memory()
