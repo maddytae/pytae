@@ -396,18 +396,17 @@ pytae> sessions
 
 # Inside the REPL prompt:
 # 1. State Management & Checkpoints
+status [-v]          # Display unified session status, active table, RAM consumption, and history
 status table [-v]    # Inspect active table and list all loaded tables (-v for cols & RAM)
 switch orders        # Switch active dataset cursor to 'orders' ('use' deprecated)
 rename df1 customers # Zero-copy O(1) in-memory table rename
-diff df1 df2         # Compare two tables or active dataset against target (or checkpoint)
+-diff [target]       # Diff active table vs latest checkpoint, another table, or checkpoint:table
 reset                # Revert to latest checkpoint (or initial dataset if none)
 reset initial        # Revert strictly to initial dataset read (bypassing checkpoints)
-history              # Show session audit log (all steps auto-logged to ~/.pytae/history/)
-history 5            # Show last 5 steps from current session audit log
+history [N]          # Show session audit log (all steps auto-logged to ~/.pytae/history/)
 checkpoint v1        # Save ephemeral IPC snapshot across all active tables (0 MB RAM)
 rm checkpoint v1     # Delete a saved checkpoint from disk (or rm checkpoint *)
-restore v1           # Restore workbench to snapshot (or bare restore for latest)
-status session [-v]  # Display active workbench tables, RAM consumption, and history
+restore [v1]         # Restore workbench to snapshot (or bare restore for latest)
 export script p.pt   # Export executed pipeline to reproducible Pytae script
 export script p.py   # Export executed pipeline to reproducible Python script
 set save             # Persist current display settings to ~/.pytae/config.json

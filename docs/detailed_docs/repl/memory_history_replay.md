@@ -79,7 +79,7 @@ Status         : active
 
 Inspect active session state, checkpoints, disk usage, and RAM:
 ```text
-pytae [df*]> status session
+pytae [df*]> status
 === REPL Session Status ===
 Active Table  : df (344 rows x 7 cols, ~0.02 MB)
 Loaded Tables : 1 tables loaded [df*] (~0.02 MB in memory)
@@ -88,6 +88,9 @@ Checkpoints   : 2 saved (latest: baseline) [18.4 KB ephemeral disk, 0 MB RAM]
 Process RAM   : ~129.2 MB (PID 7158)
 ------------------------------------------------------------
 ```
+
+> [!NOTE]
+> Bare `status` directly displays the unified session status card. The legacy command `status session` is deprecated.
 
 ---
 

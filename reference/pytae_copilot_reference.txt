@@ -12893,7 +12893,7 @@ kind='hist': unsupported=[], controls=['annot', 'by', 'clip_data', 'column', 'dr
 
 [← Back to Master Reference](../../pytae.md)
 
-This guide covers ephemeral IPC snapshotting (`checkpoint`), instant workbench recovery (`restore`), milestone diffing (`-diff <checkpoint>`), table switching (`switch`), session status inspection (`status session`), smart pipeline export on exit (`exit -s [pt|py|path]`), in-session export (`export script`), and user preferences (`set`, `set save`) in the Pytae interactive REPL (`pytae -i`).
+This guide covers ephemeral IPC snapshotting (`checkpoint`), instant workbench recovery (`restore`), milestone diffing (`-diff`), table switching (`switch`), session status inspection (`status`), smart pipeline export on exit (`exit -s [pt|py|path]`), in-session export (`export script`), and user preferences (`set`, `set save`) in the Pytae interactive REPL (`pytae -i`).
 
 ---
 
@@ -12903,11 +12903,11 @@ This guide covers ephemeral IPC snapshotting (`checkpoint`), instant workbench r
 - [Checkpoints & Ephemeral IPC Storage](#checkpoints--ephemeral-ipc-storage)
   - [Saving & Updating Checkpoints (`checkpoint <name>`)](#saving--updating-checkpoints-checkpoint-name)
   - [Restoring Workbench State (`restore [name]`)](#restoring-workbench-state-restore-name)
-  - [Milestone Diffing Against Checkpoints (`-diff <checkpoint>`)](#milestone-diffing-against-checkpoints--diff-checkpoint)
+  - [Milestone Diffing Against Checkpoints (`-diff`)](#milestone-diffing-against-checkpoints--diff)
   - [Listing & Deleting Checkpoints (`status checkpoint`, `rm checkpoint`)](#listing--deleting-checkpoints-status-checkpoint-rm-checkpoint)
   - [Reverting to Disk Source (`reset`, `reset <tbl>`, `reset initial`)](#reverting-to-disk-source-reset)
 - [Table Navigation (`switch <name>`)](#table-navigation-switch-name)
-- [Session Status & Diagnostics (`status session`)](#session-status--diagnostics-status-session)
+- [Session Status & Diagnostics (`status`, `status -v`)](#session-status--diagnostics-status-status--v)
 - [Exporting Reusable Pipelines](#exporting-reusable-pipelines)
   - [Smart Export on Exit (`exit -s`, `exit -s py`, `exit -s pt`)](#smart-export-on-exit-exit--s-exit--s-py-exit--s-pt)
   - [In-Session Script Export (`export script`)](#in-session-script-export-export-script)
@@ -12965,7 +12965,7 @@ pytae [orders, cust]> restore
 Restored checkpoint 'baseline' (2 tables: orders, cust).
 ```
 
-*(Note: `revert` is supported as an exact synonym. The legacy verb `rollback` is deprecated and automatically routes to `restore` while displaying deprecation guidance).*
+*(Note: `restore` is the single canonical command. Both `revert` and `rollback` are deprecated and display deprecation guidance).*
 
 All post-checkpoint scratch tables and uncommitted mutations are automatically dropped.
 
@@ -13045,6 +13045,9 @@ Removed checkpoint 'filtered'.
 pytae> rm checkpoint *
 Cleared all saved checkpoints.
 ```
+
+> [!NOTE]
+> Checkpoint removal strictly uses the unified `rm` namespace: `rm checkpoint <name>` or `rm checkpoint *`. The inverted syntax `checkpoint rm` is deprecated.
 
 ### Reverting to Disk Source (`reset`)
 
@@ -13697,7 +13700,7 @@ Status         : active
 
 Inspect active session state, checkpoints, disk usage, and RAM:
 ```text
-pytae [df*]> status session
+pytae [df*]> status
 === REPL Session Status ===
 Active Table  : df (344 rows x 7 cols, ~0.02 MB)
 Loaded Tables : 1 tables loaded [df*] (~0.02 MB in memory)
@@ -13706,6 +13709,9 @@ Checkpoints   : 2 saved (latest: baseline) [18.4 KB ephemeral disk, 0 MB RAM]
 Process RAM   : ~129.2 MB (PID 7158)
 ------------------------------------------------------------
 ```
+
+> [!NOTE]
+> Bare `status` directly displays the unified session status card. The legacy command `status session` is deprecated.
 
 ---
 
@@ -14235,6 +14241,9 @@ pytae> -freq species
 Compare two in-memory tables, compare the active dataset against another table, or compare against a saved checkpoint with optional key alignment (`on=...`) and numeric tolerance (`-tol ...`). In alignment with Pytae's CLI standard where all dataset verbs use a leading hyphen, `-diff` requires a single hyphen (bare `diff` is rejected with educational guidance):
 
 ```text
+# Bare -diff automatically compares active table against latest milestone checkpoint
+pytae [orders*]> -diff
+
 # Compare active table against orders_backup
 pytae [orders]> -diff orders_backup
 
@@ -14832,13 +14841,13 @@ The **Pytae REPL** provides stateful, iterative in-memory data manipulation and 
 | **Transform** | Pipelines | `-filter "x > 1" -mutate "y = x * 2"` | Full 1:1 parity with Pytae CLI transformation flags |
 | | Relational Joins | `orders -join cust on=id how=left` | Relational join across workbench tables |
 | **Inspection** | Metadata | `-shape`, `-cols [asc\|desc\|pattern]`, `-schema`, `-nulls` | Non-destructive structural inspection |
-| | Previews | `-head 10`, `-tail 5`, `-sample 10`, `-diff df1 df2` | Non-destructive formatted row previews |
+| | Previews | `-head 10`, `-tail 5`, `-sample 10`, `-diff [target]` | Non-destructive formatted row previews & milestone diffs |
 | **SQL & Python**| `-sql` | `-sql "SELECT * FROM orders JOIN cust ..."` | Pure ANSI SQL across all loaded workbench tables |
 | | `py` (Model A) | `py k = df.to_pandas(); k = k.to_pytae()` | Embedded Python with immediate RAM cleanup & `.to_pytae()` |
 | **Checkpoints** | `checkpoint` | `checkpoint baseline` | Save ephemeral IPC snapshot (0 MB RAM overhead) |
 | | `restore` / `reset` | `restore baseline`, `reset` | Instantly revert workbench state to checkpoint |
 | **Parameters** | `@var` | `min_val = 3500`, `@cfg.threshold` | Session variables substituted in `-filter`, `-mutate`, `-sql` |
-| **Export & Replay**| `exit -s` | `exit -s`, `exit -s py`, `exit -s pt` | Export reproducible script (default: session.pt, py: session.py) on exit |
+| **Export & Replay**| `exit -s` / `export script` | `exit -s`, `exit -s py`, `export script p.pt` | Export reproducible script (on exit or in-session) |
 | | Batch Replay | `pytae -i < pipeline.txt` | Execute exported pipeline headlessly line by line |
 
 ### Detailed REPL Documentation Directory
@@ -15301,18 +15310,17 @@ pytae> sessions
 
 # Inside the REPL prompt:
 # 1. State Management & Checkpoints
+status [-v]          # Display unified session status, active table, RAM consumption, and history
 status table [-v]    # Inspect active table and list all loaded tables (-v for cols & RAM)
 switch orders        # Switch active dataset cursor to 'orders' ('use' deprecated)
 rename df1 customers # Zero-copy O(1) in-memory table rename
-diff df1 df2         # Compare two tables or active dataset against target (or checkpoint)
+-diff [target]       # Diff active table vs latest checkpoint, another table, or checkpoint:table
 reset                # Revert to latest checkpoint (or initial dataset if none)
 reset initial        # Revert strictly to initial dataset read (bypassing checkpoints)
-history              # Show session audit log (all steps auto-logged to ~/.pytae/history/)
-history 5            # Show last 5 steps from current session audit log
+history [N]          # Show session audit log (all steps auto-logged to ~/.pytae/history/)
 checkpoint v1        # Save ephemeral IPC snapshot across all active tables (0 MB RAM)
 rm checkpoint v1     # Delete a saved checkpoint from disk (or rm checkpoint *)
-restore v1           # Restore workbench to snapshot (or bare restore for latest)
-status session [-v]  # Display active workbench tables, RAM consumption, and history
+restore [v1]         # Restore workbench to snapshot (or bare restore for latest)
 export script p.pt   # Export executed pipeline to reproducible Pytae script
 export script p.py   # Export executed pipeline to reproducible Python script
 set save             # Persist current display settings to ~/.pytae/config.json

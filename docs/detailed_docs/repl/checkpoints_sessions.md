@@ -2,7 +2,7 @@
 
 [← Back to Master Reference](../../pytae.md)
 
-This guide covers ephemeral IPC snapshotting (`checkpoint`), instant workbench recovery (`restore`), milestone diffing (`-diff <checkpoint>`), table switching (`switch`), session status inspection (`status session`), smart pipeline export on exit (`exit -s [pt|py|path]`), in-session export (`export script`), and user preferences (`set`, `set save`) in the Pytae interactive REPL (`pytae -i`).
+This guide covers ephemeral IPC snapshotting (`checkpoint`), instant workbench recovery (`restore`), milestone diffing (`-diff`), table switching (`switch`), session status inspection (`status`), smart pipeline export on exit (`exit -s [pt|py|path]`), in-session export (`export script`), and user preferences (`set`, `set save`) in the Pytae interactive REPL (`pytae -i`).
 
 ---
 
@@ -12,11 +12,11 @@ This guide covers ephemeral IPC snapshotting (`checkpoint`), instant workbench r
 - [Checkpoints & Ephemeral IPC Storage](#checkpoints--ephemeral-ipc-storage)
   - [Saving & Updating Checkpoints (`checkpoint <name>`)](#saving--updating-checkpoints-checkpoint-name)
   - [Restoring Workbench State (`restore [name]`)](#restoring-workbench-state-restore-name)
-  - [Milestone Diffing Against Checkpoints (`-diff <checkpoint>`)](#milestone-diffing-against-checkpoints--diff-checkpoint)
+  - [Milestone Diffing Against Checkpoints (`-diff`)](#milestone-diffing-against-checkpoints--diff)
   - [Listing & Deleting Checkpoints (`status checkpoint`, `rm checkpoint`)](#listing--deleting-checkpoints-status-checkpoint-rm-checkpoint)
   - [Reverting to Disk Source (`reset`, `reset <tbl>`, `reset initial`)](#reverting-to-disk-source-reset)
 - [Table Navigation (`switch <name>`)](#table-navigation-switch-name)
-- [Session Status & Diagnostics (`status session`)](#session-status--diagnostics-status-session)
+- [Session Status & Diagnostics (`status`, `status -v`)](#session-status--diagnostics-status-status--v)
 - [Exporting Reusable Pipelines](#exporting-reusable-pipelines)
   - [Smart Export on Exit (`exit -s`, `exit -s py`, `exit -s pt`)](#smart-export-on-exit-exit--s-exit--s-py-exit--s-pt)
   - [In-Session Script Export (`export script`)](#in-session-script-export-export-script)
@@ -74,7 +74,7 @@ pytae [orders, cust]> restore
 Restored checkpoint 'baseline' (2 tables: orders, cust).
 ```
 
-*(Note: `revert` is supported as an exact synonym. The legacy verb `rollback` is deprecated and automatically routes to `restore` while displaying deprecation guidance).*
+*(Note: `restore` is the single canonical command. Both `revert` and `rollback` are deprecated and display deprecation guidance).*
 
 All post-checkpoint scratch tables and uncommitted mutations are automatically dropped.
 
@@ -154,6 +154,9 @@ Removed checkpoint 'filtered'.
 pytae> rm checkpoint *
 Cleared all saved checkpoints.
 ```
+
+> [!NOTE]
+> Checkpoint removal strictly uses the unified `rm` namespace: `rm checkpoint <name>` or `rm checkpoint *`. The inverted syntax `checkpoint rm` is deprecated.
 
 ### Reverting to Disk Source (`reset`)
 

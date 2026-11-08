@@ -115,6 +115,9 @@ pytae> -freq species
 Compare two in-memory tables, compare the active dataset against another table, or compare against a saved checkpoint with optional key alignment (`on=...`) and numeric tolerance (`-tol ...`). In alignment with Pytae's CLI standard where all dataset verbs use a leading hyphen, `-diff` requires a single hyphen (bare `diff` is rejected with educational guidance):
 
 ```text
+# Bare -diff automatically compares active table against latest milestone checkpoint
+pytae [orders*]> -diff
+
 # Compare active table against orders_backup
 pytae [orders]> -diff orders_backup
 
