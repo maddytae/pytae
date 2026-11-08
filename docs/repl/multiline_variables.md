@@ -1,6 +1,6 @@
 # REPL Guide: Multi-Line Input & Session Variables (`@var`)
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 This guide covers multi-line continuation, unclosed query buffers, session parameters (`@var`), nested configuration dictionaries, and safe JSON serialization in the Pytae interactive REPL (`pytae -i`).
 

@@ -1,6 +1,6 @@
 # CLI Feature Guide: Multi-File Relational Pipelines
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 Load, join, stack, and query multiple disparate datasets in a unified pipeline using natural positional file declarations, `-join`, `-concat`, `-opts`, and cross-file `-sql`.
 

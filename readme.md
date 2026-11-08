@@ -13,7 +13,7 @@ Fast, ergonomic tabular data manipulation, feature engineering, and visualizatio
 2. **Unix Pipeline CLI (`pytae`)**: Fast one-shot command-line data processing, format conversion, and terminal visualizations.
 3. **Interactive REPL Shell (`pytae -i`)**: Stateful in-memory workbench with disk-backed checkpoints, multi-table joins, and ANSI SQL.
 
-👉 **Quick Links**: [**CLI Cheat Sheet & Cookbook**](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md) | [**Interactive REPL Guide**](https://github.com/maddytae/pytae/blob/master/docs/pytae.md#interactive-repl-shell-pytae--i) | [**Standalone Binaries (Zero-Python)**](https://github.com/maddytae/pytae/blob/master/docs/binary_distribution.md) | [**Master Reference & Architecture Hub**](https://github.com/maddytae/pytae/blob/master/docs/pytae.md) | [**vs. Pandas**](https://github.com/maddytae/pytae/blob/master/docs/comparisons_with_other_tools/comparison_to_pandas.md) | [**vs. dplyr**](https://github.com/maddytae/pytae/blob/master/docs/comparisons_with_other_tools/comparison_to_dplyr.md) | [**vs. SAS**](https://github.com/maddytae/pytae/blob/master/docs/comparisons_with_other_tools/comparison_to_sas.md) | [**Benchmarks (5M Rows)**](https://github.com/maddytae/pytae/blob/master/docs/benchmarks/README.md)
+👉 **Quick Links**: [**CLI Cheat Sheet & Cookbook**](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md) | [**Interactive REPL Guide**](https://github.com/maddytae/pytae/blob/master/docs/pytae.md#interactive-repl-shell-pytae--i) | [**Standalone Binaries (Zero-Python)**](https://github.com/maddytae/pytae/blob/master/docs/binary_distribution.md) | [**Master Reference & Architecture Hub**](https://github.com/maddytae/pytae/blob/master/docs/pytae.md) | [**vs. Pandas**](https://github.com/maddytae/pytae/blob/master/docs/comparisons/comparison_to_pandas.md) | [**vs. dplyr**](https://github.com/maddytae/pytae/blob/master/docs/comparisons/comparison_to_dplyr.md) | [**vs. SAS**](https://github.com/maddytae/pytae/blob/master/docs/comparisons/comparison_to_sas.md) | [**Benchmarks (5M Rows)**](https://github.com/maddytae/pytae/blob/master/docs/benchmarks/README.md)
 
 ---
 
@@ -99,7 +99,7 @@ plotter.add("C", penguins, kind="box", y="body_mass_g", by="species")
 plotter.finalize(title="Penguin Morphology Dashboard", save="dashboard.png")
 ```
 
-👉 **Plotting Guides**: [Plotting Notebook](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/plotting/plotting.ipynb) | [CLI Plotting Guide](https://github.com/maddytae/pytae/blob/master/docs/detailed_docs/cli/cli_plots.md)
+👉 **Plotting Guides**: [Plotting Notebook](https://github.com/maddytae/pytae/blob/master/docs/notebooks/plotting/plotting.ipynb) | [CLI Plotting Guide](https://github.com/maddytae/pytae/blob/master/docs/guides/cli_plots.md)
 
 ---
 
@@ -137,7 +137,7 @@ pytae yesterday.parquet -diff today.parquet -tol 1e-4
 pytae users.csv -mask "email=hash, ssn=encrypt" -key "SecretKey123" -o secure.parquet
 ```
 
-👉 **CLI Quick Reference**: [**Cheat Sheet & Cookbook**](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md) or run `pytae -cheatsheet` in your terminal! | **Full CLI Manuals**: [docs/detailed_docs/cli/](https://github.com/maddytae/pytae/tree/master/docs/detailed_docs/cli/)
+👉 **CLI Quick Reference**: [**Cheat Sheet & Cookbook**](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md) or run `pytae -cheatsheet` in your terminal! | **Full CLI & Engine Guides**: [docs/guides/](https://github.com/maddytae/pytae/tree/master/docs/guides/)
 
 ---
 
@@ -195,7 +195,7 @@ pytae> exit -s                   # Save clean, pruned pipeline on exit to ./sess
 >   - Pytae pipelines: Run headlessly with `pytae pipeline.pt`, or stay inside REPL with `pytae -i pipeline.pt`.
 >   - Python scripts: Run with standard Python via `python pipeline.py` (or `python -i pipeline.py`).
 
-👉 **Read the Full REPL Manual**: [Interactive REPL Guide](https://github.com/maddytae/pytae/blob/master/docs/pytae.md#interactive-repl-shell-pytae--i) | [REPL Topic Guides](https://github.com/maddytae/pytae/tree/master/docs/detailed_docs/repl/)
+👉 **Read the Full REPL Manual**: [Interactive REPL Guide](https://github.com/maddytae/pytae/blob/master/docs/pytae.md#interactive-repl-shell-pytae--i) | [REPL Topic Guides](https://github.com/maddytae/pytae/tree/master/docs/repl/)
 
 ---
 
@@ -210,9 +210,9 @@ pytae> exit -s                   # Save clean, pruned pipeline on exit to ./sess
 | **Cross-Tab Pivot** | `pd.pivot_table(df, ...)`<br>*(Hierarchical tuples)* | `pivot_wider(df, ...)` | `PROC TRANSPOSE DATA=in ...;`<br>`BY ...; RUN;` | `df.pivot(r='x', c='y', v='z')`<br>`pytae in.csv -pivot "r=x,c=y,v=z"` |
 
 Detailed migration guides with line-by-line syntax comparisons:
-- **[Pytae vs. Pandas Deep Dive](https://github.com/maddytae/pytae/blob/master/docs/comparisons_with_other_tools/comparison_to_pandas.md)**: Index traps, `MultiIndex` flattening, silent `dropna` data loss, memory copies.
-- **[Pytae vs. dplyr Deep Dive](https://github.com/maddytae/pytae/blob/master/docs/comparisons_with_other_tools/comparison_to_dplyr.md)**: Eliminating sticky grouping (`ungroup`), Non-Standard Evaluation quoting ambiguity, CLI parity.
-- **[Pytae vs. SAS Migration Guide](https://github.com/maddytae/pytae/blob/master/docs/comparisons_with_other_tools/comparison_to_sas.md)**: Unifying `DATA` step + `PROC SQL` + procedures, sorting requirements for merge, negative infinity missing values.
+- **[Pytae vs. Pandas Deep Dive](https://github.com/maddytae/pytae/blob/master/docs/comparisons/comparison_to_pandas.md)**: Index traps, `MultiIndex` flattening, silent `dropna` data loss, memory copies.
+- **[Pytae vs. dplyr Deep Dive](https://github.com/maddytae/pytae/blob/master/docs/comparisons/comparison_to_dplyr.md)**: Eliminating sticky grouping (`ungroup`), Non-Standard Evaluation quoting ambiguity, CLI parity.
+- **[Pytae vs. SAS Migration Guide](https://github.com/maddytae/pytae/blob/master/docs/comparisons/comparison_to_sas.md)**: Unifying `DATA` step + `PROC SQL` + procedures, sorting requirements for merge, negative infinity missing values.
 
 ---
 
@@ -220,15 +220,15 @@ Detailed migration guides with line-by-line syntax comparisons:
 
 ### Architecture, Philosophy & Ecosystem
 - **[Master Reference & Architecture Hub](https://github.com/maddytae/pytae/blob/master/docs/pytae.md)**: Philosophy, the 7 pillars, naming rationale, eager vs. lazy execution, and architecture guide.
-- **[Ecosystem Comparisons](https://github.com/maddytae/pytae/tree/master/docs/comparisons_with_other_tools/)**: Detailed Rosetta Stone guides for [Pandas](https://github.com/maddytae/pytae/blob/master/docs/comparisons_with_other_tools/comparison_to_pandas.md), [dplyr](https://github.com/maddytae/pytae/blob/master/docs/comparisons_with_other_tools/comparison_to_dplyr.md), and [SAS](https://github.com/maddytae/pytae/blob/master/docs/comparisons_with_other_tools/comparison_to_sas.md).
+- **[Ecosystem Comparisons](https://github.com/maddytae/pytae/tree/master/docs/comparisons/)**: Detailed Rosetta Stone guides for [Pandas](https://github.com/maddytae/pytae/blob/master/docs/comparisons/comparison_to_pandas.md), [dplyr](https://github.com/maddytae/pytae/blob/master/docs/comparisons/comparison_to_dplyr.md), and [SAS](https://github.com/maddytae/pytae/blob/master/docs/comparisons/comparison_to_sas.md).
 - **[Performance Benchmarks (5M Rows)](https://github.com/maddytae/pytae/blob/master/docs/benchmarks/README.md)**: Reproducible speed benchmarks vs. Pandas across realistic analytical workloads.
 - **[Standalone Portable Binaries](https://github.com/maddytae/pytae/blob/master/docs/binary_distribution.md)**: Single-binary setup and execution guide (Zero-Python).
 
 ### Guides & Manuals
 - **[CLI Cheat Sheet & Cookbook](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md)**: 14 curated sections of one-liner recipes and Unix shell workflows.
-- **[Detailed CLI Topic Manuals](https://github.com/maddytae/pytae/tree/master/docs/detailed_docs/cli/)**: In-depth feature guides for each CLI flag (`filter`, `mutate`, `arrange`, `join`, `diff`, `mask`, `sql`, etc.).
-- **[Interactive REPL Subsystem](https://github.com/maddytae/pytae/tree/master/docs/detailed_docs/repl/)**: Deep dives on ingestion, checkpoints, SQL/Python interop, session variables, and memory management.
-- **[Interactive Python Notebooks](https://github.com/maddytae/pytae/tree/master/docs/detailed_docs/library/)**: Fully executed Jupyter notebooks for each Python API verb.
+- **[Feature & CLI Guides](https://github.com/maddytae/pytae/tree/master/docs/guides/)**: In-depth feature guides for each verb and CLI flag (`filter`, `mutate`, `arrange`, `join`, `diff`, `mask`, `sql`, etc.).
+- **[Interactive REPL Subsystem](https://github.com/maddytae/pytae/tree/master/docs/repl/)**: Deep dives on ingestion, checkpoints, SQL/Python interop, session variables, and memory management.
+- **[Interactive Python Companion Notebooks](https://github.com/maddytae/pytae/tree/master/docs/notebooks/library/)**: Fully executed Jupyter notebooks for each Python API verb.
 
 ---
 

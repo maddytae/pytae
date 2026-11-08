@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.13.9] - 2026-11-08
+
+### Changed & Reorganized
+- **Simplified & Unified Documentation Architecture**:
+  - Reorganized all documentation into a clean, shallow, intuitive folder structure with zero loss of recipes, code examples, or details:
+    - `docs/guides/`: 19 comprehensive feature and CLI guides (`filter.md`, `mutate.md`, `agg.md`, etc.).
+    - `docs/repl/`: 6 dedicated REPL subsystem and memory management manuals.
+    - `docs/comparisons/`: 3 in-depth migration guides and Rosetta Stones for Pandas, dplyr, and SAS.
+    - `docs/notebooks/`: Executable companion Jupyter notebooks for Python API verbs and plotting.
+  - Updated SQLite FTS5 search indexer (`src/pytae/doc_search.py`) to index `docs/guides/` with fallback support.
+  - Updated reference compilers (`scripts/generate_reference.py`) and regenerated `pytae_copilot_reference.txt`, `pytae_copilot_instructions.txt`, and `pytae_docs.db`.
+  - Harmonized all cross-document relative links and master guide navigation across `docs/pytae.md`, `docs/cli_cheatsheet.md`, and `readme.md`.
+
 ## [3.13.8] - 2026-11-08
 
 ### Fixed

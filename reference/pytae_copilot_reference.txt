@@ -1,6 +1,6 @@
 ================================================================================
 PYTAE COMPREHENSIVE KNOWLEDGE BASE & AGENT TRAINING REFERENCE MANUAL
-RELEASE VERSION: 3.13.8
+RELEASE VERSION: 3.13.9
 ================================================================================
 
 TABLE OF CONTENTS
@@ -91,7 +91,7 @@ TABLE OF CONTENTS
     Recipe 11: Quarter-Over-Quarter Portfolio Drift & Key-Aware Diffing
     Recipe 12: Complex Date-Range & Multi-Condition Filtering
     Recipe 13: Excel Multi-Sheet Ingestion with Strict -opts
-8.  DETAILED FEATURE DOCUMENTATION GUIDES (docs/detailed_docs/)
+8.  DETAILED FEATURE DOCUMENTATION GUIDES (docs/guides/, docs/repl/, docs/notebooks/)
 9.  MASTER DOCUMENTATION & ARCHITECTURE GUIDE (docs/pytae.md)
 10. ECOSYSTEM COMPARISONS & MIGRATION GUIDES (Pandas, dplyr, SAS)
 11. REPOSITORY DIRECTORY TREE
@@ -189,7 +189,7 @@ RULE 7: THE "TWIN PROOF" RULE (GROUND ON SAMPLE DATASETS)
 
 1. OVERVIEW & CORE PHILOSOPHY
 --------------------------------------------------------------------------------
-Package: pytae (Current Release Version: 3.13.8)
+Package: pytae (Current Release Version: 3.13.9)
 
 `pytae` is an ergonomic, high-performance tabular data manipulation library and 
 command-line tool powered by a 100% native multithreaded SIMD Polars engine with 
@@ -229,8 +229,8 @@ Key principles:
 
 2. PACKAGE ARCHITECTURE & IMPORT PATTERNS
 --------------------------------------------------------------------------------
-Installation (PyPI: https://pypi.org/project/pytae/3.13.8/):
-  pip install pytae==3.13.8
+Installation (PyPI: https://pypi.org/project/pytae/3.13.9/):
+  pip install pytae==3.13.9
   pip install 'pytae[plot]'    # includes matplotlib, scipy
 
 Importing:
@@ -1686,15 +1686,15 @@ pytae a=portfolio.xlsx b=portfolio.xlsx   -opts "a:sheet=Loans, a:skiprows=2, b:
 ```
 
 ================================================================================
-8. DETAILED FEATURE DOCUMENTATION GUIDES (docs/detailed_docs/)
+8. DETAILED FEATURE DOCUMENTATION GUIDES (docs/guides/, docs/repl/, docs/notebooks/)
 ================================================================================
 
 ################################################################################
-# FILE: docs/detailed_docs/cli/agg.md
+# FILE: docs/guides/agg.md
 ################################################################################
 # CLI Feature Guide: Aggregations & Grouping
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 Group, aggregate, and calculate window statistics using pytae's unified `-by` + `-agg` framework and grouped mutations (`-by` + `-mutate`).
 
@@ -1976,11 +1976,11 @@ pytae penguins.parquet -dropna sex -by sex -agg mean -round 1
 | Male | 45.9 | 17.9 | 204.5 | 4545.7 |
 
 ################################################################################
-# FILE: docs/detailed_docs/cli/arrange.md
+# FILE: docs/guides/arrange.md
 ################################################################################
 # CLI Feature Guide: Row Sorting (`-arrange`)
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 Order DataFrame rows by one or more columns with full support for descending orders (`desc`) and bracket notation for columns with spaces.
 
@@ -2090,7 +2090,7 @@ pytae sales.csv -arrange "[annual revenue] desc" -head 5
 | 95000 | West |
 
 ################################################################################
-# FILE: docs/detailed_docs/cli/clean_replace.md
+# FILE: docs/guides/clean_replace.md
 ################################################################################
 # CLI Feature Guide: Data Cleaning, Imputation, & Renaming
 
@@ -2240,11 +2240,11 @@ pytae deals.parquet -mutate "broker = map(deal_type, {'Direct': 'DIR'}, broker_c
 ```
 
 ################################################################################
-# FILE: docs/detailed_docs/cli/cli_plots.md
+# FILE: docs/guides/cli_plots.md
 ################################################################################
 # CLI Feature Guide: CLI Plotting & Visualizations (`cli_plots`)
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 `pytae` includes first-class visualization and plotting capabilities directly from the command line:
 - **Terminal In-Line Visualizations**: Instant ASCII and Braille charts rendered directly in console scrollback (`-freq`, `-hist`, `-bar`, `-scatter`, `-corr`).
@@ -2549,11 +2549,11 @@ To enable interactive plot windows on Linux:
 - **Remote / Headless / SSH**: If connecting over SSH or headless servers without an X11/Wayland display server (`$DISPLAY`), export to an image file directly with `-o plot.png` or use SSH X11 forwarding (`ssh -X`).
 
 ################################################################################
-# FILE: docs/detailed_docs/cli/diff.md
+# FILE: docs/guides/diff.md
 ################################################################################
 # CLI Feature Guide: Dataset & Schema Diffing
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 Compare schemas, dimensions, added/removed columns, data type drift, null count variations, and cell values against another tabular dataset using `-diff`.
 
@@ -2749,11 +2749,11 @@ pytae daily_batches/*.parquet -diff baseline.parquet
 ```
 
 ################################################################################
-# FILE: docs/detailed_docs/cli/distinct.md
+# FILE: docs/guides/distinct.md
 ################################################################################
 # CLI Feature Guide: Distinct Rows (`-distinct`)
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 Drop duplicate rows across the intermediate DataFrame with full control over column subsets.
 
@@ -2864,11 +2864,11 @@ pytae penguins.parquet \
 | Gentoo | Biscoe |
 
 ################################################################################
-# FILE: docs/detailed_docs/cli/filter.md
+# FILE: docs/guides/filter.md
 ################################################################################
 # CLI Feature Guide: Row Filtering & Slicing
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 Filter rows using pytae's ergonomic filter expressions (`-filter`), drop missing rows (`-dropna`), or slice rows (`-head`, `-tail`, `-arrange`).
 
@@ -3255,11 +3255,11 @@ In terminal shells (bash, zsh):
 - Columns with spaces should be wrapped in brackets: `[bill length mm] > 40` or `-arrange "[bill length mm] desc" -head 3`.
 
 ################################################################################
-# FILE: docs/detailed_docs/cli/head_tail.md
+# FILE: docs/guides/head_tail.md
 ################################################################################
 # CLI Feature Guide: Row Slicing (`-head` & `-tail`)
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 Extract first, last, or extreme rows with full group awareness via `-by`, proportion limits (`10%`), and boundary tie handling (`ties=true`).
 
@@ -3456,11 +3456,11 @@ The niche verb `-pick` has been removed. In Pytae:
 Calling `-pick` raises an immediate, helpful redirect error guiding users to compose `-arrange` and `-head`/`-tail`.
 
 ################################################################################
-# FILE: docs/detailed_docs/cli/inspect.md
+# FILE: docs/guides/inspect.md
 ################################################################################
 # CLI Feature Guide: Inspection & Metadata
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 Inspect file dimensions, structure, sample rows, statistical distributions, and low-level storage metadata without writing boilerplate Python code.
 
@@ -3869,7 +3869,7 @@ pytae penguins.parquet -shape -head 3
 ```
 
 ################################################################################
-# FILE: docs/detailed_docs/cli/join.md
+# FILE: docs/guides/join.md
 ################################################################################
 # CLI Feature Guide: Relational Joins & Stacking (`-join` & `-concat`)
 
@@ -4063,7 +4063,7 @@ pytae o=orders.parquet c=customers.csv \
 ```
 
 ################################################################################
-# FILE: docs/detailed_docs/cli/mask.md
+# FILE: docs/guides/mask.md
 ################################################################################
 # CLI Feature Guide: Data Masking, Encryption & Tokenization (`-mask`, `-unmask`)
 
@@ -4195,11 +4195,11 @@ pytae internal_records.csv \
 ```
 
 ################################################################################
-# FILE: docs/detailed_docs/cli/multi_file.md
+# FILE: docs/guides/multi_file.md
 ################################################################################
 # CLI Feature Guide: Multi-File Relational Pipelines
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 Load, join, stack, and query multiple disparate datasets in a unified pipeline using natural positional file declarations, `-join`, `-concat`, `-opts`, and cross-file `-sql`.
 
@@ -4402,11 +4402,11 @@ pytae a=a.parquet b=b.csv \
 > - Glob-pattern batch conversion (`pytae 'data/*.parquet' -o csv`) is a separate single-file batch operation.
 
 ################################################################################
-# FILE: docs/detailed_docs/cli/mutate.md
+# FILE: docs/guides/mutate.md
 ################################################################################
 # CLI Feature Guide: Mutating & Computing Columns
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 Compute new columns or overwrite existing columns with mathematical formulas, ratios, boolean indicators, and Pandas expressions using `-mutate`.
 
@@ -4903,11 +4903,11 @@ In shell environments:
   - Incorrect: `mass_kg = 'body_mass_g' / 1000`
 
 ################################################################################
-# FILE: docs/detailed_docs/cli/other_utilities.md
+# FILE: docs/guides/other_utilities.md
 ################################################################################
 # CLI Feature Guide: Other Utilities & Miscellaneous Commands
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 Essential utilities, convenience flags, inspection shortcuts, cleaning helpers, multi-file workflows, I/O modifiers, and formatting options that complement core analytical verbs.
 
@@ -5212,11 +5212,11 @@ pytae -mcp
 ```
 
 ################################################################################
-# FILE: docs/detailed_docs/cli/pivot.md
+# FILE: docs/guides/pivot.md
 ################################################################################
 # CLI Feature Guide: 2D Pivot Tables (`-pivot`)
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 `-pivot` provides an Excel-style 2D pivot table engine with universal `r, c, v, a` vocabulary:
 - **Rows (`r=`)**: Row dimension(s) (*optional*).
@@ -5430,11 +5430,11 @@ pytae penguins.parquet \
 | **Subtotals & Totals** | None (preserves relational types & chaining) | None |
 
 ################################################################################
-# FILE: docs/detailed_docs/cli/read_write.md
+# FILE: docs/guides/read_write.md
 ################################################################################
 # CLI Feature Guide: File I/O, Export, & Compression
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 Export pipeline results, batch-convert datasets, route outputs to dedicated directories (`-out_dir`), stream large files with progress bars (`-progress`), and read/write gzip-compressed and JSON Lines formats.
 
@@ -5727,11 +5727,11 @@ Wrote 150000 rows to exports/file2.csv.gz
 ```
 
 ################################################################################
-# FILE: docs/detailed_docs/cli/reshape.md
+# FILE: docs/guides/reshape.md
 ################################################################################
 # CLI Feature Guide: Reshaping (Pure 1-to-1: `-long` & `-wide`)
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 Pure structural 1-to-1 reshaping between long and wide formats without aggregation.
 
@@ -5907,11 +5907,11 @@ pytae: error: wide() encountered duplicate entries for index [...] and column '.
 👉 See the complete **[2D Pivot Tables Guide](pivot.md)** for all multi-dimensional aggregation patterns.
 
 ################################################################################
-# FILE: docs/detailed_docs/cli/select.md
+# FILE: docs/guides/select.md
 ################################################################################
 # CLI Feature Guide: Column Selection
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 Select, filter, reorder, and exclude columns using names, negative prefixes, ranges, pattern matching, or data types with `-select`.
 
@@ -6147,11 +6147,11 @@ pytae penguins.parquet \
 | Gentoo    |    5076.02 |
 
 ################################################################################
-# FILE: docs/detailed_docs/cli/sql.md
+# FILE: docs/guides/sql.md
 ################################################################################
 # CLI Feature Guide: SQL Engine
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 Execute full analytical SQL queries directly against tabular files and in-memory pipeline views via Polars SQLContext using `-sql`.
 
@@ -6330,7 +6330,7 @@ pytae c=customers.csv o=orders.parquet \
 | 3 | Charlie | 0 | NaN |
 
 ################################################################################
-# NOTEBOOK: docs/detailed_docs/library/agg.ipynb
+# NOTEBOOK: docs/notebooks/library/agg.ipynb
 ################################################################################
 # Notebook: agg.ipynb
 
@@ -6814,7 +6814,7 @@ shape: (2, 4)
 ```
 
 ################################################################################
-# NOTEBOOK: docs/detailed_docs/library/arrange.ipynb
+# NOTEBOOK: docs/notebooks/library/arrange.ipynb
 ################################################################################
 # Notebook: arrange.ipynb
 
@@ -7029,7 +7029,7 @@ Error caught as expected: arrange(): leading '-' is not supported. In line with 
 ```
 
 ################################################################################
-# NOTEBOOK: docs/detailed_docs/library/distinct.ipynb
+# NOTEBOOK: docs/notebooks/library/distinct.ipynb
 ################################################################################
 # Notebook: distinct.ipynb
 
@@ -7200,7 +7200,7 @@ shape: (5, 2)
 ```
 
 ################################################################################
-# NOTEBOOK: docs/detailed_docs/library/filter.ipynb
+# NOTEBOOK: docs/notebooks/library/filter.ipynb
 ################################################################################
 # Notebook: filter.ipynb
 
@@ -8472,7 +8472,7 @@ shape: (4, 4)
 ```
 
 ################################################################################
-# NOTEBOOK: docs/detailed_docs/library/head_tail.ipynb
+# NOTEBOOK: docs/notebooks/library/head_tail.ipynb
 ################################################################################
 # Notebook: head_tail.ipynb
 
@@ -8698,7 +8698,7 @@ shape: (1, 3)
 ```
 
 ################################################################################
-# NOTEBOOK: docs/detailed_docs/library/join.ipynb
+# NOTEBOOK: docs/notebooks/library/join.ipynb
 ################################################################################
 # Notebook: join.ipynb
 
@@ -8960,7 +8960,7 @@ shape: (4, 2)
 ```
 
 ################################################################################
-# NOTEBOOK: docs/detailed_docs/library/mutate.ipynb
+# NOTEBOOK: docs/notebooks/library/mutate.ipynb
 ################################################################################
 # Notebook: mutate.ipynb
 
@@ -10213,7 +10213,7 @@ shape: (3, 4)
 ```
 
 ################################################################################
-# NOTEBOOK: docs/detailed_docs/library/other_utilities.ipynb
+# NOTEBOOK: docs/notebooks/library/other_utilities.ipynb
 ################################################################################
 # Notebook: other_utilities.ipynb
 
@@ -10876,7 +10876,7 @@ print("De-tokenization restored original types & values!")
 ```
 
 ################################################################################
-# NOTEBOOK: docs/detailed_docs/library/pivot.ipynb
+# NOTEBOOK: docs/notebooks/library/pivot.ipynb
 ################################################################################
 # Notebook: pivot.ipynb
 
@@ -11088,7 +11088,7 @@ shape: (3, 4)
 ```
 
 ################################################################################
-# NOTEBOOK: docs/detailed_docs/library/read_write.ipynb
+# NOTEBOOK: docs/notebooks/library/read_write.ipynb
 ################################################################################
 # Notebook: read_write.ipynb
 
@@ -11247,7 +11247,7 @@ shape: (3, 2)
 ```
 
 ################################################################################
-# NOTEBOOK: docs/detailed_docs/library/reshape.ipynb
+# NOTEBOOK: docs/notebooks/library/reshape.ipynb
 ################################################################################
 # Notebook: reshape.ipynb
 
@@ -11492,7 +11492,7 @@ shape: (5, 13)
 ```
 
 ################################################################################
-# NOTEBOOK: docs/detailed_docs/library/select.ipynb
+# NOTEBOOK: docs/notebooks/library/select.ipynb
 ################################################################################
 # Notebook: select.ipynb
 
@@ -12080,7 +12080,7 @@ shape: (5, 1)
 ```
 
 ################################################################################
-# NOTEBOOK: docs/detailed_docs/library/sql.ipynb
+# NOTEBOOK: docs/notebooks/library/sql.ipynb
 ################################################################################
 # Notebook: sql.ipynb
 
@@ -12281,7 +12281,7 @@ shape: (6, 4)
 ```
 
 ################################################################################
-# NOTEBOOK: docs/detailed_docs/plotting/plotting.ipynb
+# NOTEBOOK: docs/notebooks/plotting/plotting.ipynb
 ################################################################################
 # Notebook: plotting.ipynb
 
@@ -12887,11 +12887,11 @@ kind='hist': unsupported=[], controls=['annot', 'by', 'clip_data', 'column', 'dr
 ```
 
 ################################################################################
-# FILE: docs/detailed_docs/repl/checkpoints_sessions.md
+# FILE: docs/repl/checkpoints_sessions.md
 ################################################################################
 # REPL Guide: In-Memory Workbench, Checkpoints & Configuration
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 This guide covers ephemeral IPC snapshotting (`checkpoint`), instant workbench recovery (`restore`), milestone diffing (`-diff`), table switching (`switch`), session status inspection (`status`), smart pipeline export on exit (`exit -s [pt|py|path]`), in-session export (`export script`), and user preferences (`set`, `set save`) in the Pytae interactive REPL (`pytae -i`).
 
@@ -13391,11 +13391,11 @@ The JSON configuration file is loaded automatically on subsequent REPL launches:
 > - Run exported scripts in batch mode via `pytae <script.pt>` or `python <script.py>`.
 
 ################################################################################
-# FILE: docs/detailed_docs/repl/ingestion_tables.md
+# FILE: docs/repl/ingestion_tables.md
 ################################################################################
 # REPL Guide: Ingestion & Multi-Table Workbench
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 This guide covers ingesting files, managing multiple tables simultaneously in RAM, switching active cursors, zero-copy renaming, and relational joins in the Pytae interactive REPL (`pytae -i`).
 
@@ -13629,11 +13629,11 @@ Created 'enriched' (100,000 rows x 10 cols).
 ```
 
 ################################################################################
-# FILE: docs/detailed_docs/repl/memory_history_replay.md
+# FILE: docs/repl/memory_history_replay.md
 ################################################################################
 # REPL Guide: Memory Management, History & Replay Scripts
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 This guide covers memory deallocation, OS page trimming, audit logs, session export (`exit -s`), batch replay pipelines, and Unix shell integration in the Pytae interactive REPL (`pytae -i`).
 
@@ -13873,11 +13873,11 @@ The Pytae REPL provides context-aware autocompletion via standard `readline`:
 - **Keybindings**: <kbd>Ctrl+A</kbd> / <kbd>Home</kbd> jumps to the beginning of the line; <kbd>Ctrl+E</kbd> / <kbd>End</kbd> jumps to the end; <kbd>Ctrl+C</kbd> aborts multi-line continuation prompts.
 
 ################################################################################
-# FILE: docs/detailed_docs/repl/multiline_variables.md
+# FILE: docs/repl/multiline_variables.md
 ################################################################################
 # REPL Guide: Multi-Line Input & Session Variables (`@var`)
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 This guide covers multi-line continuation, unclosed query buffers, session parameters (`@var`), nested configuration dictionaries, and safe JSON serialization in the Pytae interactive REPL (`pytae -i`).
 
@@ -14155,11 +14155,11 @@ To guarantee predictable execution and prevent confusing state collisions:
    `pytae: session variables must be defined without '@' (use 'min_spend = ...'; '@' is for referencing like '@min_spend').`
 
 ################################################################################
-# FILE: docs/detailed_docs/repl/pipelines_inspection.md
+# FILE: docs/repl/pipelines_inspection.md
 ################################################################################
 # REPL Guide: Pipelines & Non-Destructive Inspection
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 This guide covers in-memory pipeline transformations and non-destructive data inspection flags in the Pytae interactive REPL (`pytae -i`).
 
@@ -14309,11 +14309,11 @@ pytae> -diff df1 "df2,on=customer_id"
 ```
 
 ################################################################################
-# FILE: docs/detailed_docs/repl/sql_python.md
+# FILE: docs/repl/sql_python.md
 ################################################################################
 # REPL Guide: SQL & Python Interop (Model A RAM Isolation)
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 This guide covers ANSI SQL querying across loaded tables, embedded Python execution (`py <expr>`), the **Model A RAM Isolation architecture**, and explicit `.to_pytae()` table conversion in the Pytae interactive REPL (`pytae -i`).
 
@@ -14678,7 +14678,7 @@ Pytae carefully chooses concise, intention-revealing names that eliminate ambigu
 - **High-Performance Visualizer**: Polars delivers unmatched multithreaded SIMD vector speed for data ingestion, filtering, and aggregation. Visualizations are rendered via Pytae's native `Plotter` engine (`pytae.plotting.Plotter`), offering full integration with Matplotlib and Seaborn.
 - **Zero-Friction Bridge**: Calling `.plot()` routes directly through `Plotter`. Users get multi-panel facet grids (`col`, `ncols`, `facet=True`), subplot mosaics (`mosaic="..."`), secondary axes (`^`), automatic legend consolidation, and publication themes, with seamless `.finalize().save('out.png')` chaining without writing conversion boilerplate.
 - **Clean Separation of Concerns**: Aggregation belongs in Polars (`.by().agg()`); visualization belongs in Plotter (`.plot()`). Pytae strictly prohibits implicit in-plot aggregation, keeping your pipelines predictable and high-performance.
-- 👉 **Interactive Plotting Notebook**: [detailed_docs/plotting/plotting.ipynb](detailed_docs/plotting/plotting.ipynb)
+- 👉 **Interactive Plotting Notebook**: [notebooks/plotting/plotting.ipynb](notebooks/plotting/plotting.ipynb)
 
 ---
 
@@ -14840,19 +14840,19 @@ Pytae was designed to synthesize the best strengths of the modern data engineeri
 
 For exhaustive syntax mappings, feature-by-feature Rosetta stones, and migration walkthroughs, see the dedicated guides:
 
-- **[Pytae vs. Pandas Deep Dive & Rosetta Stone](comparisons_with_other_tools/comparison_to_pandas.md)**:
+- **[Pytae vs. Pandas Deep Dive & Rosetta Stone](comparisons/comparison_to_pandas.md)**:
   - Eliminating the `MultiIndex` nightmare and index management overhead.
   - Avoiding Pandas silent data loss traps (`dropna=True` in groupby).
   - Performance benchmarks: single-threaded Python GIL vs. native Polars Rust SIMD.
   - Complete 14-task syntax translation table and end-to-end pipeline comparison.
 
-- **[Pytae vs. dplyr (R / Tidyverse) Deep Dive & Rosetta Stone](comparisons_with_other_tools/comparison_to_dplyr.md)**:
+- **[Pytae vs. dplyr (R / Tidyverse) Deep Dive & Rosetta Stone](comparisons/comparison_to_dplyr.md)**:
   - Bringing Tidyverse elegance to Python without Non-Standard Evaluation (NSE) quoting headaches.
   - Why `ungroup()` is obsolete: comparing dplyr's sticky grouping with Pytae's single-shot auto-clearing `df.by()`.
   - Multi-column transformations: `across()` vs. Pytae's concise `(a, b)_cm = _ * 10`.
   - Full Tidyverse-to-Pytae Rosetta stone and Unix CLI parity.
 
-- **[Pytae vs. SAS Deep Dive & Migration Guide](comparisons_with_other_tools/comparison_to_sas.md)**:
+- **[Pytae vs. SAS Deep Dive & Migration Guide](comparisons/comparison_to_sas.md)**:
   - Transitioning from the procedural Program Data Vector (PDV) to modern vectorized SIMD execution.
   - The dangerous SAS missing value trap (numeric `.` sorting below negative infinity).
   - Eliminating the mandatory pre-sorting requirement of SAS `MERGE ... BY ...`.
@@ -14864,31 +14864,34 @@ For exhaustive syntax mappings, feature-by-feature Rosetta stones, and migration
 
 All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge cases are documented under **`docs/`**:
 - **`docs/cli_cheatsheet.md`**: [**The Definitive CLI Cheat Sheet & Cookbook**](cli_cheatsheet.md) — 12 curated sections of one-liner recipes and Unix shell workflows.
-- **`detailed_docs/cli/`**: Comprehensive Command Line Markdown guides (`.md`)
-- **`detailed_docs/library/`**: Interactive, fully executed Jupyter Notebooks (`.ipynb`)
+- **`docs/guides/`**: Comprehensive Feature & Command Line Markdown guides (`.md`)
+- **`docs/notebooks/`**: Interactive, fully executed Jupyter Companion Notebooks (`.ipynb`)
+- **`docs/repl/`**: Deep dive guides for the interactive REPL shell and memory management.
+- **`docs/comparisons/`**: Deep dive migration guides and Rosetta Stones.
 
-| Category | Python Library (Notebook) | CLI Guide (Markdown) | Key Capabilities & Verbs |
+| Category | Python Library (Notebook) | CLI & Engine Guide (Markdown) | Key Capabilities & Verbs |
 |:---|:---|:---|:---|
-| **Data I/O** | **[read_write.ipynb](detailed_docs/library/read_write.ipynb)** | **[read_write.md](detailed_docs/cli/read_write.md)** | `pt.read_*`, `pt.scan_*`, `write_*`, `-o`, `-out_dir`, `-fmt`, `-progress`, STDIN, clipboard |
-| **Derivations** | **[mutate.ipynb](detailed_docs/library/mutate.ipynb)** | **[mutate.md](detailed_docs/cli/mutate.md)** | `mutate`, formulas, sequential assignments, `if_else`, `case_when`, `map`, `shift`, `@var` |
-| **Row Filtering** | **[filter.ipynb](detailed_docs/library/filter.ipynb)** | **[filter.md](detailed_docs/cli/filter.md)** | `filter`, `assert_` (data assertions), intervals `[10, 20]`, set membership `in`, `or`/`and`, string methods, callables |
-| **Columns** | **[select.ipynb](detailed_docs/library/select.ipynb)** | **[select.md](detailed_docs/cli/select.md)** | `select`, drop with `!`, regex/patterns, inline rename, `pt.everything` |
-| **Sorting** | **[arrange.ipynb](detailed_docs/library/arrange.ipynb)** | **[arrange.md](detailed_docs/cli/arrange.md)** | `arrange`, ascending, descending `col desc`, multi-column ordering, null positioning |
-| **Aggregation** | **[agg.ipynb](detailed_docs/library/agg.ipynb)** | **[agg.md](detailed_docs/cli/agg.md)** | `by`, `agg`, `n`, `mean`, `sum`, `std`, `median`, `min`, `max`, `dropna=False` Zero Data Loss |
-| **Cross-Tab** | **[pivot.ipynb](detailed_docs/library/pivot.ipynb)** | **[pivot.md](detailed_docs/cli/pivot.md)** | `pivot`, `r=`, `c=`, `v=`, `a=`, `f_v=`, flat 1D columns (no MultiIndex traps) |
-| **Deduplication** | **[distinct.ipynb](detailed_docs/library/distinct.ipynb)** | **[distinct.md](detailed_docs/cli/distinct.md)** | `distinct`, whole-table deduplication, subset uniqueness, `keep='first'\|'last'\|'none'` |
-| **Slicing** | **[head_tail.ipynb](detailed_docs/library/head_tail.ipynb)** | **[head_tail.md](detailed_docs/cli/head_tail.md)** | `arrange` + `head`/`tail`, group-aware with `by`, percentage `prop=`, ties `with_ties=` |
-| **Reshaping** | **[reshape.ipynb](detailed_docs/library/reshape.ipynb)** | **[reshape.md](detailed_docs/cli/reshape.md)** | `long` (unpivoting), `wide` (1:1 pivoting), and `explode` (unnesting list/array columns) |
-| **Relational Joins**| **[join.ipynb](detailed_docs/library/join.ipynb)** | **[join.md](detailed_docs/cli/join.md)** | `df.join`, `pt.join`, `pt.concat`, inner/left/right/full/semi/anti/cross, colon keys, `validate` |
-| **Masking & Privacy**| **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[mask.md](detailed_docs/cli/mask.md)** | `mask`, `unmask`, `-mask`, `-unmask`, SHA-256 hash, salt, redact, key encryption, vault tokenization |
-| **Interactive REPL**| — | **[detailed_docs/repl/](detailed_docs/repl/ingestion_tables.md)** | `pytae -i`, in-memory workbench, Model A RAM isolation, `.to_pytae()`, `checkpoint`, `restore`, `rm table`, `exit -s` |
-| **Utilities** | **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[clean_replace.md](detailed_docs/cli/clean_replace.md)**<br>**[diff.md](detailed_docs/cli/diff.md)** | `fillna`, `dropna`, `clean_columns`, `diff` (key-aware with `on=`, `tol=`), `glimpse`, `cols`, `to_clip` |
-| **Inspection** | **[other_utilities.ipynb](detailed_docs/library/other_utilities.ipynb)** | **[inspect.md](detailed_docs/cli/inspect.md)** | `-cols`, `-dtype`, `-shape`, `-nulls`, `-head`, `-tail`, `-glimpse`, `-summary`, `-freq`, `-hist`, `-bar`, `-scatter`, `-corr` |
-| **Multi-File** | **[join.ipynb](detailed_docs/library/join.ipynb)** | **[multi_file.md](detailed_docs/cli/multi_file.md)** | Multi-table pipelines (`alias=source`), multi-file globbing (`*.parquet`), multi-table joining, batch inputs, pipes, Unix redirection |
-| **SQL Engine** | **[sql.ipynb](detailed_docs/library/sql.ipynb)** | **[sql.md](detailed_docs/cli/sql.md)** | `df.sql()`, `pt.sql()`, `-sql` native Polars SQL engine (SQLContext) on data and files |
-| **Plotting** | **[plotting.ipynb](detailed_docs/plotting/plotting.ipynb)** | **[cli_plots.md](detailed_docs/cli/cli_plots.md)** | `df.plot()`, `-plot`, `-finalize`, terminal `-bar`, `-scatter`, `-corr`, headless figures |
+| **Data I/O** | **[read_write.ipynb](notebooks/library/read_write.ipynb)** | **[read_write.md](guides/read_write.md)** | `pt.read_*`, `pt.scan_*`, `write_*`, `-o`, `-out_dir`, `-fmt`, `-progress`, STDIN, clipboard |
+| **Derivations** | **[mutate.ipynb](notebooks/library/mutate.ipynb)** | **[mutate.md](guides/mutate.md)** | `mutate`, formulas, sequential assignments, `if_else`, `case_when`, `map`, `shift`, `@var` |
+| **Row Filtering** | **[filter.ipynb](notebooks/library/filter.ipynb)** | **[filter.md](guides/filter.md)** | `filter`, `assert_` (data assertions), intervals `[10, 20]`, set membership `in`, `or`/`and`, string methods, callables |
+| **Columns** | **[select.ipynb](notebooks/library/select.ipynb)** | **[select.md](guides/select.md)** | `select`, drop with `!`, regex/patterns, inline rename, `pt.everything` |
+| **Sorting** | **[arrange.ipynb](notebooks/library/arrange.ipynb)** | **[arrange.md](guides/arrange.md)** | `arrange`, ascending, descending `col desc`, multi-column ordering, null positioning |
+| **Aggregation** | **[agg.ipynb](notebooks/library/agg.ipynb)** | **[agg.md](guides/agg.md)** | `by`, `agg`, `n`, `mean`, `sum`, `std`, `median`, `min`, `max`, `dropna=False` Zero Data Loss |
+| **Cross-Tab** | **[pivot.ipynb](notebooks/library/pivot.ipynb)** | **[pivot.md](guides/pivot.md)** | `pivot`, `r=`, `c=`, `v=`, `a=`, `f_v=`, flat 1D columns (no MultiIndex traps) |
+| **Deduplication** | **[distinct.ipynb](notebooks/library/distinct.ipynb)** | **[distinct.md](guides/distinct.md)** | `distinct`, whole-table deduplication, subset uniqueness, `keep='first'\|'last'\|'none'` |
+| **Slicing** | **[head_tail.ipynb](notebooks/library/head_tail.ipynb)** | **[head_tail.md](guides/head_tail.md)** | `arrange` + `head`/`tail`, group-aware with `by`, percentage `prop=`, ties `with_ties=` |
+| **Reshaping** | **[reshape.ipynb](notebooks/library/reshape.ipynb)** | **[reshape.md](guides/reshape.md)** | `long` (unpivoting), `wide` (1:1 pivoting), and `explode` (unnesting list/array columns) |
+| **Relational Joins**| **[join.ipynb](notebooks/library/join.ipynb)** | **[join.md](guides/join.md)** | `df.join`, `pt.join`, `pt.concat`, inner/left/right/full/semi/anti/cross, colon keys, `validate` |
+| **Masking & Privacy**| **[other_utilities.ipynb](notebooks/library/other_utilities.ipynb)** | **[mask.md](guides/mask.md)** | `mask`, `unmask`, `-mask`, `-unmask`, SHA-256 hash, salt, redact, key encryption, vault tokenization |
+| **Interactive REPL**| — | **[repl/](repl/ingestion_tables.md)** | `pytae -i`, in-memory workbench, Model A RAM isolation, `.to_pytae()`, `checkpoint`, `restore`, `rm table`, `exit -s` |
+| **Utilities** | **[other_utilities.ipynb](notebooks/library/other_utilities.ipynb)** | **[clean_replace.md](guides/clean_replace.md)**<br>**[diff.md](guides/diff.md)** | `fillna`, `dropna`, `clean_columns`, `diff` (key-aware with `on=`, `tol=`), `glimpse`, `cols`, `to_clip` |
+| **Inspection** | **[other_utilities.ipynb](notebooks/library/other_utilities.ipynb)** | **[inspect.md](guides/inspect.md)** | `-cols`, `-dtype`, `-shape`, `-nulls`, `-head`, `-tail`, `-glimpse`, `-summary`, `-freq`, `-hist`, `-bar`, `-scatter`, `-corr` |
+| **Multi-File** | **[join.ipynb](notebooks/library/join.ipynb)** | **[multi_file.md](guides/multi_file.md)** | Multi-table pipelines (`alias=source`), multi-file globbing (`*.parquet`), multi-table joining, batch inputs, pipes, Unix redirection |
+| **SQL Engine** | **[sql.ipynb](notebooks/library/sql.ipynb)** | **[sql.md](guides/sql.md)** | `df.sql()`, `pt.sql()`, `-sql` native Polars SQL engine (SQLContext) on data and files |
+| **Plotting** | **[plotting.ipynb](notebooks/plotting/plotting.ipynb)** | **[cli_plots.md](guides/cli_plots.md)** | `df.plot()`, `-plot`, `-finalize`, terminal `-bar`, `-scatter`, `-corr`, headless figures |
 | **Doc Search & MCP** | — | — | `pytae -doc <query>`, `pt.doc()`, `pytae -mcp` stdio JSON-RPC 2.0 server for Copilot/Cursor |
-| **Comparisons** | **[vs. Pandas](comparisons_with_other_tools/comparison_to_pandas.md)**<br>**[vs. dplyr](comparisons_with_other_tools/comparison_to_dplyr.md)**<br>**[vs. SAS](comparisons_with_other_tools/comparison_to_sas.md)** | — | Pytae vs. Pandas vs. dplyr vs. SAS, naming rationale, "one and only one obvious way" |
+| **Comparisons** | **[vs. Pandas](comparisons/comparison_to_pandas.md)**<br>**[vs. dplyr](comparisons/comparison_to_dplyr.md)**<br>**[vs. SAS](comparisons/comparison_to_sas.md)** | — | Pytae vs. Pandas vs. dplyr vs. SAS, naming rationale, "one and only one obvious way" |
+| **Benchmarks** | **[benchmarks.ipynb](benchmarks/benchmarks.ipynb)** | **[run_benchmarks.py](benchmarks/run_benchmarks.py)**<br>**[README](benchmarks/README.md)** | Reproducible 5M-row speed benchmarks: Pytae vs. Pandas/dplyr/SAS, timings & plots |
 | **Benchmarks** | **[benchmarks.ipynb](benchmarks/benchmarks.ipynb)** | **[run_benchmarks.py](benchmarks/run_benchmarks.py)**<br>**[README](benchmarks/README.md)** | Reproducible 5M-row speed benchmarks: Pytae vs. Pandas/dplyr/SAS, timings & plots |
 
 ---
@@ -14929,14 +14932,14 @@ The **Pytae REPL** provides stateful, iterative in-memory data manipulation and 
 
 ### Detailed REPL Documentation Directory
 
-For complete guides, configuration flags, edge cases, and cookbooks, see the dedicated topic documentation under **[`docs/detailed_docs/repl/`](detailed_docs/repl/)**:
+For complete guides, configuration flags, edge cases, and cookbooks, see the dedicated topic documentation under **[`docs/repl/`](repl/)**:
 
-- [**Ingestion & Multi-Table Operations**](detailed_docs/repl/ingestion_tables.md) — Reader options (`-encoding`, `-dlim`, `-nrows`, `-opts`), glob loading, sample datasets, zero-copy `rename`, and relational joins.
-- [**Pipelines & Non-Destructive Inspection**](detailed_docs/repl/pipelines_inspection.md) — 1:1 CLI verbs in RAM, assignment vs bare exploration semantics, `-cols` sorting/filtering, and `-diff`.
-- [**SQL & Python Interop (Model A)**](detailed_docs/repl/sql_python.md) — ANSI SQL across tables, single-line & bare `py` block mode, Model A RAM zeroing, and explicit `.to_pytae()` conversion.
-- [**Multi-Line Input & Session Variables**](detailed_docs/repl/multiline_variables.md) — Line continuation with `\`, multi-line SQL/variables, typed session `@var` parameters, and namespace protection.
-- [**Checkpoints & Persistent Sessions**](detailed_docs/repl/checkpoints_sessions.md) — Disk-backed checkpoints, ephemeral temp cleanup, persistent project directories, and `set` configuration hub.
-- [**Memory Management, History & Replay**](detailed_docs/repl/memory_history_replay.md) — Explicit `rm table`, OS page trimming (malloc_trim/mach_task/working set), `history`, `exit -s`, and Unix shell pipes (`|`).
+- [**Ingestion & Multi-Table Operations**](repl/ingestion_tables.md) — Reader options (`-encoding`, `-dlim`, `-nrows`, `-opts`), glob loading, sample datasets, zero-copy `rename`, and relational joins.
+- [**Pipelines & Non-Destructive Inspection**](repl/pipelines_inspection.md) — 1:1 CLI verbs in RAM, assignment vs bare exploration semantics, `-cols` sorting/filtering, and `-diff`.
+- [**SQL & Python Interop (Model A)**](repl/sql_python.md) — ANSI SQL across tables, single-line & bare `py` block mode, Model A RAM zeroing, and explicit `.to_pytae()` conversion.
+- [**Multi-Line Input & Session Variables**](repl/multiline_variables.md) — Line continuation with `\`, multi-line SQL/variables, typed session `@var` parameters, and namespace protection.
+- [**Checkpoints & Persistent Sessions**](repl/checkpoints_sessions.md) — Disk-backed checkpoints, ephemeral temp cleanup, persistent project directories, and `set` configuration hub.
+- [**Memory Management, History & Replay**](repl/memory_history_replay.md) — Explicit `rm table`, OS page trimming (malloc_trim/mach_task/working set), `history`, `exit -s`, and Unix shell pipes (`|`).
 
 ================================================================================
 CLI CHEATSHEET & COOKBOOK (docs/cli_cheatsheet.md)
@@ -15429,7 +15432,7 @@ pytae -check "pytae data.parquet -filter 'amount > 0' -select id,amount"
 ================================================================================
 
 ################################################################################
-# FILE: docs/comparisons_with_other_tools/comparison_to_pandas.md
+# FILE: docs/comparisons/comparison_to_pandas.md
 ################################################################################
 # Pytae vs. Pandas — Deep Dive & Rosetta Stone
 
@@ -15792,7 +15795,7 @@ Notice the stark contrast: Pytae eliminates intermediate variables, eliminates `
 
 
 ################################################################################
-# FILE: docs/comparisons_with_other_tools/comparison_to_dplyr.md
+# FILE: docs/comparisons/comparison_to_dplyr.md
 ################################################################################
 # Pytae vs. dplyr (R / Tidyverse) — Deep Dive & Rosetta Stone
 
@@ -16110,7 +16113,7 @@ Pytae provides everything Tidyverse users love about `dplyr`—fluent method cha
 
 
 ################################################################################
-# FILE: docs/comparisons_with_other_tools/comparison_to_sas.md
+# FILE: docs/comparisons/comparison_to_sas.md
 ################################################################################
 # Pytae vs. SAS — Deep Dive & Migration Guide
 
@@ -16537,7 +16540,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.13.8"
+version = "3.13.9"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"

@@ -286,9 +286,11 @@ def _extract_doc_chunks() -> list[dict[str, str]]:
         pv["keywords"] = f"{pv['keywords']} {' '.join(syns)}"
         chunks.append(pv)
 
-    # 3. Detailed Markdown sections from docs/detailed_docs/cli/*.md
+    # 3. Detailed Markdown sections from docs/guides/*.md (or legacy detailed_docs/cli)
     repo_root = Path(__file__).resolve().parent.parent.parent
-    detailed_dir = repo_root / "docs" / "detailed_docs" / "cli"
+    detailed_dir = repo_root / "docs" / "guides"
+    if not detailed_dir.exists():
+        detailed_dir = repo_root / "docs" / "detailed_docs" / "cli"
     if detailed_dir.exists():
         for md_path in sorted(detailed_dir.glob("*.md")):
             topic_name = md_path.stem

@@ -1,6 +1,6 @@
 # REPL Guide: SQL & Python Interop (Model A RAM Isolation)
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 This guide covers ANSI SQL querying across loaded tables, embedded Python execution (`py <expr>`), the **Model A RAM Isolation architecture**, and explicit `.to_pytae()` table conversion in the Pytae interactive REPL (`pytae -i`).
 

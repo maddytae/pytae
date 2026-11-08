@@ -1,6 +1,6 @@
 # REPL Guide: In-Memory Workbench, Checkpoints & Configuration
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 This guide covers ephemeral IPC snapshotting (`checkpoint`), instant workbench recovery (`restore`), milestone diffing (`-diff`), table switching (`switch`), session status inspection (`status`), smart pipeline export on exit (`exit -s [pt|py|path]`), in-session export (`export script`), and user preferences (`set`, `set save`) in the Pytae interactive REPL (`pytae -i`).
 

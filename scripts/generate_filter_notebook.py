@@ -572,7 +572,7 @@ cells.append(nbf.v4.new_code_cell("""# Titanic dataset: survival rate of passeng
 
 nb.cells = cells
 
-out_path = Path("docs/detailed_docs/library/filter.ipynb")
+out_path = Path("docs/notebooks/library/filter.ipynb")
 with open(out_path, "w", encoding="utf-8") as f:
     nbf.write(nb, f)
 

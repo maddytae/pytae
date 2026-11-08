@@ -1,6 +1,6 @@
 # REPL Guide: Ingestion & Multi-Table Workbench
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 This guide covers ingesting files, managing multiple tables simultaneously in RAM, switching active cursors, zero-copy renaming, and relational joins in the Pytae interactive REPL (`pytae -i`).
 

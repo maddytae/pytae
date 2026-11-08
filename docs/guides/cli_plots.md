@@ -1,6 +1,6 @@
 # CLI Feature Guide: CLI Plotting & Visualizations (`cli_plots`)
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 `pytae` includes first-class visualization and plotting capabilities directly from the command line:
 - **Terminal In-Line Visualizations**: Instant ASCII and Braille charts rendered directly in console scrollback (`-freq`, `-hist`, `-bar`, `-scatter`, `-corr`).

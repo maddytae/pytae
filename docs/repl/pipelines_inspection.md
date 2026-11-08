@@ -1,6 +1,6 @@
 # REPL Guide: Pipelines & Non-Destructive Inspection
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 This guide covers in-memory pipeline transformations and non-destructive data inspection flags in the Pytae interactive REPL (`pytae -i`).
 

@@ -120,7 +120,7 @@ TABLE OF CONTENTS
     Recipe 11: Quarter-Over-Quarter Portfolio Drift & Key-Aware Diffing
     Recipe 12: Complex Date-Range & Multi-Condition Filtering
     Recipe 13: Excel Multi-Sheet Ingestion with Strict -opts
-8.  DETAILED FEATURE DOCUMENTATION GUIDES (docs/detailed_docs/)
+8.  DETAILED FEATURE DOCUMENTATION GUIDES (docs/guides/, docs/repl/, docs/notebooks/)
 9.  MASTER DOCUMENTATION & ARCHITECTURE GUIDE (docs/pytae.md)
 10. ECOSYSTEM COMPARISONS & MIGRATION GUIDES (Pandas, dplyr, SAS)
 11. REPOSITORY DIRECTORY TREE
@@ -1767,55 +1767,55 @@ pytae a=portfolio.xlsx b=portfolio.xlsx \
 │   │   ├── benchmarks.ipynb
 │   │   └── run_benchmarks.py
 │   ├── cli_cheatsheet.md
-│   ├── comparisons_with_other_tools
+│   ├── comparisons
 │   │   ├── comparison_to_dplyr.md
 │   │   ├── comparison_to_pandas.md
 │   │   └── comparison_to_sas.md
 │   ├── pytae.md
-│   ├── detailed_docs
-│   │   ├── cli
-│   │   │   ├── agg.md
-│   │   │   ├── arrange.md
-│   │   │   ├── clean_replace.md
-│   │   │   ├── cli_plots.md
-│   │   │   ├── diff.md
-│   │   │   ├── distinct.md
-│   │   │   ├── filter.md
-│   │   │   ├── head_tail.md
-│   │   │   ├── inspect.md
-│   │   │   ├── join.md
-│   │   │   ├── mask.md
-│   │   │   ├── multi_file.md
-│   │   │   ├── mutate.md
-│   │   │   ├── other_utilities.md
-│   │   │   ├── pivot.md
-│   │   │   ├── read_write.md
-│   │   │   ├── reshape.md
-│   │   │   ├── select.md
-│   │   │   └── sql.md
-│   │   ├── repl
-│   │   │   ├── checkpoints_sessions.md
-│   │   │   ├── ingestion_tables.md
-│   │   │   ├── memory_history_replay.md
-│   │   │   ├── multiline_variables.md
-│   │   │   ├── pipelines_inspection.md
-│   │   │   └── sql_python.md
-│   │   ├── library
-│   │   │   ├── agg.ipynb
-│   │   │   ├── arrange.ipynb
-│   │   │   ├── distinct.ipynb
-│   │   │   ├── filter.ipynb
-│   │   │   ├── head_tail.ipynb
-│   │   │   ├── join.ipynb
-│   │   │   ├── mutate.ipynb
-│   │   │   ├── other_utilities.ipynb
-│   │   │   ├── pivot.ipynb
-│   │   │   ├── read_write.ipynb
-│   │   │   ├── reshape.ipynb
-│   │   │   ├── select.ipynb
-│   │   │   └── sql.ipynb
-│   │   └── plotting
-│   │       └── plotting.ipynb
+│   ├── guides
+│   │   ├── agg.md
+│   │   ├── arrange.md
+│   │   ├── clean_replace.md
+│   │   ├── cli_plots.md
+│   │   ├── diff.md
+│   │   ├── distinct.md
+│   │   ├── filter.md
+│   │   ├── head_tail.md
+│   │   ├── inspect.md
+│   │   ├── join.md
+│   │   ├── mask.md
+│   │   ├── multi_file.md
+│   │   ├── mutate.md
+│   │   ├── other_utilities.md
+│   │   ├── pivot.md
+│   │   ├── read_write.md
+│   │   ├── reshape.md
+│   │   ├── select.md
+│   │   └── sql.md
+│   ├── repl
+│   │   ├── checkpoints_sessions.md
+│   │   ├── ingestion_tables.md
+│   │   ├── memory_history_replay.md
+│   │   ├── multiline_variables.md
+│   │   ├── pipelines_inspection.md
+│   │   └── sql_python.md
+│   └── notebooks
+│       ├── library
+│       │   ├── agg.ipynb
+│       │   ├── arrange.ipynb
+│       │   ├── distinct.ipynb
+│       │   ├── filter.ipynb
+│       │   ├── head_tail.ipynb
+│       │   ├── join.ipynb
+│       │   ├── mutate.ipynb
+│       │   ├── other_utilities.ipynb
+│       │   ├── pivot.ipynb
+│       │   ├── read_write.ipynb
+│       │   ├── reshape.ipynb
+│       │   ├── select.ipynb
+│       │   └── sql.ipynb
+│       └── plotting
+│           └── plotting.ipynb
 │   └── pytae.md
 ├── pyproject.toml
 ├── readme.md
@@ -1966,10 +1966,17 @@ def generate_reference() -> None:
         manual_pre = rendered_manual
 
     detailed_docs = sorted(
-        list((REPO_ROOT / "docs" / "detailed_docs").glob("**/*.md"))
-        + list((REPO_ROOT / "docs" / "detailed_docs").glob("**/*.ipynb")),
+        list((REPO_ROOT / "docs" / "guides").glob("**/*.md"))
+        + list((REPO_ROOT / "docs" / "repl").glob("**/*.md"))
+        + list((REPO_ROOT / "docs" / "notebooks").glob("**/*.ipynb")),
         key=lambda p: str(p.relative_to(REPO_ROOT)),
     )
+    if not detailed_docs and (REPO_ROOT / "docs" / "detailed_docs").exists():
+        detailed_docs = sorted(
+            list((REPO_ROOT / "docs" / "detailed_docs").glob("**/*.md"))
+            + list((REPO_ROOT / "docs" / "detailed_docs").glob("**/*.ipynb")),
+            key=lambda p: str(p.relative_to(REPO_ROOT)),
+        )
     pytae_md = REPO_ROOT / "docs" / "pytae.md"
     cheatsheet_md = REPO_ROOT / "docs" / "cli_cheatsheet.md"
     pyproject_path = REPO_ROOT / "pyproject.toml"
@@ -1982,7 +1989,7 @@ def generate_reference() -> None:
     copilot_parts: list[str] = [
         manual_pre.strip(),
         "\n================================================================================",
-        "8. DETAILED FEATURE DOCUMENTATION GUIDES (docs/detailed_docs/)",
+        "8. DETAILED FEATURE DOCUMENTATION GUIDES (docs/guides/, docs/repl/, docs/notebooks/)",
         "================================================================================\n",
     ]
     for doc_path in detailed_docs:
@@ -2020,7 +2027,9 @@ def generate_reference() -> None:
     copilot_parts.append("10. ECOSYSTEM COMPARISONS & MIGRATION GUIDES (Pandas, dplyr, SAS)")
     copilot_parts.append("================================================================================\n")
     for comp_name in ["comparison_to_pandas.md", "comparison_to_dplyr.md", "comparison_to_sas.md"]:
-        comp_md = REPO_ROOT / "docs" / comp_name
+        comp_md = REPO_ROOT / "docs" / "comparisons" / comp_name
+        if not comp_md.exists():
+            comp_md = REPO_ROOT / "docs" / comp_name
         if not comp_md.exists():
             comp_md = REPO_ROOT / "docs" / "comparisons_with_other_tools" / comp_name
         if comp_md.exists():

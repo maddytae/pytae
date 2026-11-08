@@ -1,6 +1,6 @@
 # CLI Feature Guide: Row Slicing (`-head` & `-tail`)
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 Extract first, last, or extreme rows with full group awareness via `-by`, proportion limits (`10%`), and boundary tie handling (`ties=true`).
 

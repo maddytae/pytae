@@ -1,6 +1,6 @@
 # REPL Guide: Memory Management, History & Replay Scripts
 
-[← Back to Master Reference](../../pytae.md)
+[← Back to Master Reference](../pytae.md)
 
 This guide covers memory deallocation, OS page trimming, audit logs, session export (`exit -s`), batch replay pipelines, and Unix shell integration in the Pytae interactive REPL (`pytae -i`).
 
