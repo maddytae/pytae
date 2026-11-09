@@ -457,6 +457,22 @@ def _load_history_from_file() -> list[str]:
     return []
 
 
+def _get_line_info(chars: list[str], cur_pos: int) -> tuple[int, int, list[int]]:
+    """Return (line_idx, col_idx, line_start_indices) for cursor position within chars."""
+    line_starts = [0]
+    for i, ch in enumerate(chars):
+        if ch == "\n":
+            line_starts.append(i + 1)
+    line_idx = 0
+    for idx, start in enumerate(line_starts):
+        if cur_pos >= start:
+            line_idx = idx
+        else:
+            break
+    col_idx = cur_pos - line_starts[line_idx]
+    return line_idx, col_idx, line_starts
+
+
 def _save_raw_history(history: list[str]) -> None:
     """Save raw command history list to disk (used when readline is unavailable)."""
     try:
@@ -509,42 +525,63 @@ def _console_input(
 
     try:
         line_chars: list[str] = list(initial_text)
-        cursor_pos = 0 if initial_text else len(line_chars)
+        cursor_pos = len(line_chars)
         hist_idx = len(history)
         draft = ""
         prev_c_row = 0
         prev_total_rows = 0
 
-        def calc_pos(prompt: str, chars: list[str], cur_pos: int, width: int) -> tuple[int, int, int, int]:
+        def calc_pos(prompt: str, chars: list[str], cur_pos: int, width: int) -> tuple[int, int, int, str]:
             clean_prompt = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", prompt)
-            full = clean_prompt + "".join(chars)
-            target_idx = len(clean_prompt) + cur_pos
+            cont_prompt = "... "
+
+            lines: list[list[str]] = [[]]
+            target_line = 0
+            target_col = 0
+            char_count = 0
+
+            for ch_item in chars:
+                if char_count == cur_pos:
+                    target_line = len(lines) - 1
+                    target_col = len(lines[-1])
+                if ch_item == "\n":
+                    lines.append([])
+                else:
+                    lines[-1].append(ch_item)
+                char_count += 1
+            if cur_pos >= len(chars):
+                target_line = len(lines) - 1
+                target_col = len(lines[-1])
+
             row = 0
-            col = 0
             c_row = 0
             c_col = 0
-            for i, ch_item in enumerate(full):
-                if i == target_idx:
-                    c_row = row
-                    c_col = col
-                if ch_item == "\n":
+            display_lines: list[str] = []
+
+            for l_idx, l_chars in enumerate(lines):
+                pfx_clean = clean_prompt if l_idx == 0 else cont_prompt
+                pfx_raw = prompt if l_idx == 0 else "... "
+                line_str = "".join(l_chars)
+                display_lines.append(pfx_raw + line_str)
+
+                if l_idx == target_line:
+                    c_on_line = len(pfx_clean) + target_col
+                    c_row = row + (c_on_line // width)
+                    c_col = c_on_line % width
+
+                full_len = len(pfx_clean) + len(l_chars)
+                row += full_len // width
+                if l_idx < len(lines) - 1:
                     row += 1
-                    col = 0
-                else:
-                    col += 1
-                    if col >= width:
-                        row += 1
-                        col = 0
-            if target_idx >= len(full):
-                c_row = row
-                c_col = col
-            return c_row, c_col, row, col
+
+            total_rows = row
+            display_str = "\n".join(display_lines)
+            return c_row, c_col, total_rows, display_str
 
         def render() -> None:
             nonlocal prev_c_row, prev_total_rows
             width = max(20, shutil.get_terminal_size((80, 24)).columns or 80)
-            text = "".join(line_chars)
-            c_row, c_col, total_rows, _ = calc_pos(prompt_text, line_chars, cursor_pos, width)
+            c_row, c_col, total_rows, display_str = calc_pos(prompt_text, line_chars, cursor_pos, width)
 
             # Move cursor from previous cursor row back to prompt start (Row 0, Col 0)
             if prev_c_row > 0:
@@ -552,16 +589,14 @@ def _console_input(
             else:
                 sys.stdout.write("\r")
 
-            # Write prompt and text
-            sys.stdout.write(prompt_text + text)
+            # Clear everything from row 0 downwards
+            sys.stdout.write("\x1b[J")
 
-            # Clear remaining screen if previous text occupied more rows or trailing cols
-            if prev_total_rows > total_rows:
-                sys.stdout.write("\x1b[J")
-            else:
-                sys.stdout.write("\x1b[K")
+            # Write prompt and text (including any multi-line continuations)
+            sys.stdout.write(display_str)
 
-            # Move cursor from bottom (total_rows) up to target row (c_row) and column (c_col)
+            # Cursor is currently at bottom of display_str
+            # Move cursor up to target row (c_row) and column (c_col)
             row_up = total_rows - c_row
             if row_up > 0:
                 sys.stdout.write(f"\x1b[{row_up}A")
@@ -571,11 +606,53 @@ def _console_input(
             prev_c_row = c_row
             prev_total_rows = total_rows
 
-        if initial_text:
-            render()
-        else:
-            sys.stdout.write(prompt_text)
+        def exit_and_return(text: str) -> str:
+            row_down = prev_total_rows - prev_c_row
+            if row_down > 0:
+                sys.stdout.write(f"\x1b[{row_down}B")
+            sys.stdout.write("\n")
             sys.stdout.flush()
+            return text
+
+        def split_at_cursor() -> None:
+            nonlocal cursor_pos, line_chars
+            line_idx, col_idx, line_starts = _get_line_info(line_chars, cursor_pos)
+            cur_line_start = line_starts[line_idx]
+            cur_line_end = line_starts[line_idx + 1] - 1 if line_idx < len(line_starts) - 1 else len(line_chars)
+            cur_left = "".join(line_chars[cur_line_start:cursor_pos]).rstrip()
+            cur_right = "".join(line_chars[cursor_pos:cur_line_end]).lstrip()
+
+            if cur_right.startswith("\\"):
+                slash_idx = cursor_pos
+                while slash_idx < len(line_chars) and line_chars[slash_idx].isspace():
+                    slash_idx += 1
+                if slash_idx < len(line_chars) and line_chars[slash_idx] == "\\":
+                    del line_chars[slash_idx]
+                    while slash_idx < len(line_chars) and line_chars[slash_idx].isspace():
+                        del line_chars[slash_idx]
+                if not cur_left.endswith("\\"):
+                    if not (cursor_pos > 0 and line_chars[cursor_pos - 1].isspace()):
+                        line_chars.insert(cursor_pos, " ")
+                        cursor_pos += 1
+                    line_chars.insert(cursor_pos, "\\")
+                    cursor_pos += 1
+            else:
+                if not cur_left.endswith("\\"):
+                    if not (cursor_pos > 0 and line_chars[cursor_pos - 1].isspace()):
+                        line_chars.insert(cursor_pos, " ")
+                        cursor_pos += 1
+                    line_chars.insert(cursor_pos, "\\")
+                    cursor_pos += 1
+                while cursor_pos < len(line_chars) and line_chars[cursor_pos].isspace():
+                    del line_chars[cursor_pos]
+
+            line_chars.insert(cursor_pos, "\n")
+            line_chars.insert(cursor_pos + 1, " ")
+            line_chars.insert(cursor_pos + 2, " ")
+            cursor_pos += 3
+            render()
+
+        render()
 
         while True:
             try:
@@ -680,48 +757,42 @@ def _console_input(
             elif ch == "\n":
                 code = "shift_enter"
 
-            if code == "shift_enter" or ch in ("\r", "\n"):
-                left_chunk = "".join(line_chars[:cursor_pos]).rstrip()
-                right_chunk = "".join(line_chars[cursor_pos:]).lstrip()
-                has_right_content = bool(right_chunk.strip())
-                is_break = (code == "shift_enter") or (ch == "\n") or (
-                    cursor_pos < len(line_chars)
-                    and (left_chunk.endswith("\\") or right_chunk.startswith("\\"))
-                    and has_right_content
-                )
-                if is_break:
-                    left_text = left_chunk
-                    right_text = right_chunk
-                    if right_text.startswith("\\"):
-                        right_text = right_text[1:].lstrip()
-                    if not left_text.endswith("\\"):
-                        left_text += " \\"
+            if code == "shift_enter":
+                split_at_cursor()
+                continue
+            elif ch in ("\r", "\n"):
+                line_idx, col_idx, line_starts = _get_line_info(line_chars, cursor_pos)
+                cur_line_start = line_starts[line_idx]
+                cur_line_end = line_starts[line_idx + 1] - 1 if line_idx < len(line_starts) - 1 else len(line_chars)
+                cur_left = "".join(line_chars[cur_line_start:cursor_pos]).rstrip()
+                cur_right = "".join(line_chars[cursor_pos:cur_line_end]).lstrip()
+                if (
+                    cursor_pos < cur_line_end
+                    and (cur_left.endswith("\\") or cur_right.startswith("\\"))
+                    and bool(cur_right.strip())
+                ):
+                    split_at_cursor()
+                    continue
 
-                    line_chars = list(left_text)
-                    cursor_pos = len(line_chars)
+                buf_text = "".join(line_chars)
+                if not _is_multiline_complete(buf_text):
+                    line_chars.insert(cursor_pos, "\n")
+                    line_chars.insert(cursor_pos + 1, " ")
+                    line_chars.insert(cursor_pos + 2, " ")
+                    cursor_pos += 3
                     render()
+                    continue
 
-                    row_down = prev_total_rows - prev_c_row
-                    if row_down > 0:
-                        sys.stdout.write(f"\x1b[{row_down}B")
-                    sys.stdout.write("\n")
-                    sys.stdout.flush()
-
-                    if pending_queue is not None:
-                        if right_text:
-                            pending_queue.append(right_text)
-                        return left_text
-                    return f"{left_text}\n{right_text}" if right_text else left_text
-
-                row_down = prev_total_rows - prev_c_row
-                if row_down > 0:
-                    sys.stdout.write(f"\x1b[{row_down}B")
-                sys.stdout.write("\n")
-                sys.stdout.flush()
-                return "".join(line_chars)
+                return exit_and_return(buf_text)
             elif code is not None:
                 if code == "H":  # Up arrow
-                    if history:
+                    line_idx, col_idx, line_starts = _get_line_info(line_chars, cursor_pos)
+                    if line_idx > 0:
+                        prev_line_start = line_starts[line_idx - 1]
+                        prev_line_len = (line_starts[line_idx] - 1) - prev_line_start
+                        cursor_pos = prev_line_start + min(col_idx, prev_line_len)
+                        render()
+                    elif history:
                         if hist_idx == len(history):
                             draft = "".join(line_chars)
                         if hist_idx > 0:
@@ -730,7 +801,17 @@ def _console_input(
                             cursor_pos = len(line_chars)
                             render()
                 elif code == "P":  # Down arrow
-                    if history and hist_idx < len(history):
+                    line_idx, col_idx, line_starts = _get_line_info(line_chars, cursor_pos)
+                    num_lines = len(line_starts)
+                    if line_idx < num_lines - 1:
+                        next_line_start = line_starts[line_idx + 1]
+                        if line_idx + 1 < num_lines - 1:
+                            next_line_len = (line_starts[line_idx + 2] - 1) - next_line_start
+                        else:
+                            next_line_len = len(line_chars) - next_line_start
+                        cursor_pos = next_line_start + min(col_idx, next_line_len)
+                        render()
+                    elif history and hist_idx < len(history):
                         hist_idx += 1
                         if hist_idx == len(history):
                             line_chars = list(draft)
@@ -747,13 +828,21 @@ def _console_input(
                         cursor_pos += 1
                         render()
                 elif code == "G":  # Home
-                    if cursor_pos > 0:
+                    line_idx, col_idx, line_starts = _get_line_info(line_chars, cursor_pos)
+                    if col_idx > 0:
+                        cursor_pos = line_starts[line_idx]
+                    elif cursor_pos > 0:
                         cursor_pos = 0
-                        render()
+                    render()
                 elif code == "O":  # End
-                    if cursor_pos < len(line_chars):
+                    line_idx, col_idx, line_starts = _get_line_info(line_chars, cursor_pos)
+                    num_lines = len(line_starts)
+                    line_end = line_starts[line_idx + 1] - 1 if line_idx < num_lines - 1 else len(line_chars)
+                    if cursor_pos < line_end:
+                        cursor_pos = line_end
+                    elif cursor_pos < len(line_chars):
                         cursor_pos = len(line_chars)
-                        render()
+                    render()
                 elif code == "S":  # Delete
                     if cursor_pos < len(line_chars):
                         line_chars.pop(cursor_pos)
@@ -786,13 +875,21 @@ def _console_input(
                         cursor_pos = new_pos
                         render()
             elif ch == "\x01":  # Ctrl+A: beginning of line
-                if cursor_pos > 0:
+                line_idx, col_idx, line_starts = _get_line_info(line_chars, cursor_pos)
+                if col_idx > 0:
+                    cursor_pos = line_starts[line_idx]
+                elif cursor_pos > 0:
                     cursor_pos = 0
-                    render()
+                render()
             elif ch == "\x05":  # Ctrl+E: end of line
-                if cursor_pos < len(line_chars):
+                line_idx, col_idx, line_starts = _get_line_info(line_chars, cursor_pos)
+                num_lines = len(line_starts)
+                line_end = line_starts[line_idx + 1] - 1 if line_idx < num_lines - 1 else len(line_chars)
+                if cursor_pos < line_end:
+                    cursor_pos = line_end
+                elif cursor_pos < len(line_chars):
                     cursor_pos = len(line_chars)
-                    render()
+                render()
             elif ch == "\x17":  # Ctrl+W: delete previous word
                 if cursor_pos > 0:
                     delims = " \t\n\"'=(),;[]"
@@ -805,34 +902,39 @@ def _console_input(
                     cursor_pos = new_pos
                     render()
             elif ch == "\x0b":  # Ctrl+K: kill to end of line
-                if cursor_pos < len(line_chars):
-                    del line_chars[cursor_pos:]
-                    render()
+                line_idx, col_idx, line_starts = _get_line_info(line_chars, cursor_pos)
+                num_lines = len(line_starts)
+                line_end = line_starts[line_idx + 1] - 1 if line_idx < num_lines - 1 else len(line_chars)
+                if cursor_pos < line_end:
+                    del line_chars[cursor_pos:line_end]
+                elif cursor_pos < len(line_chars):
+                    line_chars.pop(cursor_pos)
+                render()
             elif ch == "\x15":  # Ctrl+U: kill to beginning of line
-                if cursor_pos > 0:
-                    del line_chars[:cursor_pos]
-                    cursor_pos = 0
-                    render()
+                line_idx, col_idx, line_starts = _get_line_info(line_chars, cursor_pos)
+                line_start = line_starts[line_idx]
+                if cursor_pos > line_start:
+                    del line_chars[line_start:cursor_pos]
+                    cursor_pos = line_start
+                elif cursor_pos > 0:
+                    cursor_pos -= 1
+                    line_chars.pop(cursor_pos)
+                render()
             elif ch in ("\x08", "\x7f"):  # Backspace (0x08 on CMD/conhost, 0x7f on MinTTY/xterm)
                 if cursor_pos > 0:
                     cursor_pos -= 1
                     line_chars.pop(cursor_pos)
                     render()
             elif ch == "\x03":  # Ctrl+C
-                row_down = prev_total_rows - prev_c_row
-                if row_down > 0:
-                    sys.stdout.write(f"\x1b[{row_down}B")
-                sys.stdout.write("\n")
-                sys.stdout.flush()
+                exit_and_return("")
                 raise KeyboardInterrupt
             elif ch in ("\x04", "\x1a"):  # Ctrl+D or Ctrl+Z
-                row_down = prev_total_rows - prev_c_row
-                if row_down > 0:
-                    sys.stdout.write(f"\x1b[{row_down}B")
-                sys.stdout.write("\n")
-                sys.stdout.flush()
                 if not line_chars:
+                    exit_and_return("")
                     raise EOFError
+                if ch == "\x04" and cursor_pos < len(line_chars):
+                    line_chars.pop(cursor_pos)
+                    render()
             elif ch == "\t":
                 # Tab autocompletion
                 delims = " \t\n\"'=(),;[]"
@@ -2932,6 +3034,7 @@ class PytaeRepl:
 
     def _execute_line_core(self, line: str, output_fn: Callable[[str], None] = print) -> bool:
         """Core dispatch logic for one REPL command line."""
+        original_line = line
         # Collapse multi-line and inline line continuations (backslash followed by newline or whitespace)
         if "\\" in line and not line.startswith("py\n"):
             line = re.sub(r"\s*\\\s*\n\s*", " ", line)
@@ -2960,25 +3063,24 @@ class PytaeRepl:
             self._history_cursor = max(0, min(len(self._raw_history) - 1, self._history_cursor - delta))
             recalled = self._raw_history[self._history_cursor]
             output_fn(f"(recalled from history: {recalled})")
-            return self.execute_line(recalled, output_fn=output_fn)
+            return True
 
         self._history_cursor = None
 
-        hist_line = line
-        if not line.startswith("py\n") and not line.startswith("py "):
-            hist_line = re.sub(r"\s*\\\s*\n\s*", " ", hist_line)
-            hist_line = _collapse_inline_line_continuations(hist_line)
-            if "\n" in hist_line:
-                hist_line = re.sub(r"\s*\n\s*", " ", hist_line).strip()
-
-        if not self._raw_history or self._raw_history[-1] != hist_line:
-            self._raw_history.append(hist_line)
+        if "\n" in original_line:
+            raw_cmd = original_line.strip()
+        else:
+            raw_cmd = _collapse_inline_line_continuations(original_line.strip())
+        if not self._raw_history or self._raw_history[-1] != raw_cmd:
+            self._raw_history.append(raw_cmd)
 
         if readline is not None:
             try:
                 cur_len = readline.get_current_history_length()
-                if cur_len == 0 or readline.get_history_item(cur_len) != hist_line:
-                    readline.add_history(hist_line)
+                collapsed = re.sub(r"\s*\\\s*\n\s*", " ", raw_cmd)
+                collapsed = _collapse_inline_line_continuations(collapsed)
+                if cur_len == 0 or readline.get_history_item(cur_len) != collapsed:
+                    readline.add_history(collapsed)
             except Exception:
                 pass
 

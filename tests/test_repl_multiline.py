@@ -194,17 +194,16 @@ def test_repl_run_py_block_mode_and_empty_line_termination():
     assert "... " in prompts_seen
 
 
-def test_repl_history_collapses_multiline_to_single_line_for_smooth_navigation():
-    """Verify that multi-line pipelines with '\\' collapse into a single line in history for smooth arrow key navigation."""
+def test_repl_history_preserves_multiline_syntax():
+    """Verify that multi-line pipelines with '\\' preserve multiline formatting in history for 2D recall."""
     r = PytaeRepl()
     outputs = []
     multiline_cmd = 'df = sample:penguins \\\n  -filter "species == \'Gentoo\'" \\\n  -mutate "kg = 1.0"'
     r.execute_line(multiline_cmd, output_fn=outputs.append)
 
     assert "df" in r.tables
-    # Ensure history does NOT contain literal newlines that trap the cursor at the end
     assert len(r._raw_history) == 1
-    assert r._raw_history[0] == 'df = sample:penguins -filter "species == \'Gentoo\'" -mutate "kg = 1.0"'
+    assert r._raw_history[0] == multiline_cmd
     r.close()
 
 
@@ -275,47 +274,91 @@ def test_collapse_inline_line_continuations():
 
 
 def test_console_input_shift_enter_splits_line():
-    """Verify that pressing Shift+Enter in the middle of a command splits text to the next line."""
+    """Verify that pressing Shift+Enter in the middle of a command splits text to the next line in the editor."""
     from pytae.repl import _console_input
 
-    pq: list[str] = []
-    # Type 'hello world', move cursor left 5 times (to before 'world'), press Shift+Enter (\x1b[13;2u)
-    chars = list("hello world") + ["\x1b", "[D"] * 5 + ["\x1b", "[13;2u"]
+    # Type 'hello world', move cursor left 5 times (to before 'world'), press Shift+Enter (\x1b[13;2u), then Enter (\r)
+    chars = list("hello world") + ["\x1b", "[D"] * 5 + ["\x1b", "[13;2u"] + ["\r"]
 
     def fake_read():
         if chars:
             return chars.pop(0)
         return "\r"
 
-    res1 = _console_input("pytae> ", [], read_char_fn=fake_read, pending_queue=pq)
-    assert res1 == "hello \\"
-    assert pq == ["world"]
-
-    # Next prompt reads from pending_queue as initial_text
-    res2 = _console_input("... ", [], read_char_fn=lambda: "\r", initial_text=pq.pop(0), pending_queue=pq)
-    assert res2 == "world"
+    res = _console_input("pytae> ", [], read_char_fn=fake_read)
+    assert res == "hello \\\n  world"
 
 
 def test_console_input_enter_after_backslash_splits_line():
-    """Verify that pressing regular Enter in the middle right after a '\\' splits into the next line."""
+    """Verify that pressing regular Enter in the middle right after a '\\' splits into the next line in the editor."""
     from pytae.repl import _console_input
 
-    pq: list[str] = []
-    # User types '-ndasn dsa sajo sad \ -sshsdhi', navigates back over '-sshsdhi' to right after '\', presses Enter
+    # User types '-ndasn dsa sajo sad \ -sshsdhi', navigates back over '-sshsdhi' to right after '\', presses Enter, then Enter on complete buffer
     raw_cmd = "-ndasn dsa sajo sad \\ -sshsdhi"
-    chars = list(raw_cmd) + ["\x1b", "[D"] * 9 + ["\r"]
+    chars = list(raw_cmd) + ["\x1b", "[D"] * 9 + ["\r", "\r"]
 
     def fake_read():
         if chars:
             return chars.pop(0)
         return "\r"
 
-    res1 = _console_input("pytae> ", [], read_char_fn=fake_read, pending_queue=pq)
-    assert res1 == "-ndasn dsa sajo sad \\"
-    assert pq == ["-sshsdhi"]
+    res = _console_input("pytae> ", [], read_char_fn=fake_read)
+    assert res == "-ndasn dsa sajo sad \\\n  -sshsdhi"
 
-    res2 = _console_input("... ", [], read_char_fn=lambda: "\r", initial_text=pq.pop(0), pending_queue=pq)
-    assert res2 == "-sshsdhi"
+
+def test_console_input_2d_up_down_arrow_navigation():
+    """Verify that Up and Down arrows move vertically within a multiline buffer before history recall."""
+    from pytae.repl import _console_input
+
+    # Initial text has 2 lines: "line1" and "line2". Cursor starts at end of "line2" (index 11).
+    # Press Up arrow (\x1b[A), insert 'UP_', press Down arrow (\x1b[B), insert '_DOWN', press Enter (\r).
+    init_text = "line1\nline2"
+    chars = ["\x1b", "[A"] + list("UP_") + ["\x1b", "[B"] + list("_DOWN") + ["\r"]
+
+    def fake_read():
+        if chars:
+            return chars.pop(0)
+        return "\r"
+
+    res = _console_input("pytae> ", ["old_history"], read_char_fn=fake_read, initial_text=init_text)
+    # The Up arrow moved to line1 where 'UP_' was inserted; Down arrow returned to line2 where '_DOWN' was appended.
+    assert res == "line1UP_\nline2_DOWN"
+
+
+def test_console_input_backspace_merges_lines():
+    """Verify that pressing Backspace at col 0 of a continuation line deletes the newline and merges lines."""
+    from pytae.repl import _console_input
+
+    # Initial text is "line1\nline2". Cursor starts at index 6 (start of "line2").
+    # Press Backspace (\x7f), then Enter (\r).
+    chars = ["\x7f", "\r"]
+
+    def fake_read():
+        if chars:
+            return chars.pop(0)
+        return "\r"
+
+    # initial_text has cursor at end by default unless we navigate left 5 times to index 6
+    full_chars = ["\x1b", "[D"] * 5 + chars
+    res = _console_input("pytae> ", [], read_char_fn=lambda: full_chars.pop(0), initial_text="line1\nline2")
+    assert res == "line1line2"
+
+
+def test_console_input_history_recall_multiline():
+    """Verify that Up arrow recalls full multiline command from history and allows 2D editing."""
+    from pytae.repl import _console_input
+
+    multiline_hist = "df = sample:penguins \\\n  -filter 'x > 1'"
+    # Press Up arrow (\x1b[A) to recall multiline command, then press Enter (\r)
+    chars = ["\x1b", "[A", "\r"]
+
+    def fake_read():
+        if chars:
+            return chars.pop(0)
+        return "\r"
+
+    res = _console_input("pytae> ", [multiline_hist], read_char_fn=fake_read)
+    assert res == multiline_hist
 
 
 def test_repl_execute_line_with_inline_backslash():
