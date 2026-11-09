@@ -1407,13 +1407,146 @@ def _write_parquet(
     print()
 
 
-def read_csv(source: Any, *args: Any, **kwargs: Any) -> Any:
-    """Read a CSV file into a pytae.DataFrame (wraps polars.read_csv)."""
-    import polars as pl
+def read(source: Any, *args: Any, **kwargs: Any) -> Any:
+    """Read a dataset from a file path, URL, directory glob, or in-memory object into a pytae.DataFrame.
 
+    Format is automatically detected from the file extension (.parquet, .csv, .tsv, .ipc,
+    .feather, .arrow, .ndjson, .jsonl, .json, .xlsx, .sas7bdat). Format can also be explicitly
+    specified via the `format=` or `fmt=` keyword argument.
+
+    Examples:
+        df = pt.read("data.parquet")
+        df = pt.read("data.csv", sep=";")
+        df = pt.read("report.xlsx", sheet_name="Summary")
+    """
+    import pandas as pd
+    import polars as pl
     from pytae.dataframe import DataFrame
 
-    source = _normalize_source(source)
+    if isinstance(source, DataFrame):
+        return source
+
+    if isinstance(source, (pl.DataFrame, pl.LazyFrame, pd.DataFrame)):
+        return DataFrame(source)
+
+    norm_src = _normalize_source(source)
+
+    # Check for explicit format override
+    fmt = kwargs.pop("format", kwargs.pop("fmt", None))
+    if fmt:
+        fmt = fmt.lower().lstrip(".")
+        if fmt in ("parquet", "pq"):
+            return _read_parquet_impl(norm_src, *args, **kwargs)
+        elif fmt in ("csv", "tsv", "txt"):
+            return _read_csv_impl(norm_src, *args, **kwargs)
+        elif fmt in ("ipc", "arrow", "feather"):
+            return _read_ipc_impl(norm_src, *args, **kwargs)
+        elif fmt in ("ndjson", "jsonl"):
+            return _read_ndjson_impl(norm_src, *args, **kwargs)
+        elif fmt == "json":
+            return _read_json_impl(norm_src, *args, **kwargs)
+        elif fmt in ("xlsx", "xls", "excel"):
+            return _read_excel_impl(norm_src, *args, **kwargs)
+
+    if isinstance(norm_src, (str, Path)):
+        p = Path(norm_src)
+        if any(ch in str(norm_src) for ch in "*?[") or (p.exists() and p.is_dir()):
+            return get_reader(p, **kwargs).to_dataframe()
+
+        suffix, _ = _split_path_suffixes(p)
+        if suffix in (".parquet", ".pq"):
+            return _read_parquet_impl(norm_src, *args, **kwargs)
+        elif suffix in (".csv", ".tsv", ".txt", ".dat"):
+            return _read_csv_impl(norm_src, *args, **kwargs)
+        elif suffix in (".ipc", ".arrow", ".feather"):
+            return _read_ipc_impl(norm_src, *args, **kwargs)
+        elif suffix in (".ndjson", ".jsonl"):
+            return _read_ndjson_impl(norm_src, *args, **kwargs)
+        elif suffix == ".json":
+            return _read_json_impl(norm_src, *args, **kwargs)
+        elif suffix in (".xlsx", ".xls"):
+            return _read_excel_impl(norm_src, *args, **kwargs)
+        elif suffix == ".sas7bdat":
+            return get_reader(p, **kwargs).to_dataframe()
+        else:
+            try:
+                return get_reader(p, **kwargs).to_dataframe()
+            except Exception:
+                return _read_csv_impl(norm_src, *args, **kwargs)
+
+    return DataFrame(norm_src)
+
+
+def scan(source: Any, *args: Any, **kwargs: Any) -> Any:
+    """Lazily scan a dataset from a file path into a lazy pytae.DataFrame.
+
+    Format is automatically detected from the file extension (.parquet, .csv, .tsv, .ipc,
+    .arrow, .feather, .ndjson, .jsonl).
+
+    Examples:
+        df = pt.scan("data.parquet")
+        df = pt.scan("logs.csv")
+    """
+    import polars as pl
+    from pytae.dataframe import DataFrame
+
+    if isinstance(source, DataFrame):
+        return source if source.is_lazy else DataFrame(source._df.lazy())
+
+    if isinstance(source, pl.LazyFrame):
+        return DataFrame(source)
+
+    if isinstance(source, pl.DataFrame):
+        return DataFrame(source.lazy())
+
+    norm_src = _normalize_source(source)
+    fmt = kwargs.pop("format", kwargs.pop("fmt", None))
+    p = Path(norm_src) if isinstance(norm_src, (str, Path)) else None
+    suffix = ("." + fmt.lower().lstrip(".")) if fmt else (p.suffix.lower() if p else "")
+
+    if suffix in (".parquet", ".pq"):
+        return DataFrame(pl.scan_parquet(norm_src, *args, **kwargs))
+    elif suffix in (".csv", ".tsv", ".txt", ".dat"):
+        if suffix == ".tsv" and "separator" not in kwargs and "sep" not in kwargs:
+            kwargs["separator"] = "\t"
+        if suffix in (".txt", ".dat") and "separator" not in kwargs and "sep" not in kwargs and p and p.exists():
+            try:
+                first_line = p.read_text(encoding="utf-8", errors="ignore").splitlines()[0]
+                if "\t" in first_line and "," not in first_line:
+                    kwargs["separator"] = "\t"
+            except Exception:
+                pass
+        if "sep" in kwargs and "separator" not in kwargs:
+            kwargs["separator"] = kwargs.pop("sep")
+        kwargs.setdefault("infer_schema_length", 10000)
+        return DataFrame(pl.scan_csv(norm_src, *args, **kwargs))
+    elif suffix in (".ipc", ".arrow", ".feather"):
+        return DataFrame(pl.scan_ipc(norm_src, *args, **kwargs))
+    elif suffix in (".ndjson", ".jsonl"):
+        return DataFrame(pl.scan_ndjson(norm_src, *args, **kwargs))
+    else:
+        try:
+            return DataFrame(get_reader(p or Path(str(norm_src)), **kwargs).to_polars_lazy())
+        except Exception:
+            return DataFrame(pl.scan_csv(norm_src, *args, **kwargs))
+
+
+def write(df: Any, target: Any, **kwargs: Any) -> Any:
+    """Universal destination function for exporting or converting a dataset."""
+    from pytae.dataframe import DataFrame
+    if isinstance(df, DataFrame):
+        return df.to(target, **kwargs)
+    return DataFrame(df).to(target, **kwargs)
+
+
+def to(df: Any, target: Any, **kwargs: Any) -> Any:
+    """Universal destination function for exporting or converting a dataset."""
+    return write(df, target, **kwargs)
+
+
+def _read_csv_impl(source: Any, *args: Any, **kwargs: Any) -> Any:
+    import polars as pl
+    from pytae.dataframe import DataFrame
     kwargs.setdefault("infer_schema_length", 10000)
     try:
         return DataFrame(pl.read_csv(source, *args, **kwargs))
@@ -1424,102 +1557,110 @@ def read_csv(source: Any, *args: Any, **kwargs: Any) -> Any:
         raise
 
 
-def read_parquet(source: Any, *args: Any, **kwargs: Any) -> Any:
-    """Read a Parquet file into a pytae.DataFrame (wraps polars.read_parquet)."""
+def _read_parquet_impl(source: Any, *args: Any, **kwargs: Any) -> Any:
     import polars as pl
-
     from pytae.dataframe import DataFrame
-
-    source = _normalize_source(source)
     kwargs.setdefault("memory_map", False)
     return DataFrame(pl.read_parquet(source, *args, **kwargs))
 
 
-def read_ndjson(source: Any, *args: Any, **kwargs: Any) -> Any:
-    """Read a newline-delimited JSON (NDJSON/JSONL) file into a pytae.DataFrame (wraps polars.read_ndjson)."""
+def _read_ndjson_impl(source: Any, *args: Any, **kwargs: Any) -> Any:
     import polars as pl
-
     from pytae.dataframe import DataFrame
+    return DataFrame(pl.read_ndjson(source, *args, **kwargs))
 
-    return DataFrame(pl.read_ndjson(_normalize_source(source), *args, **kwargs))
+
+def _read_json_impl(source: Any, *args: Any, **kwargs: Any) -> Any:
+    import polars as pl
+    from pytae.dataframe import DataFrame
+    return DataFrame(pl.read_json(source, *args, **kwargs))
+
+
+def _read_ipc_impl(source: Any, *args: Any, **kwargs: Any) -> Any:
+    import polars as pl
+    from pytae.dataframe import DataFrame
+    return DataFrame(pl.read_ipc(source, *args, **kwargs))
+
+
+def _read_excel_impl(source: Any, *args: Any, **kwargs: Any) -> Any:
+    import pandas as pd
+    from pytae.dataframe import DataFrame
+    return DataFrame(pd.read_excel(source, *args, **kwargs))
+
+
+# Deprecated legacy readers / scanners
+def read_csv(source: Any, *args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use universal pt.read() instead."""
+    import warnings
+    warnings.warn("pt.read_csv() is deprecated; use universal pt.read() instead.", DeprecationWarning, stacklevel=2)
+    return _read_csv_impl(_normalize_source(source), *args, **kwargs)
+
+
+def read_parquet(source: Any, *args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use universal pt.read() instead."""
+    import warnings
+    warnings.warn("pt.read_parquet() is deprecated; use universal pt.read() instead.", DeprecationWarning, stacklevel=2)
+    return _read_parquet_impl(_normalize_source(source), *args, **kwargs)
+
+
+def read_ndjson(source: Any, *args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use universal pt.read() instead."""
+    import warnings
+    warnings.warn("pt.read_ndjson() is deprecated; use universal pt.read() instead.", DeprecationWarning, stacklevel=2)
+    return _read_ndjson_impl(_normalize_source(source), *args, **kwargs)
 
 
 def read_json(source: Any, *args: Any, **kwargs: Any) -> Any:
-    """Read a JSON file into a pytae.DataFrame (wraps polars.read_json)."""
-    import polars as pl
-
-    from pytae.dataframe import DataFrame
-
-    return DataFrame(pl.read_json(_normalize_source(source), *args, **kwargs))
+    """Deprecated: Use universal pt.read() instead."""
+    import warnings
+    warnings.warn("pt.read_json() is deprecated; use universal pt.read() instead.", DeprecationWarning, stacklevel=2)
+    return _read_json_impl(_normalize_source(source), *args, **kwargs)
 
 
 def read_ipc(source: Any, *args: Any, **kwargs: Any) -> Any:
-    """Read an Arrow IPC / Feather file into a pytae.DataFrame (wraps polars.read_ipc)."""
-    import polars as pl
-
-    from pytae.dataframe import DataFrame
-
-    return DataFrame(pl.read_ipc(_normalize_source(source), *args, **kwargs))
+    """Deprecated: Use universal pt.read() instead."""
+    import warnings
+    warnings.warn("pt.read_ipc() is deprecated; use universal pt.read() instead.", DeprecationWarning, stacklevel=2)
+    return _read_ipc_impl(_normalize_source(source), *args, **kwargs)
 
 
 def read_excel(source: Any, *args: Any, **kwargs: Any) -> Any:
-    """Read an Excel file into a pytae.DataFrame using pandas."""
-    import pandas as pd
-
-    from pytae.dataframe import DataFrame
-
-    return DataFrame(pd.read_excel(_normalize_source(source), *args, **kwargs))
+    """Deprecated: Use universal pt.read() instead."""
+    import warnings
+    warnings.warn("pt.read_excel() is deprecated; use universal pt.read() instead.", DeprecationWarning, stacklevel=2)
+    return _read_excel_impl(_normalize_source(source), *args, **kwargs)
 
 
 def read_database(query: Any, connection: Any, *args: Any, **kwargs: Any) -> Any:
     """Read SQL query results into a pytae.DataFrame (wraps polars.read_database)."""
     import polars as pl
-
     from pytae.dataframe import DataFrame
-
     return DataFrame(pl.read_database(query, connection, *args, **kwargs))
 
 
 def scan_csv(source: Any, *args: Any, **kwargs: Any) -> Any:
-    """Lazily scan a CSV file into a lazy pytae.DataFrame (wraps polars.scan_csv)."""
-    import polars as pl
-
-    from pytae.dataframe import DataFrame
-
-    kwargs.setdefault("infer_schema_length", 10000)
-    return DataFrame(pl.scan_csv(_normalize_source(source), *args, **kwargs))
+    """Deprecated: Use universal pt.scan() instead."""
+    import warnings
+    warnings.warn("pt.scan_csv() is deprecated; use universal pt.scan() instead.", DeprecationWarning, stacklevel=2)
+    return scan(source, *args, format="csv", **kwargs)
 
 
 def scan_parquet(source: Any, *args: Any, **kwargs: Any) -> Any:
-    """Lazily scan a Parquet file into a lazy pytae.DataFrame (wraps polars.scan_parquet)."""
-    import polars as pl
-
-    from pytae.dataframe import DataFrame
-
-    return DataFrame(pl.scan_parquet(_normalize_source(source), *args, **kwargs))
+    """Deprecated: Use universal pt.scan() instead."""
+    import warnings
+    warnings.warn("pt.scan_parquet() is deprecated; use universal pt.scan() instead.", DeprecationWarning, stacklevel=2)
+    return scan(source, *args, format="parquet", **kwargs)
 
 
 def scan_ndjson(source: Any, *args: Any, **kwargs: Any) -> Any:
-    """Lazily scan an NDJSON file into a lazy pytae.DataFrame (wraps polars.scan_ndjson)."""
-    import polars as pl
-
-    from pytae.dataframe import DataFrame
-
-    return DataFrame(pl.scan_ndjson(_normalize_source(source), *args, **kwargs))
+    """Deprecated: Use universal pt.scan() instead."""
+    import warnings
+    warnings.warn("pt.scan_ndjson() is deprecated; use universal pt.scan() instead.", DeprecationWarning, stacklevel=2)
+    return scan(source, *args, format="ndjson", **kwargs)
 
 
 def scan_ipc(source: Any, *args: Any, **kwargs: Any) -> Any:
-    """Lazily scan an Arrow IPC / Feather file into a lazy pytae.DataFrame (wraps polars.scan_ipc)."""
-    import polars as pl
-
-    from pytae.dataframe import DataFrame
-
-    return DataFrame(pl.scan_ipc(_normalize_source(source), *args, **kwargs))
-
-
-def read(*args: Any, **kwargs: Any) -> None:
-    raise AttributeError("pt.read() has been removed; use pt.read_parquet(), pt.read_csv(), etc. instead")
-
-
-def scan(*args: Any, **kwargs: Any) -> None:
-    raise AttributeError("pt.scan() has been removed; use pt.scan_parquet(), pt.scan_csv(), etc. instead")
+    """Deprecated: Use universal pt.scan() instead."""
+    import warnings
+    warnings.warn("pt.scan_ipc() is deprecated; use universal pt.scan() instead.", DeprecationWarning, stacklevel=2)
+    return scan(source, *args, format="ipc", **kwargs)

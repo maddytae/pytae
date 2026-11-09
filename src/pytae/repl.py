@@ -1963,11 +1963,190 @@ def _prune_rolled_back_entries(entries: list[str]) -> list[str]:
     return result
 
 
+def _extract_entry_def_and_uses(entry: str) -> tuple[set[str], set[str], bool, bool]:
+    """Analyze a replayable entry to determine its definitions, usages, side-effects, and barriers.
+
+    Returns:
+        (defs, uses, has_side_effect, is_barrier)
+    """
+    clean = entry.strip()
+    if not clean or clean.startswith("#"):
+        return set(), set(), False, False
+
+    # 1. Python blocks: opaque barrier with potential side effects
+    if clean.startswith("py"):
+        return set(), set(), True, True
+
+    # 2. History / Session barriers and explicit resets
+    if clean.startswith(("reset", "restore ", "checkpoint ", "rm table ", "rename ", "switch ", "use ")):
+        toks = clean.split()
+        if len(toks) >= 3 and toks[0] == "rename":
+            return {toks[2]}, {toks[1]}, False, True
+        return set(), set(), True, True
+
+    toks = clean.split()
+    has_side_effect = False
+    uses: set[str] = set()
+    defs: set[str] = set()
+
+    # 3. Output commands: <tbl> -o <path>, export <path>, save <path>
+    for i, t in enumerate(toks):
+        if t in ("-o", "-output", "--output") and i + 1 < len(toks):
+            has_side_effect = True
+            src = toks[0] if i > 0 else "df"
+            if src.isidentifier():
+                uses.add(src)
+        elif t.startswith(("-o=", "-output=", "--output=")):
+            has_side_effect = True
+            src = toks[0] if i > 0 else "df"
+            if src.isidentifier():
+                uses.add(src)
+
+    if toks and toks[0] in ("export", "save", "-export", "-save"):
+        has_side_effect = True
+        uses.add("df")
+
+    # 4. Ingestion commands: load <path> [as <alias>] or scan <path> [as <alias>]
+    if toks and toks[0] in ("load", "scan"):
+        alias = "df"
+        if len(toks) >= 4 and toks[2].lower() == "as":
+            alias = toks[3]
+        elif len(toks) >= 2:
+            p = toks[1].strip("'\"")
+            stem = Path(p).stem
+            alias = stem if stem.isidentifier() else "df"
+        defs.add(alias)
+        return defs, uses, has_side_effect, False
+
+    # 5. Variable assignments: target = expr
+    if "=" in clean and not clean.startswith("-"):
+        parts = clean.split("=", 1)
+        left = parts[0].strip()
+        right = parts[1].strip()
+        if left.isidentifier():
+            defs.add(left)
+            # Find uses on the right side:
+            if right.startswith(("-sql", "--sql")):
+                words = set(re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*\b", right))
+                sql_keywords = {
+                    "select", "from", "where", "join", "inner", "left", "right", "outer",
+                    "full", "cross", "on", "group", "by", "order", "having", "limit",
+                    "as", "and", "or", "not", "distinct", "union", "all", "case", "when",
+                    "then", "else", "end", "is", "null", "in", "like", "ilike", "between",
+                    "sql", "insert", "into", "update", "delete", "create", "table", "drop",
+                    "view", "with", "true", "false",
+                }
+                for w in words:
+                    if w.lower() not in sql_keywords and w != left:
+                        uses.add(w)
+            else:
+                # If right-hand side starts with a pipeline flag (e.g. df = -filter ... or df = -mutate ...),
+                # it is an in-place pipeline transformation of the target table (and default 'df')
+                if right.startswith("-"):
+                    uses.add(left)
+                    uses.add("df")
+
+                try:
+                    r_toks = shlex.split(right)
+                except Exception:
+                    r_toks = right.split()
+
+                if r_toks:
+                    first = r_toks[0].strip("'\"")
+                    is_path_or_literal = (
+                        first.startswith("-")
+                        or "." in first
+                        or "/" in first
+                        or "\\" in first
+                        or first.lower() in ("clip", "clipboard")
+                        or first.startswith("sample:")
+                        or first in ("load", "scan")
+                    )
+                    if not is_path_or_literal and first.isidentifier():
+                        uses.add(first)
+
+                    for idx_t, tok in enumerate(r_toks[1:], start=1):
+                        if tok in ("-join", "--join", "-concat", "--concat") and idx_t + 1 < len(r_toks):
+                            next_tok = r_toks[idx_t + 1].strip("'\"")
+                            if next_tok.isidentifier():
+                                uses.add(next_tok)
+                        if tok in ("-o", "-output", "--output") and idx_t + 1 < len(r_toks):
+                            has_side_effect = True
+                        elif tok.startswith(("-o=", "-output=", "--output=")):
+                            has_side_effect = True
+
+                    # Check if left variable is referenced on RHS (e.g. df = df -head)
+                    if re.search(r"\b" + re.escape(left) + r"\b", right):
+                        uses.add(left)
+
+            return defs, uses, has_side_effect, False
+
+    # 6. Direct SQL statement: -sql "..."
+    if clean.startswith(("-sql", "--sql")):
+        has_side_effect = True
+        words = set(re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*\b", clean))
+        return defs, words, has_side_effect, False
+
+    # 7. Bare table action or collect: e.g. tbl -collect
+    if toks and toks[0].isidentifier():
+        uses.add(toks[0])
+
+    return defs, uses, has_side_effect, False
+
+
+def _prune_dead_assignments(entries: list[str]) -> list[str]:
+    """Prune non-side-effecting variable assignments that are overwritten before being read.
+
+    Eliminates redundant or superseded definitions (e.g., consecutive 'df = test.csv'
+    or scratchpad re-reads) while faithfully preserving repeated computations in sequential
+    pipelines where intermediate values are read or exported (e.g. batch loops with '-o').
+    """
+    analyzed = [_extract_entry_def_and_uses(e) for e in entries]
+    n = len(entries)
+    keep = [True] * n
+
+    for i in range(n):
+        defs_i, uses_i, side_i, barrier_i = analyzed[i]
+        if barrier_i or side_i or not defs_i:
+            continue
+
+        all_dead = True
+        for target in defs_i:
+            target_is_dead = False
+            for j in range(i + 1, n):
+                defs_j, uses_j, side_j, barrier_j = analyzed[j]
+
+                # If j reads target, then definition i was used!
+                if target in uses_j:
+                    target_is_dead = False
+                    break
+
+                # If j is an opaque barrier, we cannot prune across it
+                if barrier_j:
+                    target_is_dead = False
+                    break
+
+                # If j redefines target without reading it:
+                if target in defs_j:
+                    target_is_dead = True
+                    break
+
+            if not target_is_dead:
+                all_dead = False
+                break
+
+        if all_dead:
+            keep[i] = False
+
+    return [entries[i] for i in range(n) if keep[i]]
+
+
 def _compile_history_to_python(
     entries: list[str],
     table_sources: dict[str, str] | None = None,
     *,
     relative: bool = False,
+    prune_dead: bool = True,
 ) -> str:
     """Compile replayable REPL history into a standalone, executable Python script."""
     import ast
@@ -1975,6 +2154,8 @@ def _compile_history_to_python(
     from datetime import datetime
 
     entries = _prune_rolled_back_entries(entries)
+    if prune_dead:
+        entries = _prune_dead_assignments(entries)
 
     lines: list[str] = [
         '"""Auto-generated standalone Python pipeline script from pytae REPL session."""',
@@ -2157,16 +2338,16 @@ def _compile_history_to_python(
             dest = toks[-1].strip("\"'")
             src = toks[0] if len(toks) > 2 else "df"
             if dest.lower() in ("clip", "clipboard"):
-                lines.append(f"{src}.to_pandas().to_clipboard(index=False)")
+                lines.append(f"{src}.to('clip')")
             else:
-                lines.append(f"{src}.save({repr(dest)})")
+                lines.append(f"{src}.to({repr(dest)})")
             continue
         if len(toks) >= 2 and toks[0] in ("export", "save"):
             dest = toks[1].strip("\"'")
             if dest.lower() in ("clip", "clipboard"):
-                lines.append("df.to_pandas().to_clipboard(index=False)")
+                lines.append("df.to('clip')")
             else:
-                lines.append(f"df.save({repr(dest)})")
+                lines.append(f"df.to({repr(dest)})")
             continue
 
     code_str = "\n".join(lines) + "\n"
@@ -2182,12 +2363,15 @@ def _compile_history_to_pt(
     filename: str = "pipeline.pt",
     *,
     relative: bool = False,
+    prune_dead: bool = True,
 ) -> str:
     """Compile replayable REPL history into a clean, replayable Pytae script."""
     import shlex
     from datetime import datetime
 
     entries = _prune_rolled_back_entries(entries)
+    if prune_dead:
+        entries = _prune_dead_assignments(entries)
 
     lines: list[str] = [
         f"# Pytae Script: {filename}",
@@ -2321,7 +2505,7 @@ def _is_replayable_entry_static(entry: str) -> bool:
 def run_cli_export(argv: list[str]) -> int:
     """Export a recorded history log file to a standalone Python (.py) or Pytae (.pt) script."""
     if not argv:
-        print("Usage: pytae -export <history_file> [-o <target.py|target.pt>] [-relative]")
+        print("Usage: pytae -export <history_file> [-o <target.py|target.pt>] [-relative] [-no-prune]")
         return 1
 
     if "--relative" in argv:
@@ -2329,9 +2513,10 @@ def run_cli_export(argv: list[str]) -> int:
         return 1
 
     relative = "-relative" in argv
-    clean_argv = [a for a in argv if a != "-relative"]
+    no_prune = any(a in ("-no-prune", "--no-prune") for a in argv)
+    clean_argv = [a for a in argv if a not in ("-relative", "-no-prune", "--no-prune")]
     if not clean_argv:
-        print("Usage: pytae -export <history_file> [-o <target.py|target.pt>] [-relative]")
+        print("Usage: pytae -export <history_file> [-o <target.py|target.pt>] [-relative] [-no-prune]")
         return 1
 
     history_file_str = clean_argv[0]
@@ -2370,10 +2555,10 @@ def run_cli_export(argv: list[str]) -> int:
     out_p.parent.mkdir(parents=True, exist_ok=True)
 
     if out_p.suffix.lower() == ".py":
-        content = _compile_history_to_python(replayable, relative=relative)
+        content = _compile_history_to_python(replayable, relative=relative, prune_dead=not no_prune)
         desc = "standalone Python script"
     else:
-        content = _compile_history_to_pt(replayable, out_p.name, relative=relative)
+        content = _compile_history_to_pt(replayable, out_p.name, relative=relative, prune_dead=not no_prune)
         desc = "Pytae script"
 
     out_p.write_text(content, encoding="utf-8")
@@ -2608,10 +2793,11 @@ class PytaeRepl:
         output_fn: Callable[[str], None],
         *,
         relative: bool = False,
+        prune_dead: bool = True,
     ) -> bool:
         """Export session commands to an executable Python (.py) or Pytae (.pt) script."""
         if not target_path_str:
-            output_fn("Usage: export <path.py|path.pt> [-relative]")
+            output_fn("Usage: export <path.py|path.pt> [-relative] [-no-prune]")
             return False
 
         from pytae.cli_parsing import normalize_git_bash_path
@@ -2628,10 +2814,10 @@ class PytaeRepl:
         try:
             target_path.parent.mkdir(parents=True, exist_ok=True)
             if target_path.suffix.lower() == ".py":
-                content = _compile_history_to_python(replayable, self.table_sources, relative=relative)
+                content = _compile_history_to_python(replayable, self.table_sources, relative=relative, prune_dead=prune_dead)
                 desc = "standalone Python script"
             else:
-                content = _compile_history_to_pt(replayable, target_path.name, relative=relative)
+                content = _compile_history_to_pt(replayable, target_path.name, relative=relative, prune_dead=prune_dead)
                 desc = "Pytae script"
 
             target_path.write_text(content, encoding="utf-8")
@@ -2648,8 +2834,9 @@ class PytaeRepl:
         output_fn: Callable[[str], None],
         *,
         relative: bool = False,
+        prune_dead: bool = True,
     ) -> bool:
-        """Export session commands to a named file (used by exit -s [path] [-relative])."""
+        """Export session commands to a named file (used by exit -s [path] [-relative] [-no-prune])."""
         from pytae.cli_parsing import normalize_git_bash_path
 
         clean_path = normalize_git_bash_path(target_path_str.strip("'\""))
@@ -2663,9 +2850,9 @@ class PytaeRepl:
         try:
             target_path.parent.mkdir(parents=True, exist_ok=True)
             if target_path.suffix.lower() == ".py":
-                content = _compile_history_to_python(replayable, self.table_sources, relative=relative)
+                content = _compile_history_to_python(replayable, self.table_sources, relative=relative, prune_dead=prune_dead)
             else:
-                content = _compile_history_to_pt(replayable, target_path.name, relative=relative)
+                content = _compile_history_to_pt(replayable, target_path.name, relative=relative, prune_dead=prune_dead)
 
             target_path.write_text(content, encoding="utf-8")
             path_desc = " (-relative)" if relative else ""
@@ -3134,7 +3321,8 @@ class PytaeRepl:
 
         if exit_tokens and exit_tokens[0].lower() == "exit":
             relative = any(t in ("-relative", "--relative") for t in exit_tokens[1:])
-            clean_exit_tokens = [t for t in exit_tokens if t not in ("-relative", "--relative")]
+            no_prune = any(t in ("-no-prune", "--no-prune") for t in exit_tokens[1:])
+            clean_exit_tokens = [t for t in exit_tokens if t not in ("-relative", "--relative", "-no-prune", "--no-prune")]
             if len(clean_exit_tokens) >= 3 and clean_exit_tokens[1] in ("-s", "-save", "save"):
                 sub = clean_exit_tokens[2].lower()
                 if sub == "py":
@@ -3143,12 +3331,12 @@ class PytaeRepl:
                     target = "session.pt"
                 else:
                     target = clean_exit_tokens[2]
-                self._export_session_history(target, output_fn, relative=relative)
+                self._export_session_history(target, output_fn, relative=relative, prune_dead=not no_prune)
                 output_fn("Exiting pytae REPL.")
                 return False
             elif len(clean_exit_tokens) == 2 and clean_exit_tokens[1] in ("-s", "-save", "save"):
                 target = "session.pt"
-                self._export_session_history(target, output_fn, relative=relative)
+                self._export_session_history(target, output_fn, relative=relative, prune_dead=not no_prune)
                 output_fn("Exiting pytae REPL.")
                 return False
             elif len(clean_exit_tokens) == 2 and (clean_exit_tokens[1].startswith("-s=") or clean_exit_tokens[1].startswith("-s:")):
@@ -3159,16 +3347,16 @@ class PytaeRepl:
                     target = "session.pt"
                 else:
                     target = val
-                self._export_session_history(target, output_fn, relative=relative)
+                self._export_session_history(target, output_fn, relative=relative, prune_dead=not no_prune)
                 output_fn("Exiting pytae REPL.")
                 return False
             elif len(clean_exit_tokens) == 1:
                 if self.save_history_file:
-                    self._export_session_history(self.save_history_file, output_fn, relative=relative)
+                    self._export_session_history(self.save_history_file, output_fn, relative=relative, prune_dead=not no_prune)
                 output_fn("Exiting pytae REPL.")
                 return False
             else:
-                output_fn(f"Usage: exit [-s [path]] [-relative] (unrecognized option: '{' '.join(clean_exit_tokens[1:])}')")
+                output_fn(f"Usage: exit [-s [path]] [-relative] [-no-prune] (unrecognized option: '{' '.join(clean_exit_tokens[1:])}')")
                 return True
 
         # Shell command execution: !<command> (e.g. !ls, !dir)
@@ -3265,21 +3453,22 @@ class PytaeRepl:
             self._cmd_history(output_fn, args=tokens[1:])
             return True
 
-        # Export / Save Script: export <path> [-relative], export script <path> [-relative]
+        # Export / Save Script: export <path> [-relative] [-no-prune], export script <path> [-relative] [-no-prune]
         is_save_cmd = first_lower in ("save", "-save")
         if first_lower in ("export", "-export") or (is_save_cmd and len(tokens) >= 2 and tokens[1].lower() in ("script", "code")):
             if is_save_cmd:
                 output_fn("(Note: 'save script' is deprecated; use 'export script <path>' instead.)")
             if len(tokens) >= 2 and tokens[1].lower() in ("script", "code"):
                 if len(tokens) < 3:
-                    output_fn("Usage: export <path.py|path.pt> [-relative]")
+                    output_fn("Usage: export <path.py|path.pt> [-relative] [-no-prune]")
                     return True
                 target = tokens[2]
                 if any(t == "--relative" for t in tokens[3:]):
                     output_fn("pytae: '--relative' is not recognized; use '-relative'.")
                     return True
                 relative = any(t == "-relative" for t in tokens[3:])
-                self._cmd_export_script(target, output_fn, relative=relative)
+                no_prune = any(t in ("-no-prune", "--no-prune") for t in tokens[3:])
+                self._cmd_export_script(target, output_fn, relative=relative, prune_dead=not no_prune)
                 return True
             if len(tokens) >= 2:
                 target = tokens[1]
@@ -3288,13 +3477,14 @@ class PytaeRepl:
                         output_fn("pytae: '--relative' is not recognized; use '-relative'.")
                         return True
                     relative = any(t == "-relative" for t in tokens[2:])
-                    self._cmd_export_script(target, output_fn, relative=relative)
+                    no_prune = any(t in ("-no-prune", "--no-prune") for t in tokens[2:])
+                    self._cmd_export_script(target, output_fn, relative=relative, prune_dead=not no_prune)
                     return True
                 output_fn(f"(Note: 'export <path>' for data is deprecated; use '-o {target}' instead.)")
                 if self._cmd_save(target, output_fn):
                     self._record_history(f"-o {target}")
                 return True
-            output_fn("Usage: export <path.py|path.pt> [-relative]")
+            output_fn("Usage: export <path.py|path.pt> [-relative] [-no-prune]")
             return True
 
         # Reject disallowed aliases, legacy synonyms, or hyphenated inspection commands

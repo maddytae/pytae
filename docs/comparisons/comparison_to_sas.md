@@ -215,12 +215,12 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 ### 1. Data Ingestion & I/O
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Read SAS Dataset** | `SET libref.dataset;` | `pt.DataFrame(pd.read_sas("dataset.sas7bdat"))` | `pytae dataset.sas7bdat` |
-| **Read CSV** | `PROC IMPORT DATAFILE='...' DBMS=CSV;` | `pt.read_csv("file.csv")` | `pytae file.csv` |
-| **Read Parquet** | SAS Viya CAS Parquet engine | `pt.read_parquet("file.parquet")` | `pytae file.parquet` |
-| **Write Parquet** | Viya CAS Save | `df.to_parquet("file.parquet")` | `-o file.parquet` |
-| **Write CSV** | `PROC EXPORT DATAFILE='...' DBMS=CSV;` | `df.to_csv("file.csv")` | `-o file.csv` |
-| **Clipboard Export** | Custom DDE / ODS script | `df.to_clip()` | `-o clip` |
+| **Read SAS Dataset** | `SET libref.dataset;` | `pt.read("dataset.sas7bdat")` | `pytae dataset.sas7bdat` |
+| **Read CSV** | `PROC IMPORT DATAFILE='...' DBMS=CSV;` | `pt.read("file.csv")` | `pytae file.csv` |
+| **Read Parquet** | SAS Viya CAS Parquet engine | `pt.read("file.parquet")` | `pytae file.parquet` |
+| **Write Parquet** | Viya CAS Save | `df.to("file.parquet")` | `-o file.parquet` |
+| **Write CSV** | `PROC EXPORT DATAFILE='...' DBMS=CSV;` | `df.to("file.csv")` | `-o file.csv` |
+| **Clipboard Export** | Custom DDE / ODS script | `df.to("clip")` | `-o clip` |
 
 ### 2. Row Filtering
 | Task | SAS | Pytae (Python) | Pytae CLI |
@@ -391,7 +391,7 @@ summary = (
 )
 
 # Export clean result to Parquet or CSV
-summary.to_parquet("summary.parquet")
+summary.to("summary.parquet")
 ```
 
 ### In Pytae (Unix CLI Pipeline):

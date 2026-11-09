@@ -323,7 +323,7 @@ pytae raw_events.parquet \
 ```python
 import pytae as pt
 
-df = pt.read_parquet("penguins.parquet")
+df = pt.read("penguins.parquet")
 
 # Method chaining:
 validated = (

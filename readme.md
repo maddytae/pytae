@@ -56,7 +56,7 @@ Need expressive, readable data transformations in Python scripts, Airflow, or Ju
 import pytae as pt
 
 # Read directly with Polars-powered fast auto-detection
-df = pt.read_parquet("sales_report.parquet")
+df = pt.read("sales_report.parquet")
 
 # Or chain directly off pandas or polars - only one .pt call needed!
 summary = (
@@ -64,7 +64,7 @@ summary = (
     .by("region")
     .mutate(pct_total="amount / sum(amount)", prev_sale="shift(amount, 1)")
     .arrange("amount desc")
-    .to_pandas()  # or .to_polars(), .to_clip()
+    .to("pandas")  # or .to("summary.parquet"), .to("clip")
 )
 ```
 

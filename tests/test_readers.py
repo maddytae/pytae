@@ -473,11 +473,17 @@ def test_read_database_and_connections_yaml_and_lazy_sinks(tmp_path, monkeypatch
     assert isinstance(df_db, pt.DataFrame)
     assert df_db["name"].to_list() == ["alpha", "beta"]
 
-    # 2. Retired pt.read() and pt.scan() stubs raise informative AttributeError
-    with pytest.raises(AttributeError, match="pt.read\\(\\) has been removed"):
-        pt.read("foo.parquet")
-    with pytest.raises(AttributeError, match="pt.scan\\(\\) has been removed"):
-        pt.scan("foo.parquet")
+    # 2. Universal pt.read() and pt.scan()
+    test_pq = tmp_path / "univ.parquet"
+    pl.DataFrame({"x": [1, 2]}).write_parquet(test_pq)
+    df_univ = pt.read(test_pq)
+    assert isinstance(df_univ, pt.DataFrame)
+    assert df_univ["x"].to_list() == [1, 2]
+
+    lazy_univ = pt.scan(test_pq)
+    assert isinstance(lazy_univ, pt.DataFrame)
+    assert lazy_univ.is_lazy
+    assert lazy_univ.collect()["x"].to_list() == [1, 2]
 
     # 3. YAML connection error paths when PYTAE_CONNECTIONS_PATH is unset or missing
     monkeypatch.setattr(readers, "_EXTERNAL_CONNECTIONS_MODULE", None)

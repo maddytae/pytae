@@ -143,7 +143,7 @@ pytae orders.parquet -explode "items,quantities"
 ```python
 import pytae as pt
 
-df = pt.read_parquet("events.parquet")
+df = pt.read("events.parquet")
 
 # Unnest via verb function:
 flat = pt.explode(df, "tags")

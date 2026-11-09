@@ -94,20 +94,13 @@ def validate_pipeline(
     import polars as pl
 
     from pytae.dataframe import DataFrame
-    from pytae.readers import get_reader, scan_csv, scan_ipc, scan_ndjson, scan_parquet
+    from pytae.readers import get_reader, scan
 
     if isinstance(source, (str, Path)):
         source_str = str(source)
-        ext = Path(source_str).suffix.lower()
-        if ext in (".parquet", ".pq"):
-            df = scan_parquet(source_str, **kwargs).head(0)
-        elif ext in (".csv", ".tsv"):
-            df = scan_csv(source_str, **kwargs).head(0)
-        elif ext in (".ndjson", ".jsonl"):
-            df = scan_ndjson(source_str, **kwargs).head(0)
-        elif ext in (".ipc", ".arrow", ".feather"):
-            df = scan_ipc(source_str, **kwargs).head(0)
-        else:
+        try:
+            df = scan(source_str, **kwargs).head(0)
+        except Exception:
             df = DataFrame(get_reader(Path(source_str), **kwargs).head(0))
     elif isinstance(source, DataFrame):
         df = source.head(0)

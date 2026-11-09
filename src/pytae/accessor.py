@@ -267,6 +267,12 @@ class _BasePtAccessor:
     def to_pytae(self) -> DataFrame:
         return DataFrame(self._obj)
 
+    def to(self, target: Any, **kwargs: Any) -> Any:
+        return DataFrame(self._obj).to(target, **kwargs)
+
+    def write(self, target: Any, **kwargs: Any) -> Any:
+        return DataFrame(self._obj).to(target, **kwargs)
+
     def plot(self, *args: Any, **kwargs: Any) -> Any:
         return _plot_impl(self._obj, *args, **kwargs)
 

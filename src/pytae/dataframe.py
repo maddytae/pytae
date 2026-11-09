@@ -1419,27 +1419,130 @@ class DataFrame:
         except Exception:
             self.to_pandas().to_clipboard(index=False)
 
-    def to_parquet(self, path: str | Path, **kwargs: Any) -> None:
+    def to(self, target: Any, **kwargs: Any) -> Any:
+        """Universal destination method for exporting data or converting formats.
+
+        Destination can be:
+        1. File path (.parquet, .csv, .xlsx, .ipc, .arrow, .ndjson, .jsonl, .json)
+           Sinks or writes to file and returns `self` for continuous chaining.
+        2. "clip" or "clipboard"
+           Copies TSV representation to system clipboard and returns `self`.
+        3. "pandas" or "pd"
+           Converts to pandas.DataFrame.
+        4. "polars" or "pl"
+           Converts to polars.DataFrame.
+        5. "pytae" or "pt"
+           Returns `self`.
+
+        Examples:
+            df.to("output.parquet")
+            df.to("output.csv")
+            df.to("output.xlsx")
+            df.to("clip")
+            pdf = df.to("pandas")
+            pldf = df.to("polars")
+        """
+        if isinstance(target, str):
+            low = target.lower().strip()
+            if low in ("pandas", "pd"):
+                return self.to_pandas(**kwargs)
+            elif low in ("polars", "pl"):
+                return self.to_polars(**kwargs)
+            elif low in ("pytae", "pt"):
+                return self
+            elif low in ("clip", "clipboard"):
+                self.to_clip()
+                return self
+
+        from pytae.readers import _normalize_source
+        norm_target = _normalize_source(target)
+        p = Path(norm_target)
+        suffix = p.suffix.lower()
+
+        # Handle format override if provided
+        fmt = kwargs.pop("format", kwargs.pop("fmt", None))
+        if fmt:
+            suffix = "." + fmt.lower().lstrip(".")
+
         kwargs.pop("index", None)
-        if self.is_lazy:
-            try:
-                self._df.sink_parquet(path, **kwargs)
-                return
-            except Exception:
-                self._df.collect().write_parquet(path, **kwargs)
-                return
-        self._df.write_parquet(path, **kwargs)
+
+        if suffix in (".parquet", ".pq"):
+            if self.is_lazy:
+                try:
+                    self._df.sink_parquet(norm_target, **kwargs)
+                    return self
+                except Exception:
+                    self._df.collect().write_parquet(norm_target, **kwargs)
+                    return self
+            self._df.write_parquet(norm_target, **kwargs)
+            return self
+
+        elif suffix in (".csv", ".tsv", ".txt"):
+            if suffix == ".tsv" and "separator" not in kwargs and "sep" not in kwargs:
+                kwargs["separator"] = "\t"
+            if "sep" in kwargs and "separator" not in kwargs:
+                kwargs["separator"] = kwargs.pop("sep")
+            if self.is_lazy:
+                try:
+                    self._df.sink_csv(norm_target, **kwargs)
+                    return self
+                except Exception:
+                    self._df.collect().write_csv(norm_target, **kwargs)
+                    return self
+            self._df.write_csv(norm_target, **kwargs)
+            return self
+
+        elif suffix in (".ipc", ".arrow", ".feather"):
+            if self.is_lazy:
+                try:
+                    self._df.sink_ipc(norm_target, **kwargs)
+                    return self
+                except Exception:
+                    self._df.collect().write_ipc(norm_target, **kwargs)
+                    return self
+            self._df.write_ipc(norm_target, **kwargs)
+            return self
+
+        elif suffix in (".ndjson", ".jsonl"):
+            if self.is_lazy:
+                try:
+                    self._df.sink_ndjson(norm_target, **kwargs)
+                    return self
+                except Exception:
+                    self._df.collect().write_ndjson(norm_target, **kwargs)
+                    return self
+            self._df.write_ndjson(norm_target, **kwargs)
+            return self
+
+        elif suffix == ".json":
+            eager = self.collect() if self.is_lazy else self
+            eager._df.write_json(norm_target, **kwargs)
+            return self
+
+        elif suffix in (".xlsx", ".xls"):
+            self.to_pandas().to_excel(norm_target, **kwargs)
+            return self
+
+        else:
+            from pytae.readers import write_dataframe
+            write_dataframe(self, p, **kwargs)
+            return self
+
+    def write(self, target: Any, **kwargs: Any) -> Any:
+        """Alias for universal .to(target, **kwargs)."""
+        return self.to(target, **kwargs)
+
+    def to_parquet(self, path: str | Path, **kwargs: Any) -> None:
+        """Deprecated: Use .to(path) instead."""
+        import warnings
+        warnings.warn("df.to_parquet() is deprecated; use df.to(path) instead.", DeprecationWarning, stacklevel=2)
+        self.to(path, **kwargs)
 
     def to_csv(self, path: str | Path, **kwargs: Any) -> None:
-        kwargs.pop("index", None)
-        if self.is_lazy:
-            try:
-                self._df.sink_csv(path, **kwargs)
-                return
-            except Exception:
-                self._df.collect().write_csv(path, **kwargs)
-                return
-        self._df.write_csv(path, **kwargs)
+        """Deprecated: Use .to(path) instead."""
+        import warnings
+        warnings.warn("df.to_csv() is deprecated; use df.to(path) instead.", DeprecationWarning, stacklevel=2)
+        self.to(path, **kwargs)
 
     def plot(self, *args: Any, **kwargs: Any) -> Any:
         """Create visualizations using Pytae Plotter."""

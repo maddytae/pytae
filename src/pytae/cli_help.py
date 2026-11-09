@@ -1201,14 +1201,14 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "Preserves table states, variables, and checkpoints in RAM during the session.\n"
             "- 'status [-v]' (or 'status session'): Inspect active workbench tables, RAM consumption, and history.\n"
             "- 'checkpoint <name>': Save in-memory snapshot for instant undo / rollback.\n"
-            "- 'export <path.pt | path.py> [-relative]': Save reproducible pipeline script.\n"
+            "- 'export <path.pt | path.py> [-relative] [-no-prune]': Save reproducible pipeline script.\n"
             "- 'session save' / persistent disk sessions have been retired in favor of lightweight in-memory checkpoints and script exports."
         ),
         options=[
             "status [-v] (or status session) : Inspect active in-memory session status, tables, and memory usage.",
             "checkpoint <name> : Create an ephemeral IPC snapshot of all active tables.",
             "restore [name] : Revert active tables to previous checkpoint (or latest).",
-            "export <path.pt | path.py> [-relative] : Export executed pipeline to reproducible script.",
+            "export <path.pt | path.py> [-relative] [-no-prune] : Export executed pipeline to reproducible script (with automatic dead assignment pruning).",
             "-sessions : Shell CLI notice that disk sessions have been retired in favor of script exports.",
         ],
         examples=[

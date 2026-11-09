@@ -201,12 +201,25 @@ def test_cli_lazy_execution(sample_parquet: Path, tmp_path: Path):
     assert res["calc"].to_list() == [200, 300, 400, 500]
 
 
-def test_read_and_scan_deprecation():
-    with pytest.raises(AttributeError, match="pt.read\\(\\) has been removed; use pt.read_parquet"):
-        pt.read("some_file.parquet")
+def test_read_and_scan_universal_and_legacy_deprecation(tmp_path):
+    p = tmp_path / "test.parquet"
+    pl.DataFrame({"x": [1, 2, 3]}).write_parquet(p)
 
-    with pytest.raises(AttributeError, match="pt.scan\\(\\) has been removed; use pt.scan_parquet"):
-        pt.scan("some_file.parquet")
+    # Universal read and scan work
+    df = pt.read(p)
+    assert df["x"].to_list() == [1, 2, 3]
+
+    lazy = pt.scan(p)
+    assert lazy.collect()["x"].to_list() == [1, 2, 3]
+
+    # Legacy readers emit deprecation warnings
+    with pytest.deprecated_call():
+        df_leg = pt.read_parquet(p)
+    assert df_leg["x"].to_list() == [1, 2, 3]
+
+    with pytest.deprecated_call():
+        lazy_leg = pt.scan_parquet(p)
+    assert lazy_leg.collect()["x"].to_list() == [1, 2, 3]
 
 
 def test_lazy_fillna():

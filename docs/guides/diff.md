@@ -160,8 +160,8 @@ Dataset diffing is also available directly in Python pipelines via `pt.diff()` o
 ```python
 import pytae as pt
 
-left = pt.read_parquet("left.parquet")
-right = pt.read_parquet("right.parquet")
+left = pt.read("left.parquet")
+right = pt.read("right.parquet")
 
 # Simple diff
 report = left.diff(right)

@@ -211,6 +211,56 @@ Save pure transformation steps into a standalone executable script as you exit:
 
 Both `exit -s` and `export` automatically **prune rolled-back branches and discarded experiments**. If you test a filter, restore a checkpoint, and choose another path, only the active, final pipeline steps that produced your current tables are written to the exported script.
 
+### Deterministic Dead-Store & Redundant Assignment Elimination
+
+During interactive data exploration, commands are often re-run or overwritten (e.g. typing `df = test.csv` twice, or typing `df = test1.csv` and immediately switching to `df = test2.csv` without using `test1`).
+
+When exporting scripts via `export <path>` or `exit -s`, Pytae automatically applies a deterministic **Def-Use Liveness Pass**:
+
+1. **Dead Stores Pruned**:
+   If an assignment defines a variable `v` without external side-effects, and `v` is reassigned by a subsequent command without ever being read in between, the superseded assignment is eliminated from the exported script:
+   ```text
+   # Interactive REPL:
+   pytae> df = test1.csv
+   pytae> df = test2.csv
+   pytae> df -o output.csv
+
+   # Exported script:
+   df = test2.csv
+   df -o output.csv
+   ```
+2. **Repetitive Batch Sequences Faithfully Preserved**:
+   When commands repeat across batches (e.g. processing multiple files in sequence), intermediate results are consumed by downstream operations. Pytae detects these active def-use chains and preserves every step:
+   ```text
+   # Interactive REPL:
+   pytae> df = test1.csv
+   pytae> k = df -head
+   pytae> k -o tes1_sample.csv
+   pytae> df = test2.csv
+   pytae> k = df -head
+   pytae> k -o tes2_sample.csv
+
+   # Exported script:
+   # All 6 commands are faithfully preserved because each definition is read and exported!
+   df = test1.csv
+   k = df -head
+   k -o tes1_sample.csv
+   df = test2.csv
+   k = df -head
+   k -o tes2_sample.csv
+   ```
+3. **Fail-Safe Conservative Boundaries**:
+   Commands with side effects (saving to disk via `-o`, `export`, `save`, clipboard), custom Python blocks (`py ... py`), and explicit table resets (`reset`) act as opaque barriers. The pruner never eliminates assignments across these boundaries.
+4. **Disabling Pruning with `-no-prune`**:
+   To export verbatim, unpruned execution logs containing every repeated command, pass `-no-prune`:
+   ```bash
+   pytae> export pipeline.pt -no-prune
+   pytae> export pipeline.py -no-prune
+   pytae> exit -s pipeline.pt -no-prune
+   # Or post-hoc via CLI:
+   pytae -export history.txt -o pipeline.pt -no-prune
+   ```
+
 ### Path Canonicalization & Windows UNC Resolution
 
 When exporting scripts:

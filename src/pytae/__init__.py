@@ -34,6 +34,8 @@ from pytae.readers import (
     scan_ipc,
     scan_ndjson,
     scan_parquet,
+    to,
+    write,
 )
 from pytae.select import everything
 from pytae.validation import (
@@ -80,7 +82,7 @@ def sample(
     if isinstance(data_or_name, str) and (n is None and frac is None and fraction is None):
         if data_or_name in _DATASET_NAMES:
             if data_or_name not in _cache:
-                _cache[data_or_name] = read_parquet(DATA_PATH / f"{data_or_name}.parquet")
+                _cache[data_or_name] = read(DATA_PATH / f"{data_or_name}.parquet")
             return _cache[data_or_name].copy()
         available = ", ".join(_DATASET_NAMES) or "(none)"
         raise KeyError(f"unknown dataset {data_or_name!r}; available: {available}")
@@ -495,6 +497,10 @@ def clear() -> None:
 __all__ = [
     "DataFrame",
     "GroupedDataFrame",
+    "read",
+    "scan",
+    "to",
+    "write",
     "read_parquet",
     "read_csv",
     "read_ndjson",
