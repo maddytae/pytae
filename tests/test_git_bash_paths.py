@@ -136,7 +136,9 @@ def test_normalize_git_bash_double_slash_and_mixed_slashes() -> None:
 def test_repl_assign_git_bash_path_loads_df(tmp_path) -> None:
     """Ensure that in REPL on Windows, assigning a Git Bash path loads the DataFrame into tables, not as a string variable."""
     from pathlib import Path
+
     import polars as pl
+
     from pytae.repl import PytaeRepl
 
     f = tmp_path / "orders.parquet"
