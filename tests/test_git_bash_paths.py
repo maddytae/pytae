@@ -135,6 +135,7 @@ def test_normalize_git_bash_double_slash_and_mixed_slashes() -> None:
 
 def test_repl_assign_git_bash_path_loads_df(tmp_path) -> None:
     """Ensure that in REPL on Windows, assigning a Git Bash path loads the DataFrame into tables, not as a string variable."""
+    import pathlib
     from pathlib import Path
 
     import polars as pl
@@ -154,7 +155,14 @@ def test_repl_assign_git_bash_path_loads_df(tmp_path) -> None:
             return True
         return orig_exists(self)
 
-    with patch("os.name", "nt"):
+    # In Python 3.11, pathlib caches flavour support at import time
+    flavour_patch = (
+        patch.object(pathlib._windows_flavour, "is_supported", True)
+        if hasattr(pathlib, "_windows_flavour")
+        else patch("builtins.True", True)
+    )
+
+    with patch("os.name", "nt"), flavour_patch:
         with patch.object(Path, "exists", mocked_exists):
             with patch.object(r, "_read_file_to_df", return_value=(f, pl.read_parquet(f))):
                 # 1. Quoted Git Bash path
@@ -177,7 +185,7 @@ def test_repl_assign_git_bash_path_loads_df(tmp_path) -> None:
     # 4. Non-existent file path: must report not an existing file or table, NOT assign as a variable
     outputs_missing = []
     r2 = PytaeRepl()
-    with patch("os.name", "nt"):
+    with patch("os.name", "nt"), flavour_patch:
         r2.execute_line('df_missing = "/c/Users/TAF3842/non_existent.parquet"', output_fn=outputs_missing.append)
         assert "df_missing" not in r2.tables
         assert "df_missing" not in r2.variables
