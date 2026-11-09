@@ -475,4 +475,20 @@ pytae -check "pytae data.parquet -filter 'amount > 0' -select id,amount"
 
 ---
 
+## 15. ⚡ Shell Tab Completion (`--install-completion`)
+
+Enable rich tab completion for flags and tabular files in your shell (Zsh, Bash, Fish):
+
+```bash
+# Auto-detect $SHELL and install tab completion:
+pytae --install-completion
+
+# Output completion script directly to stdout (e.g. for dynamic sourcing):
+pytae --completion zsh
+pytae --completion bash
+pytae --completion fish
+```
+
+---
+
 👉 **For Python Library Reference**: See [docs/pytae.md](pytae.md) or import directly via `import pytae as pt`.

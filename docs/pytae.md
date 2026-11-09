@@ -296,6 +296,10 @@ In many data frameworks (like Spark or pure Polars), forgetting to call `.collec
 
 - **Direct-to-Disk Streaming Sinks**:
   - Calling `df.to("output.parquet")` or `df.to("output.csv")` on a lazy DataFrame does not require an explicit `.collect()` call. Pytae triggers streaming execution directly into the output file, keeping memory usage constant even for terabyte-scale datasets.
+- **Hive Partitioned Lake Writes**:
+  - Calling `df.to("lake_dir", partition_by=["year", "region"])` writes a clean, partitioned directory tree (`lake_dir/year=2025/region=US/*.parquet`) that can be read back instantly with `pt.read("lake_dir")` or `pt.scan("lake_dir")`.
+- **Zero-Friction In-Memory Exports**:
+  - Export seamlessly with `df.to("records")` (list of row dicts for FastAPI/REST APIs), `df.to("dict")` (column dict), `df.to("arrow")` (zero-copy `pyarrow.Table`), `df.to("pandas")`, `df.to("polars")`, or `df.to("clip")`.
 - **Smart Shape & Count Queries**:
   - In Pandas, checking `len(df)` loads the entire table into memory.
   - In Pytae, calling `len(lazy_df)` or `lazy_df.shape` executes a lightweight `select(pl.len()).collect().item()` query in the background, returning row and column counts in milliseconds without loading data records into RAM.
@@ -316,7 +320,7 @@ Pytae was designed to synthesize the best strengths of the modern data engineeri
 |:---|:---|:---|:---|:---|
 | **Core Philosophy** | Multiple competing ways per task | Functional pipelines (`%>%`, `\|>`) | Procedural `DATA` step + PROCs | **One and Only One Obvious Way** |
 | **Execution Engine** | Single-threaded Python & NumPy | C++ (cpp11) / R interpreter | Procedural row-by-row PDV loop | **Multithreaded Rust SIMD (Polars)** |
-| **Out-of-Core / Lazy Execution** | No native lazy engine (OOM on big files) | Limited (requires external `dbplyr`) | Sequential disk streaming | **Native `scan_*` with query pushdowns** |
+| **Out-of-Core / Lazy Execution** | No native lazy engine (OOM on big files) | Limited (requires external `dbplyr`) | Sequential disk streaming | **Native `pt.scan()` with query pushdowns** |
 | **Index Traps & MultiIndex** | Constant `.reset_index()` & nested tuples | Not applicable (R data frame) | Not applicable | **Pure flat 1D columns; zero MultiIndex** |
 | **Grouping Scope** | Lazy `DataFrameGroupBy` object | "Sticky" `group_by()` (requires `ungroup`) | `BY` statement (requires prior `PROC SORT`) | **Single-shot `by()` (auto-clearing)** |
 | **Missing Data Retention** | `dropna=True` *(Drops missing groups!)* | Preserves `NA` groups by default | Drops missing groups unless `MISSING` | **`dropna=False` by default (Zero Data Loss)** |

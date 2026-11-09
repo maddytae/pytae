@@ -55,17 +55,24 @@ Need expressive, readable data transformations in Python scripts, Airflow, or Ju
 ```python
 import pytae as pt
 
-# Read directly with Polars-powered fast auto-detection
+# Read files, globs, lists, or partitioned directories with Polars-powered fast auto-detection
 df = pt.read("sales_report.parquet")
+# or pt.read(["jan.parquet", "feb.parquet"])
+# or pt.scan("data/**/*.csv")
 
-# Or chain directly off pandas or polars - only one .pt call needed!
+# Fluent method chaining
 summary = (
     df.filter("amount > 0")
     .by("region")
     .mutate(pct_total="amount / sum(amount)", prev_sale="shift(amount, 1)")
     .arrange("amount desc")
-    .to("pandas")  # or .to("summary.parquet"), .to("clip")
+    .to("summary.parquet")  # output to disk and returns self
 )
+
+# Export to in-memory formats with zero friction
+records = summary.to("records")  # FastAPI/JSON dicts: [{"region": "East", ...}]
+tbl = summary.to("arrow")        # Zero-copy PyArrow Table
+pdf = summary.to("pandas")       # Pandas DataFrame
 ```
 
 ### Visualizations & Dashboards (Compute in Polars, Visualize in Pandas)
@@ -135,6 +142,9 @@ pytae yesterday.parquet -diff today.parquet -tol 1e-4
 
 # 6. Sensitive PII masking and encryption
 pytae users.csv -mask "email=hash, ssn=encrypt" -key "SecretKey123" -o secure.parquet
+
+# 7. One-command shell tab-completion setup (Zsh, Bash, Fish)
+pytae --install-completion
 ```
 
 👉 **CLI Quick Reference**: [**Cheat Sheet & Cookbook**](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md) or run `pytae -cheatsheet` in your terminal! | **Full CLI & Engine Guides**: [docs/guides/](https://github.com/maddytae/pytae/tree/master/docs/guides/)
