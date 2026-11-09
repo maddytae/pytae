@@ -110,7 +110,7 @@ def test_universal_to_in_memory_and_clipboard(monkeypatch):
 
     # to("clip") returns self
     clip_called = []
-    monkeypatch.setattr(df, "to_clip", lambda: clip_called.append(True))
+    monkeypatch.setattr(df, "_to_clip_internal", lambda: clip_called.append(True))
     assert df.to("clip") is df
     assert len(clip_called) == 1
 
@@ -132,7 +132,7 @@ def test_accessor_to_bridge():
     assert pt_df2["y"].to_list() == ["a", "b"]
 
 
-def test_deprecated_readers_and_writers_warn(tmp_path):
+def test_deprecated_readers_and_writers_warn(tmp_path, monkeypatch):
     p_pq = tmp_path / "legacy.parquet"
     pl.DataFrame({"num": [1]}).write_parquet(p_pq)
 
@@ -148,3 +148,135 @@ def test_deprecated_readers_and_writers_warn(tmp_path):
     with pytest.deprecated_call():
         df.to_parquet(out_p)
     assert out_p.exists()
+
+    # Deprecated to_pandas(), to_polars(), to_clip(), to_pytae()
+    with pytest.deprecated_call():
+        assert isinstance(df.to_pandas(), pd.DataFrame)
+
+    with pytest.deprecated_call():
+        assert isinstance(df.to_polars(), pl.DataFrame)
+
+    monkeypatch.setattr(df, "_to_clip_internal", lambda: None)
+    with pytest.deprecated_call():
+        df.to_clip()
+
+    with pytest.deprecated_call():
+        assert df.to_pytae() is df
+
+
+def test_multi_file_and_glob_read_and_scan(tmp_path):
+    # Prepare 2 Parquet files
+    p1 = tmp_path / "part1.parquet"
+    p2 = tmp_path / "part2.parquet"
+    pl.DataFrame({"id": [1, 2], "val": ["a", "b"]}).write_parquet(p1)
+    pl.DataFrame({"id": [3, 4], "val": ["c", "d"]}).write_parquet(p2)
+
+    # Read list of files
+    df_list = pt.read([p1, p2])
+    assert df_list.shape == (4, 2)
+    assert df_list["id"].to_list() == [1, 2, 3, 4]
+
+    # Scan list of files
+    lazy_list = pt.scan([p1, p2])
+    assert lazy_list.is_lazy
+    assert lazy_list.collect().shape == (4, 2)
+
+    # Glob scan
+    glob_str = str(tmp_path / "part*.parquet")
+    lazy_glob = pt.scan(glob_str)
+    assert lazy_glob.collect().shape == (4, 2)
+
+    # Multi-file CSV
+    c1 = tmp_path / "c1.csv"
+    c2 = tmp_path / "c2.csv"
+    pl.DataFrame({"x": [10], "y": [20]}).write_csv(c1)
+    pl.DataFrame({"x": [30], "y": [40]}).write_csv(c2)
+
+    df_csv_list = pt.read([c1, c2])
+    assert df_csv_list.shape == (2, 2)
+    assert df_csv_list["x"].to_list() == [10, 30]
+
+    lazy_csv_list = pt.scan([c1, c2])
+    assert lazy_csv_list.collect().shape == (2, 2)
+
+
+def test_partitioned_lake_writes_and_reads(tmp_path):
+    df = pt.DataFrame({
+        "year": [2024, 2024, 2025],
+        "region": ["North", "South", "North"],
+        "sales": [100.0, 250.0, 300.0],
+    })
+
+    lake_dir = tmp_path / "orders_lake"
+    # Write partitioned lake
+    res = df.to(lake_dir, partition_by=["year", "region"])
+    assert res is df
+    assert lake_dir.exists()
+
+    # Read back partitioned lake with pt.read()
+    read_lake = pt.read(lake_dir)
+    assert read_lake.shape == (3, 3)
+    assert set(read_lake["region"].to_list()) == {"North", "South"}
+
+    # Read back with pt.scan()
+    lazy_lake = pt.scan(lake_dir)
+    assert lazy_lake.is_lazy
+    assert lazy_lake.collect().shape == (3, 3)
+
+
+def test_extra_in_memory_export_targets():
+    df = pt.DataFrame({"col_a": [1, 2], "col_b": ["apple", "banana"]})
+
+    # to("records") / to("rows")
+    records = df.to("records")
+    assert records == [
+        {"col_a": 1, "col_b": "apple"},
+        {"col_a": 2, "col_b": "banana"},
+    ]
+    assert df.to("rows") == records
+
+    # to("dict") / to("columns")
+    col_dict = df.to("dict")
+    assert col_dict == {"col_a": [1, 2], "col_b": ["apple", "banana"]}
+    assert df.to("columns") == col_dict
+
+    # to("arrow")
+    table = df.to("arrow")
+    import pyarrow as pa
+    assert isinstance(table, pa.Table)
+    assert table.num_rows == 2
+
+    # to("numpy") / to("np")
+    arr = df.select("col_a").to("numpy")
+    import numpy as np
+    assert isinstance(arr, np.ndarray)
+
+
+def test_cli_shell_completion(tmp_path, monkeypatch):
+    from pytae.completion import run_completion, run_install_completion
+
+    # Test scripts generation
+    for sh in ("zsh", "bash", "fish"):
+        assert run_completion([sh]) == 0
+
+    # Test installation
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setattr("pathlib.Path.home", lambda: fake_home)
+
+    # Install zsh completion
+    res_zsh = run_install_completion(["zsh"])
+    assert res_zsh == 0
+    assert (fake_home / ".pytae" / "completion" / "_pytae.zsh").exists()
+    assert "source" in (fake_home / ".zshrc").read_text()
+
+    # Install bash completion
+    res_bash = run_install_completion(["bash"])
+    assert res_bash == 0
+    assert (fake_home / ".pytae" / "completion" / "pytae.bash").exists()
+    assert "source" in (fake_home / ".bashrc").read_text()
+
+    # Install fish completion
+    res_fish = run_install_completion(["fish"])
+    assert res_fish == 0
+    assert (fake_home / ".config" / "fish" / "completions" / "pytae.fish").exists()

@@ -924,6 +924,8 @@ class GlobReader:
                 ".xlsb",
             ):
                 found = sorted(path.glob(f"*{ext}"))
+                if not found:
+                    found = sorted(path.rglob(f"*{ext}"))
                 if found:
                     candidates = found
                     break
@@ -1053,11 +1055,15 @@ _TXT_DEFAULT_ENCODING = {".dat": "latin-1"}
 
 
 def _normalize_source(source: Any, *, _force_nt: bool = False) -> Any:
-    """Normalize Git Bash / MSYS paths on Windows when source is a path string or Path."""
+    """Normalize Git Bash / MSYS paths on Windows when source is a path string, Path, or list of them."""
     if isinstance(source, (str, Path)):
         from pytae.cli_parsing import normalize_git_bash_path
 
         return normalize_git_bash_path(str(source), _force_nt=_force_nt)
+    elif isinstance(source, (list, tuple)):
+        from pytae.cli_parsing import normalize_git_bash_path
+
+        return [normalize_git_bash_path(str(s), _force_nt=_force_nt) for s in source]
     return source
 
 
@@ -1408,7 +1414,7 @@ def _write_parquet(
 
 
 def read(source: Any, *args: Any, **kwargs: Any) -> Any:
-    """Read a dataset from a file path, URL, directory glob, or in-memory object into a pytae.DataFrame.
+    """Read a dataset from a file path, URL, directory glob, list of files, or in-memory object into a pytae.DataFrame.
 
     Format is automatically detected from the file extension (.parquet, .csv, .tsv, .ipc,
     .feather, .arrow, .ndjson, .jsonl, .json, .xlsx, .sas7bdat). Format can also be explicitly
@@ -1417,7 +1423,9 @@ def read(source: Any, *args: Any, **kwargs: Any) -> Any:
     Examples:
         df = pt.read("data.parquet")
         df = pt.read("data.csv", sep=";")
-        df = pt.read("report.xlsx", sheet_name="Summary")
+        df = pt.read(["jan.parquet", "feb.parquet"])
+        df = pt.read("lake_dir/")
+        df = pt.read("logs/*.parquet")
     """
     import pandas as pd
     import polars as pl
@@ -1429,10 +1437,25 @@ def read(source: Any, *args: Any, **kwargs: Any) -> Any:
     if isinstance(source, (pl.DataFrame, pl.LazyFrame, pd.DataFrame)):
         return DataFrame(source)
 
-    norm_src = _normalize_source(source)
-
     # Check for explicit format override
     fmt = kwargs.pop("format", kwargs.pop("fmt", None))
+
+    if isinstance(source, (list, tuple)):
+        if not source:
+            return DataFrame(pl.DataFrame())
+        norm_list = _normalize_source(source)
+        first_p = Path(str(norm_list[0]))
+        first_ext = ("." + fmt.lower().lstrip(".")) if fmt else first_p.suffix.lower()
+        if first_ext in (".parquet", ".pq"):
+            return DataFrame(pl.read_parquet([str(s) for s in norm_list], *args, **kwargs))
+        elif first_ext in (".ipc", ".arrow", ".feather"):
+            return DataFrame(pl.read_ipc([str(s) for s in norm_list], *args, **kwargs))
+        else:
+            dfs = [read(s, *args, **kwargs) for s in norm_list]
+            return DataFrame(pl.concat([d._df for d in dfs]))
+
+    norm_src = _normalize_source(source)
+
     if fmt:
         fmt = fmt.lower().lstrip(".")
         if fmt in ("parquet", "pq"):
@@ -1450,7 +1473,16 @@ def read(source: Any, *args: Any, **kwargs: Any) -> Any:
 
     if isinstance(norm_src, (str, Path)):
         p = Path(norm_src)
-        if any(ch in str(norm_src) for ch in "*?[") or (p.exists() and p.is_dir()):
+        if p.exists() and p.is_dir():
+            # Check for parquet partition lake directory
+            if next(p.rglob("*.parquet"), None) is not None:
+                try:
+                    return DataFrame(pl.read_parquet(norm_src, *args, **kwargs))
+                except Exception:
+                    pass
+            return get_reader(p, **kwargs).to_dataframe()
+
+        if any(ch in str(norm_src) for ch in "*?["):
             return get_reader(p, **kwargs).to_dataframe()
 
         suffix, _ = _split_path_suffixes(p)
@@ -1478,14 +1510,15 @@ def read(source: Any, *args: Any, **kwargs: Any) -> Any:
 
 
 def scan(source: Any, *args: Any, **kwargs: Any) -> Any:
-    """Lazily scan a dataset from a file path into a lazy pytae.DataFrame.
+    """Lazily scan a dataset from a file path, glob, or list of files into a lazy pytae.DataFrame.
 
     Format is automatically detected from the file extension (.parquet, .csv, .tsv, .ipc,
     .arrow, .feather, .ndjson, .jsonl).
 
     Examples:
         df = pt.scan("data.parquet")
-        df = pt.scan("logs.csv")
+        df = pt.scan("logs/*.csv")
+        df = pt.scan(["day1.parquet", "day2.parquet"])
     """
     import polars as pl
     from pytae.dataframe import DataFrame
@@ -1499,9 +1532,42 @@ def scan(source: Any, *args: Any, **kwargs: Any) -> Any:
     if isinstance(source, pl.DataFrame):
         return DataFrame(source.lazy())
 
-    norm_src = _normalize_source(source)
     fmt = kwargs.pop("format", kwargs.pop("fmt", None))
+
+    if isinstance(source, (list, tuple)):
+        if not source:
+            return DataFrame(pl.LazyFrame())
+        norm_list = _normalize_source(source)
+        first_p = Path(str(norm_list[0]))
+        first_ext = ("." + fmt.lower().lstrip(".")) if fmt else first_p.suffix.lower()
+        if first_ext in (".parquet", ".pq"):
+            return DataFrame(pl.scan_parquet([str(s) for s in norm_list], *args, **kwargs))
+        elif first_ext in (".csv", ".tsv", ".txt", ".dat"):
+            if first_ext == ".tsv" and "separator" not in kwargs and "sep" not in kwargs:
+                kwargs["separator"] = "\t"
+            if "sep" in kwargs and "separator" not in kwargs:
+                kwargs["separator"] = kwargs.pop("sep")
+            kwargs.setdefault("infer_schema_length", 10000)
+            return DataFrame(pl.scan_csv([str(s) for s in norm_list], *args, **kwargs))
+        elif first_ext in (".ipc", ".arrow", ".feather"):
+            return DataFrame(pl.scan_ipc([str(s) for s in norm_list], *args, **kwargs))
+        elif first_ext in (".ndjson", ".jsonl"):
+            return DataFrame(pl.scan_ndjson([str(s) for s in norm_list], *args, **kwargs))
+        else:
+            lazy_dfs = [scan(s, *args, **kwargs) for s in norm_list]
+            return DataFrame(pl.concat([d._df for d in lazy_dfs]))
+
+    norm_src = _normalize_source(source)
     p = Path(norm_src) if isinstance(norm_src, (str, Path)) else None
+
+    if p and p.exists() and p.is_dir():
+        # Check for parquet partition lake directory
+        if next(p.rglob("*.parquet"), None) is not None:
+            try:
+                return DataFrame(pl.scan_parquet(norm_src, *args, **kwargs))
+            except Exception:
+                pass
+
     suffix = ("." + fmt.lower().lstrip(".")) if fmt else (p.suffix.lower() if p else "")
 
     if suffix in (".parquet", ".pq"):

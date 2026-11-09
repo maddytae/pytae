@@ -256,16 +256,24 @@ class _BasePtAccessor:
         return DataFrame(self._obj).concat(*others, how=how, axis=axis, **kwargs)
 
     def to_clip(self) -> None:
-        return DataFrame(self._obj).to_clip()
+        import warnings
+        warnings.warn("df.pt.to_clip() is deprecated; use df.pt.to('clip') instead.", DeprecationWarning, stacklevel=2)
+        return DataFrame(self._obj).to("clip")
 
     def to_pandas(self) -> Any:
-        return DataFrame(self._obj).to_pandas()
+        import warnings
+        warnings.warn("df.pt.to_pandas() is deprecated; use df.pt.to('pandas') instead.", DeprecationWarning, stacklevel=2)
+        return DataFrame(self._obj).to("pandas")
 
     def to_polars(self) -> Any:
-        return DataFrame(self._obj).to_polars()
+        import warnings
+        warnings.warn("df.pt.to_polars() is deprecated; use df.pt.to('polars') instead.", DeprecationWarning, stacklevel=2)
+        return DataFrame(self._obj).to("polars")
 
     def to_pytae(self) -> DataFrame:
-        return DataFrame(self._obj)
+        import warnings
+        warnings.warn("df.pt.to_pytae() is deprecated; use df.pt.to('pytae') instead.", DeprecationWarning, stacklevel=2)
+        return DataFrame(self._obj).to("pytae")
 
     def to(self, target: Any, **kwargs: Any) -> Any:
         return DataFrame(self._obj).to(target, **kwargs)

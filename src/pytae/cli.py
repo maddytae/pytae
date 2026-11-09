@@ -938,6 +938,22 @@ def _format_timing_summary(durations: list[float]) -> str:
 def main(argv: list[str] | None = None) -> int:
     raw_argv = sys.argv[1:] if argv is None else list(argv)
 
+    # Shell completion generators: `pytae --completion [shell]` and `pytae --install-completion`
+    if raw_argv and raw_argv[0] in ("--completion", "-completion"):
+        from pytae.completion import run_completion
+
+        return run_completion(raw_argv[1:])
+
+    if raw_argv and raw_argv[0] in ("--install-completion", "-install-completion"):
+        from pytae.completion import run_install_completion
+
+        return run_install_completion(raw_argv[1:])
+
+    # First-run interactive TTY completion hint
+    from pytae.completion import check_first_run_hint
+
+    check_first_run_hint()
+
     # Legacy bare subcommand redirects (strictly retired in favor of single-hyphen flags)
     if raw_argv and raw_argv[0] == "doc":
         parser = build_parser()

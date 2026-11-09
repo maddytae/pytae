@@ -348,7 +348,7 @@ class DataFrame:
             right = other._df.collect() if isinstance(other._df, pl.LazyFrame) else other._df
             return left.equals(right)
         try:
-            return self.to_pandas().equals(other)
+            return self._to_pandas_internal().equals(other)
         except Exception:
             return False
 
@@ -380,11 +380,11 @@ class DataFrame:
 
     def isna(self) -> Any:
         """Check for missing values, delegating to Pandas for 100% API compatibility."""
-        return self.to_pandas().isna()
+        return self._to_pandas_internal().isna()
 
     def isnull(self) -> Any:
         """Alias for isna()."""
-        return self.to_pandas().isnull()
+        return self._to_pandas_internal().isnull()
 
     def sort_values(
         self,
@@ -980,7 +980,7 @@ class DataFrame:
         """
         from pytae.cli_run import _compute_diff
 
-        left_df = self.to_pandas()
+        left_df = self._to_pandas_internal()
         return _compute_diff(left_df, other, "<left>", on=on, tol=tol, rtol=rtol)
 
     def pick(self, *args: Any, **kwargs: Any) -> Any:
@@ -1383,8 +1383,8 @@ class DataFrame:
     # Interop & Export
     # -------------------------------------------------------------------------
 
-    def to_pandas(self, *args: Any, **kwargs: Any) -> Any:
-        """Convert to pandas DataFrame, preserving tracked index and column metadata."""
+    def _to_pandas_internal(self, *args: Any, **kwargs: Any) -> Any:
+        """Internal un-deprecated conversion to pandas DataFrame."""
         import pandas as pd
 
         eager_df = self._df.collect() if self.is_lazy else self._df
@@ -1395,14 +1395,26 @@ class DataFrame:
             pdf.columns = [self._orig_col_map.get(c, c) for c in pdf.columns]
         return pdf
 
-    def to_polars(self) -> pl.DataFrame:
-        """Extract the underlying Polars DataFrame (collecting if lazy)."""
+    def to_pandas(self, *args: Any, **kwargs: Any) -> Any:
+        """Convert to pandas DataFrame (Deprecated: use df.to('pandas') instead)."""
+        import warnings
+        warnings.warn("df.to_pandas() is deprecated; use df.to('pandas') instead.", DeprecationWarning, stacklevel=2)
+        return self._to_pandas_internal(*args, **kwargs)
+
+    def _to_polars_internal(self) -> pl.DataFrame:
+        """Internal un-deprecated conversion to polars DataFrame."""
         if self.is_lazy:
             return self._df.collect()
         return self._df
 
-    def to_clip(self) -> None:
-        """Copy DataFrame to system clipboard via TSV without index."""
+    def to_polars(self) -> pl.DataFrame:
+        """Extract the underlying Polars DataFrame (Deprecated: use df.to('polars') instead)."""
+        import warnings
+        warnings.warn("df.to_polars() is deprecated; use df.to('polars') instead.", DeprecationWarning, stacklevel=2)
+        return self._to_polars_internal()
+
+    def _to_clip_internal(self) -> None:
+        """Internal un-deprecated copy DataFrame to system clipboard via TSV."""
         eager_df = self._df.collect() if self.is_lazy else self._df
         tsv_str = eager_df.write_csv(separator="\t")
         system = platform.system()
@@ -1417,13 +1429,26 @@ class DataFrame:
                 p = subprocess.Popen(["xclip", "-selection", "clipboard"], stdin=subprocess.PIPE)
                 p.communicate(tsv_str.encode("utf-8"))
         except Exception:
-            self.to_pandas().to_clipboard(index=False)
+            self._to_pandas_internal().to_clipboard(index=False)
+
+    def to_clip(self) -> None:
+        """Copy DataFrame to system clipboard via TSV without index (Deprecated: use df.to('clip') instead)."""
+        import warnings
+        warnings.warn("df.to_clip() is deprecated; use df.to('clip') instead.", DeprecationWarning, stacklevel=2)
+        self._to_clip_internal()
+
+    def to_pytae(self) -> DataFrame:
+        """Return self (Deprecated: use df.to('pytae') instead)."""
+        import warnings
+        warnings.warn("df.to_pytae() is deprecated; use df.to('pytae') instead.", DeprecationWarning, stacklevel=2)
+        return self
 
     def to(self, target: Any, **kwargs: Any) -> Any:
         """Universal destination method for exporting data or converting formats.
 
         Destination can be:
         1. File path (.parquet, .csv, .xlsx, .ipc, .arrow, .ndjson, .jsonl, .json)
+           or directory with `partition_by=[...]` for Hive-partitioned lakes.
            Sinks or writes to file and returns `self` for continuous chaining.
         2. "clip" or "clipboard"
            Copies TSV representation to system clipboard and returns `self`.
@@ -1431,28 +1456,49 @@ class DataFrame:
            Converts to pandas.DataFrame.
         4. "polars" or "pl"
            Converts to polars.DataFrame.
-        5. "pytae" or "pt"
+        5. "records" or "rows"
+           Converts to list of row dictionaries: [{"col": val}, ...].
+        6. "dict" or "columns"
+           Converts to column dictionary: {"col": [val, ...]}.
+        7. "arrow" or "pyarrow"
+           Converts to pyarrow.Table with zero copy.
+        8. "numpy" or "np"
+           Converts to numpy.ndarray.
+        9. "pytae" or "pt"
            Returns `self`.
 
         Examples:
             df.to("output.parquet")
+            df.to("lake_dir", partition_by=["year", "region"])
             df.to("output.csv")
-            df.to("output.xlsx")
             df.to("clip")
+            records = df.to("records")
+            tbl = df.to("arrow")
             pdf = df.to("pandas")
             pldf = df.to("polars")
         """
         if isinstance(target, str):
             low = target.lower().strip()
             if low in ("pandas", "pd"):
-                return self.to_pandas(**kwargs)
+                return self._to_pandas_internal(**kwargs)
             elif low in ("polars", "pl"):
-                return self.to_polars(**kwargs)
+                return self._to_polars_internal()
             elif low in ("pytae", "pt"):
                 return self
             elif low in ("clip", "clipboard"):
-                self.to_clip()
+                self._to_clip_internal()
                 return self
+            elif low in ("records", "rows"):
+                eager = self._df.collect() if self.is_lazy else self._df
+                return eager.to_dicts()
+            elif low in ("dict", "dicts", "columns"):
+                eager = self._df.collect() if self.is_lazy else self._df
+                return eager.to_dict(as_series=kwargs.get("as_series", False))
+            elif low in ("arrow", "pyarrow", "table"):
+                eager = self._df.collect() if self.is_lazy else self._df
+                return eager.to_arrow()
+            elif low in ("numpy", "np"):
+                return self.to_numpy(**kwargs)
 
         from pytae.readers import _normalize_source
         norm_target = _normalize_source(target)
@@ -1465,6 +1511,13 @@ class DataFrame:
             suffix = "." + fmt.lower().lstrip(".")
 
         kwargs.pop("index", None)
+
+        # Handle partitioned parquet write (partition_by) or directory target without extension
+        partition_by = kwargs.get("partition_by")
+        if partition_by is not None or (suffix == "" and not p.suffix):
+            eager = self._df.collect() if self.is_lazy else self._df
+            eager.write_parquet(norm_target, **kwargs)
+            return self
 
         if suffix in (".parquet", ".pq"):
             if self.is_lazy:
@@ -1520,7 +1573,7 @@ class DataFrame:
             return self
 
         elif suffix in (".xlsx", ".xls"):
-            self.to_pandas().to_excel(norm_target, **kwargs)
+            self._to_pandas_internal().to_excel(norm_target, **kwargs)
             return self
 
         else:
@@ -1546,7 +1599,7 @@ class DataFrame:
 
     def plot(self, *args: Any, **kwargs: Any) -> Any:
         """Create visualizations using Pytae Plotter."""
-        return _plot_impl(self.to_pandas(), *args, **kwargs)
+        return _plot_impl(self._to_pandas_internal(), *args, **kwargs)
 
 
 class GroupedDataFrame:
@@ -1587,6 +1640,8 @@ class GroupedDataFrame:
         ).by(*cols)
 
     def to_pandas(self) -> Any:
+        import warnings
+        warnings.warn("df.to_pandas() is deprecated; use df.to('pandas') instead.", DeprecationWarning, stacklevel=2)
         import pandas as pd
 
         pdf = self._df.to_pandas()
@@ -1596,6 +1651,8 @@ class GroupedDataFrame:
 
     def to_polars(self) -> pl.DataFrame | pl.LazyFrame:
         """Return the underlying Polars DataFrame or LazyFrame."""
+        import warnings
+        warnings.warn("df.to_polars() is deprecated; use df.to('polars') instead.", DeprecationWarning, stacklevel=2)
         return self._df
 
     def __len__(self) -> int:
@@ -2002,9 +2059,13 @@ try:
     _orig_assert_frame_equal = _asserters.assert_frame_equal
 
     def _pt_assert_frame_equal(left: Any, right: Any, *args: Any, **kwargs: Any) -> Any:
-        if hasattr(left, "to_pandas"):
+        if hasattr(left, "_to_pandas_internal"):
+            left = left._to_pandas_internal()
+        elif hasattr(left, "to_pandas"):
             left = left.to_pandas()
-        if hasattr(right, "to_pandas"):
+        if hasattr(right, "_to_pandas_internal"):
+            right = right._to_pandas_internal()
+        elif hasattr(right, "to_pandas"):
             right = right.to_pandas()
         return _orig_assert_frame_equal(left, right, *args, **kwargs)
 
@@ -2017,7 +2078,9 @@ try:
     if _orig_pd_melt is not None:
 
         def _compat_pd_melt(frame: Any, *args: Any, **kwargs: Any) -> Any:
-            if hasattr(frame, "to_pandas") and not isinstance(frame, pd.DataFrame):
+            if hasattr(frame, "_to_pandas_internal") and not isinstance(frame, pd.DataFrame):
+                frame = frame._to_pandas_internal()
+            elif hasattr(frame, "to_pandas") and not isinstance(frame, pd.DataFrame):
                 frame = frame.to_pandas()
             return _orig_pd_melt(frame, *args, **kwargs)
 
