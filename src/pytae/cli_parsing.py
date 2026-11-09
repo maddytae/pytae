@@ -703,14 +703,15 @@ def parse_clean_columns_arg(raw: str) -> dict:
 
 
 def normalize_git_bash_path(path: str, *, _force_nt: bool = False) -> str:
-    """Normalize Git Bash / MSYS POSIX-style drive mounts (e.g. '/c/Users/...'), WSL mounts ('/mnt/c/...'), and Cygwin mounts ('/cygdrive/c/...') to Windows paths ('C:/Users/...').
+    """Normalize Git Bash / MSYS POSIX-style drive mounts (e.g. '/c/Users/...', '//c/Users/...'), WSL mounts ('/mnt/c/...'), and Cygwin mounts ('/cygdrive/c/...') to Windows paths ('C:/Users/...').
 
-    On Windows (os.name == 'nt') or when _force_nt is True:
-    If the path begins with '/<drive>/', '/mnt/<drive>/', or '/cygdrive/<drive>/' and does not exist as-is, translate to 'C:/...'.
+    On Windows (os.name == 'nt' or running in Git Bash/MSYS2/Cygwin) or when _force_nt is True:
+    Translates Git Bash drive mounts (/c/..., //c/...), WSL (/mnt/c/...), and Cygwin (/cygdrive/c/...) to 'C:/...'.
+    Preserves surrounding quotes if present and normalizes backslashes to portable forward slashes.
     On non-Windows platforms (Linux/macOS), the path is returned untouched unless forced for testing.
-    Surrounding quotes are preserved.
     """
     import os
+    import sys
 
     if not path or not isinstance(path, str):
         return path
@@ -723,32 +724,37 @@ def normalize_git_bash_path(path: str, *, _force_nt: bool = False) -> str:
     else:
         unquoted = stripped
 
-    if os.name == "nt" or _force_nt:
+    is_windows = (
+        os.name == "nt"
+        or sys.platform in ("win32", "cygwin", "msys")
+        or "MSYSTEM" in os.environ
+        or "CYGWIN" in os.environ
+        or _force_nt
+    )
+
+    if is_windows:
         # WSL: /mnt/c/...
-        m_wsl = re.match(r"^/mnt/([a-zA-Z])(/.*)$", unquoted)
+        m_wsl = re.match(r"^/mnt/([a-zA-Z])([/\\].*)$", unquoted)
         if m_wsl:
-            if not _force_nt and os.path.exists(unquoted):
-                return path
             drive = m_wsl.group(1).upper()
-            converted = f"{drive}:{m_wsl.group(2)}"
+            rest_path = m_wsl.group(2).replace("\\", "/")
+            converted = f"{drive}:{rest_path}"
             return f"{quote_char}{converted}{quote_char}" if quote_char else converted
 
         # Cygwin: /cygdrive/c/...
-        m_cyg = re.match(r"^/cygdrive/([a-zA-Z])(/.*)$", unquoted)
+        m_cyg = re.match(r"^/cygdrive/([a-zA-Z])([/\\].*)$", unquoted)
         if m_cyg:
-            if not _force_nt and os.path.exists(unquoted):
-                return path
             drive = m_cyg.group(1).upper()
-            converted = f"{drive}:{m_cyg.group(2)}"
+            rest_path = m_cyg.group(2).replace("\\", "/")
+            converted = f"{drive}:{rest_path}"
             return f"{quote_char}{converted}{quote_char}" if quote_char else converted
 
-        # Git Bash / MSYS: /c/...
-        m = re.match(r"^/([a-zA-Z])(/.*)$", unquoted)
+        # Git Bash / MSYS: /c/... or //c/... with forward or backslashes
+        m = re.match(r"^/{1,2}([a-zA-Z])([/\\].*)$", unquoted)
         if m:
-            if not _force_nt and os.path.exists(unquoted):
-                return path
             drive = m.group(1).upper()
-            converted = f"{drive}:{m.group(2)}"
+            rest_path = m.group(2).replace("\\", "/")
+            converted = f"{drive}:{rest_path}"
             return f"{quote_char}{converted}{quote_char}" if quote_char else converted
 
     return path

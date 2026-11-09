@@ -116,3 +116,68 @@ def test_reader_source_normalization() -> None:
     with patch("os.name", "nt"):
         res_nt = _normalize_source("/c/Users/TAF3842/downloads/final_output.parquet")
         assert res_nt == "C:/Users/TAF3842/downloads/final_output.parquet"
+
+
+def test_normalize_git_bash_double_slash_and_mixed_slashes() -> None:
+    # Double leading slash in Git Bash / MSYS
+    assert normalize_git_bash_path("//c/Users/TAF3842/data.parquet", _force_nt=True) == "C:/Users/TAF3842/data.parquet"
+    assert normalize_git_bash_path('"//d/data/sales.csv"', _force_nt=True) == '"D:/data/sales.csv"'
+
+    # Mixed backslashes in Git Bash path
+    assert normalize_git_bash_path(r"/c\Users\TAF3842\data.parquet", _force_nt=True) == "C:/Users/TAF3842/data.parquet"
+    assert normalize_git_bash_path(r"/c/Users\TAF3842/data.parquet", _force_nt=True) == "C:/Users/TAF3842/data.parquet"
+
+    # MSYSTEM environment variable detection
+    with patch("os.name", "posix"):
+        with patch.dict("os.environ", {"MSYSTEM": "MINGW64"}):
+            assert normalize_git_bash_path("/c/Users/TAF3842/data.parquet") == "C:/Users/TAF3842/data.parquet"
+
+
+def test_repl_assign_git_bash_path_loads_df(tmp_path) -> None:
+    """Ensure that in REPL on Windows, assigning a Git Bash path loads the DataFrame into tables, not as a string variable."""
+    from pathlib import Path
+    import polars as pl
+    from pytae.repl import PytaeRepl
+
+    f = tmp_path / "orders.parquet"
+    pl.DataFrame({"order_id": [101, 102], "amount": [50.0, 75.0]}).write_parquet(f)
+
+    r = PytaeRepl()
+    outputs = []
+
+    orig_exists = Path.exists
+
+    def mocked_exists(self: Path) -> bool:
+        if "TAF3842" in str(self) and "non_existent" not in str(self):
+            return True
+        return orig_exists(self)
+
+    with patch("os.name", "nt"):
+        with patch.object(Path, "exists", mocked_exists):
+            with patch.object(r, "_read_file_to_df", return_value=(f, pl.read_parquet(f))):
+                # 1. Quoted Git Bash path
+                r.execute_line('ord1 = "/c/Users/TAF3842/orders.parquet"', output_fn=outputs.append)
+                assert "ord1" in r.tables
+                assert "ord1" not in r.variables
+                assert r.tables["ord1"].shape == (2, 2)
+                assert "Loaded orders.parquet as 'ord1'" in outputs[-1]
+
+                # 2. Unquoted Git Bash path
+                r.execute_line("ord2 = /c/Users/TAF3842/orders.parquet", output_fn=outputs.append)
+                assert "ord2" in r.tables
+                assert "ord2" not in r.variables
+
+                # 3. Double leading slash Git Bash path
+                r.execute_line('ord3 = "//c/Users/TAF3842/orders.parquet"', output_fn=outputs.append)
+                assert "ord3" in r.tables
+                assert "ord3" not in r.variables
+
+    # 4. Non-existent file path: must report not an existing file or table, NOT assign as a variable
+    outputs_missing = []
+    r2 = PytaeRepl()
+    with patch("os.name", "nt"):
+        r2.execute_line('df_missing = "/c/Users/TAF3842/non_existent.parquet"', output_fn=outputs_missing.append)
+        assert "df_missing" not in r2.tables
+        assert "df_missing" not in r2.variables
+        assert any("not an existing file or table" in out for out in outputs_missing)
+

@@ -251,3 +251,89 @@ def test_repl_ctrl_a_jumps_to_beginning_of_multiline_command():
     assert res.startswith("PREFIX_df = sample:penguins")
 
 
+def test_collapse_inline_line_continuations():
+    """Verify that unquoted inline line continuations with backslash are collapsed smoothly."""
+    from pytae.repl import _collapse_inline_line_continuations
+
+    assert (
+        _collapse_inline_line_continuations("-ndasn dsa sajo sad \\ -sshsdhi")
+        == "-ndasn dsa sajo sad -sshsdhi"
+    )
+    assert _collapse_inline_line_continuations("-s a \\ -s b \\ -s c") == "-s a -s b -s c"
+    # Preserves quotes
+    assert (
+        _collapse_inline_line_continuations('-filter "species == \'a\\s+b\'" \\ -s x')
+        == '-filter "species == \'a\\s+b\'" -s x'
+    )
+    # Preserves Windows path with backslash
+    assert (
+        _collapse_inline_line_continuations("C:\\Users\\test\\data.parquet \\ -s a")
+        == "C:\\Users\\test\\data.parquet -s a"
+    )
+    # Trailing backslash
+    assert _collapse_inline_line_continuations("-s a \\") == "-s a"
+
+
+def test_console_input_shift_enter_splits_line():
+    """Verify that pressing Shift+Enter in the middle of a command splits text to the next line."""
+    from pytae.repl import _console_input
+
+    pq: list[str] = []
+    # Type 'hello world', move cursor left 5 times (to before 'world'), press Shift+Enter (\x1b[13;2u)
+    chars = list("hello world") + ["\x1b", "[D"] * 5 + ["\x1b", "[13;2u"]
+
+    def fake_read():
+        if chars:
+            return chars.pop(0)
+        return "\r"
+
+    res1 = _console_input("pytae> ", [], read_char_fn=fake_read, pending_queue=pq)
+    assert res1 == "hello \\"
+    assert pq == ["world"]
+
+    # Next prompt reads from pending_queue as initial_text
+    res2 = _console_input("... ", [], read_char_fn=lambda: "\r", initial_text=pq.pop(0), pending_queue=pq)
+    assert res2 == "world"
+
+
+def test_console_input_enter_after_backslash_splits_line():
+    """Verify that pressing regular Enter in the middle right after a '\\' splits into the next line."""
+    from pytae.repl import _console_input
+
+    pq: list[str] = []
+    # User types '-ndasn dsa sajo sad \ -sshsdhi', navigates back over '-sshsdhi' to right after '\', presses Enter
+    raw_cmd = "-ndasn dsa sajo sad \\ -sshsdhi"
+    chars = list(raw_cmd) + ["\x1b", "[D"] * 9 + ["\r"]
+
+    def fake_read():
+        if chars:
+            return chars.pop(0)
+        return "\r"
+
+    res1 = _console_input("pytae> ", [], read_char_fn=fake_read, pending_queue=pq)
+    assert res1 == "-ndasn dsa sajo sad \\"
+    assert pq == ["-sshsdhi"]
+
+    res2 = _console_input("... ", [], read_char_fn=lambda: "\r", initial_text=pq.pop(0), pending_queue=pq)
+    assert res2 == "-sshsdhi"
+
+
+def test_repl_execute_line_with_inline_backslash():
+    """Verify that REPL executes commands with inline line-continuation backslashes without error."""
+    import polars as pl
+
+    from pytae.repl import PytaeRepl
+
+    df = pl.DataFrame({"species": ["Adelie", "Gentoo"], "island": ["Torgersen", "Biscoe"]})
+    r = PytaeRepl(df=df)
+    outputs = []
+    # User submits command with inline backslash on a single line
+    r.execute_line("-s species \\ -s island", output_fn=outputs.append)
+    assert r.current_df is not None
+    assert r.current_df.columns == ["species", "island"]
+    # Verify history recorded collapsed line
+    assert r._raw_history[-1] == "-s species -s island"
+    r.close()
+
+
+

@@ -35,6 +35,51 @@ def _normalize_unquoted_windows_paths(text: str) -> str:
     )
 
 
+def _collapse_inline_line_continuations(text: str) -> str:
+    """Collapse unquoted inline line-continuation backslashes (e.g. 'foo \\ bar' -> 'foo bar').
+
+    Does not modify backslashes inside single or double quotes, nor backslashes in
+    file paths or escape sequences where the backslash is immediately followed by non-whitespace.
+    """
+    res: list[str] = []
+    in_single = False
+    in_double = False
+    escaped = False
+    i = 0
+    n = len(text)
+    while i < n:
+        c = text[i]
+        if escaped:
+            res.append(c)
+            escaped = False
+            i += 1
+            continue
+        if c == "\\" and not in_single and not in_double:
+            rest = text[i + 1 :]
+            if rest == "" or rest[0].isspace():
+                j = i + 1
+                while j < n and text[j].isspace():
+                    j += 1
+                if j >= n:
+                    while res and res[-1].isspace():
+                        res.pop()
+                elif res and not res[-1].isspace():
+                    res.append(" ")
+                i = j
+                continue
+            else:
+                res.append(c)
+                i += 1
+                continue
+        if c == '"' and not in_single:
+            in_double = not in_double
+        elif c == "'" and not in_double:
+            in_single = not in_single
+        res.append(c)
+        i += 1
+    return "".join(res)
+
+
 def _resolve_to_canonical_path(path_str: str) -> str:
     """Resolve a file path to its canonical absolute path, converting Windows mapped network drives to UNC and using portable forward slashes."""
     from pytae.cli_parsing import normalize_git_bash_path
@@ -422,354 +467,452 @@ def _save_raw_history(history: list[str]) -> None:
         pass
 
 
-def _win_console_input(
+def _console_input(
     prompt_text: str,
     history: list[str],
     completer: Callable[[str, int], str | None] | None = None,
     completions_fn: Callable[[str, str, int, int], list[str]] | None = None,
     read_char_fn: Callable[[], str] | None = None,
     has_input_fn: Callable[[], bool] | None = None,
+    initial_text: str = "",
+    pending_queue: list[str] | None = None,
 ) -> str:
-    """Read console input on Windows with arrow key history navigation, line editing, and Tab autocompletion."""
+    """Read console input with arrow key history navigation, line editing, multiline break, and Tab autocompletion."""
+    old_termios = None
+    fd = None
     if read_char_fn is None:
         try:
             import msvcrt
 
             read_char_fn = msvcrt.getwch
             has_input_fn = getattr(msvcrt, "kbhit", None)
-        except ImportError:
-            return input(prompt_text)
+        except (ImportError, AttributeError):
+            try:
+                import select
+                import termios
+                import tty
 
-    sys.stdout.write(prompt_text)
-    sys.stdout.flush()
+                fd = sys.stdin.fileno()
+                old_termios = termios.tcgetattr(fd)
+                tty.setcbreak(fd)
 
-    line_chars: list[str] = []
-    cursor_pos = 0
-    hist_idx = len(history)
-    draft = ""
-    prev_c_row = 0
-    prev_total_rows = 0
+                def _unix_read_char() -> str:
+                    return sys.stdin.read(1)
 
-    def calc_pos(prompt: str, chars: list[str], cur_pos: int, width: int) -> tuple[int, int, int, int]:
-        clean_prompt = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", prompt)
-        full = clean_prompt + "".join(chars)
-        target_idx = len(clean_prompt) + cur_pos
-        row = 0
-        col = 0
-        c_row = 0
-        c_col = 0
-        for i, ch_item in enumerate(full):
-            if i == target_idx:
-                c_row = row
-                c_col = col
-            if ch_item == "\n":
-                row += 1
-                col = 0
-            else:
-                col += 1
-                if col >= width:
+                def _unix_has_input() -> bool:
+                    return bool(select.select([sys.stdin], [], [], 0)[0])
+
+                read_char_fn = _unix_read_char
+                has_input_fn = _unix_has_input
+            except Exception:
+                return input(prompt_text)
+
+    try:
+        line_chars: list[str] = list(initial_text)
+        cursor_pos = 0 if initial_text else len(line_chars)
+        hist_idx = len(history)
+        draft = ""
+        prev_c_row = 0
+        prev_total_rows = 0
+
+        def calc_pos(prompt: str, chars: list[str], cur_pos: int, width: int) -> tuple[int, int, int, int]:
+            clean_prompt = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", prompt)
+            full = clean_prompt + "".join(chars)
+            target_idx = len(clean_prompt) + cur_pos
+            row = 0
+            col = 0
+            c_row = 0
+            c_col = 0
+            for i, ch_item in enumerate(full):
+                if i == target_idx:
+                    c_row = row
+                    c_col = col
+                if ch_item == "\n":
                     row += 1
                     col = 0
-        if target_idx >= len(full):
-            c_row = row
-            c_col = col
-        return c_row, c_col, row, col
+                else:
+                    col += 1
+                    if col >= width:
+                        row += 1
+                        col = 0
+            if target_idx >= len(full):
+                c_row = row
+                c_col = col
+            return c_row, c_col, row, col
 
-    def render() -> None:
-        nonlocal prev_c_row, prev_total_rows
-        width = max(20, shutil.get_terminal_size((80, 24)).columns or 80)
-        text = "".join(line_chars)
-        c_row, c_col, total_rows, _ = calc_pos(prompt_text, line_chars, cursor_pos, width)
+        def render() -> None:
+            nonlocal prev_c_row, prev_total_rows
+            width = max(20, shutil.get_terminal_size((80, 24)).columns or 80)
+            text = "".join(line_chars)
+            c_row, c_col, total_rows, _ = calc_pos(prompt_text, line_chars, cursor_pos, width)
 
-        # Move cursor from previous cursor row back to prompt start (Row 0, Col 0)
-        if prev_c_row > 0:
-            sys.stdout.write(f"\x1b[{prev_c_row}A\r")
+            # Move cursor from previous cursor row back to prompt start (Row 0, Col 0)
+            if prev_c_row > 0:
+                sys.stdout.write(f"\x1b[{prev_c_row}A\r")
+            else:
+                sys.stdout.write("\r")
+
+            # Write prompt and text
+            sys.stdout.write(prompt_text + text)
+
+            # Clear remaining screen if previous text occupied more rows or trailing cols
+            if prev_total_rows > total_rows:
+                sys.stdout.write("\x1b[J")
+            else:
+                sys.stdout.write("\x1b[K")
+
+            # Move cursor from bottom (total_rows) up to target row (c_row) and column (c_col)
+            row_up = total_rows - c_row
+            if row_up > 0:
+                sys.stdout.write(f"\x1b[{row_up}A")
+            sys.stdout.write(f"\x1b[{c_col + 1}G")
+            sys.stdout.flush()
+
+            prev_c_row = c_row
+            prev_total_rows = total_rows
+
+        if initial_text:
+            render()
         else:
-            sys.stdout.write("\r")
+            sys.stdout.write(prompt_text)
+            sys.stdout.flush()
 
-        # Write prompt and text
-        sys.stdout.write(prompt_text + text)
-
-        # Clear remaining screen if previous text occupied more rows or trailing cols
-        if prev_total_rows > total_rows:
-            sys.stdout.write("\x1b[J")
-        else:
-            sys.stdout.write("\x1b[K")
-
-        # Move cursor from bottom (total_rows) up to target row (c_row) and column (c_col)
-        row_up = total_rows - c_row
-        if row_up > 0:
-            sys.stdout.write(f"\x1b[{row_up}A")
-        sys.stdout.write(f"\x1b[{c_col + 1}G")
-        sys.stdout.flush()
-
-        prev_c_row = c_row
-        prev_total_rows = total_rows
-
-    while True:
-        try:
-            ch = read_char_fn()
-        except (KeyboardInterrupt, EOFError):
-            raise
-        except Exception:
-            return "".join(line_chars)
-
-        code: str | None = None
-        if ch in ("\x00", "\xe0"):
+        while True:
             try:
-                code = read_char_fn()
+                ch = read_char_fn()
+            except (KeyboardInterrupt, EOFError):
+                raise
             except Exception:
-                continue
-        elif ch == "\x1b":
-            # ANSI escape sequence from terminal emulators (e.g. Git Bash, Windows Terminal)
-            seq = ""
-            ansi_map = {
-                "[A": "H",
-                "OA": "H",  # Up arrow
-                "[B": "P",
-                "OB": "P",  # Down arrow
-                "[D": "K",
-                "OD": "K",  # Left arrow
-                "[C": "M",
-                "OC": "M",  # Right arrow
-                "[H": "G",
-                "OH": "G",
-                "[1~": "G",
-                "[7~": "G",  # Home
-                "[1;5H": "G",
-                "[1;3H": "G",
-                "[F": "O",
-                "OF": "O",
-                "[4~": "O",
-                "[8~": "O",  # End
-                "[1;5F": "O",
-                "[1;3F": "O",
-                "[3~": "S",  # Delete
-                "[1;5D": "word_prev",
-                "[1;3D": "word_prev",
-                "[5D": "word_prev",
-                "[1;5C": "word_next",
-                "[1;3C": "word_next",
-                "[5C": "word_next",
-            }
-            try:
-                import time
+                return "".join(line_chars)
 
-                if has_input_fn is not None:
-                    for _ in range(8):
-                        if has_input_fn():
-                            seq += read_char_fn()
-                            if seq in ansi_map:
-                                break
-                        else:
-                            time.sleep(0.002)
+            code: str | None = None
+            if ch in ("\x00", "\xe0"):
+                try:
+                    code = read_char_fn()
+                except Exception:
+                    continue
+            elif ch == "\x1b":
+                # ANSI escape sequence from terminal emulators (e.g. Git Bash, Windows Terminal, macOS, Linux)
+                seq = ""
+                ansi_map = {
+                    "[A": "H",
+                    "OA": "H",  # Up arrow
+                    "[B": "P",
+                    "OB": "P",  # Down arrow
+                    "[D": "K",
+                    "OD": "K",  # Left arrow
+                    "[C": "M",
+                    "OC": "M",  # Right arrow
+                    "[H": "G",
+                    "OH": "G",
+                    "[1~": "G",
+                    "[7~": "G",  # Home
+                    "[1;5H": "G",
+                    "[1;3H": "G",
+                    "[F": "O",
+                    "OF": "O",
+                    "[4~": "O",
+                    "[8~": "O",  # End
+                    "[1;5F": "O",
+                    "[1;3F": "O",
+                    "[3~": "S",  # Delete
+                    "[1;5D": "word_prev",
+                    "[1;3D": "word_prev",
+                    "[5D": "word_prev",
+                    "[1;5C": "word_next",
+                    "[1;3C": "word_next",
+                    "[5C": "word_next",
+                    "b": "word_prev",  # Option+Left (macOS / emacs)
+                    "f": "word_next",  # Option+Right (macOS / emacs)
+                    "\x7f": "word_delete_prev",  # Option+Backspace (macOS)
+                    "\x08": "word_delete_prev",
+                    "[13;2u": "shift_enter",  # Shift+Enter (Kitty / CSI u)
+                    "[27;2;13~": "shift_enter",  # Shift+Enter (xterm modifyOtherKeys)
+                    "[13;2~": "shift_enter",
+                    "[13;5u": "shift_enter",  # Ctrl+Enter
+                    "[27;5;13~": "shift_enter",
+                    "[13;5~": "shift_enter",
+                    "[13;3u": "shift_enter",  # Alt+Enter
+                    "[27;3;13~": "shift_enter",
+                    "[13;3~": "shift_enter",
+                    "OM": "shift_enter",  # Keypad Enter
+                    "\r": "shift_enter",  # Escape followed immediately by Enter (Alt+Enter)
+                    "\n": "shift_enter",
+                }
+                try:
+                    import time
+
+                    if has_input_fn is not None:
+                        for _ in range(16):
                             if has_input_fn():
                                 seq += read_char_fn()
                                 if seq in ansi_map:
                                     break
                             else:
-                                break
-                else:
-                    for _ in range(8):
-                        try:
-                            seq += read_char_fn()
-                            if seq in ansi_map:
-                                break
-                        except Exception:
-                            break
-            except Exception:
-                pass
-
-            if seq in ansi_map:
-                code = ansi_map[seq]
-            elif not seq:
-                # Bare Escape key pressed: clear current line
-                line_chars.clear()
-                cursor_pos = 0
-                render()
-                continue
-            else:
-                continue
-
-        if code is not None:
-            if code == "H":  # Up arrow
-                if history:
-                    if hist_idx == len(history):
-                        draft = "".join(line_chars)
-                    if hist_idx > 0:
-                        hist_idx -= 1
-                        line_chars = list(history[hist_idx])
-                        cursor_pos = len(line_chars)
-                        render()
-            elif code == "P":  # Down arrow
-                if history and hist_idx < len(history):
-                    hist_idx += 1
-                    if hist_idx == len(history):
-                        line_chars = list(draft)
+                                time.sleep(0.002)
+                                if has_input_fn():
+                                    seq += read_char_fn()
+                                    if seq in ansi_map:
+                                        break
+                                else:
+                                    break
                     else:
-                        line_chars = list(history[hist_idx])
+                        for _ in range(16):
+                            try:
+                                seq += read_char_fn()
+                                if seq in ansi_map:
+                                    break
+                            except Exception:
+                                break
+                except Exception:
+                    pass
+
+                if seq in ansi_map:
+                    code = ansi_map[seq]
+                elif not seq:
+                    # Bare Escape key pressed: clear current line
+                    line_chars.clear()
+                    cursor_pos = 0
+                    render()
+                    continue
+                else:
+                    continue
+            elif ch == "\n":
+                code = "shift_enter"
+
+            if code == "shift_enter" or ch in ("\r", "\n"):
+                left_chunk = "".join(line_chars[:cursor_pos]).rstrip()
+                right_chunk = "".join(line_chars[cursor_pos:]).lstrip()
+                has_right_content = bool(right_chunk.strip())
+                is_break = (code == "shift_enter") or (ch == "\n") or (
+                    cursor_pos < len(line_chars)
+                    and (left_chunk.endswith("\\") or right_chunk.startswith("\\"))
+                    and has_right_content
+                )
+                if is_break:
+                    left_text = left_chunk
+                    right_text = right_chunk
+                    if right_text.startswith("\\"):
+                        right_text = right_text[1:].lstrip()
+                    if not left_text.endswith("\\"):
+                        left_text += " \\"
+
+                    line_chars = list(left_text)
                     cursor_pos = len(line_chars)
                     render()
-            elif code == "K":  # Left arrow
-                if cursor_pos > 0:
-                    cursor_pos -= 1
-                    render()
-            elif code == "M":  # Right arrow
-                if cursor_pos < len(line_chars):
-                    cursor_pos += 1
-                    render()
-            elif code == "G":  # Home
+
+                    row_down = prev_total_rows - prev_c_row
+                    if row_down > 0:
+                        sys.stdout.write(f"\x1b[{row_down}B")
+                    sys.stdout.write("\n")
+                    sys.stdout.flush()
+
+                    if pending_queue is not None:
+                        if right_text:
+                            pending_queue.append(right_text)
+                        return left_text
+                    return f"{left_text}\n{right_text}" if right_text else left_text
+
+                row_down = prev_total_rows - prev_c_row
+                if row_down > 0:
+                    sys.stdout.write(f"\x1b[{row_down}B")
+                sys.stdout.write("\n")
+                sys.stdout.flush()
+                return "".join(line_chars)
+            elif code is not None:
+                if code == "H":  # Up arrow
+                    if history:
+                        if hist_idx == len(history):
+                            draft = "".join(line_chars)
+                        if hist_idx > 0:
+                            hist_idx -= 1
+                            line_chars = list(history[hist_idx])
+                            cursor_pos = len(line_chars)
+                            render()
+                elif code == "P":  # Down arrow
+                    if history and hist_idx < len(history):
+                        hist_idx += 1
+                        if hist_idx == len(history):
+                            line_chars = list(draft)
+                        else:
+                            line_chars = list(history[hist_idx])
+                        cursor_pos = len(line_chars)
+                        render()
+                elif code == "K":  # Left arrow
+                    if cursor_pos > 0:
+                        cursor_pos -= 1
+                        render()
+                elif code == "M":  # Right arrow
+                    if cursor_pos < len(line_chars):
+                        cursor_pos += 1
+                        render()
+                elif code == "G":  # Home
+                    if cursor_pos > 0:
+                        cursor_pos = 0
+                        render()
+                elif code == "O":  # End
+                    if cursor_pos < len(line_chars):
+                        cursor_pos = len(line_chars)
+                        render()
+                elif code == "S":  # Delete
+                    if cursor_pos < len(line_chars):
+                        line_chars.pop(cursor_pos)
+                        render()
+                elif code == "word_prev":
+                    if cursor_pos > 0:
+                        delims = " \t\n\"'=(),;[]"
+                        while cursor_pos > 0 and line_chars[cursor_pos - 1] in delims:
+                            cursor_pos -= 1
+                        while cursor_pos > 0 and line_chars[cursor_pos - 1] not in delims:
+                            cursor_pos -= 1
+                        render()
+                elif code == "word_next":
+                    if cursor_pos < len(line_chars):
+                        delims = " \t\n\"'=(),;[]"
+                        while cursor_pos < len(line_chars) and line_chars[cursor_pos] not in delims:
+                            cursor_pos += 1
+                        while cursor_pos < len(line_chars) and line_chars[cursor_pos] in delims:
+                            cursor_pos += 1
+                        render()
+                elif code == "word_delete_prev":
+                    if cursor_pos > 0:
+                        delims = " \t\n\"'=(),;[]"
+                        new_pos = cursor_pos
+                        while new_pos > 0 and line_chars[new_pos - 1] in delims:
+                            new_pos -= 1
+                        while new_pos > 0 and line_chars[new_pos - 1] not in delims:
+                            new_pos -= 1
+                        del line_chars[new_pos:cursor_pos]
+                        cursor_pos = new_pos
+                        render()
+            elif ch == "\x01":  # Ctrl+A: beginning of line
                 if cursor_pos > 0:
                     cursor_pos = 0
                     render()
-            elif code == "O":  # End
+            elif ch == "\x05":  # Ctrl+E: end of line
                 if cursor_pos < len(line_chars):
                     cursor_pos = len(line_chars)
                     render()
-            elif code == "S":  # Delete
-                if cursor_pos < len(line_chars):
-                    line_chars.pop(cursor_pos)
-                    render()
-            elif code == "word_prev":
+            elif ch == "\x17":  # Ctrl+W: delete previous word
                 if cursor_pos > 0:
                     delims = " \t\n\"'=(),;[]"
-                    while cursor_pos > 0 and line_chars[cursor_pos - 1] in delims:
-                        cursor_pos -= 1
-                    while cursor_pos > 0 and line_chars[cursor_pos - 1] not in delims:
-                        cursor_pos -= 1
+                    new_pos = cursor_pos
+                    while new_pos > 0 and line_chars[new_pos - 1] in delims:
+                        new_pos -= 1
+                    while new_pos > 0 and line_chars[new_pos - 1] not in delims:
+                        new_pos -= 1
+                    del line_chars[new_pos:cursor_pos]
+                    cursor_pos = new_pos
                     render()
-            elif code == "word_next":
+            elif ch == "\x0b":  # Ctrl+K: kill to end of line
                 if cursor_pos < len(line_chars):
-                    delims = " \t\n\"'=(),;[]"
-                    while cursor_pos < len(line_chars) and line_chars[cursor_pos] not in delims:
-                        cursor_pos += 1
-                    while cursor_pos < len(line_chars) and line_chars[cursor_pos] in delims:
-                        cursor_pos += 1
+                    del line_chars[cursor_pos:]
                     render()
-        elif ch in ("\r", "\n"):
-            row_down = prev_total_rows - prev_c_row
-            if row_down > 0:
-                sys.stdout.write(f"\x1b[{row_down}B")
-            sys.stdout.write("\n")
-            sys.stdout.flush()
-            return "".join(line_chars)
-        elif ch == "\x01":  # Ctrl+A: beginning of line
-            if cursor_pos > 0:
-                cursor_pos = 0
-                render()
-        elif ch == "\x05":  # Ctrl+E: end of line
-            if cursor_pos < len(line_chars):
-                cursor_pos = len(line_chars)
-                render()
-        elif ch == "\x17":  # Ctrl+W: delete previous word
-            if cursor_pos > 0:
+            elif ch == "\x15":  # Ctrl+U: kill to beginning of line
+                if cursor_pos > 0:
+                    del line_chars[:cursor_pos]
+                    cursor_pos = 0
+                    render()
+            elif ch in ("\x08", "\x7f"):  # Backspace (0x08 on CMD/conhost, 0x7f on MinTTY/xterm)
+                if cursor_pos > 0:
+                    cursor_pos -= 1
+                    line_chars.pop(cursor_pos)
+                    render()
+            elif ch == "\x03":  # Ctrl+C
+                row_down = prev_total_rows - prev_c_row
+                if row_down > 0:
+                    sys.stdout.write(f"\x1b[{row_down}B")
+                sys.stdout.write("\n")
+                sys.stdout.flush()
+                raise KeyboardInterrupt
+            elif ch in ("\x04", "\x1a"):  # Ctrl+D or Ctrl+Z
+                row_down = prev_total_rows - prev_c_row
+                if row_down > 0:
+                    sys.stdout.write(f"\x1b[{row_down}B")
+                sys.stdout.write("\n")
+                sys.stdout.flush()
+                if not line_chars:
+                    raise EOFError
+            elif ch == "\t":
+                # Tab autocompletion
                 delims = " \t\n\"'=(),;[]"
-                new_pos = cursor_pos
-                while new_pos > 0 and line_chars[new_pos - 1] in delims:
-                    new_pos -= 1
-                while new_pos > 0 and line_chars[new_pos - 1] not in delims:
-                    new_pos -= 1
-                del line_chars[new_pos:cursor_pos]
-                cursor_pos = new_pos
-                render()
-        elif ch == "\x0b":  # Ctrl+K: kill to end of line
-            if cursor_pos < len(line_chars):
-                del line_chars[cursor_pos:]
-                render()
-        elif ch == "\x15":  # Ctrl+U: kill to beginning of line
-            if cursor_pos > 0:
-                del line_chars[:cursor_pos]
-                cursor_pos = 0
-                render()
-        elif ch in ("\x08", "\x7f"):  # Backspace (0x08 on CMD/conhost, 0x7f on MinTTY/xterm)
-            if cursor_pos > 0:
-                cursor_pos -= 1
-                line_chars.pop(cursor_pos)
-                render()
-        elif ch == "\x03":  # Ctrl+C
-            row_down = prev_total_rows - prev_c_row
-            if row_down > 0:
-                sys.stdout.write(f"\x1b[{row_down}B")
-            sys.stdout.write("\n")
-            sys.stdout.flush()
-            raise KeyboardInterrupt
-        elif ch in ("\x04", "\x1a"):  # Ctrl+D or Ctrl+Z
-            row_down = prev_total_rows - prev_c_row
-            if row_down > 0:
-                sys.stdout.write(f"\x1b[{row_down}B")
-            sys.stdout.write("\n")
-            sys.stdout.flush()
-            if not line_chars:
-                raise EOFError
-        elif ch == "\t":
-            # Tab autocompletion
-            delims = " \t\n\"'=(),;[]"
-            begidx = cursor_pos
-            while begidx > 0 and line_chars[begidx - 1] not in delims:
-                begidx -= 1
-            endidx = cursor_pos
-            word = "".join(line_chars[begidx:endidx])
-            line_buf = "".join(line_chars)
+                begidx = cursor_pos
+                while begidx > 0 and line_chars[begidx - 1] not in delims:
+                    begidx -= 1
+                endidx = cursor_pos
+                word = "".join(line_chars[begidx:endidx])
+                line_buf = "".join(line_chars)
 
-            matches: list[str] = []
-            if completions_fn is not None:
-                try:
-                    matches = completions_fn(word, line_buf, begidx, endidx)
-                except Exception:
-                    matches = []
-            elif completer is not None:
-                try:
-                    state = 0
-                    while True:
-                        m = completer(word, state)
-                        if m is None:
-                            break
-                        matches.append(m)
-                        state += 1
-                        if state > 500:
-                            break
-                except Exception:
-                    matches = []
+                matches: list[str] = []
+                if completions_fn is not None:
+                    try:
+                        matches = completions_fn(word, line_buf, begidx, endidx)
+                    except Exception:
+                        matches = []
+                elif completer is not None:
+                    try:
+                        state = 0
+                        while True:
+                            m = completer(word, state)
+                            if m is None:
+                                break
+                            matches.append(m)
+                            state += 1
+                            if state > 500:
+                                break
+                    except Exception:
+                        matches = []
 
-            if not matches:
-                continue
+                if not matches:
+                    continue
 
-            if len(matches) == 1:
-                match = matches[0]
-                line_chars[begidx:endidx] = list(match)
-                cursor_pos = begidx + len(match)
-                if not match.endswith(("/", "\\", "=", os.sep)):
-                    line_chars.insert(cursor_pos, " ")
-                    cursor_pos += 1
-                render()
-            else:
-                common = os.path.commonprefix(matches)
-                if len(common) > len(word):
-                    line_chars[begidx:endidx] = list(common)
-                    cursor_pos = begidx + len(common)
+                if len(matches) == 1:
+                    match = matches[0]
+                    line_chars[begidx:endidx] = list(match)
+                    cursor_pos = begidx + len(match)
+                    if not match.endswith(("/", "\\", "=", os.sep)):
+                        line_chars.insert(cursor_pos, " ")
+                        cursor_pos += 1
                     render()
                 else:
-                    sys.stdout.write("\n")
-                    col_width = min(40, max(len(m) for m in matches) + 2)
-                    term_cols = 80
-                    try:
-                        term_cols = shutil.get_terminal_size((80, 20)).columns
-                    except Exception:
-                        pass
-                    num_cols = max(1, term_cols // col_width)
-                    disp_matches = matches[:40]
-                    for i in range(0, len(disp_matches), num_cols):
-                        row_items = disp_matches[i : i + num_cols]
-                        sys.stdout.write("  " + "".join(m.ljust(col_width) for m in row_items).rstrip() + "\n")
-                    if len(matches) > 40:
-                        sys.stdout.write(f"  ... and {len(matches) - 40} more\n")
-                    prev_c_row = 0
-                    prev_total_rows = 0
-                    render()
-        elif ch >= " ":  # Printable character
-            line_chars.insert(cursor_pos, ch)
-            cursor_pos += 1
-            render()
+                    common = os.path.commonprefix(matches)
+                    if len(common) > len(word):
+                        line_chars[begidx:endidx] = list(common)
+                        cursor_pos = begidx + len(common)
+                        render()
+                    else:
+                        sys.stdout.write("\n")
+                        col_width = min(40, max(len(m) for m in matches) + 2)
+                        term_cols = 80
+                        try:
+                            term_cols = shutil.get_terminal_size((80, 20)).columns
+                        except Exception:
+                            pass
+                        num_cols = max(1, term_cols // col_width)
+                        disp_matches = matches[:40]
+                        for i in range(0, len(disp_matches), num_cols):
+                            row_items = disp_matches[i : i + num_cols]
+                            sys.stdout.write("  " + "".join(m.ljust(col_width) for m in row_items).rstrip() + "\n")
+                        if len(matches) > 40:
+                            sys.stdout.write(f"  ... and {len(matches) - 40} more\n")
+                        prev_c_row = 0
+                        prev_total_rows = 0
+                        render()
+            elif ch >= " ":  # Printable character
+                line_chars.insert(cursor_pos, ch)
+                cursor_pos += 1
+                render()
+    finally:
+        if old_termios is not None and fd is not None:
+            try:
+                import termios
+
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_termios)
+            except Exception:
+                pass
+
+
+_win_console_input = _console_input
 
 
 def _complete_paths(text: str) -> list[str]:
@@ -2234,7 +2377,9 @@ class PytaeRepl:
             self.initial_df = self.current_df
             self.table_sources[initial_name] = str(self.path) if self.path else "<memory>"
         elif path is not None:
-            self.path = Path(path)
+            from pytae.cli_parsing import normalize_git_bash_path
+
+            self.path = Path(normalize_git_bash_path(str(path)))
             self._load_file(self.path, **self.reader_kwargs)
             initial_name = self.path_str or self.path.stem or "df"
             self.tables[initial_name] = self.current_df
@@ -2787,9 +2932,10 @@ class PytaeRepl:
 
     def _execute_line_core(self, line: str, output_fn: Callable[[str], None] = print) -> bool:
         """Core dispatch logic for one REPL command line."""
-        # Collapse multi-line line continuations (trailing backslash followed by newline)
-        if "\\" in line:
+        # Collapse multi-line and inline line continuations (backslash followed by newline or whitespace)
+        if "\\" in line and not line.startswith("py\n"):
             line = re.sub(r"\s*\\\s*\n\s*", " ", line)
+            line = _collapse_inline_line_continuations(line)
         # Handle ANSI arrow keys sent directly via Git Bash / MinTTY terminal pipe
         ansi_up_count = line.count("\x1b[A") + line.count("\x1bOA") + line.count("^[[A") + line.count("^[OA")
         ansi_down_count = line.count("\x1b[B") + line.count("\x1bOB") + line.count("^[[B") + line.count("^[OB")
@@ -2821,6 +2967,7 @@ class PytaeRepl:
         hist_line = line
         if not line.startswith("py\n") and not line.startswith("py "):
             hist_line = re.sub(r"\s*\\\s*\n\s*", " ", hist_line)
+            hist_line = _collapse_inline_line_continuations(hist_line)
             if "\n" in hist_line:
                 hist_line = re.sub(r"\s*\n\s*", " ", hist_line).strip()
 
@@ -5149,6 +5296,9 @@ class PytaeRepl:
                 output_fn("Usage: <var> = scan <path> [-dlim <char>]")
                 return
             clean_path = cleaned_toks[0].strip("\"' ")
+            from pytae.cli_parsing import normalize_git_bash_path
+
+            clean_path = normalize_git_bash_path(clean_path)
             try:
                 p, lf = self._scan_file_to_df(clean_path, **reader_kwargs)
                 self.tables[var_name] = lf
@@ -5178,7 +5328,7 @@ class PytaeRepl:
                 return
 
         cleaned_tokens, reader_kwargs, nrows_val = _parse_reader_options(right_tokens)
-        if cleaned_tokens:
+        if cleaned_tokens and not cleaned_tokens[0].startswith("-"):
             clean_path = cleaned_tokens[0].removeprefix("load ").strip("\"' ")
             if clean_path in self.checkpoints:
                 output_fn(
@@ -5392,6 +5542,26 @@ class PytaeRepl:
                 val = list(val)
             # Verify JSON serializability
             json.dumps(val)
+
+            # If val is a string that looks like a data file path, do not assign as a session variable
+            if isinstance(val, str):
+                from pytae.cli_parsing import normalize_git_bash_path
+
+                norm_val = normalize_git_bash_path(val)
+                p_cand = Path(norm_val)
+                ext = p_cand.suffix.lower()
+                is_data_ext = ext in (
+                    ".parquet", ".pq", ".csv", ".tsv", ".txt", ".dat",
+                    ".json", ".ndjson", ".jsonl", ".ipc", ".arrow",
+                    ".feather", ".xlsx", ".xls", ".xlsm", ".xlsb", ".sas7bdat",
+                )
+                has_path_sep = any(ch in val for ch in ("/\\")) or bool(re.match(r"^[a-zA-Z]:", norm_val))
+                if is_data_ext or (has_path_sep and "." in p_cand.name):
+                    output_fn(
+                        f"pytae: could not assign '{var_name}'. '{right_expr}' is not an existing file or table, or valid literal."
+                    )
+                    return
+
             self.variables[var_name] = val
             self._record_history(f"{var_name} = {right_expr}")
             output_fn(f"Set @{var_name} = {val!r}")
@@ -5464,6 +5634,9 @@ class PytaeRepl:
             output_fn("(Note: 'load' is deprecated; use '<var> = <path>' instead.)")
             return
         path_str = cleaned_tokens[1].strip("\"' ")
+        from pytae.cli_parsing import normalize_git_bash_path
+
+        path_str = normalize_git_bash_path(path_str)
         alias: str | None = None
         if len(cleaned_tokens) >= 4 and cleaned_tokens[2].lower() == "as":
             alias = cleaned_tokens[3]
@@ -5540,6 +5713,9 @@ class PytaeRepl:
             output_fn("(Note: 'scan' is deprecated; use '<var> = scan <path>' instead.)")
             return
         path_str = cleaned_tokens[1].strip("\"' ")
+        from pytae.cli_parsing import normalize_git_bash_path
+
+        path_str = normalize_git_bash_path(path_str)
         alias: str | None = None
         if len(cleaned_tokens) >= 4 and cleaned_tokens[2].lower() == "as":
             alias = cleaned_tokens[3]
@@ -6473,9 +6649,14 @@ class PytaeRepl:
                 pass
             return False
 
+        pending_input_queue: list[str] = []
+
         def _get_input(prompt_text: str) -> str:
             effective_prompt = "" if is_redirected_input else prompt_text
+            initial_text = pending_input_queue.pop(0) if pending_input_queue else ""
             if input_fn is not None:
+                if initial_text:
+                    return initial_text
                 try:
                     return input_fn(effective_prompt)
                 except TypeError:
@@ -6484,23 +6665,45 @@ class PytaeRepl:
             if sys.platform == "win32":
                 if sys.stdin.isatty():
                     try:
-                        return _win_console_input(
+                        return _console_input(
                             effective_prompt,
                             self._raw_history,
                             completer=self._complete,
                             completions_fn=self._get_completions,
+                            initial_text=initial_text,
+                            pending_queue=pending_input_queue,
                         )
                     except Exception:
                         pass
                 elif git_bash_raw_active:
                     try:
-                        return _win_console_input(
+                        return _console_input(
                             effective_prompt,
                             self._raw_history,
                             completer=self._complete,
                             completions_fn=self._get_completions,
                             read_char_fn=lambda: sys.stdin.read(1),
                             has_input_fn=_pipe_has_input,
+                            initial_text=initial_text,
+                            pending_queue=pending_input_queue,
+                        )
+                    except Exception:
+                        pass
+                if readline is not None:
+                    try:
+                        return input(effective_prompt)
+                    except Exception:
+                        pass
+            else:
+                if sys.stdin.isatty() and not is_redirected_input:
+                    try:
+                        return _console_input(
+                            effective_prompt,
+                            self._raw_history,
+                            completer=self._complete,
+                            completions_fn=self._get_completions,
+                            initial_text=initial_text,
+                            pending_queue=pending_input_queue,
                         )
                     except Exception:
                         pass
@@ -6539,10 +6742,12 @@ class PytaeRepl:
                         except Exception:
                             pass
                     multi_buffer.clear()
+                    pending_input_queue.clear()
                     in_py_block = False
                     output_fn("\n(KeyboardInterrupt - command cancelled)")
                     continue
                 except EOFError:
+                    pending_input_queue.clear()
                     if self.save_history_file:
                         self._export_session_history(self.save_history_file, output_fn)
                     output_fn("\nExiting pytae REPL.")
