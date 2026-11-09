@@ -23,6 +23,7 @@ Export pipeline results, batch-convert datasets, route outputs to dedicated dire
 - [Robust Mixed-Type Parquet Export](#robust-mixed-type-parquet-export)
 - [Streaming Progress Bars (`-progress [N]`)](#streaming-progress-bars--progress-n)
 - [Batch Conversions with Globbing](#batch-conversions-with-globbing)
+- [Cross-Platform & Git Bash Path Normalization](#cross-platform--git-bash-path-normalization)
 
 ---
 
@@ -291,3 +292,22 @@ Wrote 100000 rows to exports/file1.csv.gz
 == data/file2.parquet ==
 Wrote 150000 rows to exports/file2.csv.gz
 ```
+
+---
+
+## Cross-Platform & Git Bash Path Normalization
+
+When working across Windows, MSYS2 / Git Bash, WSL, or Cygwin, POSIX-style drive mounts often differ from native Windows paths. Pytae natively normalizes Git Bash drive paths (`/c/Users/...` and `//c/Users/...`), WSL mounts (`/mnt/c/...`), and Cygwin paths (`/cygdrive/c/...`) to standard Windows drive syntax (`C:/Users/...`):
+
+```bash
+# Ingest using Git Bash POSIX drive path on Windows
+pytae /c/Users/maddy/orders.parquet -head 5
+
+# Double-slash Git Bash syntax
+pytae //c/Users/maddy/orders.parquet -head 5
+
+# Export to Windows target directory seamlessly
+pytae /c/Users/maddy/data.csv -o /c/Users/maddy/clean.parquet
+```
+
+Surrounding quotes and forward/backward slashes are handled automatically without requiring manual drive letter substitution.

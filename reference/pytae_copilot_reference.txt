@@ -1,6 +1,6 @@
 ================================================================================
 PYTAE COMPREHENSIVE KNOWLEDGE BASE & AGENT TRAINING REFERENCE MANUAL
-RELEASE VERSION: 3.13.9
+RELEASE VERSION: 3.14.0
 ================================================================================
 
 TABLE OF CONTENTS
@@ -189,7 +189,7 @@ RULE 7: THE "TWIN PROOF" RULE (GROUND ON SAMPLE DATASETS)
 
 1. OVERVIEW & CORE PHILOSOPHY
 --------------------------------------------------------------------------------
-Package: pytae (Current Release Version: 3.13.9)
+Package: pytae (Current Release Version: 3.14.0)
 
 `pytae` is an ergonomic, high-performance tabular data manipulation library and 
 command-line tool powered by a 100% native multithreaded SIMD Polars engine with 
@@ -229,8 +229,8 @@ Key principles:
 
 2. PACKAGE ARCHITECTURE & IMPORT PATTERNS
 --------------------------------------------------------------------------------
-Installation (PyPI: https://pypi.org/project/pytae/3.13.9/):
-  pip install pytae==3.13.9
+Installation (PyPI: https://pypi.org/project/pytae/3.14.0/):
+  pip install pytae==3.14.0
   pip install 'pytae[plot]'    # includes matplotlib, scipy
 
 Importing:
@@ -5457,6 +5457,7 @@ Export pipeline results, batch-convert datasets, route outputs to dedicated dire
 - [Robust Mixed-Type Parquet Export](#robust-mixed-type-parquet-export)
 - [Streaming Progress Bars (`-progress [N]`)](#streaming-progress-bars--progress-n)
 - [Batch Conversions with Globbing](#batch-conversions-with-globbing)
+- [Cross-Platform & Git Bash Path Normalization](#cross-platform--git-bash-path-normalization)
 
 ---
 
@@ -5725,6 +5726,25 @@ Wrote 100000 rows to exports/file1.csv.gz
 == data/file2.parquet ==
 Wrote 150000 rows to exports/file2.csv.gz
 ```
+
+---
+
+## Cross-Platform & Git Bash Path Normalization
+
+When working across Windows, MSYS2 / Git Bash, WSL, or Cygwin, POSIX-style drive mounts often differ from native Windows paths. Pytae natively normalizes Git Bash drive paths (`/c/Users/...` and `//c/Users/...`), WSL mounts (`/mnt/c/...`), and Cygwin paths (`/cygdrive/c/...`) to standard Windows drive syntax (`C:/Users/...`):
+
+```bash
+# Ingest using Git Bash POSIX drive path on Windows
+pytae /c/Users/maddy/orders.parquet -head 5
+
+# Double-slash Git Bash syntax
+pytae //c/Users/maddy/orders.parquet -head 5
+
+# Export to Windows target directory seamlessly
+pytae /c/Users/maddy/data.csv -o /c/Users/maddy/clean.parquet
+```
+
+Surrounding quotes and forward/backward slashes are handled automatically without requiring manual drive letter substitution.
 
 ################################################################################
 # FILE: docs/guides/reshape.md
@@ -13020,10 +13040,8 @@ Dive deeper into specific subsystems:
    Cross-table ANSI SQL queries, embedded Python evaluation, multi-line blocks, the ephemeral memory sandboxing architecture, and explicit `.to_pytae()` table conversion.
 4. **[Session Variables & Configuration](variables_config.md)**:
    Defining session `@parameters`, nested configuration traversal, using variables in pipelines, display preferences (`set`), and persisting settings (`set save`).
-5. **[Checkpoints, Recovery & Milestone Diffing](checkpoints_recovery.md)**:
-   Ephemeral IPC snapshotting (`checkpoint`), zero-RAM storage, instant state rollback (`restore`), baseline resets (`reset`), and milestone schema/value diffing (`-diff`).
-6. **[Reproducibility, Script Export & Replay](history_export_replay.md)**:
-   Flight recorder audit logs, clean script export (`export`, `exit -s`), automatic undo branch pruning, CLI history conversion (`pytae -export`), batch execution, and kernel memory page deallocation.
+5. **[Checkpoints, History Audit, Pipeline Export & Replay](checkpoints_history_replay.md)**:
+   Ephemeral IPC snapshotting (`checkpoint`), zero-RAM storage, instant state rollback (`restore`), milestone schema/value diffing (`-diff`), flight recorder audit logs, clean script export (`export`, `exit -s`), automatic undo branch pruning, CLI history conversion (`pytae -export`), batch execution, and kernel memory page deallocation.
 
 ################################################################################
 # FILE: docs/repl/checkpoints_history_replay.md
@@ -14121,6 +14139,7 @@ This guide covers launching the interactive workbench, ingesting files and sampl
   - [Reader Options (`-encoding`, `-dlim`, `-nrows`, `-opts`)](#reader-options--encoding--dlim--nrows--opts)
   - [Excel Workbooks & Sheet Selection](#excel-workbooks--sheet-selection)
   - [Multi-File Glob Ingestion](#multi-file-glob-ingestion)
+  - [Windows & Git Bash Path Formats (`/c/Users/...`, `//c/...`)](#windows--git-bash-path-formats-cusers-c)
   - [Bundled Sample Datasets (`sample:<name>`)](#bundled-sample-datasets-samplename)
 - [Multi-Table Workbench Operations](#multi-table-workbench-operations)
   - [Inspecting Loaded Tables (`status table`)](#inspecting-loaded-tables-status-table)
@@ -14133,6 +14152,7 @@ This guide covers launching the interactive workbench, ingesting files and sampl
   - [Prompt Structure & Telemetry](#prompt-structure--telemetry)
   - [Context-Aware Tab Autocompletion](#context-aware-tab-autocompletion)
   - [Persistent Arrow-Key History](#persistent-arrow-key-history)
+  - [Multiline Command Drafting & Line Continuations (`\`)](#multiline-command-drafting--line-continuations-)
   - [Unix Shell Integration (`|`)](#unix-shell-integration-)
   - [Terminal Keyboard Shortcuts](#terminal-keyboard-shortcuts)
 
@@ -14217,6 +14237,26 @@ Ingest multiple partition files matching a glob pattern into a single unified ta
 pytae> sales_2025 = "sales_2025/part_*.parquet"
 Loaded 12 files matching 'sales_2025/part_*.parquet' as 'sales_2025' (1,200,000 rows x 8 cols).
 ```
+
+### Windows & Git Bash Path Formats (`/c/Users/...`, `//c/...`)
+
+On Windows, Git Bash (MSYS2), and WSL environments, path conventions often vary. Pytae seamlessly normalizes Git Bash drive mounts (`/c/path/file.parquet` and `//c/path/file.parquet`), WSL mounts (`/mnt/c/...`), and Cygwin mounts (`/cygdrive/c/...`) directly into valid Windows filesystem paths (`C:/path/file.parquet`), whether passed bare or quoted:
+
+```text
+# Unquoted Git Bash path
+pytae> orders = /c/Users/maddy/orders.parquet
+Loaded orders.parquet as 'orders' (100,000 rows x 6 cols).
+
+# Quoted Git Bash path
+pytae> cust = "//c/Users/maddy/customers.csv"
+Loaded customers.csv as 'cust' (15,000 rows x 5 cols).
+
+# Standard Windows paths with drive letter
+pytae> sales = "C:/Users/maddy/sales.parquet"
+Loaded sales.parquet as 'sales' (50,000 rows x 8 cols).
+```
+
+If a path does not exist on disk, Pytae reports a clean diagnostic rather than inadvertently declaring a string session variable.
 
 ### Bundled Sample Datasets (`sample:<name>`)
 
@@ -14363,6 +14403,22 @@ The Pytae REPL provides comprehensive `readline` autocompletion:
 ### Persistent Arrow-Key History
 
 The REPL maintains persistent command history saved in `~/.pytae_history`. Use <kbd>↑</kbd> and <kbd>↓</kbd> arrow keys to recall previous commands. Multi-line commands containing `\` continuations are cleanly flattened into single lines for smooth arrow navigation.
+
+### Multiline Command Drafting & Line Continuations (`\`)
+
+For complex pipelines or multi-step queries, span commands across multiple lines using a trailing backslash (`\`):
+
+```text
+pytae [orders]> -filter "amount > 1000 and status == 'shipped'" \
+... -mutate "tax = amount * 0.08" \
+... -select "order_id,customer_id,tax,amount" \
+... -head 5
+```
+
+- **Smart Line Splitting**: Pressing <kbd>Shift+Enter</kbd> (or <kbd>Enter</kbd> immediately following a `\`) splits the input at the cursor position and drops down to the continuation prompt (`... `).
+- **Inline Continuation Collapsing**: Commands containing inline `\` line continuations (e.g. `-s species \ -s island`) are seamlessly collapsed into a unified command string prior to execution.
+- **Multidimensional Arrow Navigation**: Pressing <kbd>↑</kbd> and <kbd>↓</kbd> inside a multiline command navigates across lines within your multi-line buffer before cycling through command history.
+- **Clean History Logging**: Multiline commands are stored in session history and `~/.pytae_history` as clean, unified single-line commands without stray backslashes.
 
 ### Unix Shell Integration (`|`)
 
@@ -16438,7 +16494,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.13.9"
+version = "3.14.0"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"

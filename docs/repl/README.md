@@ -129,7 +129,5 @@ Dive deeper into specific subsystems:
    Cross-table ANSI SQL queries, embedded Python evaluation, multi-line blocks, the ephemeral memory sandboxing architecture, and explicit `.to_pytae()` table conversion.
 4. **[Session Variables & Configuration](variables_config.md)**:
    Defining session `@parameters`, nested configuration traversal, using variables in pipelines, display preferences (`set`), and persisting settings (`set save`).
-5. **[Checkpoints, Recovery & Milestone Diffing](checkpoints_recovery.md)**:
-   Ephemeral IPC snapshotting (`checkpoint`), zero-RAM storage, instant state rollback (`restore`), baseline resets (`reset`), and milestone schema/value diffing (`-diff`).
-6. **[Reproducibility, Script Export & Replay](history_export_replay.md)**:
-   Flight recorder audit logs, clean script export (`export`, `exit -s`), automatic undo branch pruning, CLI history conversion (`pytae -export`), batch execution, and kernel memory page deallocation.
+5. **[Checkpoints, History Audit, Pipeline Export & Replay](checkpoints_history_replay.md)**:
+   Ephemeral IPC snapshotting (`checkpoint`), zero-RAM storage, instant state rollback (`restore`), milestone schema/value diffing (`-diff`), flight recorder audit logs, clean script export (`export`, `exit -s`), automatic undo branch pruning, CLI history conversion (`pytae -export`), batch execution, and kernel memory page deallocation.

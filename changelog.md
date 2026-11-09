@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.14.0] - 2026-11-09
+
+### Added
+- **Interactive REPL Multiline Editing & Line Continuations (`src/pytae/repl.py`)**:
+  - Full multiline command drafting and navigation support inside the interactive REPL shell.
+  - Backslash (`\`) line continuations: pressing <kbd>Enter</kbd> or <kbd>Shift+Enter</kbd> after a backslash smoothly breaks long command chains into continuation prompts (`... `).
+  - Inline continuation collapsing: inline backslashes (e.g. `-s species \ -s island`) are seamlessly collapsed upon execution and recorded as clean, unified single-line commands in session history.
+  - Full multiline cursor navigation: <kbd>↑</kbd> and <kbd>↓</kbd> navigate across lines within the multi-line input buffer before cycling through history items.
+- **Git Bash, MSYS2 & Windows Path Normalization (`src/pytae/cli_parsing.py`, `src/pytae/repl.py`)**:
+  - Full support for Git Bash / MSYS2 drive mounts (`/c/path/...`, `//c/path/...`), WSL mounts (`/mnt/c/...`), and Cygwin (`/cygdrive/c/...`) across both CLI invocations and REPL table assignments (`df = /c/...`).
+  - Handles both quoted and unquoted Git Bash paths with automatic translation to standard Windows drive paths (`C:/...`).
+  - Added robust validation: nonexistent file paths report clear diagnostics instead of inadvertently creating session string variables.
+
+### Fixed
+- **REPL Documentation Navigation Links (`docs/repl/README.md`)**:
+  - Fixed relative links in the REPL topic overview to correctly route to `checkpoints_history_replay.md`.
+
 ## [3.13.9] - 2026-11-08
 
 ### Changed & Reorganized

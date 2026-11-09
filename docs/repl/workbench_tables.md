@@ -14,6 +14,7 @@ This guide covers launching the interactive workbench, ingesting files and sampl
   - [Reader Options (`-encoding`, `-dlim`, `-nrows`, `-opts`)](#reader-options--encoding--dlim--nrows--opts)
   - [Excel Workbooks & Sheet Selection](#excel-workbooks--sheet-selection)
   - [Multi-File Glob Ingestion](#multi-file-glob-ingestion)
+  - [Windows & Git Bash Path Formats (`/c/Users/...`, `//c/...`)](#windows--git-bash-path-formats-cusers-c)
   - [Bundled Sample Datasets (`sample:<name>`)](#bundled-sample-datasets-samplename)
 - [Multi-Table Workbench Operations](#multi-table-workbench-operations)
   - [Inspecting Loaded Tables (`status table`)](#inspecting-loaded-tables-status-table)
@@ -26,6 +27,7 @@ This guide covers launching the interactive workbench, ingesting files and sampl
   - [Prompt Structure & Telemetry](#prompt-structure--telemetry)
   - [Context-Aware Tab Autocompletion](#context-aware-tab-autocompletion)
   - [Persistent Arrow-Key History](#persistent-arrow-key-history)
+  - [Multiline Command Drafting & Line Continuations (`\`)](#multiline-command-drafting--line-continuations-)
   - [Unix Shell Integration (`|`)](#unix-shell-integration-)
   - [Terminal Keyboard Shortcuts](#terminal-keyboard-shortcuts)
 
@@ -110,6 +112,26 @@ Ingest multiple partition files matching a glob pattern into a single unified ta
 pytae> sales_2025 = "sales_2025/part_*.parquet"
 Loaded 12 files matching 'sales_2025/part_*.parquet' as 'sales_2025' (1,200,000 rows x 8 cols).
 ```
+
+### Windows & Git Bash Path Formats (`/c/Users/...`, `//c/...`)
+
+On Windows, Git Bash (MSYS2), and WSL environments, path conventions often vary. Pytae seamlessly normalizes Git Bash drive mounts (`/c/path/file.parquet` and `//c/path/file.parquet`), WSL mounts (`/mnt/c/...`), and Cygwin mounts (`/cygdrive/c/...`) directly into valid Windows filesystem paths (`C:/path/file.parquet`), whether passed bare or quoted:
+
+```text
+# Unquoted Git Bash path
+pytae> orders = /c/Users/maddy/orders.parquet
+Loaded orders.parquet as 'orders' (100,000 rows x 6 cols).
+
+# Quoted Git Bash path
+pytae> cust = "//c/Users/maddy/customers.csv"
+Loaded customers.csv as 'cust' (15,000 rows x 5 cols).
+
+# Standard Windows paths with drive letter
+pytae> sales = "C:/Users/maddy/sales.parquet"
+Loaded sales.parquet as 'sales' (50,000 rows x 8 cols).
+```
+
+If a path does not exist on disk, Pytae reports a clean diagnostic rather than inadvertently declaring a string session variable.
 
 ### Bundled Sample Datasets (`sample:<name>`)
 
@@ -256,6 +278,22 @@ The Pytae REPL provides comprehensive `readline` autocompletion:
 ### Persistent Arrow-Key History
 
 The REPL maintains persistent command history saved in `~/.pytae_history`. Use <kbd>↑</kbd> and <kbd>↓</kbd> arrow keys to recall previous commands. Multi-line commands containing `\` continuations are cleanly flattened into single lines for smooth arrow navigation.
+
+### Multiline Command Drafting & Line Continuations (`\`)
+
+For complex pipelines or multi-step queries, span commands across multiple lines using a trailing backslash (`\`):
+
+```text
+pytae [orders]> -filter "amount > 1000 and status == 'shipped'" \
+... -mutate "tax = amount * 0.08" \
+... -select "order_id,customer_id,tax,amount" \
+... -head 5
+```
+
+- **Smart Line Splitting**: Pressing <kbd>Shift+Enter</kbd> (or <kbd>Enter</kbd> immediately following a `\`) splits the input at the cursor position and drops down to the continuation prompt (`... `).
+- **Inline Continuation Collapsing**: Commands containing inline `\` line continuations (e.g. `-s species \ -s island`) are seamlessly collapsed into a unified command string prior to execution.
+- **Multidimensional Arrow Navigation**: Pressing <kbd>↑</kbd> and <kbd>↓</kbd> inside a multiline command navigates across lines within your multi-line buffer before cycling through command history.
+- **Clean History Logging**: Multiline commands are stored in session history and `~/.pytae_history` as clean, unified single-line commands without stray backslashes.
 
 ### Unix Shell Integration (`|`)
 
