@@ -11,63 +11,63 @@ ZSH_COMPLETION = """#compdef pytae
 _pytae() {
     local -a flags
     flags=(
-        '-filter:Filter rows with expression'
-        '-mutate:Create or transform columns'
-        '-select:Keep, rename, or drop columns'
-        '-by:Group by columns'
-        '-agg:Aggregate expressions'
-        '-arrange:Sort rows'
-        '-distinct:Deduplicate rows'
-        '-join:Join with another table'
-        '-concat:Concatenate tables'
-        '-reshape:Reshape wide or long'
-        '-explode:Unnest list/array columns'
-        '-head:Print first N rows'
-        '-tail:Print last N rows'
-        '-shape:Print table dimensions'
-        '-cols:Print column names'
-        '-dtype:Print column types'
-        '-glimpse:Transposed schema and preview'
-        '-freq:Frequency table for categorical columns'
-        '-hist:ASCII histogram for numeric column'
-        '-diff:Compare two tables'
-        '-sql:Execute SQL query'
-        '-o:Output destination file (.parquet, .csv, .ipc, .xlsx) or clip'
-        '-check:Check syntax of a script or pipeline'
-        '-doc:Search Pytae documentation'
-        '-mcp:Start Model Context Protocol server'
-        '-run:Execute a .pt pipeline script'
-        '-export:Export REPL session history'
-        '-i:Launch interactive REPL'
-        '-benchmark:Benchmark pipeline execution'
-        '-cheatsheet:Display cheatsheet'
-        '-version:Show version'
-        '-help:Show help'
-        '--install-completion:Install shell tab completion'
-        '--completion:Output shell tab completion script'
+        "-filter[Filter rows with expression]:conditions:"
+        "-mutate[Create or transform columns]:spec:"
+        "-select[Keep, rename, or drop columns]:columns:"
+        "-by[Group by columns]:columns:"
+        "-agg[Aggregate expressions]:aggs:"
+        "-arrange[Sort rows]:order:"
+        "-distinct[Deduplicate rows]:columns:"
+        "-join[Join with another table]:spec:"
+        "-concat[Concatenate tables]:spec:"
+        "-reshape[Reshape wide or long]:spec:"
+        "-explode[Unnest list/array columns]:columns:"
+        "-head[Print first N rows]:limit:"
+        "-tail[Print last N rows]:limit:"
+        "-shape[Print table dimensions]"
+        "-cols[Print column names]:order:"
+        "-dtype[Print column types]:order:"
+        "-glimpse[Transposed schema and preview]"
+        "-freq[Frequency table for categorical columns]:column:"
+        "-hist[ASCII histogram for numeric column]:column:"
+        "-diff[Compare two tables]:spec:"
+        "-sql[Execute SQL query]:query:"
+        "-o[Output destination file (.parquet, .csv, .ipc, .xlsx) or clip]:output:_files"
+        "-check[Check syntax of a script or pipeline]:script:_files"
+        "-doc[Search Pytae documentation]:query:"
+        "-mcp[Start Model Context Protocol server]"
+        "-run[Execute a .pt pipeline script]:script:_files"
+        "-export[Export REPL session history]:history:_files"
+        "-i[Launch interactive REPL]"
+        "-benchmark[Benchmark pipeline execution]"
+        "-cheatsheet[Display cheatsheet]"
+        "-version[Show version]"
+        "-help[Show help]"
+        "--install-completion[Install shell tab completion]"
+        "--completion[Output shell tab completion script]"
     )
-    _arguments \\
-        '1:File:_files' \\
-        '*::Flags:->flags'
 
-    _describe 'flags' flags
+    _arguments -s -S "${flags[@]}" "*:file:_files"
 }
 
-_pytae "$@"
+if [[ -n "$ZSH_VERSION" ]]; then
+    if ! typeset -f compdef >/dev/null 2>&1; then
+        autoload -Uz compinit && compinit -i
+    fi
+    compdef _pytae pytae 2>/dev/null || true
+fi
 """
 
 BASH_COMPLETION = """_pytae_completion() {
-    local cur prev words cword
-    _init_completion || return
-
+    local cur="${COMP_WORDS[COMP_CWORD]}"
     local flags="-filter -mutate -select -by -agg -arrange -distinct -join -concat -reshape -explode -head -tail -shape -cols -dtype -glimpse -freq -hist -diff -sql -o -check -doc -mcp -run -export -i -benchmark -cheatsheet -version -help --install-completion --completion"
 
-    if [[ ${cur} == -* ]] ; then
-        COMPREPLY=( $(compgen -W "${flags}" -- ${cur}) )
+    if [[ "${cur}" == -* ]] ; then
+        COMPREPLY=( $(compgen -W "${flags}" -- "${cur}") )
         return 0
     fi
 
-    COMPREPLY=( $(compgen -f -- ${cur}) )
+    COMPREPLY=( $(compgen -f -- "${cur}") )
 }
 complete -F _pytae_completion pytae
 """
