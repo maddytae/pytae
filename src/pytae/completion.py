@@ -54,25 +54,7 @@ if [[ -n "$ZSH_VERSION" ]]; then
     if ! typeset -f compdef >/dev/null 2>&1; then
         autoload -Uz compinit && compinit -i
     fi
-    compdef _pytae pytae py pt 2>/dev/null || true
-
-    # Aliases so running `py` or `pt` directly works as `pytae`
-    alias py="pytae" 2>/dev/null || true
-    alias pt="pytae" 2>/dev/null || true
-
-    # Expand 'py' or 'pt' to 'pytae ' on TAB when typed as command
-    if [[ -o interactive ]]; then
-        _pytae_expand_tab() {
-            if [[ "$BUFFER" =~ ^[[:space:]]*(py|pt)$ ]]; then
-                BUFFER="${BUFFER%${MATCH}}pytae "
-                CURSOR=${#BUFFER}
-            else
-                zle expand-or-complete
-            fi
-        }
-        zle -N _pytae_expand_tab
-        bindkey '^I' _pytae_expand_tab
-    fi
+    compdef _pytae pytae 2>/dev/null || true
 fi
 """
 
@@ -87,9 +69,7 @@ BASH_COMPLETION = """_pytae_completion() {
 
     COMPREPLY=( $(compgen -f -- "${cur}") )
 }
-complete -F _pytae_completion pytae py pt 2>/dev/null || complete -F _pytae_completion pytae
-alias py="pytae" 2>/dev/null || true
-alias pt="pytae" 2>/dev/null || true
+complete -F _pytae_completion pytae
 """
 
 FISH_COMPLETION = """complete -c pytae -f
@@ -128,10 +108,6 @@ complete -c pytae -s version -d "Show version"
 complete -c pytae -s help -d "Show help"
 complete -c pytae -l install-completion -d "Install shell tab completion"
 complete -c pytae -l completion -d "Output shell tab completion script"
-alias py pytae
-alias pt pytae
-complete -c py -w pytae
-complete -c pt -w pytae
 """
 
 
