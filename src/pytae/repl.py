@@ -950,6 +950,14 @@ def _console_input(
                 word = "".join(line_chars[begidx:endidx])
                 line_buf = "".join(line_chars)
 
+                # If line is blank up to cursor, Tab acts as 4-space indentation
+                if not line_buf[:cursor_pos].strip():
+                    for space_ch in "    ":
+                        line_chars.insert(cursor_pos, space_ch)
+                        cursor_pos += 1
+                    render()
+                    continue
+
                 matches: list[str] = []
                 if completions_fn is not None:
                     try:
@@ -971,6 +979,11 @@ def _console_input(
                         matches = []
 
                 if not matches:
+                    # When no autocompletion matches exist, insert 4 spaces (soft tab)
+                    for space_ch in "    ":
+                        line_chars.insert(cursor_pos, space_ch)
+                        cursor_pos += 1
+                    render()
                     continue
 
                 if len(matches) == 1:
@@ -5559,7 +5572,6 @@ class PytaeRepl:
             self.variables[var_name] = val
             hist_line = f"@{var_name} = {right_expr}" if is_explicit_variable else f"{var_name} = {right_expr}"
             self._record_history(hist_line)
-            output_fn(f"Set @{var_name} = {val!r}")
             return
 
         # 1. SQL query assignment: `df3 = -sql "<query>"`
@@ -5616,7 +5628,6 @@ class PytaeRepl:
                 json.dumps(val)
                 self.variables[var_name] = val
                 self._record_history(f"{var_name} = {right_expr}")
-                output_fn(f"Set @{var_name} = {val!r}")
                 return
             except KeyError as exc:
                 output_fn(f"pytae: {exc}")
@@ -5932,7 +5943,6 @@ class PytaeRepl:
             self.variables[var_name] = val
             hist_line = f"@{var_name} = {right_expr}" if is_explicit_variable else f"{var_name} = {right_expr}"
             self._record_history(hist_line)
-            output_fn(f"Set @{var_name} = {val!r}")
             return
         except KeyError as exc:
             output_fn(f"pytae: {exc}")
@@ -7031,8 +7041,6 @@ class PytaeRepl:
             effective_prompt = "" if is_redirected_input else prompt_text
             initial_text = pending_input_queue.pop(0) if pending_input_queue else ""
             if input_fn is not None:
-                if initial_text:
-                    return initial_text
                 try:
                     return input_fn(effective_prompt)
                 except TypeError:
@@ -7143,9 +7151,10 @@ class PytaeRepl:
 
                 # 2. Inside Python block mode
                 if in_py_block:
-                    if line == "":
+                    if line.strip() == "":
                         full_code = "\n".join(multi_buffer)
                         multi_buffer.clear()
+                        pending_input_queue.clear()
                         in_py_block = False
                         if full_code.strip():
                             try:
@@ -7162,6 +7171,17 @@ class PytaeRepl:
                                     output_fn(f"pytae error: {msg}")
                         continue
                     multi_buffer.append(line)
+                    # Compute next line's auto-indent
+                    stripped_line = line.strip()
+                    current_indent = len(line) - len(line.lstrip(" "))
+                    if line.rstrip().endswith(":"):
+                        next_indent = current_indent + 4
+                    elif stripped_line in ("return", "pass", "break", "continue") or stripped_line.startswith(("return ", "raise ")):
+                        next_indent = max(0, current_indent - 4)
+                    else:
+                        next_indent = current_indent
+                    if next_indent > 0:
+                        pending_input_queue.append(" " * next_indent)
                     continue
 
                 # 3. Standard CLI multi-line buffer

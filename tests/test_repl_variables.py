@@ -11,8 +11,9 @@ def test_repl_variable_scalar_assignment():
     outputs: list[str] = []
     r = PytaeRepl()
 
+    # Variable assignment is silent on success
     r.execute_line("min_mass = 3500", output_fn=outputs.append)
-    assert "Set @min_mass = 3500" in outputs[-1]
+    assert len(outputs) == 0
     assert r.variables["min_mass"] == 3500
 
     r.execute_line("factor = 1.25", output_fn=outputs.append)
@@ -32,15 +33,15 @@ def test_repl_variable_at_prefix_supported():
     outputs: list[str] = []
     r = PytaeRepl()
 
-    # Defining a variable with explicit @ prefix succeeds
+    # Defining a variable with explicit @ prefix succeeds silently
     r.execute_line("@min_spend = 50.0", output_fn=outputs.append)
-    assert "Set @min_spend = 50.0" in outputs[-1]
+    assert len(outputs) == 0
     assert r.variables["min_spend"] == 50.0
 
-    # Bare definition also succeeds
+    # Bare definition also succeeds silently
     outputs.clear()
     r.execute_line("tax_rate = 0.0825", output_fn=outputs.append)
-    assert "Set @tax_rate = 0.0825" in outputs[-1]
+    assert len(outputs) == 0
     assert r.variables["tax_rate"] == 0.0825
 
 
@@ -54,22 +55,22 @@ def test_repl_path_variable_assignment_and_load(tmp_path: Path):
     p_file = tmp_path / "sample_data.parquet"
     sample_df.write_parquet(p_file)
 
-    # 1. Assign Windows-style path with @ prefix
+    # 1. Assign Windows-style path with @ prefix (silent)
     win_path = r"Z:\OSFI\Data Sources for Historical RWA\Project\rwa_data\input_tables\uspc_calc_extract\historic_data\*.parquet"
     r.execute_line(f'@win_path = "{win_path}"', output_fn=outputs.append)
-    assert "Set @win_path" in outputs[-1]
+    assert len(outputs) == 0
     assert r.variables["win_path"] == win_path
 
-    # 2. Assign raw string path without @ prefix
+    # 2. Assign raw string path without @ prefix (silent)
     outputs.clear()
     r.execute_line(f'raw_path = r"{win_path}"', output_fn=outputs.append)
-    assert "Set @raw_path" in outputs[-1]
+    assert len(outputs) == 0
     assert r.variables["raw_path"] == win_path
 
-    # 3. Assign real parquet file path to variable
+    # 3. Assign real parquet file path to variable (silent)
     outputs.clear()
     r.execute_line(f'@target = "{p_file}"', output_fn=outputs.append)
-    assert "Set @target" in outputs[-1]
+    assert len(outputs) == 0
     assert r.variables["target"] == str(p_file)
 
     # 4. Load table using @target variable: `df = @target`

@@ -379,4 +379,43 @@ def test_repl_execute_line_with_inline_backslash():
     r.close()
 
 
+def test_console_input_tab_inserts_spaces():
+    """Verify that pressing Tab at start of line or when no matches exist inserts 4 spaces."""
+    from pytae.repl import _console_input
+
+    # Press Tab (\t), then Enter (\r)
+    chars = ["\t", "\r"]
+    res = _console_input("pytae> ", [], read_char_fn=lambda: chars.pop(0) if chars else "\r")
+    assert res == "    "
+
+    # Mid-line Tab with no autocompletion matches inserts 4 spaces
+    chars2 = ["a", "=", "1", "\t", "\r"]
+    res2 = _console_input("pytae> ", [], read_char_fn=lambda: chars2.pop(0) if chars2 else "\r")
+    assert res2 == "a=1    "
+
+
+def test_interactive_py_block_auto_indent():
+    """Verify that entering py block auto-indents after colon and exits on empty line."""
+    from pytae.repl import PytaeRepl
+
+    r = PytaeRepl()
+    outputs: list[str] = []
+
+    # Sequence of inputs to simulate entering py block, a loop, and exiting
+    script = [
+        "py",
+        "total = 0",
+        "for i in range(3):",
+        "    total += i",
+        "print(f'LOOP_RESULT={total}')",
+        "",  # Empty line exits py block and executes
+        "exit",
+    ]
+    input_iter = iter(script)
+
+    r.run(input_fn=lambda _prompt="": next(input_iter), output_fn=outputs.append)
+    assert any("LOOP_RESULT=3" in o for o in outputs)
+    r.close()
+
+
 

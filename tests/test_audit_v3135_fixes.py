@@ -342,7 +342,7 @@ def test_repl_audit_ux_polish_improvements():
 
     # 1. Bare variable evaluation
     r.execute_line("min_spend = 50.0", output_fn=outputs.append)
-    assert "Set @min_spend = 50.0" in outputs[-1]
+    assert r.variables["min_spend"] == 50.0
 
     outputs.clear()
     r.execute_line("min_spend", output_fn=outputs.append)
