@@ -28,22 +28,74 @@ def test_repl_variable_scalar_assignment():
     assert r.variables["empty"] is None
 
 
-def test_repl_variable_at_prefix_rejected():
+def test_repl_variable_at_prefix_supported():
     outputs: list[str] = []
     r = PytaeRepl()
 
-    # Attempting to define a variable with @ prefix is strictly rejected
+    # Defining a variable with explicit @ prefix succeeds
     r.execute_line("@min_spend = 50.0", output_fn=outputs.append)
-    assert any("session variables must be defined without '@'" in o for o in outputs)
-    assert any("use 'min_spend = ...'" in o for o in outputs)
-    assert "min_spend" not in r.variables
-    assert "@min_spend" not in r.variables
-
-    # Standard definition succeeds
-    outputs.clear()
-    r.execute_line("min_spend = 50.0", output_fn=outputs.append)
     assert "Set @min_spend = 50.0" in outputs[-1]
     assert r.variables["min_spend"] == 50.0
+
+    # Bare definition also succeeds
+    outputs.clear()
+    r.execute_line("tax_rate = 0.0825", output_fn=outputs.append)
+    assert "Set @tax_rate = 0.0825" in outputs[-1]
+    assert r.variables["tax_rate"] == 0.0825
+
+
+def test_repl_path_variable_assignment_and_load(tmp_path: Path):
+    outputs: list[str] = []
+    r = PytaeRepl()
+
+    # Create dummy parquet file in tmp_path
+    import polars as pl
+    sample_df = pl.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]})
+    p_file = tmp_path / "sample_data.parquet"
+    sample_df.write_parquet(p_file)
+
+    # 1. Assign Windows-style path with @ prefix
+    win_path = r"Z:\OSFI\Data Sources for Historical RWA\Project\rwa_data\input_tables\uspc_calc_extract\historic_data\*.parquet"
+    r.execute_line(f'@win_path = "{win_path}"', output_fn=outputs.append)
+    assert "Set @win_path" in outputs[-1]
+    assert r.variables["win_path"] == win_path
+
+    # 2. Assign raw string path without @ prefix
+    outputs.clear()
+    r.execute_line(f'raw_path = r"{win_path}"', output_fn=outputs.append)
+    assert "Set @raw_path" in outputs[-1]
+    assert r.variables["raw_path"] == win_path
+
+    # 3. Assign real parquet file path to variable
+    outputs.clear()
+    r.execute_line(f'@target = "{p_file}"', output_fn=outputs.append)
+    assert "Set @target" in outputs[-1]
+    assert r.variables["target"] == str(p_file)
+
+    # 4. Load table using @target variable: `df = @target`
+    outputs.clear()
+    r.execute_line("df = @target", output_fn=outputs.append)
+    assert any("Loaded" in o and "as 'df'" in o for o in outputs)
+    assert "df" in r.tables
+    assert r.tables["df"].shape == (3, 2)
+
+    # 5. Scan table using @target variable: `lazy_df = scan @target`
+    outputs.clear()
+    r.execute_line("lazy_df = scan @target", output_fn=outputs.append)
+    assert any("Scanned" in o and "as 'lazy_df'" in o for o in outputs)
+    assert "lazy_df" in r.tables
+    assert isinstance(r.tables["lazy_df"], pl.LazyFrame)
+
+    # 6. load @target and scan @target
+    outputs.clear()
+    r.execute_line("load @target as df2", output_fn=outputs.append)
+    assert any("Loaded" in o and "as 'df2'" in o for o in outputs)
+    assert "df2" in r.tables
+
+    outputs.clear()
+    r.execute_line("scan @target as df3", output_fn=outputs.append)
+    assert any("Scanned" in o and "as 'df3'" in o for o in outputs)
+    assert "df3" in r.tables
 
 
 def test_repl_variable_collection_assignment():

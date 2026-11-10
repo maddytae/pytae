@@ -28,15 +28,23 @@ This guide covers defining session parameters and constants (`@var`), traversing
 
 In complex data wrangling pipelines, hardcoding magic numbers or string literals across multiple queries leads to fragile scripts. Pytae allows you to declare typed session parameters that can be safely referenced across all CLI flags and SQL statements.
 
-### Defining Variables (`<name> = <literal>`)
+### Defining Variables (`@name = <literal>` or `<name> = <literal>`)
 
-Assign any literal directly at the prompt:
+Assign any literal directly at the prompt using either explicit `@name = ...` or bare `name = ...`:
 
 ```text
-# Numeric scalars
-pytae> threshold = 5000
+# Explicit variable definition with @ (unambiguous)
+pytae> @threshold = 5000
 Set @threshold = 5000 (int)
 
+pytae> @path = "Z:\data\historic_data\*.parquet"
+Set @path = 'Z:\\data\\historic_data\\*.parquet' (str)
+
+# Raw strings for Windows paths (avoids escape sequences)
+pytae> path = r"C:\Users\data\*.parquet"
+Set @path = 'C:\\Users\\data\\*.parquet' (str)
+
+# Numeric scalars
 pytae> tax_rate = 0.0825
 Set @tax_rate = 0.0825 (float)
 
@@ -49,7 +57,25 @@ pytae> target_countries = ['US', 'CA', 'UK']
 Set @target_countries = ['US', 'CA', 'UK'] (list)
 ```
 
-To prevent ambiguity, variables are defined bare (`name = val`) but **must be referenced with an `@` prefix** (`@name`) inside queries and expressions.
+> [!TIP]
+> When assigning file or directory paths to variables, prefixing with `@` (e.g. `@path = "..."`) or using raw strings (`path = r"..."`) ensures Pytae stores the path as a session variable rather than attempting to load it as an in-memory table.
+
+### Ingestion from Path Variables (`df = @path`, `df = scan @path`)
+
+Once a path is saved in a session variable, you can load or lazily scan datasets directly using the `@var` reference:
+
+```text
+pytae> @source = "sales_2026_*.parquet"
+Set @source = 'sales_2026_*.parquet' (str)
+
+# Load into table 'df'
+pytae> df = @source
+Loaded sales_2026_*.parquet as 'df' (120,000 rows x 12 cols).
+
+# Or scan lazily
+pytae> lazy_df = scan @source
+Scanned sales_2026_*.parquet as 'lazy_df' (lazy, 12 cols).
+```
 
 ### Supported Data Types
 

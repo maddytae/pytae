@@ -3726,16 +3726,19 @@ class PytaeRepl:
             output_fn(f"pytae: unrecognized rm category '{tokens[1]}'. Use 'rm table <name>', 'rm checkpoint <name>', or 'rm var <name>'.")
             return True
 
-        # Variable Assignment: `df1 = orders.parquet` or `df3 = df1 -filter "..."` or `df3 = -sql ...` or `min_mass = 3500`
+        # Variable Assignment: `df1 = orders.parquet` or `df3 = df1 -filter "..."` or `df3 = -sql ...` or `min_mass = 3500` or `@path = "..."`
         if "=" in line and not line.startswith("-"):
             left_part, right_part = line.split("=", 1)
             raw_left = left_part.strip()
             if raw_left.startswith("@"):
                 clean_name = raw_left.lstrip("@").strip()
-                output_fn(
-                    f"pytae: session variables must be defined without '@' (use '{clean_name} = ...'; '@' is for referencing like '@{clean_name}')."
-                )
-                return True
+                if (
+                    clean_name.isidentifier()
+                    and not right_part.startswith("=")
+                    and not (left_part and left_part[-1] in "<>!+-*/")
+                ):
+                    self._cmd_assign(clean_name, right_part.strip(), output_fn, is_explicit_variable=True)
+                    return True
             var_name = raw_left
             if (
                 var_name.isidentifier()
@@ -5503,9 +5506,55 @@ class PytaeRepl:
         """Deprecated: use switch <table_name> instead."""
         self._cmd_switch(name, output_fn, is_deprecated_use=True)
 
-    def _cmd_assign(self, var_name: str, right_expr: str, output_fn: Callable[[str], None]) -> None:
+    def _cmd_assign(
+        self,
+        var_name: str,
+        right_expr: str,
+        output_fn: Callable[[str], None],
+        is_explicit_variable: bool = False,
+    ) -> None:
         if var_name.lower() in _RESERVED_VARIABLE_NAMES:
             output_fn(f"pytae: '{var_name}' is a reserved command or verb; choose a different variable name.")
+            return
+
+        # 0. Explicit variable assignment (@var = ...) or raw string literal (var = r"...")
+        is_raw_string = right_expr.strip().lower().startswith(('r"', "r'"))
+
+        if is_explicit_variable or is_raw_string:
+            if var_name in self.tables:
+                output_fn(
+                    f"pytae: '{var_name}' is already an active table; cannot assign as a variable. Use 'rm table {var_name}' first."
+                )
+                return
+            subbed_val_str = self._substitute_variables(right_expr)
+            try:
+                val = ast.literal_eval(subbed_val_str)
+            except Exception:
+                trimmed = subbed_val_str.strip()
+                if (trimmed.startswith('"') and trimmed.endswith('"')) or (trimmed.startswith("'") and trimmed.endswith("'")):
+                    val = trimmed[1:-1]
+                elif trimmed.lower().startswith(('r"', "r'")) and (trimmed.endswith('"') or trimmed.endswith("'")):
+                    val = trimmed[2:-1]
+                elif is_explicit_variable:
+                    val = trimmed
+                else:
+                    output_fn(
+                        f"pytae: could not assign '{var_name}'. '{right_expr}' is not an existing file or table, or valid literal."
+                    )
+                    return
+
+            if isinstance(val, tuple):
+                val = list(val)
+            try:
+                json.dumps(val)
+            except Exception as exc:
+                output_fn(f"pytae: variable value must be JSON-serializable: {exc}")
+                return
+
+            self.variables[var_name] = val
+            hist_line = f"@{var_name} = {right_expr}" if is_explicit_variable else f"{var_name} = {right_expr}"
+            self._record_history(hist_line)
+            output_fn(f"Set @{var_name} = {val!r}")
             return
 
         # 1. SQL query assignment: `df3 = -sql "<query>"`
@@ -5588,6 +5637,10 @@ class PytaeRepl:
                 output_fn("Usage: <var> = scan <path> [-dlim <char>]")
                 return
             clean_path = cleaned_toks[0].strip("\"' ")
+            if clean_path.startswith("@"):
+                v_key = clean_path.lstrip("@")
+                if v_key in self.variables and isinstance(self.variables[v_key], str):
+                    clean_path = str(self.variables[v_key])
             from pytae.cli_parsing import normalize_git_bash_path
 
             clean_path = normalize_git_bash_path(clean_path)
@@ -5621,7 +5674,11 @@ class PytaeRepl:
 
         cleaned_tokens, reader_kwargs, nrows_val = _parse_reader_options(right_tokens)
         if cleaned_tokens and not cleaned_tokens[0].startswith("-"):
-            clean_path = cleaned_tokens[0].removeprefix("load ").strip("\"' ")
+            clean_path = cleaned_tokens[0].removeprefix("load ").removeprefix("read ").strip("\"' ")
+            if clean_path.startswith("@"):
+                v_key = clean_path.lstrip("@")
+                if v_key in self.variables and isinstance(self.variables[v_key], str):
+                    clean_path = str(self.variables[v_key])
             if clean_path in self.checkpoints:
                 output_fn(
                     f"pytae: '{clean_path}' is a saved checkpoint, not a table or file. Use 'restore {clean_path}' to restore session workbench."
@@ -5829,14 +5886,27 @@ class PytaeRepl:
 
         try:
             subbed_val_str = self._substitute_variables(right_expr)
-            val = ast.literal_eval(subbed_val_str)
+            try:
+                val = ast.literal_eval(subbed_val_str)
+            except Exception:
+                trimmed = subbed_val_str.strip()
+                if (trimmed.startswith('"') and trimmed.endswith('"')) or (trimmed.startswith("'") and trimmed.endswith("'")):
+                    val = trimmed[1:-1]
+                elif trimmed.lower().startswith(('r"', "r'")) and (trimmed.endswith('"') or trimmed.endswith("'")):
+                    val = trimmed[2:-1]
+                elif is_explicit_variable:
+                    val = trimmed
+                else:
+                    raise
+
             if isinstance(val, tuple):
                 val = list(val)
             # Verify JSON serializability
             json.dumps(val)
 
             # If val is a string that looks like a data file path, do not assign as a session variable
-            if isinstance(val, str):
+            # unless explicitly defined with '@' prefix, raw string 'r', or updating an existing variable
+            if isinstance(val, str) and not is_explicit_variable and var_name not in self.variables and not is_raw_string:
                 from pytae.cli_parsing import normalize_git_bash_path
 
                 norm_val = normalize_git_bash_path(val)
@@ -5850,12 +5920,13 @@ class PytaeRepl:
                 has_path_sep = any(ch in val for ch in ("/\\")) or bool(re.match(r"^[a-zA-Z]:", norm_val))
                 if is_data_ext or (has_path_sep and "." in p_cand.name):
                     output_fn(
-                        f"pytae: could not assign '{var_name}'. '{right_expr}' is not an existing file or table, or valid literal."
+                        f"pytae: could not assign '{var_name}'. '{right_expr}' is not an existing file or table, or valid literal. (Hint: define session variables with '@{var_name} = \"{val}\"')."
                     )
                     return
 
             self.variables[var_name] = val
-            self._record_history(f"{var_name} = {right_expr}")
+            hist_line = f"@{var_name} = {right_expr}" if is_explicit_variable else f"{var_name} = {right_expr}"
+            self._record_history(hist_line)
             output_fn(f"Set @{var_name} = {val!r}")
             return
         except KeyError as exc:
@@ -5926,6 +5997,10 @@ class PytaeRepl:
             output_fn("(Note: 'load' is deprecated; use '<var> = <path>' instead.)")
             return
         path_str = cleaned_tokens[1].strip("\"' ")
+        if path_str.startswith("@"):
+            v_key = path_str.lstrip("@")
+            if v_key in self.variables and isinstance(self.variables[v_key], str):
+                path_str = str(self.variables[v_key])
         from pytae.cli_parsing import normalize_git_bash_path
 
         path_str = normalize_git_bash_path(path_str)
@@ -6005,6 +6080,10 @@ class PytaeRepl:
             output_fn("(Note: 'scan' is deprecated; use '<var> = scan <path>' instead.)")
             return
         path_str = cleaned_tokens[1].strip("\"' ")
+        if path_str.startswith("@"):
+            v_key = path_str.lstrip("@")
+            if v_key in self.variables and isinstance(self.variables[v_key], str):
+                path_str = str(self.variables[v_key])
         from pytae.cli_parsing import normalize_git_bash_path
 
         path_str = normalize_git_bash_path(path_str)
