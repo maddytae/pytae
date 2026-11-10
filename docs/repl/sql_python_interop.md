@@ -120,6 +120,27 @@ pytae [orders]> py
 Mean rate: 0.08333333333333333
 ```
 
+### Accessing Pytae Session Variables (`@var` -> `var`)
+
+Session variables defined with `@var = ...` in the REPL (e.g. `@path`, `@threshold`) are automatically injected into `py` blocks **as bare Python identifiers without the `@` prefix** (`path`, `threshold`):
+
+```text
+# 1. Define variable in Pytae
+pytae> @data_dir = r"Z:\Finance\RiskModels\Data\HistoricalExtracts"
+
+# 2. Access in Python without '@'
+pytae> py
+... import glob, polars as pl
+... files = glob.glob(data_dir + r"\*.parquet")
+... dfs = [pl.read_parquet(f, columns=['reporting_date', 'rwa_amount']) for f in files]
+... comb_df = DataFrame(pl.concat(dfs))
+... end
+Registered active table 'comb_df' (250,000 rows x 2 cols).
+```
+
+> [!NOTE]
+> In standard Python syntax, `@` is not a valid identifier prefix (`@path` raises a Python `SyntaxError`). Always omit the `@` when referencing variables inside Python expressions. For full details, see [Session Variables Guide](variables_config.md#accessing-session-variables-in-python-py-blocks).
+
 ---
 
 ## Ephemeral Python Sandboxing & RAM Isolation

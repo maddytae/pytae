@@ -1,6 +1,6 @@
 ================================================================================
 PYTAE COMPREHENSIVE KNOWLEDGE BASE & AGENT TRAINING REFERENCE MANUAL
-RELEASE VERSION: 3.14.0
+RELEASE VERSION: 3.14.1
 ================================================================================
 
 TABLE OF CONTENTS
@@ -189,7 +189,7 @@ RULE 7: THE "TWIN PROOF" RULE (GROUND ON SAMPLE DATASETS)
 
 1. OVERVIEW & CORE PHILOSOPHY
 --------------------------------------------------------------------------------
-Package: pytae (Current Release Version: 3.14.0)
+Package: pytae (Current Release Version: 3.14.1)
 
 `pytae` is an ergonomic, high-performance tabular data manipulation library and 
 command-line tool powered by a 100% native multithreaded SIMD Polars engine with 
@@ -229,8 +229,8 @@ Key principles:
 
 2. PACKAGE ARCHITECTURE & IMPORT PATTERNS
 --------------------------------------------------------------------------------
-Installation (PyPI: https://pypi.org/project/pytae/3.14.0/):
-  pip install pytae==3.14.0
+Installation (PyPI: https://pypi.org/project/pytae/3.14.1/):
+  pip install pytae==3.14.1
   pip install 'pytae[plot]'    # includes matplotlib, scipy
 
 Importing:
@@ -13835,6 +13835,27 @@ pytae [orders]> py
 Mean rate: 0.08333333333333333
 ```
 
+### Accessing Pytae Session Variables (`@var` -> `var`)
+
+Session variables defined with `@var = ...` in the REPL (e.g. `@path`, `@threshold`) are automatically injected into `py` blocks **as bare Python identifiers without the `@` prefix** (`path`, `threshold`):
+
+```text
+# 1. Define variable in Pytae
+pytae> @data_dir = r"Z:\Finance\RiskModels\Data\HistoricalExtracts"
+
+# 2. Access in Python without '@'
+pytae> py
+... import glob, polars as pl
+... files = glob.glob(data_dir + r"\*.parquet")
+... dfs = [pl.read_parquet(f, columns=['reporting_date', 'rwa_amount']) for f in files]
+... comb_df = DataFrame(pl.concat(dfs))
+... end
+Registered active table 'comb_df' (250,000 rows x 2 cols).
+```
+
+> [!NOTE]
+> In standard Python syntax, `@` is not a valid identifier prefix (`@path` raises a Python `SyntaxError`). Always omit the `@` when referencing variables inside Python expressions. For full details, see [Session Variables Guide](variables_config.md#accessing-session-variables-in-python-py-blocks).
+
 ---
 
 ## Ephemeral Python Sandboxing & RAM Isolation
@@ -13953,6 +13974,7 @@ This guide covers defining session parameters and constants (`@var`), traversing
   - [Supported Data Types](#supported-data-types)
   - [Traversing Nested Dictionaries & Lists (`@cfg.key`, `@cfg[idx]`)](#traversing-nested-dictionaries--lists-cfgkey-cfgidx)
   - [Using Variables in Pipeline Verbs (`-filter`, `-mutate`, `-sql`)](#using-variables-in-pipeline-verbs--filter--mutate--sql)
+  - [Accessing Session Variables in Python (`py` blocks)](#accessing-session-variables-in-python-py-blocks)
   - [Inspecting Variables (`status var`, `status var <name>`)](#inspecting-variables-status-var-status-var-name)
   - [Deleting Variables (`rm var <name>`, `rm var *`)](#deleting-variables-rm-var-name-rm-var-)
   - [Namespace Protection: Tables vs. Variables](#namespace-protection-tables-vs-variables)
@@ -14094,6 +14116,56 @@ pytae [orders]> -sql "SELECT * FROM orders WHERE amount > @thresholds.medium"
 ```
 
 Variables are substituted at query compile time, ensuring full Polars SIMD optimization without Python interpreter overhead.
+
+### Accessing Session Variables in Python (`py` blocks)
+
+When you define a session variable in Pytae (`@var = ...`), Pytae automatically injects it into the isolated execution scope of `py` blocks **as a native Python variable without the `@` prefix** (`var`).
+
+> [!IMPORTANT]
+> **The `@` Rule Across Modes:**
+> - **In Pytae REPL commands**: Always use `@var` (`@path = ...`, `df = @path`, `-filter "amount >= @threshold"`). The `@` tells Pytae that the identifier is a session parameter rather than a dataset or file name.
+> - **In Python (`py` blocks)**: Always use bare `var` (`path`, `threshold`). In Python grammar, `@` is not a valid identifier character and will cause a `SyntaxError: invalid syntax` if included in an expression like `glob.glob(@path)`.
+
+#### Example: Globbing and Loading Multi-File Partitions from a Network Drive
+
+Suppose you define a directory path on a Windows network share or local drive:
+
+```text
+# 1. Define the base path as a raw string session variable in Pytae
+pytae> @data_dir = r"Z:\Finance\RiskModels\Data\HistoricalExtracts"
+```
+
+You can now work with this path in two ways:
+
+##### Way 1: Direct Pytae 1-Liner (Recommended — No Python or imports required)
+Pytae's universal reader natively resolves wildcards and globs across partitions:
+
+```text
+# Ingest all matching parquet files, select columns, and combine in one shot
+pytae> @extract_glob = r"Z:\Finance\RiskModels\Data\HistoricalExtracts\*.parquet"
+pytae> comb_df = @extract_glob -select "reporting_date, rwa_amount"
+Loaded *.parquet as 'comb_df' (250,000 rows x 2 cols).
+```
+
+##### Way 2: Inside a `py` Multi-Line Block (Using Polars & glob)
+If you require custom procedural transformations, access the variable inside `py` as `data_dir` (without `@`):
+
+```text
+pytae> py
+... import glob
+... import polars as pl
+... 
+... # Notice: 'data_dir' is used without '@' inside Python!
+... files = glob.glob(data_dir + r"\*.parquet")
+... dfs = [pl.read_parquet(f, columns=['reporting_date', 'rwa_amount']) for f in files]
+... 
+... # Wrap the concatenated result with DataFrame() to register it as an active Pytae table
+... comb_df = DataFrame(pl.concat(dfs))
+... end
+Registered active table 'comb_df' (250,000 rows x 2 cols).
+```
+
+Once the block exits, `comb_df` is fully registered in your Pytae session and ready for normal REPL operations (`-filter`, `-mutate`, `save`, `diff`, etc.).
 
 ### Inspecting Variables (`status var`, `status var <name>`)
 
@@ -16642,7 +16714,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.14.0"
+version = "3.14.1"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"

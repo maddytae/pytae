@@ -13,6 +13,7 @@ This guide covers defining session parameters and constants (`@var`), traversing
   - [Supported Data Types](#supported-data-types)
   - [Traversing Nested Dictionaries & Lists (`@cfg.key`, `@cfg[idx]`)](#traversing-nested-dictionaries--lists-cfgkey-cfgidx)
   - [Using Variables in Pipeline Verbs (`-filter`, `-mutate`, `-sql`)](#using-variables-in-pipeline-verbs--filter--mutate--sql)
+  - [Accessing Session Variables in Python (`py` blocks)](#accessing-session-variables-in-python-py-blocks)
   - [Inspecting Variables (`status var`, `status var <name>`)](#inspecting-variables-status-var-status-var-name)
   - [Deleting Variables (`rm var <name>`, `rm var *`)](#deleting-variables-rm-var-name-rm-var-)
   - [Namespace Protection: Tables vs. Variables](#namespace-protection-tables-vs-variables)
@@ -154,6 +155,56 @@ pytae [orders]> -sql "SELECT * FROM orders WHERE amount > @thresholds.medium"
 ```
 
 Variables are substituted at query compile time, ensuring full Polars SIMD optimization without Python interpreter overhead.
+
+### Accessing Session Variables in Python (`py` blocks)
+
+When you define a session variable in Pytae (`@var = ...`), Pytae automatically injects it into the isolated execution scope of `py` blocks **as a native Python variable without the `@` prefix** (`var`).
+
+> [!IMPORTANT]
+> **The `@` Rule Across Modes:**
+> - **In Pytae REPL commands**: Always use `@var` (`@path = ...`, `df = @path`, `-filter "amount >= @threshold"`). The `@` tells Pytae that the identifier is a session parameter rather than a dataset or file name.
+> - **In Python (`py` blocks)**: Always use bare `var` (`path`, `threshold`). In Python grammar, `@` is not a valid identifier character and will cause a `SyntaxError: invalid syntax` if included in an expression like `glob.glob(@path)`.
+
+#### Example: Globbing and Loading Multi-File Partitions from a Network Drive
+
+Suppose you define a directory path on a Windows network share or local drive:
+
+```text
+# 1. Define the base path as a raw string session variable in Pytae
+pytae> @data_dir = r"Z:\Finance\RiskModels\Data\HistoricalExtracts"
+```
+
+You can now work with this path in two ways:
+
+##### Way 1: Direct Pytae 1-Liner (Recommended — No Python or imports required)
+Pytae's universal reader natively resolves wildcards and globs across partitions:
+
+```text
+# Ingest all matching parquet files, select columns, and combine in one shot
+pytae> @extract_glob = r"Z:\Finance\RiskModels\Data\HistoricalExtracts\*.parquet"
+pytae> comb_df = @extract_glob -select "reporting_date, rwa_amount"
+Loaded *.parquet as 'comb_df' (250,000 rows x 2 cols).
+```
+
+##### Way 2: Inside a `py` Multi-Line Block (Using Polars & glob)
+If you require custom procedural transformations, access the variable inside `py` as `data_dir` (without `@`):
+
+```text
+pytae> py
+... import glob
+... import polars as pl
+... 
+... # Notice: 'data_dir' is used without '@' inside Python!
+... files = glob.glob(data_dir + r"\*.parquet")
+... dfs = [pl.read_parquet(f, columns=['reporting_date', 'rwa_amount']) for f in files]
+... 
+... # Wrap the concatenated result with DataFrame() to register it as an active Pytae table
+... comb_df = DataFrame(pl.concat(dfs))
+... end
+Registered active table 'comb_df' (250,000 rows x 2 cols).
+```
+
+Once the block exits, `comb_df` is fully registered in your Pytae session and ready for normal REPL operations (`-filter`, `-mutate`, `save`, `diff`, etc.).
 
 ### Inspecting Variables (`status var`, `status var <name>`)
 
