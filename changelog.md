@@ -2,6 +2,34 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.14.1] - 2026-11-10
+
+### Added
+- **Universal `@` Rule for Session Variables (`src/pytae/repl.py`, `docs/repl/variables_config.md`)**:
+  - Established the Universal `@` model: `@name = <value>` declares a session variable across all types (scalars, strings, paths, lists, dicts), while `name = <value>` declares an in-memory table.
+  - Full support for assigning arbitrary paths, globs, UNC network shares, and Windows paths to variables (`@path = r"Z:\...\*.parquet"`).
+  - Native Python raw string literal support (`r"..."` / `r'...'`) to prevent Windows backslash escaping errors.
+  - Direct ingestion and lazy scanning from path variables: `df = @path`, `df = scan @path`, `load @path`, and `scan @path`.
+  - Silent variable assignment on success (matching Python/IPython/Bash), eliminating noisy terminal clutter.
+- **REPL Python (`py`) Block Upgrades (`src/pytae/repl.py`)**:
+  - Soft-tab indentation: pressing <kbd>Tab</kbd> at the start of a line or with no completion matches inserts 4 spaces instead of being discarded.
+  - Automatic indentation: pressing <kbd>Enter</kbd> after lines ending in `:` automatically indents the next prompt line by 4 spaces.
+  - Clean double-<kbd>Enter</kbd> exit from multi-line `py` block mode.
+  - Automatic fallback to `pl.concat(..., how="diagonal_relaxed")` in `GlobReader` when partitioned parquet files exhibit schema drift.
+- **Universal I/O & Universal Export Standardization (`src/pytae/dataframe.py`, `src/pytae/readers.py`)**:
+  - `pt.read()` and `pt.scan()` natively accept multi-file lists and glob strings (`pt.read(["a.parquet", "b.parquet"])`, `pt.read("data/*.parquet")`).
+  - Unified export via `df.to(...)`: deprecated format-specific `.to_pandas()`, `.to_polars()`, `.to_clip()`, and `.to_pytae()` in favor of `df.to("pandas")`, `df.to("polars")`, `df.to("clip")`, `df.to("pytae")`.
+  - Added new in-memory export targets: `df.to("records")`, `df.to("dict")`, `df.to("arrow")`, `df.to("numpy")`.
+  - Added Hive-partitioned lake export: `df.to("lake", partition_by=["region", "year"])`.
+- **CLI Shell Tab-Completion Generator (`src/pytae/completion.py`, `src/pytae/cli.py`)**:
+  - Added `pytae --install-completion` and `pytae --completion [shell]` generating native completion scripts for Zsh, Bash, and Fish with dynamic flag, command, and file completion.
+- **Cross-Platform Path Normalization Across All Shells & OSs (`src/pytae/repl.py`, `src/pytae/cli_parsing.py`)**:
+  - Full support and automatic normalization for Windows drive paths, UNC network shares, Git Bash (`/c/...` & `//c/...`), WSL (`/mnt/c/...`), and Cygwin.
+
+### Fixed
+- **REPL Dead Assignment Pruning (`src/pytae/repl.py`)**:
+  - Overwritten temporary variables in session history are automatically pruned during script export (`export session.py`).
+
 ## [3.14.0] - 2026-11-09
 
 ### Added
