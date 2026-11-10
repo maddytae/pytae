@@ -27,10 +27,15 @@ from pytae.readers import DataFrameReader, get_reader
 
 
 def _normalize_unquoted_windows_paths(text: str) -> str:
-    """Normalize unquoted Windows drive paths with backslashes (e.g. C:\\Users\\... -> C:/Users/...) so shlex does not eat backslashes."""
-    return re.sub(
+    """Normalize unquoted Windows drive paths and UNC paths with backslashes so shlex does not eat backslashes."""
+    text = re.sub(
         r'(?<!["\'])\b([a-zA-Z]):\\([^\s"\'=]+)',
         lambda m: f"{m.group(1)}:/{m.group(2).replace(chr(92), '/')}",
+        text,
+    )
+    return re.sub(
+        r'(?<!["\'])\\\\([^\s"\'=]+)',
+        lambda m: f"//{m.group(1).replace(chr(92), '/')}",
         text,
     )
 

@@ -28,53 +28,86 @@ This guide covers defining session parameters and constants (`@var`), traversing
 
 In complex data wrangling pipelines, hardcoding magic numbers or string literals across multiple queries leads to fragile scripts. Pytae allows you to declare typed session parameters that can be safely referenced across all CLI flags and SQL statements.
 
-### Defining Variables (`@name = <literal>` or `<name> = <literal>`)
+### The Universal `@` Rule: Tables vs. Variables
 
-Assign any literal directly at the prompt using either explicit `@name = ...` or bare `name = ...`:
+To keep the REPL mental model clean and unambiguous:
+
+| Scope | Rule | Example |
+| :--- | :--- | :--- |
+| **Session Variables** | **Always prefix LHS with `@`** | `@threshold = 5000`<br>`@path = "Z:\data\*.parquet"`<br>`@regions = ['North', 'West']` |
+| **Tables (DataFrames)** | **Always bare on LHS (no `@`)** | `df = orders.parquet`<br>`sales = sample:tips`<br>`heavy = df -filter "mass > 5000"` |
+| **Referencing Variables** | **Always use `@`** | `-filter "amount > @threshold"`<br>`df = @path`<br>`lazy_df = scan @path` |
+
+> [!TIP]
+> Bare scalar definitions (e.g. `threshold = 5000`) continue to work as a silent fallback, but the recommended convention is to always use `@` on the left-hand side (`@threshold = 5000`).
+
+### Defining Variables
+
+Assign any literal directly at the prompt using the `@name = ...` syntax:
 
 ```text
-# Explicit variable definition with @ (unambiguous)
+# Numeric scalars (integers, floats)
 pytae> @threshold = 5000
 Set @threshold = 5000 (int)
 
-pytae> @path = "Z:\data\historic_data\*.parquet"
-Set @path = 'Z:\\data\\historic_data\\*.parquet' (str)
-
-# Raw strings for Windows paths (avoids escape sequences)
-pytae> path = r"C:\Users\data\*.parquet"
-Set @path = 'C:\\Users\\data\\*.parquet' (str)
-
-# Numeric scalars
-pytae> tax_rate = 0.0825
+pytae> @tax_rate = 0.0825
 Set @tax_rate = 0.0825 (float)
 
-# String parameters
-pytae> target_status = 'completed'
+# String parameters & labels
+pytae> @target_status = 'completed'
 Set @target_status = 'completed' (str)
 
 # Lists & Collections
-pytae> target_countries = ['US', 'CA', 'UK']
+pytae> @target_countries = ['US', 'CA', 'UK']
 Set @target_countries = ['US', 'CA', 'UK'] (list)
+
+# Configuration dictionaries
+pytae> @cfg = {'min_mass': 3500, 'island': 'Biscoe', 'limit': 100}
+Set @cfg = {'min_mass': 3500, 'island': 'Biscoe', 'limit': 100} (dict)
 ```
 
-> [!TIP]
-> When assigning file or directory paths to variables, prefixing with `@` (e.g. `@path = "..."`) or using raw strings (`path = r"..."`) ensures Pytae stores the path as a session variable rather than attempting to load it as an in-memory table.
+---
+
+### Supported Path Formats Across Shells & OSs
+
+Pytae automatically normalizes and recognizes all operating system and shell path formats across Windows (CMD, PowerShell, Git Bash, MSYS2, Cygwin, WSL) and Unix (macOS, Linux):
+
+| Shell / Environment | Format Example | Syntax | Notes |
+| :--- | :--- | :--- | :--- |
+| **Windows Backslash (CMD / PowerShell)** | `C:\Users\maddy\data\orders.parquet`<br>`Z:\OSFI\...\historic_data\*.parquet` | `@p = r"Z:\OSFI\...\*.parquet"`<br>or `@p = "C:\\data\\orders.parquet"` | Raw string `r"..."` prevents backslash escape issues (e.g. `\u` in `\uspc`). |
+| **Windows Forward Slash** | `C:/Users/maddy/data/orders.parquet` | `@p = "C:/Users/maddy/data/orders.parquet"` | Cross-platform friendly; avoids all escape characters. |
+| **Windows UNC Network Shares** | `\\server\share\data\orders.parquet`<br>`//server/share/data/orders.parquet` | `@p = r"\\server\share\data\orders.parquet"` | Full support for Windows shared network drives and UNC paths. |
+| **Git Bash / MSYS (Single Slash)** | `/c/Users/maddy/data/orders.parquet`<br>`/z/OSFI/.../data.parquet` | `@p = "/c/Users/maddy/data/orders.parquet"` | Automatically translates `/c/...` to `C:/...` on Windows. |
+| **Git Bash / MSYS (Double Slash)** | `//c/Users/maddy/data/orders.parquet` | `@p = "//c/Users/maddy/data/orders.parquet"` | Supported for Git Bash scripts that use double slashes to prevent POSIX path expansion. |
+| **WSL (Windows Subsystem for Linux)** | `/mnt/c/Users/maddy/data/orders.parquet` | `@p = "/mnt/c/Users/maddy/data/orders.parquet"` | Automatically resolves `/mnt/c/...` mounts on Windows. |
+| **Cygwin** | `/cygdrive/c/Users/maddy/data/orders.parquet` | `@p = "/cygdrive/c/Users/maddy/data/orders.parquet"` | Automatically resolves `/cygdrive/c/...` mounts on Windows. |
+| **macOS / Linux / POSIX** | `/Users/maddy/data/orders.parquet`<br>`~/data/orders.parquet` | `@p = "~/data/orders.parquet"` | Tilde (`~`) home expansion and absolute POSIX paths supported natively. |
+| **Relative & Multi-File Globs** | `data/*.parquet`<br>`sales_2026_*.parquet` | `@p = "data/*.parquet"` | Matches multiple partitioned parquet or CSV files. |
+| **Sample Datasets** | `sample:penguins`, `sample:tips`, `sample:titanic` | `@p = "sample:penguins"` | Built-in sample datasets bundled with Pytae. |
+
+---
 
 ### Ingestion from Path Variables (`df = @path`, `df = scan @path`)
 
 Once a path is saved in a session variable, you can load or lazily scan datasets directly using the `@var` reference:
 
 ```text
-pytae> @source = "sales_2026_*.parquet"
-Set @source = 'sales_2026_*.parquet' (str)
+# 1. Define the path variable
+pytae> @rwa_path = r"Z:\OSFI\Data Sources for Historical RWA\Project\rwa_data\input_tables\uspc_calc_extract\historic_data\*.parquet"
+Set @rwa_path = 'Z:\\OSFI\\Data Sources for Historical RWA\\Project\\rwa_data\\input_tables\\uspc_calc_extract\\historic_data\\*.parquet' (str)
 
-# Load into table 'df'
-pytae> df = @source
-Loaded sales_2026_*.parquet as 'df' (120,000 rows x 12 cols).
+# 2. Load eagerly into memory as table 'df'
+pytae> df = @rwa_path
+Loaded *.parquet as 'df' (250,000 rows x 18 cols).
 
-# Or scan lazily
-pytae> lazy_df = scan @source
-Scanned sales_2026_*.parquet as 'lazy_df' (lazy, 12 cols).
+# 3. Or scan lazily without loading into RAM
+pytae> lazy_df = scan @rwa_path
+Scanned *.parquet as 'lazy_df' (lazy, 18 cols).
+
+# 4. Git Bash path ingestion
+pytae> @gb_path = "/c/Users/maddy/downloads/customers.csv"
+pytae> customers = @gb_path -dlim "," -encoding utf-8
+Loaded customers.csv as 'customers' (15,000 rows x 5 cols).
 ```
 
 ### Supported Data Types

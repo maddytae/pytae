@@ -98,6 +98,65 @@ def test_repl_path_variable_assignment_and_load(tmp_path: Path):
     assert "df3" in r.tables
 
 
+def test_repl_all_path_formats_support(tmp_path: Path):
+    outputs: list[str] = []
+    r = PytaeRepl()
+
+    # 1. Windows backslash drive path (raw string)
+    r.execute_line(r'@p_win = r"C:\Users\maddy\data\orders.parquet"', output_fn=outputs.append)
+    assert r.variables["p_win"] == r"C:\Users\maddy\data\orders.parquet"
+
+    # 2. Windows forward slash path
+    outputs.clear()
+    r.execute_line('@p_win_fwd = "C:/Users/maddy/data/orders.parquet"', output_fn=outputs.append)
+    assert r.variables["p_win_fwd"] == "C:/Users/maddy/data/orders.parquet"
+
+    # 3. Git Bash single-slash drive mount (/c/...)
+    outputs.clear()
+    r.execute_line('@p_gb1 = "/c/Users/maddy/data/orders.parquet"', output_fn=outputs.append)
+    assert r.variables["p_gb1"] == "/c/Users/maddy/data/orders.parquet"
+
+    # 4. Git Bash double-slash drive mount (//c/...)
+    outputs.clear()
+    r.execute_line('@p_gb2 = "//c/Users/maddy/data/orders.parquet"', output_fn=outputs.append)
+    assert r.variables["p_gb2"] == "//c/Users/maddy/data/orders.parquet"
+
+    # 5. Windows UNC network share
+    outputs.clear()
+    r.execute_line(r'@p_unc = r"\\server\share\data\orders.parquet"', output_fn=outputs.append)
+    assert r.variables["p_unc"] == r"\\server\share\data\orders.parquet"
+
+    # 6. WSL mount path (/mnt/c/...)
+    outputs.clear()
+    r.execute_line('@p_wsl = "/mnt/c/Users/maddy/data/orders.parquet"', output_fn=outputs.append)
+    assert r.variables["p_wsl"] == "/mnt/c/Users/maddy/data/orders.parquet"
+
+    # 7. Cygwin mount path (/cygdrive/c/...)
+    outputs.clear()
+    r.execute_line('@p_cyg = "/cygdrive/c/Users/maddy/data/orders.parquet"', output_fn=outputs.append)
+    assert r.variables["p_cyg"] == "/cygdrive/c/Users/maddy/data/orders.parquet"
+
+    # 8. Built-in sample dataset reference via variable
+    outputs.clear()
+    r.execute_line('@sample_src = "sample:penguins"', output_fn=outputs.append)
+    assert r.variables["sample_src"] == "sample:penguins"
+    outputs.clear()
+    r.execute_line("penguins = @sample_src", output_fn=outputs.append)
+    assert "penguins" in r.tables
+    assert r.tables["penguins"].shape[0] == 344
+
+    # 9. Real temporary parquet file loaded across Git Bash path normalization
+    import polars as pl
+    dummy_file = tmp_path / "dummy.parquet"
+    pl.DataFrame({"x": [10, 20]}).write_parquet(dummy_file)
+
+    outputs.clear()
+    r.execute_line(f'@real_path = "{dummy_file}"', output_fn=outputs.append)
+    r.execute_line("t1 = @real_path", output_fn=outputs.append)
+    assert "t1" in r.tables
+    assert r.tables["t1"].shape == (2, 1)
+
+
 def test_repl_variable_collection_assignment():
     outputs: list[str] = []
     r = PytaeRepl()

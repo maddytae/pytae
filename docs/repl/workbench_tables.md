@@ -113,9 +113,9 @@ pytae> sales_2025 = "sales_2025/part_*.parquet"
 Loaded 12 files matching 'sales_2025/part_*.parquet' as 'sales_2025' (1,200,000 rows x 8 cols).
 ```
 
-### Windows & Git Bash Path Formats (`/c/Users/...`, `//c/...`)
+### Windows, UNC & Git Bash Path Formats (`/c/Users/...`, `//c/...`, `\\server\share\...`)
 
-On Windows, Git Bash (MSYS2), and WSL environments, path conventions often vary. Pytae seamlessly normalizes Git Bash drive mounts (`/c/path/file.parquet` and `//c/path/file.parquet`), WSL mounts (`/mnt/c/...`), and Cygwin mounts (`/cygdrive/c/...`) directly into valid Windows filesystem paths (`C:/path/file.parquet`), whether passed bare or quoted:
+On Windows, Git Bash (MSYS2), and WSL environments, path conventions often vary. Pytae seamlessly normalizes Git Bash drive mounts (`/c/path/file.parquet` and `//c/path/file.parquet`), WSL mounts (`/mnt/c/...`), Cygwin mounts (`/cygdrive/c/...`), and UNC network shares directly into valid Windows filesystem paths (`C:/path/file.parquet`), whether passed bare or quoted:
 
 ```text
 # Unquoted Git Bash path
@@ -129,7 +129,26 @@ Loaded customers.csv as 'cust' (15,000 rows x 5 cols).
 # Standard Windows paths with drive letter
 pytae> sales = "C:/Users/maddy/sales.parquet"
 Loaded sales.parquet as 'sales' (50,000 rows x 8 cols).
+
+# Windows UNC Network Share
+pytae> network_deals = "\\server\share\rwa_data\deals.parquet"
+Loaded deals.parquet as 'network_deals' (85,000 rows x 12 cols).
 ```
+
+### Supported Path Formats Summary
+
+| Environment / Format | Example Syntax | Normalized By Pytae To |
+| :--- | :--- | :--- |
+| **Windows Backslash** | `C:\data\orders.parquet`<br>`r"Z:\OSFI\...\*.parquet"` | `C:/data/orders.parquet`<br>`Z:/OSFI/.../*.parquet` |
+| **Windows Forward Slash** | `C:/data/orders.parquet` | `C:/data/orders.parquet` |
+| **Windows UNC Shares** | `\\server\share\data.parquet` | `//server/share/data.parquet` |
+| **Git Bash (Single Slash)** | `/c/Users/maddy/orders.parquet` | `C:/Users/maddy/orders.parquet` |
+| **Git Bash (Double Slash)** | `//c/Users/maddy/orders.parquet` | `C:/Users/maddy/orders.parquet` |
+| **WSL Mounts** | `/mnt/c/Users/maddy/orders.parquet` | `C:/Users/maddy/orders.parquet` |
+| **Cygwin Mounts** | `/cygdrive/c/Users/maddy/orders.parquet` | `C:/Users/maddy/orders.parquet` |
+| **POSIX / macOS / Linux** | `/Users/maddy/data.parquet`, `~/data.parquet` | Local filesystem path |
+| **Relative & Globs** | `data/*.parquet`, `./sub/**/*.csv` | Expanded glob match list |
+| **Sample Datasets** | `sample:penguins`, `sample:tips` | Bundled parquet files |
 
 If a path does not exist on disk, Pytae reports a clean diagnostic rather than inadvertently declaring a string session variable.
 
