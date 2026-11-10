@@ -1,7 +1,5 @@
 """Tests for universal pt.read(), pt.scan(), and df.to() / df.write()."""
 
-import warnings
-from pathlib import Path
 
 import pandas as pd
 import polars as pl

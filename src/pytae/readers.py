@@ -1429,6 +1429,7 @@ def read(source: Any, *args: Any, **kwargs: Any) -> Any:
     """
     import pandas as pd
     import polars as pl
+
     from pytae.dataframe import DataFrame
 
     if isinstance(source, DataFrame):
@@ -1521,6 +1522,7 @@ def scan(source: Any, *args: Any, **kwargs: Any) -> Any:
         df = pt.scan(["day1.parquet", "day2.parquet"])
     """
     import polars as pl
+
     from pytae.dataframe import DataFrame
 
     if isinstance(source, DataFrame):
@@ -1612,6 +1614,7 @@ def to(df: Any, target: Any, **kwargs: Any) -> Any:
 
 def _read_csv_impl(source: Any, *args: Any, **kwargs: Any) -> Any:
     import polars as pl
+
     from pytae.dataframe import DataFrame
     kwargs.setdefault("infer_schema_length", 10000)
     try:
@@ -1625,6 +1628,7 @@ def _read_csv_impl(source: Any, *args: Any, **kwargs: Any) -> Any:
 
 def _read_parquet_impl(source: Any, *args: Any, **kwargs: Any) -> Any:
     import polars as pl
+
     from pytae.dataframe import DataFrame
     kwargs.setdefault("memory_map", False)
     return DataFrame(pl.read_parquet(source, *args, **kwargs))
@@ -1632,24 +1636,28 @@ def _read_parquet_impl(source: Any, *args: Any, **kwargs: Any) -> Any:
 
 def _read_ndjson_impl(source: Any, *args: Any, **kwargs: Any) -> Any:
     import polars as pl
+
     from pytae.dataframe import DataFrame
     return DataFrame(pl.read_ndjson(source, *args, **kwargs))
 
 
 def _read_json_impl(source: Any, *args: Any, **kwargs: Any) -> Any:
     import polars as pl
+
     from pytae.dataframe import DataFrame
     return DataFrame(pl.read_json(source, *args, **kwargs))
 
 
 def _read_ipc_impl(source: Any, *args: Any, **kwargs: Any) -> Any:
     import polars as pl
+
     from pytae.dataframe import DataFrame
     return DataFrame(pl.read_ipc(source, *args, **kwargs))
 
 
 def _read_excel_impl(source: Any, *args: Any, **kwargs: Any) -> Any:
     import pandas as pd
+
     from pytae.dataframe import DataFrame
     return DataFrame(pd.read_excel(source, *args, **kwargs))
 
@@ -1700,6 +1708,7 @@ def read_excel(source: Any, *args: Any, **kwargs: Any) -> Any:
 def read_database(query: Any, connection: Any, *args: Any, **kwargs: Any) -> Any:
     """Read SQL query results into a pytae.DataFrame (wraps polars.read_database)."""
     import polars as pl
+
     from pytae.dataframe import DataFrame
     return DataFrame(pl.read_database(query, connection, *args, **kwargs))
 

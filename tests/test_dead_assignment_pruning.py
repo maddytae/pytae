@@ -1,16 +1,12 @@
 """Tests for deterministic dead assignment and redundant command pruning during script export."""
 
-import tempfile
-from pathlib import Path
 
 import polars as pl
-import pytest
 
 from pytae.repl import (
     PytaeRepl,
     _compile_history_to_pt,
     _compile_history_to_python,
-    _extract_entry_def_and_uses,
     _prune_dead_assignments,
     run_cli_export,
 )
