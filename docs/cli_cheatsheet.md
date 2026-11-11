@@ -424,7 +424,7 @@ pytae> -select "species,island,mass_kg"
 pytae> -arrange "mass_kg desc"
 pytae> -cols asc                                             # Column names sorted alphabetically
 pytae> -cols | grep mass                                     # Pipe command output to shell utility
-# Multi-line continuation: pipelines with '\', SQL with quotes, dicts/lists with brackets, bare 'py' for blocks
+# Multi-line continuation: pipelines with '\', SQL with quotes, dicts/lists with brackets, 'py { ... }' for blocks
 pytae> df = -filter "species == 'Gentoo'" \
 ...   -mutate "kg = body_mass_g / 1000.0"
 

@@ -401,7 +401,7 @@ The **Pytae REPL** provides stateful, iterative in-memory data manipulation and 
 1. **Dedicated Entrypoint (`pytae -i`)**: Interactive sessions launch cleanly with `pytae -i`. Datasets are loaded explicitly with `df = file.parquet`, guaranteeing that session logs and exported replay scripts are 100% reproducible and self-contained.
 2. **Subject-First Multi-Table Workbench**: Load multiple datasets simultaneously (`df1`, `df2`, `orders`, `cust`). Run commands with clear prefixes (`df1 -head 5`, `orders -join cust on=id`), or switch active tables with `switch <name>` (`use` deprecated).
 3. **Non-Destructive by Default**: Bare exploratory queries (`-pivot`, `-filter`, `-head`) format and display previews in the terminal without altering underlying tables in memory. State changes require explicit assignment (`df = df -filter ...`).
-4. **Ephemeral Python Sandboxing**: Embedded Python execution (`py <expr>`) provides an extensibility escape hatch. Transient Python variables and intermediate pandas objects are immediately deallocated upon exit via `gc.collect()`. Only tables explicitly converted via `.to_pytae()` are registered in the workbench.
+4. **Ephemeral Python Sandboxing & Persistent Logic**: Embedded Python execution (`py { ... }`) provides an extensibility escape hatch. Pre-loads `pd`, `pl`, `pt`, and `DataFrame`. Imported modules, custom functions, and classes persist throughout the REPL session, while transient scratch variables, arrays, and intermediate data objects are immediately purged from RAM upon block exit via `gc.collect()`. Only tables explicitly converted via `.to_pytae()` or assigned to `df` are registered in the workbench.
 5. **Ephemeral IPC Checkpoints (0 MB RAM Overhead)**: Checkpoints serialize frozen table states to ephemeral Arrow IPC format on disk. They consume **0 MB of RAM** and are automatically purged upon session exit, allowing safe instant restoration via `restore [name]` or `reset`.
 
 ### Quick Reference of REPL Commands
@@ -419,7 +419,7 @@ The **Pytae REPL** provides stateful, iterative in-memory data manipulation and 
 | **Inspection** | Metadata | `-shape`, `-cols [asc\|desc\|pattern]`, `-schema`, `-nulls` | Non-destructive structural inspection |
 | | Previews | `-head 10`, `-tail 5`, `-sample 10`, `-diff [target]` | Non-destructive formatted row previews & milestone diffs |
 | **SQL & Python**| `-sql` | `-sql "SELECT * FROM orders JOIN cust ..."` | Pure ANSI SQL across all loaded workbench tables |
-| | `py` | `py k = df.to_pandas(); k = k.to_pytae()` | Embedded Python with ephemeral sandboxing & `.to_pytae()` |
+| | `py` | `py { k = df.to("pandas"); pt.DataFrame(k).to_pytae("k") }` | Embedded Python with persistent imports, ephemeral sandboxing & `.to_pytae()` |
 | **Checkpoints** | `checkpoint` | `checkpoint baseline` | Save ephemeral IPC snapshot (0 MB RAM overhead) |
 | | `restore` / `reset` | `restore baseline`, `reset` | Instantly revert workbench state to checkpoint |
 | **Parameters** | `@var` | `min_val = 3500`, `@cfg.threshold` | Session variables substituted in `-filter`, `-mutate`, `-sql` |
@@ -433,7 +433,7 @@ For complete guides, configuration flags, edge cases, and cookbooks, see the ded
 - [**Master REPL Architecture & Command Hub**](repl/README.md) — Architectural pillars, 30-second quickstart, and master command reference table.
 - [**Workbench, Ingestion & Multi-Table Management**](repl/workbench_tables.md) — Reader options (`-encoding`, `-dlim`, `-nrows`, `-opts`), glob loading, sample datasets, zero-copy `rename`, and table deallocation.
 - [**In-Memory Pipelines & Data Inspection**](repl/pipelines_inspection.md) — 1:1 CLI verbs in RAM, assignment vs bare exploration semantics, multi-table joins, and non-destructive inspection.
-- [**SQL & Python Interop (Ephemeral Python Sandboxing)**](repl/sql_python_interop.md) — ANSI SQL across tables, single-line & bare `py` block mode, ephemeral RAM zeroing, and explicit `.to_pytae()` conversion.
+- [**SQL & Python Interop (Ephemeral Python Sandboxing)**](repl/sql_python_interop.md) — ANSI SQL across tables, single-line & multi-line `py { ... }` blocks, pre-loaded `pd`/`pl`/`pt`, session-wide persistent imports, ephemeral RAM zeroing, and explicit `.to_pytae()` conversion.
 - [**Session Variables (`@var`), Settings & Preferences**](repl/variables_config.md) — Session `@parameters`, nested configuration traversal, display preferences (`set`), and permanent configuration (`set save`).
 - [**Checkpoints, History Audit, Pipeline Export & Replay**](repl/checkpoints_history_replay.md) — Ephemeral IPC snapshots, instant `restore`, milestone `-diff`, flight recorder `history`, script export (`exit -s`, `export`), and post-hoc conversion (`pytae -export`).
 
