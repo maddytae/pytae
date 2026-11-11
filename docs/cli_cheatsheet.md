@@ -430,7 +430,7 @@ pytae> df = -filter "species == 'Gentoo'" \
 
 # 3. Direct Query Engines & Export
 pytae> -sql "SELECT species, AVG(body_mass_g) FROM df GROUP BY 1" # Query loaded tables directly by name
-pytae> py df.shape
+pytae> py { df.shape }
 pytae> -o clean.parquet
 pytae> -o clip                                               # Copy active table to system clipboard
 pytae> exit -s                                                # Exit and export session to ./session.pt

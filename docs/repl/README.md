@@ -93,9 +93,9 @@ pytae> exit -s
 | | Relational Joins | `-join <right> on=key how=left` | Relational join across loaded tables. |
 | | Inspection | `-schema`, `-cols`, `-summary` | Instant schema, column list, or statistical glimpse. |
 | **Advanced Query** | ANSI SQL | `-sql "SELECT ..."` | Native Polars SQLContext querying across active tables. |
-| | Python Eval | `py <expr>` | Single-line Python expression evaluation. |
-| | Python Block | `py:` ... `end` | Multi-line Python block with ephemeral RAM sandboxing. |
-| | Register Table | `py: df.to_pytae('tbl')` | Register Python DataFrame back to Pytae workbench. |
+| | Python Eval | `py { <expr> }` | Python expression evaluation in `{ ... }`. |
+| | Python Block | `py { ... }` | Multi-line Python block with ephemeral RAM sandboxing. |
+| | Register Table | `py { df.to_pytae('tbl') }` | Register Python DataFrame back to Pytae workbench. |
 | **Variables & Config** | Session Variable | `threshold = 1000` | Define typed session parameter referenced as `@threshold`. |
 | | Variable Status | `status var` | List defined variables and values. |
 | | Remove Variable | `rm var <name>`, `rm var *` | Purge session variable definitions. |

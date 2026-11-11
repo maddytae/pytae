@@ -130,10 +130,11 @@ def test_repl_multiline_py_block():
 
     # Multi-line py statement with for loop and print
     py_code = (
-        "py\n"
+        "py {\n"
         "cols = [c for c in pldf.columns if 'mass' in c]\n"
         "for c in cols:\n"
-        "    print(f'FOUND_COL: {c}')"
+        "    print(f'FOUND_COL: {c}')\n"
+        "}"
     )
     outputs.clear()
     r.execute_line(py_code, output_fn=outputs.append)
@@ -168,13 +169,13 @@ def test_repl_run_input_loop_continuation_prompt():
 
 
 def test_repl_run_py_block_mode_and_empty_line_termination():
-    """Verify that bare 'py' enters multi-line block mode and terminates on empty line."""
+    """Verify that 'py {' enters multi-line block mode and terminates on '}'."""
     lines_to_feed = [
         "df = sample:penguins",
-        "py",
+        "py {",
         "for col in pldf.columns[:2]:",
         "    print(f'TEST_LOOP: {col}')",
-        "",  # Empty line terminates py block mode
+        "}",
         "exit",
     ]
     prompts_seen: list[str] = []
@@ -395,7 +396,7 @@ def test_console_input_tab_inserts_spaces():
 
 
 def test_interactive_py_block_auto_indent():
-    """Verify that entering py block auto-indents after colon and exits on empty line."""
+    """Verify that entering py { auto-indents after colon and exits on '}'."""
     from pytae.repl import PytaeRepl
 
     r = PytaeRepl()
@@ -403,12 +404,12 @@ def test_interactive_py_block_auto_indent():
 
     # Sequence of inputs to simulate entering py block, a loop, and exiting
     script = [
-        "py",
+        "py {",
         "total = 0",
         "for i in range(3):",
         "    total += i",
         "print(f'LOOP_RESULT={total}')",
-        "",  # Empty line exits py block and executes
+        "}",
         "exit",
     ]
     input_iter = iter(script)
@@ -416,6 +417,21 @@ def test_interactive_py_block_auto_indent():
     r.run(input_fn=lambda _prompt="": next(input_iter), output_fn=outputs.append)
     assert any("LOOP_RESULT=3" in o for o in outputs)
     r.close()
+
+
+def test_console_input_unix_newline_submits_line():
+    """Verify that \\n (Unix/macOS Return key in cbreak mode) submits the line rather than treating it as Shift+Enter."""
+    from pytae.repl import _console_input
+
+    # In macOS / Unix terminal cbreak mode, pressing Return sends \n
+    chars = list("df = sample:penguins\n")
+    res = _console_input("pytae> ", [], read_char_fn=lambda: chars.pop(0) if chars else "\n")
+    assert res == "df = sample:penguins"
+
+    chars_loop = list("for i in range(10):\n")
+    res_loop = _console_input("... ", [], read_char_fn=lambda: chars_loop.pop(0) if chars_loop else "\n")
+    assert res_loop == "for i in range(10):"
+
 
 
 

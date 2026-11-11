@@ -1017,7 +1017,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "<var> = <path> : Load a new dataset (or glob pattern) into named table (replaces deprecated 'load').",
             "-o <path> : Save active table to Parquet/CSV/Feather or clipboard (-o clip).",
             "-sql <query> : Run ANSI SQL queries against in-memory table `df`.",
-            "py <expr> : Evaluate arbitrary Python expressions on `df` / `pldf`.",
+            "py { <expr> } : Evaluate arbitrary Python expressions on `df` / `pldf`.",
         ],
         examples=[
             "pytae -i",

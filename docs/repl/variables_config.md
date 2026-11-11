@@ -190,7 +190,7 @@ Loaded *.parquet as 'comb_df' (250,000 rows x 2 cols).
 If you require custom procedural transformations, access the variable inside `py` as `data_dir` (without `@`):
 
 ```text
-pytae> py
+pytae> py {
 ... import glob
 ... import polars as pl
 ... 
@@ -200,7 +200,7 @@ pytae> py
 ... 
 ... # Wrap the concatenated result with DataFrame() to register it as an active Pytae table
 ... comb_df = DataFrame(pl.concat(dfs))
-... end
+... }
 Registered active table 'comb_df' (250,000 rows x 2 cols).
 ```
 

@@ -1137,7 +1137,7 @@ Terminal Control & Utilities:
   - `status table [name] [-v]`: Inspect active table or specific table schema.
   - `status tables [-v]`      : List all loaded tables in memory with shapes and memory footprints.
   - `<cmd> | <sh>`            : Pipe command output to external shell tools (e.g. `-cols | grep bill`).
-  - `py <expr>`               : Evaluate arbitrary Python expression with `df` and `pldf` in scope.
+  - `py { <expr> }`           : Evaluate arbitrary Python expression or block with `df` and `pldf` in scope.
   - `exit` / `exit -s [path]` : Exit REPL (optionally save session history to ./history.txt or a named file).
 
 

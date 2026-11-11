@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.14.2] - 2026-11-11
+
+### Added
+- **Strict `py { ... }` Block Execution (`src/pytae/repl.py`, `docs/repl/sql_python_interop.md`)**:
+  - Replaced the modal `in_py_block` state machine with unambiguous, bracket-matched `py { ... }` syntax.
+  - Multi-line Python blocks can contain arbitrary blank lines and nested functions/loops without triggering accidental early execution.
+  - Automatic indentation: pressing <kbd>Enter</kbd> inside a `py {` block indents code by 4 spaces (and +4 after `:` lines).
+  - Common leading indentation is automatically stripped with `textwrap.dedent`.
+  - Closing the block with `}` on its own line immediately completes and runs the block.
+  - Bare `py` or unbraced expressions output a helpful error: `pytae error: Python commands must be enclosed in braces: py { ... }`.
+  - Python stdout (`print(...)`) is cleanly captured and displayed alongside expression evaluations.
+  - Standalone script exports (`export script pipeline.py`) strip `{ ... }` wrappers and output clean, idiomatic Python code.
+
+### Fixed
+- **Terminal Key Handling on macOS / Unix (`src/pytae/repl.py`)**:
+  - Fixed an issue where the Return key on macOS/Linux terminals (`\n` under `cbreak` mode with default `ICRNL`) was erroneously mapped to `shift_enter`, causing unexpected trailing backslashes (`\`) to appear on every newline and trapping the REPL in an infinite input continuation loop.
+
 ## [3.14.1] - 2026-11-10
 
 ### Added

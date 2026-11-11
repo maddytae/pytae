@@ -131,7 +131,7 @@ def test_repl_unregistered_bare_word_not_recognized():
 
     r = PytaeRepl(df=pl.DataFrame({"a": [1, 2, 3]}))
     outs: list[str] = []
-    r.execute_line("py k=df.to_pandas()", output_fn=outs.append)
+    r.execute_line("py { k=df.to_pandas() }", output_fn=outs.append)
     r.execute_line("k", output_fn=outs.append)
     r.close()
 
@@ -150,15 +150,15 @@ def test_repl_py_model_a_explicit_registration_and_cleanup():
     outs: list[str] = []
 
     # 1. Unconverted pandas dataframe: not registered, gone from RAM
-    r.execute_line("py temp_pd = df.to_pandas()", output_fn=outs.append)
+    r.execute_line("py { temp_pd = df.to_pandas() }", output_fn=outs.append)
     assert "temp_pd" not in r.tables
     outs.clear()
-    r.execute_line("py temp_pd", output_fn=outs.append)
+    r.execute_line("py { temp_pd }", output_fn=outs.append)
     assert any("name 'temp_pd' is not defined" in o for o in outs)
 
     # 2. Converted using pt(k): registered into self.tables and accessible at REPL prompt
     outs.clear()
-    r.execute_line("py k = pt(df.to_pandas())", output_fn=outs.append)
+    r.execute_line("py { k = pt(df.to_pandas()) }", output_fn=outs.append)
     assert "k" in r.tables
     assert any("Registered table 'k'" in o for o in outs)
     outs.clear()
@@ -167,19 +167,19 @@ def test_repl_py_model_a_explicit_registration_and_cleanup():
 
     # 3. Accessor proxy .pt is rejected from table registration with tip to use .to_pytae()
     outs.clear()
-    r.execute_line("py m = df.to_pandas().pt", output_fn=outs.append)
+    r.execute_line("py { m = df.to_pandas().pt }", output_fn=outs.append)
     assert "m" not in r.tables
     assert any("accessor proxy" in o and "to_pytae()" in o for o in outs)
 
     # 4. Converted using .to_pytae() method: registered into self.tables
     outs.clear()
-    r.execute_line("py p = df.to_pandas().to_pytae()", output_fn=outs.append)
+    r.execute_line("py { p = df.to_pandas().to_pytae() }", output_fn=outs.append)
     assert "p" in r.tables
     assert any("Registered table 'p'" in o for o in outs)
 
     # 5. Updating active df explicitly with .pt: updates active table
     outs.clear()
-    r.execute_line("py df = df.filter('x > 10')", output_fn=outs.append)
+    r.execute_line("py { df = df.filter('x > 10') }", output_fn=outs.append)
     assert any("Updated active table 'df'" in o for o in outs)
     assert r.current_df.shape == (2, 2)
 
@@ -200,7 +200,7 @@ def test_repl_py_ram_cleanup_and_rss_release():
     assert rss_mb is None or rss_mb > 0
 
     # 2. Allocate an ephemeral large object in py execution
-    r.execute_line("py big_scratch = [i * 2 for i in range(500_000)]", output_fn=outs.append)
+    r.execute_line("py { big_scratch = [i * 2 for i in range(500_000)] }", output_fn=outs.append)
 
     # 3. Must not be registered as a table or variable
     assert "big_scratch" not in r.tables
@@ -208,7 +208,7 @@ def test_repl_py_ram_cleanup_and_rss_release():
 
     # 4. On subsequent command, accessing it raises NameError confirming scope eviction
     outs.clear()
-    r.execute_line("py big_scratch[0]", output_fn=outs.append)
+    r.execute_line("py { big_scratch[0] }", output_fn=outs.append)
     assert any("name 'big_scratch' is not defined" in o for o in outs)
 
     # 5. Calling _release_memory() executes without errors

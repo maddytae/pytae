@@ -1,6 +1,6 @@
 ================================================================================
 PYTAE COMPREHENSIVE KNOWLEDGE BASE & AGENT TRAINING REFERENCE MANUAL
-RELEASE VERSION: 3.14.1
+RELEASE VERSION: 3.14.2
 ================================================================================
 
 TABLE OF CONTENTS
@@ -189,7 +189,7 @@ RULE 7: THE "TWIN PROOF" RULE (GROUND ON SAMPLE DATASETS)
 
 1. OVERVIEW & CORE PHILOSOPHY
 --------------------------------------------------------------------------------
-Package: pytae (Current Release Version: 3.14.1)
+Package: pytae (Current Release Version: 3.14.2)
 
 `pytae` is an ergonomic, high-performance tabular data manipulation library and 
 command-line tool powered by a 100% native multithreaded SIMD Polars engine with 
@@ -229,8 +229,8 @@ Key principles:
 
 2. PACKAGE ARCHITECTURE & IMPORT PATTERNS
 --------------------------------------------------------------------------------
-Installation (PyPI: https://pypi.org/project/pytae/3.14.1/):
-  pip install pytae==3.14.1
+Installation (PyPI: https://pypi.org/project/pytae/3.14.2/):
+  pip install pytae==3.14.2
   pip install 'pytae[plot]'    # includes matplotlib, scipy
 
 Importing:
@@ -1097,7 +1097,7 @@ Terminal Control & Utilities:
   - `status table [name] [-v]`: Inspect active table or specific table schema.
   - `status tables [-v]`      : List all loaded tables in memory with shapes and memory footprints.
   - `<cmd> | <sh>`            : Pipe command output to external shell tools (e.g. `-cols | grep bill`).
-  - `py <expr>`               : Evaluate arbitrary Python expression with `df` and `pldf` in scope.
+  - `py { <expr> }`           : Evaluate arbitrary Python expression or block with `df` and `pldf` in scope.
   - `exit` / `exit -s [path]` : Exit REPL (optionally save session history to ./history.txt or a named file).
 
 
@@ -13004,9 +13004,9 @@ pytae> exit -s
 | | Relational Joins | `-join <right> on=key how=left` | Relational join across loaded tables. |
 | | Inspection | `-schema`, `-cols`, `-summary` | Instant schema, column list, or statistical glimpse. |
 | **Advanced Query** | ANSI SQL | `-sql "SELECT ..."` | Native Polars SQLContext querying across active tables. |
-| | Python Eval | `py <expr>` | Single-line Python expression evaluation. |
-| | Python Block | `py:` ... `end` | Multi-line Python block with ephemeral RAM sandboxing. |
-| | Register Table | `py: df.to_pytae('tbl')` | Register Python DataFrame back to Pytae workbench. |
+| | Python Eval | `py { <expr> }` | Python expression evaluation in `{ ... }`. |
+| | Python Block | `py { ... }` | Multi-line Python block with ephemeral RAM sandboxing. |
+| | Register Table | `py { df.to_pytae('tbl') }` | Register Python DataFrame back to Pytae workbench. |
 | **Variables & Config** | Session Variable | `threshold = 1000` | Define typed session parameter referenced as `@threshold`. |
 | | Variable Status | `status var` | List defined variables and values. |
 | | Remove Variable | `rm var <name>`, `rm var *` | Purge session variable definitions. |
@@ -13728,9 +13728,9 @@ This guide covers ANSI SQL querying across loaded tables, embedded Python execut
   - [Cross-Table SQL Joins](#cross-table-sql-joins)
   - [SQL Variable Assignment (`df3 = -sql "..."`)](#sql-variable-assignment-df3---sql-)
   - [Multi-Line SQL Queries](#multi-line-sql-queries)
-- [Python Execution (`py <expr>`)](#python-execution-py-expr)
+- [Python Execution (`py { ... }`)](#python-execution-py----)
   - [Single-Line Evaluation](#single-line-evaluation)
-  - [Bare `py` Multi-Line Block Mode](#bare-py-multi-line-block-mode)
+  - [Multi-Line `py { ... }` Block Mode](#multi-line-py-----block-mode)
 - [Ephemeral Python Sandboxing & RAM Isolation](#ephemeral-python-sandboxing--ram-isolation)
   - [The Design Philosophy](#the-design-philosophy)
   - [Immediate Garbage Collection & Memory Zeroing](#immediate-garbage-collection--memory-zeroing)
@@ -13804,34 +13804,34 @@ Created 'summary' (18 rows x 3 cols).
 
 ---
 
-## Python Execution (`py <expr>`)
+## Python Execution (`py { ... }`)
 
-The REPL allows direct execution of arbitrary Python code when complex procedural logic, regex algorithms, or scientific libraries (`scipy`, `sklearn`, `numpy`) are required.
+The REPL allows direct execution of arbitrary Python code when complex procedural logic, regex algorithms, or scientific libraries (`scipy`, `sklearn`, `numpy`) are required. All Python execution is enclosed in `{ ... }`.
 
 ### Single-Line Evaluation
 
-Execute a one-liner Python statement using the `py` prefix:
+Execute a one-liner Python statement using the `py { ... }` syntax:
 
 ```text
 # Inspect Python environment or standard library
-pytae> py import sys; print(sys.version)
+pytae> py { import sys; print(sys.version) }
 3.13.1 (main, Dec  3 2024)
 
 # Mathematical evaluation
-pytae> py import math; [math.factorial(x) for x in range(1, 6)]
+pytae> py { import math; [math.factorial(x) for x in range(1, 6)] }
 [1, 2, 6, 24, 120]
 ```
 
-### Bare `py` Multi-Line Block Mode
+### Multi-Line `py { ... }` Block Mode
 
-Typing bare `py` (or `py:`) opens a dedicated Python block editor that collects multiple statements and executes them together when you enter `end`:
+Open multi-line block mode with `py {`. The prompt changes to `... `, providing automatic indentation (+4 spaces on `:`). Arbitrary blank lines are permitted within the block without triggering early execution. Type `}` on a newline to complete and run:
 
 ```text
-pytae [orders]> py
+pytae [orders]> py {
 ... import numpy as np
 ... rates = np.array([0.05, 0.08, 0.12])
 ... print("Mean rate:", rates.mean())
-... end
+... }
 Mean rate: 0.08333333333333333
 ```
 
@@ -13844,12 +13844,12 @@ Session variables defined with `@var = ...` in the REPL (e.g. `@path`, `@thresho
 pytae> @data_dir = r"Z:\Finance\RiskModels\Data\HistoricalExtracts"
 
 # 2. Access in Python without '@'
-pytae> py
+pytae> py {
 ... import glob, polars as pl
 ... files = glob.glob(data_dir + r"\*.parquet")
 ... dfs = [pl.read_parquet(f, columns=['reporting_date', 'rwa_amount']) for f in files]
 ... comb_df = DataFrame(pl.concat(dfs))
-... end
+... }
 Registered active table 'comb_df' (250,000 rows x 2 cols).
 ```
 
@@ -14151,7 +14151,7 @@ Loaded *.parquet as 'comb_df' (250,000 rows x 2 cols).
 If you require custom procedural transformations, access the variable inside `py` as `data_dir` (without `@`):
 
 ```text
-pytae> py
+pytae> py {
 ... import glob
 ... import polars as pl
 ... 
@@ -14161,7 +14161,7 @@ pytae> py
 ... 
 ... # Wrap the concatenated result with DataFrame() to register it as an active Pytae table
 ... comb_df = DataFrame(pl.concat(dfs))
-... end
+... }
 Registered active table 'comb_df' (250,000 rows x 2 cols).
 ```
 
@@ -15538,7 +15538,7 @@ pytae> df = -filter "species == 'Gentoo'" \
 
 # 3. Direct Query Engines & Export
 pytae> -sql "SELECT species, AVG(body_mass_g) FROM df GROUP BY 1" # Query loaded tables directly by name
-pytae> py df.shape
+pytae> py { df.shape }
 pytae> -o clean.parquet
 pytae> -o clip                                               # Copy active table to system clipboard
 pytae> exit -s                                                # Exit and export session to ./session.pt
@@ -16714,7 +16714,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.14.1"
+version = "3.14.2"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"

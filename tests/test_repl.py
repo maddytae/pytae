@@ -145,7 +145,7 @@ def test_repl_python_expression(sample_df):
     outputs = []
     r = PytaeRepl(df=sample_df)
 
-    r.execute_line("py len(df)", output_fn=outputs.append)
+    r.execute_line("py { len(df) }", output_fn=outputs.append)
     assert outputs[-1] == "5"
 
 
@@ -3069,7 +3069,7 @@ def test_repl_set_table_formatting_and_inspection():
 
     # Check py expression formatting honors comma and precision
     outputs.clear()
-    r.execute_line("py df.head(2)", output_fn=outputs.append)
+    r.execute_line("py { df.head(2) }", output_fn=outputs.append)
     py_rendered = "\n".join(outputs)
     assert "1,234,567" in py_rendered
     assert "1,234.57" in py_rendered
@@ -3882,16 +3882,16 @@ def test_export_script_pt_and_py_e2e(tmp_path, monkeypatch):
     # 1. Pipeline with ingestion, transformations, inspections, and python blocks
     r.execute_line("peng = sample:penguins", output_fn=outputs.append)
     r.execute_line("peng -head 5", output_fn=outputs.append)  # pure REPL inspection (must be skipped)
-    r.execute_line("py print(peng.shape)", output_fn=outputs.append)  # pure Python inspection (must be skipped)
+    r.execute_line("py { print(peng.shape) }", output_fn=outputs.append)  # pure Python inspection (must be skipped)
     r.execute_line("peng = peng -filter \"species == 'Adelie'\" -arrange \"bill_length_mm desc\"", output_fn=outputs.append)
 
     # Mutating Python block
     py_block = (
-        "py\n"
+        "py {\n"
         "df = peng.to_pandas()\n"
         "df['mass_kg'] = df['body_mass_g'] / 1000.0\n"
         "peng = df.to_pytae()\n"
-        "py"
+        "}"
     )
     r.execute_line(py_block, output_fn=outputs.append)
 

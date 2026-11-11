@@ -13,9 +13,9 @@ This guide covers ANSI SQL querying across loaded tables, embedded Python execut
   - [Cross-Table SQL Joins](#cross-table-sql-joins)
   - [SQL Variable Assignment (`df3 = -sql "..."`)](#sql-variable-assignment-df3---sql-)
   - [Multi-Line SQL Queries](#multi-line-sql-queries)
-- [Python Execution (`py <expr>`)](#python-execution-py-expr)
+- [Python Execution (`py { ... }`)](#python-execution-py----)
   - [Single-Line Evaluation](#single-line-evaluation)
-  - [Bare `py` Multi-Line Block Mode](#bare-py-multi-line-block-mode)
+  - [Multi-Line `py { ... }` Block Mode](#multi-line-py-----block-mode)
 - [Ephemeral Python Sandboxing & RAM Isolation](#ephemeral-python-sandboxing--ram-isolation)
   - [The Design Philosophy](#the-design-philosophy)
   - [Immediate Garbage Collection & Memory Zeroing](#immediate-garbage-collection--memory-zeroing)
@@ -89,34 +89,34 @@ Created 'summary' (18 rows x 3 cols).
 
 ---
 
-## Python Execution (`py <expr>`)
+## Python Execution (`py { ... }`)
 
-The REPL allows direct execution of arbitrary Python code when complex procedural logic, regex algorithms, or scientific libraries (`scipy`, `sklearn`, `numpy`) are required.
+The REPL allows direct execution of arbitrary Python code when complex procedural logic, regex algorithms, or scientific libraries (`scipy`, `sklearn`, `numpy`) are required. All Python execution is enclosed in `{ ... }`.
 
 ### Single-Line Evaluation
 
-Execute a one-liner Python statement using the `py` prefix:
+Execute a one-liner Python statement using the `py { ... }` syntax:
 
 ```text
 # Inspect Python environment or standard library
-pytae> py import sys; print(sys.version)
+pytae> py { import sys; print(sys.version) }
 3.13.1 (main, Dec  3 2024)
 
 # Mathematical evaluation
-pytae> py import math; [math.factorial(x) for x in range(1, 6)]
+pytae> py { import math; [math.factorial(x) for x in range(1, 6)] }
 [1, 2, 6, 24, 120]
 ```
 
-### Bare `py` Multi-Line Block Mode
+### Multi-Line `py { ... }` Block Mode
 
-Typing bare `py` (or `py:`) opens a dedicated Python block editor that collects multiple statements and executes them together when you enter `end`:
+Open multi-line block mode with `py {`. The prompt changes to `... `, providing automatic indentation (+4 spaces on `:`). Arbitrary blank lines are permitted within the block without triggering early execution. Type `}` on a newline to complete and run:
 
 ```text
-pytae [orders]> py
+pytae [orders]> py {
 ... import numpy as np
 ... rates = np.array([0.05, 0.08, 0.12])
 ... print("Mean rate:", rates.mean())
-... end
+... }
 Mean rate: 0.08333333333333333
 ```
 
@@ -129,12 +129,12 @@ Session variables defined with `@var = ...` in the REPL (e.g. `@path`, `@thresho
 pytae> @data_dir = r"Z:\Finance\RiskModels\Data\HistoricalExtracts"
 
 # 2. Access in Python without '@'
-pytae> py
+pytae> py {
 ... import glob, polars as pl
 ... files = glob.glob(data_dir + r"\*.parquet")
 ... dfs = [pl.read_parquet(f, columns=['reporting_date', 'rwa_amount']) for f in files]
 ... comb_df = DataFrame(pl.concat(dfs))
-... end
+... }
 Registered active table 'comb_df' (250,000 rows x 2 cols).
 ```
 

@@ -759,8 +759,6 @@ def _console_input(
                     continue
                 else:
                     continue
-            elif ch == "\n":
-                code = "shift_enter"
 
             if code == "shift_enter":
                 split_at_cursor()
@@ -781,10 +779,28 @@ def _console_input(
 
                 buf_text = "".join(line_chars)
                 if not _is_multiline_complete(buf_text):
+                    cur_line_str = "".join(line_chars[cur_line_start:cursor_pos])
+                    cur_indent = len(cur_line_str) - len(cur_line_str.lstrip(" "))
+                    stripped_cur = cur_line_str.strip()
+
+                    if buf_text.strip().startswith(("py {", "py{")):
+                        if stripped_cur in ("py {", "py{", "{"):
+                            next_indent = 4
+                        elif cur_line_str.rstrip().endswith(":"):
+                            next_indent = cur_indent + 4
+                        elif stripped_cur in ("return", "pass", "break", "continue") or stripped_cur.startswith(("return ", "raise ")):
+                            next_indent = max(4, cur_indent - 4)
+                        elif stripped_cur.startswith("}"):
+                            next_indent = 0
+                        else:
+                            next_indent = max(4, cur_indent)
+                    else:
+                        next_indent = 2
+
                     line_chars.insert(cursor_pos, "\n")
-                    line_chars.insert(cursor_pos + 1, " ")
-                    line_chars.insert(cursor_pos + 2, " ")
-                    cursor_pos += 3
+                    for s_idx in range(next_indent):
+                        line_chars.insert(cursor_pos + 1 + s_idx, " ")
+                    cursor_pos += 1 + next_indent
                     render()
                     continue
 
@@ -1324,7 +1340,7 @@ VARIABLES & PARAMETERS:
 
 QUERY & PYTHON EXPRESSIONS:
   -sql "<query>"         : Run ANSI SQL across loaded tables (e.g. -sql "SELECT * FROM df1 JOIN df2 ON ...")
-  py <expr>              : Evaluate Python expression with 'df' (pytae) and 'pldf' (polars)
+  py { <python code> }   : Run Python block/expression with 'df' (pytae), 'pldf' (polars), and loaded tables
 
 AUTOCOMPLETION & SHORTCUTS:
   [Tab]                  : Autocomplete table names, column names, commands, flags, and file paths
@@ -2197,6 +2213,10 @@ def _compile_history_to_python(
                 py_body = py_body[:-3].strip()
             elif py_body.endswith(" py"):
                 py_body = py_body[:-3].strip()
+            if py_body.startswith("{") and py_body.endswith("}"):
+                import textwrap
+
+                py_body = textwrap.dedent(py_body[1:-1]).strip()
             if py_body:
                 lines.append("# Custom Python transformation")
                 lines.append(py_body)
@@ -3241,7 +3261,7 @@ class PytaeRepl:
         """Core dispatch logic for one REPL command line."""
         original_line = line
         # Collapse multi-line and inline line continuations (backslash followed by newline or whitespace)
-        if "\\" in line and not line.startswith("py\n"):
+        if "\\" in line and not line.startswith(("py\n", "py {", "py{", "py\t")):
             line = re.sub(r"\s*\\\s*\n\s*", " ", line)
             line = _collapse_inline_line_continuations(line)
         # Handle ANSI arrow keys sent directly via Git Bash / MinTTY terminal pipe
@@ -3989,7 +4009,7 @@ class PytaeRepl:
             return True
 
         # Python Expression
-        if first_lower == "py":
+        if first_lower == "py" or line.lower().startswith("py{"):
             expr = line[2:].strip()
             self._cmd_py(expr, output_fn)
             return True
@@ -6357,13 +6377,24 @@ class PytaeRepl:
             output_fn(f"pytae SQL Error: {exc}")
 
     def _cmd_py(self, expr: str, output_fn: Callable[[str], None]) -> None:
-        if not expr:
-            output_fn("Usage: py <expression> (or enter 'py' on an empty line for multi-line block mode)")
+        raw_expr = expr.strip()
+        if not raw_expr:
+            output_fn("Usage: py { <python code> }")
             return
         lines = expr.splitlines()
         if lines and lines[-1].strip() == "py":
-            expr = "\n".join(lines[:-1]).strip()
-        if not expr:
+            raw_expr = "\n".join(lines[:-1]).strip()
+        if not raw_expr:
+            return
+
+        if not (raw_expr.startswith("{") and raw_expr.endswith("}")):
+            output_fn("pytae error: Python commands must be enclosed in braces: py { ... }")
+            return
+
+        import textwrap
+
+        code = textwrap.dedent(raw_expr[1:-1]).strip()
+        if not code:
             return
         local_scope: dict[str, Any] = {}
         try:
@@ -6396,19 +6427,23 @@ class PytaeRepl:
 
             orig_df_obj = local_scope.get("df")
 
+            import contextlib
+            import io
+
+            buf = io.StringIO()
             try:
-                res = eval(expr, {}, local_scope)
+                with contextlib.redirect_stdout(buf):
+                    res = eval(code, {}, local_scope)
+                out_val = buf.getvalue().rstrip()
+                if out_val:
+                    output_fn(out_val)
                 if isinstance(res, (pl.DataFrame, PytaeDataFrame)):
                     output_fn(self._format_table(res))
                 elif res is not None:
                     output_fn(repr(res))
             except SyntaxError:
-                import contextlib
-                import io
-
-                buf = io.StringIO()
                 with contextlib.redirect_stdout(buf):
-                    exec(expr, {}, local_scope)
+                    exec(code, {}, local_scope)
                 out_val = buf.getvalue().rstrip()
                 if out_val:
                     output_fn(out_val)
@@ -6460,7 +6495,7 @@ class PytaeRepl:
                     mutated = True
 
             if mutated:
-                rec_entry = f"py\n{expr}\npy" if "\n" in expr else f"py {expr}"
+                rec_entry = f"py {{\n{code}\n}}" if "\n" in code else f"py {{ {code} }}"
                 self._record_history(rec_entry)
 
         except Exception as exc:
@@ -7099,18 +7134,17 @@ class PytaeRepl:
             return input(effective_prompt)
 
         multi_buffer: list[str] = []
-        in_py_block = False
 
         try:
             while True:
-                if in_py_block or multi_buffer:
+                if multi_buffer:
                     prompt = "... "
                 else:
                     prompt = self._build_prompt()
 
                 try:
                     line = _get_input(prompt)
-                    if (in_py_block or multi_buffer) and readline is not None and hasattr(readline, "remove_history_item"):
+                    if multi_buffer and readline is not None and hasattr(readline, "remove_history_item"):
                         try:
                             cur_len = readline.get_current_history_length()
                             if cur_len > 0:
@@ -7127,7 +7161,6 @@ class PytaeRepl:
                             pass
                     multi_buffer.clear()
                     pending_input_queue.clear()
-                    in_py_block = False
                     output_fn("\n(KeyboardInterrupt - command cancelled)")
                     continue
                 except EOFError:
@@ -7137,54 +7170,7 @@ class PytaeRepl:
                     output_fn("\nExiting pytae REPL.")
                     break
 
-                # 1. Check if entering Python block mode (bare 'py' on empty buffer)
-                if not multi_buffer and not in_py_block and line.strip() == "py":
-                    in_py_block = True
-                    if readline is not None and hasattr(readline, "remove_history_item"):
-                        try:
-                            cur_len = readline.get_current_history_length()
-                            if cur_len > 0:
-                                readline.remove_history_item(cur_len - 1)
-                        except Exception:
-                            pass
-                    continue
-
-                # 2. Inside Python block mode
-                if in_py_block:
-                    if line.strip() == "":
-                        full_code = "\n".join(multi_buffer)
-                        multi_buffer.clear()
-                        pending_input_queue.clear()
-                        in_py_block = False
-                        if full_code.strip():
-                            try:
-                                should_continue = self.execute_line(f"py\n{full_code}", output_fn=output_fn)
-                                if not should_continue:
-                                    break
-                            except KeyboardInterrupt:
-                                output_fn("\n(KeyboardInterrupt - command cancelled)")
-                            except (Exception, SystemExit) as exc:
-                                if isinstance(exc, SystemExit) and exc.code in (0, None):
-                                    break
-                                msg = str(exc)
-                                if msg:
-                                    output_fn(f"pytae error: {msg}")
-                        continue
-                    multi_buffer.append(line)
-                    # Compute next line's auto-indent
-                    stripped_line = line.strip()
-                    current_indent = len(line) - len(line.lstrip(" "))
-                    if line.rstrip().endswith(":"):
-                        next_indent = current_indent + 4
-                    elif stripped_line in ("return", "pass", "break", "continue") or stripped_line.startswith(("return ", "raise ")):
-                        next_indent = max(0, current_indent - 4)
-                    else:
-                        next_indent = current_indent
-                    if next_indent > 0:
-                        pending_input_queue.append(" " * next_indent)
-                    continue
-
-                # 3. Standard CLI multi-line buffer
+                # Multi-line buffer with bracket and continuation tracking
                 multi_buffer.append(line)
                 accumulated = "\n".join(multi_buffer)
                 if _is_multiline_complete(accumulated):
@@ -7211,6 +7197,24 @@ class PytaeRepl:
                                 output_fn(msg)
                             else:
                                 output_fn(f"pytae error: {msg}")
+                else:
+                    # Smart auto-indentation inside incomplete multi-line blocks (e.g. py { ... })
+                    if any(b.strip().startswith(("py {", "py{")) for b in multi_buffer):
+                        cur_line = line.rstrip()
+                        cur_indent = len(line) - len(line.lstrip(" "))
+                        stripped_cur = line.strip()
+                        if stripped_cur in ("py {", "py{", "{"):
+                            next_indent = 4
+                        elif cur_line.endswith(":"):
+                            next_indent = cur_indent + 4
+                        elif stripped_cur in ("return", "pass", "break", "continue") or stripped_cur.startswith(("return ", "raise ")):
+                            next_indent = max(4, cur_indent - 4)
+                        elif stripped_cur.startswith("}"):
+                            next_indent = 0
+                        else:
+                            next_indent = cur_indent
+                        if next_indent > 0:
+                            pending_input_queue.append(" " * next_indent)
         finally:
             _restore_git_bash()
             self._cleanup_empty_session_dirs()
