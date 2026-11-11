@@ -2662,6 +2662,7 @@ class PytaeRepl:
         self._history_cursor: int | None = None
         self.variables: dict[str, Any] = dict(variables or {})
         self.initial_variables: dict[str, Any] = dict(self.variables)
+        self._py_env: dict[str, Any] = {}
 
         self.path: Path | None = None
         self.path_str: str | None = None
@@ -3047,6 +3048,7 @@ class PytaeRepl:
         self.initial_tables.clear()
         self.table_sources.clear()
         self.variables.clear()
+        self._py_env.clear()
         self.current_df = None
         self.orig_df = None
         self.initial_df = None
@@ -5159,6 +5161,7 @@ class PytaeRepl:
         self.initial_tables.clear()
         self.table_sources.clear()
         self.variables.clear()
+        self._py_env.clear()
         self.current_df = None
         self.orig_df = None
         self.initial_df = None
@@ -6396,36 +6399,48 @@ class PytaeRepl:
         code = textwrap.dedent(raw_expr[1:-1]).strip()
         if not code:
             return
-        local_scope: dict[str, Any] = {}
         try:
+            import types
+            try:
+                import pandas as pd
+            except ImportError:
+                pd = None
             import pytae as pt
             from pytae.accessor import _BasePtAccessor
             from pytae.dataframe import DataFrame as PytaeDataFrame
             from pytae.dataframe import GroupedDataFrame as PytaeGroupedDataFrame
 
-            local_scope = {
-                "df": PytaeDataFrame(self.current_df) if self.current_df is not None else None,
-                "pldf": self.current_df,
-                "pl": pl,
-                "pt": pt,
-                "DataFrame": PytaeDataFrame,
-            }
+            self._py_env["pl"] = pl
+            self._py_env["pt"] = pt
+            self._py_env["DataFrame"] = PytaeDataFrame
+            if pd is not None:
+                self._py_env["pd"] = pd
+
+            orig_df_obj = PytaeDataFrame(self.current_df) if self.current_df is not None else None
+            self._py_env["df"] = orig_df_obj
+            self._py_env["pldf"] = self.current_df
+
             orig_table_instances: dict[str, Any] = {}
             for tbl_name, tbl_df in self.tables.items():
                 inst = PytaeDataFrame(tbl_df)
-                local_scope[tbl_name] = inst
+                self._py_env[tbl_name] = inst
                 orig_table_instances[tbl_name] = inst
 
+            injected_cp_keys: set[str] = set()
             for cp_name in self.checkpoints:
-                if cp_name not in local_scope:
+                if cp_name not in self._py_env:
                     cp_df = self._get_checkpoint_df(cp_name)
                     if cp_df is not None:
-                        local_scope[cp_name] = PytaeDataFrame(cp_df)
-            for var_name, var_val in self.variables.items():
-                if var_name not in local_scope:
-                    local_scope[var_name] = var_val
+                        self._py_env[cp_name] = PytaeDataFrame(cp_df)
+                        injected_cp_keys.add(cp_name)
 
-            orig_df_obj = local_scope.get("df")
+            injected_var_keys: set[str] = set()
+            for var_name, var_val in self.variables.items():
+                if var_name not in self._py_env:
+                    self._py_env[var_name] = var_val
+                    injected_var_keys.add(var_name)
+
+            orig_df_obj = self._py_env.get("df")
 
             import contextlib
             import io
@@ -6433,7 +6448,7 @@ class PytaeRepl:
             buf = io.StringIO()
             try:
                 with contextlib.redirect_stdout(buf):
-                    res = eval(code, {}, local_scope)
+                    res = eval(code, self._py_env)
                 out_val = buf.getvalue().rstrip()
                 if out_val:
                     output_fn(out_val)
@@ -6443,7 +6458,7 @@ class PytaeRepl:
                     output_fn(repr(res))
             except SyntaxError:
                 with contextlib.redirect_stdout(buf):
-                    exec(code, {}, local_scope)
+                    exec(code, self._py_env)
                 out_val = buf.getvalue().rstrip()
                 if out_val:
                     output_fn(out_val)
@@ -6451,7 +6466,7 @@ class PytaeRepl:
             # Ephemeral Python Sandboxing: Only keep dataframes explicitly converted via .to_pytae()
             mutated = False
             # 1. Active table update: check if 'df' was modified or reassigned to a PytaeDataFrame
-            current_df_val = local_scope.get("df")
+            current_df_val = self._py_env.get("df")
             if isinstance(current_df_val, _BasePtAccessor):
                 output_fn("pytae: active 'df' cannot be an accessor proxy. Use 'df = df.to_pytae()' to update active table.")
             elif (
@@ -6471,14 +6486,17 @@ class PytaeRepl:
                 output_fn(f"Updated active table '{target_key}' ({new_pl.shape[0]:,} rows x {new_pl.shape[1]} cols).")
                 mutated = True
 
-            # 2. Check for newly assigned or updated variables in local_scope
-            for k, val in list(local_scope.items()):
-                if k in ("df", "pldf", "pl", "pt", "DataFrame", "__builtins__"):
+            # 2. Check for newly assigned or updated variables in self._py_env
+            for k in list(self._py_env.keys()):
+                if k in ("df", "pldf", "pl", "pt", "pd", "DataFrame", "__builtins__"):
                     continue
+                val = self._py_env[k]
                 if isinstance(val, _BasePtAccessor):
                     output_fn(f"pytae: '{k}' is an accessor proxy, not a Pytae table. Use '{k} = {k}.to_pytae()' to register as a table.")
+                    del self._py_env[k]
                 elif isinstance(val, (PytaeDataFrame, PytaeGroupedDataFrame)):
                     if k in orig_table_instances and val is orig_table_instances[k]:
+                        del self._py_env[k]
                         continue
                     new_pl = (
                         val._eager_df()
@@ -6493,6 +6511,22 @@ class PytaeRepl:
                     action_word = "Updated" if k in orig_table_instances else "Registered"
                     output_fn(f"{action_word} table '{k}' ({new_pl.shape[0]:,} rows x {new_pl.shape[1]} cols).")
                     mutated = True
+                    del self._py_env[k]
+                elif isinstance(val, (types.ModuleType, types.FunctionType, types.BuiltinFunctionType, types.MethodType, type)) or callable(val):
+                    continue
+                else:
+                    # Ephemeral scratch data (numbers, strings, lists, dicts, arrays, external DataFrames)
+                    # Purged from RAM
+                    del self._py_env[k]
+
+            # Clean injected session variables and checkpoints
+            for k in injected_var_keys:
+                if k in self._py_env and self._py_env[k] is self.variables.get(k):
+                    self._py_env.pop(k, None)
+            for k in injected_cp_keys:
+                self._py_env.pop(k, None)
+            self._py_env.pop("df", None)
+            self._py_env.pop("pldf", None)
 
             if mutated:
                 rec_entry = f"py {{\n{code}\n}}" if "\n" in code else f"py {{ {code} }}"
@@ -6501,9 +6535,6 @@ class PytaeRepl:
         except Exception as exc:
             output_fn(f"pytae Python Error: {exc}")
         finally:
-            # Ephemeral Sandboxing: Immediately remove everything associated from RAM
-            local_scope.clear()
-            del local_scope
             _release_memory()
 
     def _run_pipeline_on_df(

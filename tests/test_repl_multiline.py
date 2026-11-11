@@ -433,5 +433,137 @@ def test_console_input_unix_newline_submits_line():
     assert res_loop == "for i in range(10):"
 
 
+def test_repl_py_block_preloaded_pandas():
+    """Verify that pd is pre-loaded out-of-the-box without requiring 'import pandas as pd'."""
+    r = PytaeRepl()
+    outputs: list[str] = []
+    py_code = (
+        "py {\n"
+        "s = pd.Series([10, 20, 30])\n"
+        "print(f'SERIES_MEAN={s.mean():.1f}')\n"
+        "}"
+    )
+    r.execute_line(py_code, output_fn=outputs.append)
+    assert any("SERIES_MEAN=20.0" in o for o in outputs)
+    r.close()
+
+
+def test_repl_py_block_module_and_function_persistence():
+    """Verify that imported modules, functions, and classes persist across py { ... } blocks."""
+    r = PytaeRepl()
+    outputs: list[str] = []
+
+    # Block 1: import module, define custom function and class
+    block1 = (
+        "py {\n"
+        "import math\n"
+        "def custom_calc(n):\n"
+        "    return math.sqrt(n) * 2\n"
+        "class Multiplier:\n"
+        "    def __init__(self, factor):\n"
+        "        self.factor = factor\n"
+        "    def run(self, val):\n"
+        "        return val * self.factor\n"
+        "}"
+    )
+    r.execute_line(block1, output_fn=outputs.append)
+
+    # Block 2: use custom_calc and Multiplier without re-importing or re-defining
+    outputs.clear()
+    block2 = (
+        "py {\n"
+        "m = Multiplier(3)\n"
+        "res = custom_calc(16)\n"
+        "print(f'SQRT_RES={res}')\n"
+        "print(f'MULT_RES={m.run(res)}')\n"
+        "}"
+    )
+    r.execute_line(block2, output_fn=outputs.append)
+    assert any("SQRT_RES=8.0" in o for o in outputs)
+    assert any("MULT_RES=24.0" in o for o in outputs)
+
+    # Block 3: import a builtin function
+    block3 = (
+        "py {\n"
+        "from math import log10\n"
+        "}"
+    )
+    r.execute_line(block3, output_fn=outputs.append)
+
+    # Block 4: use imported builtin function
+    outputs.clear()
+    block4 = (
+        "py {\n"
+        "print(f'LOG_RES={log10(100):.1f}')\n"
+        "}"
+    )
+    r.execute_line(block4, output_fn=outputs.append)
+    assert any("LOG_RES=2.0" in o for o in outputs)
+
+    r.close()
+
+
+def test_repl_py_block_ephemeral_scratch_data_purged():
+    """Verify that scratch variables/dataframes in py blocks are purged and not leaked across blocks."""
+    r = PytaeRepl()
+    outputs: list[str] = []
+
+    # Block 1: assign an ephemeral list
+    block1 = (
+        "py {\n"
+        "scratch_list = [10, 20, 30]\n"
+        "print(f'DEFINED_SCRATCH={len(scratch_list)}')\n"
+        "}"
+    )
+    r.execute_line(block1, output_fn=outputs.append)
+    assert any("DEFINED_SCRATCH=3" in o for o in outputs)
+
+    # Block 2: accessing scratch_list must fail with NameError
+    outputs.clear()
+    block2 = (
+        "py {\n"
+        "print(scratch_list)\n"
+        "}"
+    )
+    r.execute_line(block2, output_fn=outputs.append)
+    assert any("pytae Python Error: name 'scratch_list' is not defined" in o for o in outputs)
+
+    r.close()
+
+
+def test_repl_py_block_del_or_overwrite_evicts_from_env():
+    """Verify that explicit del or overwriting with a non-callable evicts the item from _py_env."""
+    r = PytaeRepl()
+    outputs: list[str] = []
+
+    # Block 1: define helper
+    r.execute_line("py { def helper(): return 42 }", output_fn=outputs.append)
+    assert "helper" in r._py_env
+
+    # Block 2: verify callable
+    outputs.clear()
+    r.execute_line("py { print(f'HELPER={helper()}') }", output_fn=outputs.append)
+    assert any("HELPER=42" in o for o in outputs)
+
+    # Block 3: del helper
+    r.execute_line("py { del helper }", output_fn=outputs.append)
+    assert "helper" not in r._py_env
+
+    # Block 4: accessing helper must fail with NameError
+    outputs.clear()
+    r.execute_line("py { print(helper()) }", output_fn=outputs.append)
+    assert any("pytae Python Error: name 'helper' is not defined" in o for o in outputs)
+
+    # Block 5: test overwriting function with non-callable integer
+    r.execute_line("py { def helper2(): return 99 }", output_fn=outputs.append)
+    assert "helper2" in r._py_env
+    r.execute_line("py { helper2 = 123 }", output_fn=outputs.append)
+    assert "helper2" not in r._py_env
+
+    r.close()
+    assert len(r._py_env) == 0
+
+
+
 
 
