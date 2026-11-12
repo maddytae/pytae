@@ -3998,6 +3998,59 @@ def test_export_script_pt_and_py_e2e(tmp_path, monkeypatch):
     assert res2 == 0
 
 
+def test_export_script_preserves_py_block_without_to_pytae(tmp_path, monkeypatch):
+    """Verify py { ... } blocks that register tables directly or define helpers export to .py/.pt, while pure prints stay omitted."""
+    import ast
+
+    from pytae.repl import PytaeRepl, _is_replayable_entry_static
+
+    monkeypatch.chdir(tmp_path)
+    out: list[str] = []
+    r = PytaeRepl()
+
+    assert r.execute_line("df = sample:penguins", output_fn=out.append)
+    # Pure inspection print should be omitted from exports
+    assert r.execute_line("py { print(df.shape) }", output_fn=out.append)
+    # Helper function in py block persists in _py_env and should be exported
+    assert r.execute_line("py {\n    def take_n(d, n=5):\n        return d.head(n)\n}", output_fn=out.append)
+    # Direct PytaeDataFrame assignment (no .to_pytae() call) registers 'k'
+    assert r.execute_line("py {\n    import pandas as pd\n    k=df.head(10)\n    }", output_fn=out.append)
+    assert "k" in r.tables
+    assert r.tables["k"].shape == (10, 7)
+
+    assert r.execute_line("py { top5 = take_n(df, 5) }", output_fn=out.append)
+    assert "top5" in r.tables
+
+    # Non-py command whose table name begins with 'py' must still be replayable
+    assert _is_replayable_entry_static('py_sub = df -filter "body_mass_g > 4000"') is True
+    assert _is_replayable_entry_static("py { print(df.shape) }") is False
+
+    # Test export via 'exit -s py' (returns False to signal exit after saving)
+    res_exit = r.execute_line("exit -s py", output_fn=out.append)
+    assert res_exit is False
+
+    py_path = tmp_path / "session.py"
+    assert py_path.exists()
+    py_content = py_path.read_text(encoding="utf-8")
+    assert "k=df.head(10)" in py_content
+    assert "def take_n(d, n=5):" in py_content
+    assert "top5 = take_n(df, 5)" in py_content
+    assert "print(df.shape)" not in py_content
+
+    ast.parse(py_content)
+    ns: dict = {}
+    exec(compile(py_content, str(py_path), "exec"), ns)
+    assert ns["k"].shape == (10, 7)
+    assert ns["top5"].shape == (5, 7)
+
+    # Also verify .pt export preserves the py blocks and skips print()
+    assert r.execute_line("export script session.pt", output_fn=out.append)
+    pt_content = (tmp_path / "session.pt").read_text(encoding="utf-8")
+    assert "k=df.head(10)" in pt_content
+    assert "def take_n(d, n=5):" in pt_content
+    assert "print(df.shape)" not in pt_content
+
+
 def test_export_script_prunes_rolled_back_branches(tmp_path, monkeypatch):
     """Verify that export script (.pt and .py) prunes commands in branches that were rolled back by restore."""
     import ast

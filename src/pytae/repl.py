@@ -2271,6 +2271,19 @@ def _compile_history_to_python(
 
                 py_body = textwrap.dedent(py_body[1:-1]).strip()
             if py_body:
+                try:
+                    py_tree = ast.parse(py_body)
+                    for stmt in py_tree.body:
+                        targets = []
+                        if isinstance(stmt, ast.Assign):
+                            targets = stmt.targets
+                        elif isinstance(stmt, (ast.AnnAssign, ast.AugAssign)):
+                            targets = [stmt.target]
+                        for tgt in targets:
+                            if isinstance(tgt, ast.Name):
+                                known_tables.add(tgt.id)
+                except SyntaxError:
+                    pass
                 lines.append("# Custom Python transformation")
                 lines.append(py_body)
                 lines.append("")
@@ -2557,9 +2570,42 @@ def _is_replayable_entry_static(entry: str) -> bool:
     if clean.startswith(("export script", "export code", "save script", "save code", "-export script", "-save script")):
         return False
 
-    # Python snippets: only replayable if they perform state mutation via .to_pytae()
-    if clean.startswith("py"):
-        return ".to_pytae(" in clean
+    # Python snippets: replayable when mutating via .to_pytae(), assigning state,
+    # or defining reusable imports/functions/classes (while skipping pure inspections).
+    if re.match(r"^py(?:\s|\{|$)", clean):
+        if ".to_pytae(" in clean:
+            return True
+        py_body = clean[2:].strip()
+        if py_body.endswith("\npy"):
+            py_body = py_body[:-3].strip()
+        elif py_body.endswith(" py"):
+            py_body = py_body[:-3].strip()
+        if py_body.startswith("{") and py_body.endswith("}"):
+            import textwrap
+
+            py_body = textwrap.dedent(py_body[1:-1]).strip()
+        if not py_body:
+            return False
+        import ast
+
+        try:
+            tree = ast.parse(py_body)
+        except SyntaxError:
+            return False
+        mutating_nodes = (
+            ast.Assign,
+            ast.AnnAssign,
+            ast.AugAssign,
+            ast.Import,
+            ast.ImportFrom,
+            ast.FunctionDef,
+            ast.AsyncFunctionDef,
+            ast.ClassDef,
+            ast.Delete,
+            ast.Global,
+            ast.Nonlocal,
+        )
+        return any(isinstance(node, mutating_nodes) for node in ast.walk(tree))
 
     # Session configuration commands ('set ...') are excluded from exported scripts
     if clean == "set" or clean.startswith("set ") or clean.startswith("set="):
@@ -6591,6 +6637,14 @@ class PytaeRepl:
                     injected_var_keys.add(var_name)
 
             orig_df_obj = self._py_env.get("df")
+            orig_persisted = {
+                k: v
+                for k, v in self._py_env.items()
+                if k not in ("df", "pldf", "pl", "pt", "pd", "DataFrame", "__builtins__")
+                and k not in orig_table_instances
+                and k not in injected_cp_keys
+                and k not in injected_var_keys
+            }
 
             import contextlib
             import io
@@ -6615,6 +6669,7 @@ class PytaeRepl:
 
             # Ephemeral Python Sandboxing: Only keep dataframes explicitly converted via .to_pytae()
             mutated = False
+            persisted_env_changed = False
             # 1. Active table update: check if 'df' was modified or reassigned to a PytaeDataFrame
             current_df_val = self._py_env.get("df")
             if isinstance(current_df_val, _BasePtAccessor):
@@ -6663,6 +6718,8 @@ class PytaeRepl:
                     mutated = True
                     del self._py_env[k]
                 elif isinstance(val, (types.ModuleType, types.FunctionType, types.BuiltinFunctionType, types.MethodType, type)) or callable(val):
+                    if k not in orig_persisted or orig_persisted[k] is not val:
+                        persisted_env_changed = True
                     continue
                 else:
                     # Ephemeral scratch data (numbers, strings, lists, dicts, arrays, external DataFrames)
@@ -6678,7 +6735,7 @@ class PytaeRepl:
             self._py_env.pop("df", None)
             self._py_env.pop("pldf", None)
 
-            if mutated:
+            if mutated or persisted_env_changed:
                 rec_entry = f"py {{\n{code}\n}}" if "\n" in code else f"py {{ {code} }}"
                 self._record_history(rec_entry)
 
