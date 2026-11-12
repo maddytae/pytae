@@ -10,9 +10,10 @@ All notable changes to this project are documented in this file.
   - Bare `sql { ... }` now executes non-destructively and prints a formatted table preview (like `-head`) without mutating the active DataFrame; `<var> = sql { ... }` assigns results into a named workbench table.
   - Strict brace enforcement redirects `-sql` and unbraced `sql ...` in the REPL with clear usage errors.
   - Extended `pt.sql(df_or_frames, query)` to accept a `dict` of named tables (`pt.sql({"c": c, "o": o}, ...)`) and fixed `.py` script export compilation for single- and multi-table SQL queries.
-- **Live REPL Syntax Highlighting (`src/pytae/_highlight.py`, `src/pytae/repl.py`)**:
+- **Live REPL Syntax Highlighting & Color Themes (`src/pytae/_highlight.py`, `src/pytae/repl.py`)**:
   - Zero-dependency, context-aware ANSI syntax highlighting across Pytae DSL, `sql { ... }` blocks, `py { ... }` blocks, live table names, `@variables`, and prompts.
-  - Toggleable via `set syntax_highlight = on|off` (persisted via `set save`), and automatically respects `NO_COLOR`, `TERM=dumb`, and Windows VT100 mode.
+  - Curated 256-color/ANSI themes (`default`, `monokai`, `dracula`, `nord`, `light`, `minimal`) selectable via `set theme = <name>`, with live sample previews (`set theme`) and persistence (`set save`).
+  - Toggleable via `set syntax_highlight = on|off`, and automatically respects `NO_COLOR`, `TERM=dumb`, and Windows VT100 mode.
 
 ### Fixed
 - **macOS / Unix Arrow Keys Printing `[A` (`src/pytae/repl.py`)**:

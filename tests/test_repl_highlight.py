@@ -190,3 +190,68 @@ def test_repl_set_syntax_highlight_and_config_persistence(tmp_path, monkeypatch)
     r2.execute_line("set", output_fn=out2.append)
     assert any("syntax_highlight = off" in o for o in out2)
     r2.close()
+
+
+def test_color_themes_preserve_text_and_emit_distinct_palettes():
+    from pytae._highlight import AVAILABLE_THEMES, format_theme_preview
+
+    sample = 'orders -filter "amt > @min" | sql { SELECT COUNT(*) FROM orders } | py { pd.Series([1, 2]) }'
+    rendered_themes: set[str] = set()
+    for t in AVAILABLE_THEMES:
+        hl = highlight_repl_text(sample, mode="dsl", tables={"orders"}, variables={"min"}, theme=t)
+        assert strip_ansi(hl) == sample
+        assert strip_ansi(highlight_prompt("pytae [orders: 10x2]> ", theme=t)) == "pytae [orders: 10x2]> "
+        rendered_themes.add(hl)
+
+    # Every theme produces distinct ANSI styling
+    assert len(rendered_themes) == len(AVAILABLE_THEMES)
+    # 256-color monokai uses 38;5;148 for tables
+    mono = highlight_repl_text("orders", mode="dsl", tables={"orders"}, theme="monokai")
+    assert "\x1b[38;5;148m" in mono or "\x1b[1;38;5;148m" in mono
+
+    preview_lines = format_theme_preview("dracula", color=True)
+    assert any(line.startswith("* dracula") for line in preview_lines)
+    assert len(preview_lines) == len(AVAILABLE_THEMES)
+
+
+def test_repl_set_theme_preview_persistence_and_completion(tmp_path, monkeypatch):
+    fake_home = tmp_path / "fake_home_theme"
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.delenv("PYTAE_HOME", raising=False)
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("TERM", "xterm-256color")
+
+    r = PytaeRepl()
+    assert r.theme == "default"
+
+    # Completion after 'set ' and 'set theme '
+    assert "theme" in r._get_completions("t", "set t")
+    assert "monokai" in r._get_completions("mo", "set theme mo")
+
+    # Preview via 'set theme'
+    out: list[str] = []
+    r.execute_line("set theme", output_fn=out.append)
+    out_text = "\n".join(out)
+    assert "theme            = default" in out_text
+    assert "* default" in out_text
+    assert "monokai" in out_text
+
+    # Invalid theme rejected cleanly
+    out.clear()
+    r.execute_line("set theme = neon_unicorn", output_fn=out.append)
+    assert any("invalid theme" in o for o in out)
+    assert r.theme == "default"
+
+    # Valid theme applied and persisted
+    out.clear()
+    r.execute_line("set theme = dracula", output_fn=out.append)
+    assert r.theme == "dracula"
+    assert any("Set theme = dracula." in o for o in out)
+    r.execute_line("set save")
+    cfg_data = json.loads((fake_home / ".pytae" / "config.json").read_text(encoding="utf-8"))
+    assert cfg_data["theme"] == "dracula"
+    r.close()
+
+    r2 = PytaeRepl()
+    assert r2.theme == "dracula"
+    r2.close()

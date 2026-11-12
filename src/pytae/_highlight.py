@@ -10,17 +10,88 @@ from collections.abc import Set as AbstractSet
 RESET = "\x1b[0m"
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
-# Portable 16-color / bright ANSI palette (adapts cleanly to dark & light terminals)
-_COLOR_CMD = "\x1b[1;36m"       # Bold Cyan: Pytae verbs (-filter, -sql), REPL commands, 'py'
-_COLOR_KEYWORD = "\x1b[35m"     # Magenta: Python keywords, @variables
-_COLOR_SQL_KW = "\x1b[1;34m"    # Bold Blue: SQL keywords (SELECT, FROM, WHERE...)
-_COLOR_BUILTIN = "\x1b[36m"     # Cyan: pd, pl, pt, DataFrame, df, Python builtins, SQL functions
-_COLOR_TABLE = "\x1b[1;32m"     # Bold Green: loaded workbench tables, sample:*, persisted py funcs/modules
-_COLOR_STRING = "\x1b[32m"      # Green: quoted string literals
-_COLOR_NUMBER = "\x1b[33m"      # Yellow: numeric literals
-_COLOR_BRACE = "\x1b[33m"       # Yellow: { } [ ] ( )
-_COLOR_COMMENT = "\x1b[90m"     # Dim gray: # comments, -- SQL comments, trailing \
-_COLOR_PROMPT_DIM = "\x1b[90m"  # Dim gray: prompt brackets & continuation '... '
+THEMES: dict[str, dict[str, str]] = {
+    "default": {
+        "cmd": "\x1b[1;36m",
+        "keyword": "\x1b[35m",
+        "sql_kw": "\x1b[1;34m",
+        "builtin": "\x1b[36m",
+        "table": "\x1b[1;32m",
+        "string": "\x1b[32m",
+        "number": "\x1b[33m",
+        "brace": "\x1b[33m",
+        "comment": "\x1b[90m",
+        "prompt_dim": "\x1b[90m",
+    },
+    "monokai": {
+        "cmd": "\x1b[1;38;5;81m",
+        "keyword": "\x1b[38;5;197m",
+        "sql_kw": "\x1b[1;38;5;81m",
+        "builtin": "\x1b[38;5;81m",
+        "table": "\x1b[1;38;5;148m",
+        "string": "\x1b[38;5;186m",
+        "number": "\x1b[38;5;141m",
+        "brace": "\x1b[38;5;208m",
+        "comment": "\x1b[38;5;243m",
+        "prompt_dim": "\x1b[38;5;243m",
+    },
+    "dracula": {
+        "cmd": "\x1b[1;38;5;117m",
+        "keyword": "\x1b[38;5;212m",
+        "sql_kw": "\x1b[1;38;5;141m",
+        "builtin": "\x1b[38;5;117m",
+        "table": "\x1b[1;38;5;84m",
+        "string": "\x1b[38;5;228m",
+        "number": "\x1b[38;5;141m",
+        "brace": "\x1b[38;5;215m",
+        "comment": "\x1b[38;5;103m",
+        "prompt_dim": "\x1b[38;5;103m",
+    },
+    "nord": {
+        "cmd": "\x1b[1;38;5;110m",
+        "keyword": "\x1b[38;5;139m",
+        "sql_kw": "\x1b[1;38;5;75m",
+        "builtin": "\x1b[38;5;116m",
+        "table": "\x1b[1;38;5;108m",
+        "string": "\x1b[38;5;108m",
+        "number": "\x1b[38;5;222m",
+        "brace": "\x1b[38;5;180m",
+        "comment": "\x1b[38;5;243m",
+        "prompt_dim": "\x1b[38;5;243m",
+    },
+    "light": {
+        "cmd": "\x1b[1;38;5;24m",
+        "keyword": "\x1b[38;5;126m",
+        "sql_kw": "\x1b[1;38;5;19m",
+        "builtin": "\x1b[38;5;30m",
+        "table": "\x1b[1;38;5;28m",
+        "string": "\x1b[38;5;28m",
+        "number": "\x1b[38;5;166m",
+        "brace": "\x1b[38;5;130m",
+        "comment": "\x1b[38;5;244m",
+        "prompt_dim": "\x1b[38;5;244m",
+    },
+    "minimal": {
+        "cmd": "\x1b[1m",
+        "keyword": "\x1b[1m",
+        "sql_kw": "\x1b[1m",
+        "builtin": "",
+        "table": "\x1b[1;32m",
+        "string": "\x1b[32m",
+        "number": "",
+        "brace": "\x1b[90m",
+        "comment": "\x1b[90m",
+        "prompt_dim": "\x1b[90m",
+    },
+}
+
+AVAILABLE_THEMES: tuple[str, ...] = tuple(THEMES.keys())
+
+
+def get_theme_palette(theme: str = "default") -> dict[str, str]:
+    """Return ANSI color palette mapping for the given theme name (falls back to 'default')."""
+    key = (theme or "default").lower().strip()
+    return THEMES.get(key, THEMES["default"])
 
 _REPL_COMMANDS: frozenset[str] = frozenset(
     {
@@ -286,19 +357,21 @@ def _colorize(text: str, color: str) -> str:
     return "\n".join(f"{color}{part}{RESET}" if part else "" for part in text.split("\n"))
 
 
-def _colorize_dsl_string(tok: str) -> str:
-    """Highlight @variables inside a DSL string literal while keeping the string green."""
+def _colorize_dsl_string(tok: str, palette: dict[str, str]) -> str:
+    """Highlight @variables inside a DSL string literal while keeping the string colored."""
+    c_str = palette["string"]
+    c_kw = palette["keyword"]
     if "@" not in tok:
-        return _colorize(tok, _COLOR_STRING)
+        return _colorize(tok, c_str)
     out: list[str] = []
     last = 0
     for m in _VAR_IN_STR_RE.finditer(tok):
         if m.start() > last:
-            out.append(_colorize(tok[last : m.start()], _COLOR_STRING))
-        out.append(_colorize(m.group(0), _COLOR_KEYWORD))
+            out.append(_colorize(tok[last : m.start()], c_str))
+        out.append(_colorize(m.group(0), c_kw))
         last = m.end()
     if last < len(tok):
-        out.append(_colorize(tok[last:], _COLOR_STRING))
+        out.append(_colorize(tok[last:], c_str))
     return "".join(out)
 
 
@@ -307,8 +380,10 @@ def _highlight_python(
     tables: AbstractSet[str] = frozenset(),
     variables: AbstractSet[str] = frozenset(),
     py_env: AbstractSet[str] = frozenset(),
+    palette: dict[str, str] | None = None,
 ) -> str:
     """Highlight Python code cleanly even on partial/incomplete input."""
+    pal = palette or THEMES["default"]
     out: list[str] = []
     last = 0
     for m in _PY_TOKEN_RE.finditer(text):
@@ -317,22 +392,22 @@ def _highlight_python(
         kind = m.lastgroup
         tok = m.group(0)
         if kind == "COMMENT":
-            out.append(_colorize(tok, _COLOR_COMMENT))
+            out.append(_colorize(tok, pal["comment"]))
         elif kind in ("TRIPLE", "STRING"):
-            out.append(_colorize(tok, _COLOR_STRING))
+            out.append(_colorize(tok, pal["string"]))
         elif kind == "NUMBER":
-            out.append(_colorize(tok, _COLOR_NUMBER))
+            out.append(_colorize(tok, pal["number"]))
         elif kind == "BRACE":
-            out.append(_colorize(tok, _COLOR_BRACE))
+            out.append(_colorize(tok, pal["brace"]))
         elif kind == "IDENT":
             if tok in _PY_KEYWORDS:
-                out.append(_colorize(tok, _COLOR_KEYWORD))
+                out.append(_colorize(tok, pal["keyword"]))
             elif tok in _PY_BUILTINS:
-                out.append(_colorize(tok, _COLOR_BUILTIN))
+                out.append(_colorize(tok, pal["builtin"]))
             elif tok in tables or tok in py_env:
-                out.append(_colorize(tok, _COLOR_TABLE))
+                out.append(_colorize(tok, pal["table"]))
             elif tok in variables:
-                out.append(_colorize(tok, _COLOR_KEYWORD))
+                out.append(_colorize(tok, pal["keyword"]))
             else:
                 out.append(tok)
         else:
@@ -346,8 +421,10 @@ def _highlight_python(
 def _highlight_sql(
     text: str,
     tables: AbstractSet[str] = frozenset(),
+    palette: dict[str, str] | None = None,
 ) -> str:
     """Highlight ANSI SQL query text cleanly even on partial/incomplete input."""
+    pal = palette or THEMES["default"]
     out: list[str] = []
     last = 0
     for m in _SQL_TOKEN_RE.finditer(text):
@@ -356,23 +433,23 @@ def _highlight_sql(
         kind = m.lastgroup
         tok = m.group(0)
         if kind == "COMMENT":
-            out.append(_colorize(tok, _COLOR_COMMENT))
+            out.append(_colorize(tok, pal["comment"]))
         elif kind == "STRING":
-            out.append(_colorize(tok, _COLOR_STRING))
+            out.append(_colorize(tok, pal["string"]))
         elif kind == "VAR":
-            out.append(_colorize(tok, _COLOR_KEYWORD))
+            out.append(_colorize(tok, pal["keyword"]))
         elif kind == "NUMBER":
-            out.append(_colorize(tok, _COLOR_NUMBER))
+            out.append(_colorize(tok, pal["number"]))
         elif kind == "BRACE":
-            out.append(_colorize(tok, _COLOR_BRACE))
+            out.append(_colorize(tok, pal["brace"]))
         elif kind == "IDENT":
             upper = tok.upper()
             if upper in _SQL_KEYWORDS:
-                out.append(_colorize(tok, _COLOR_SQL_KW))
+                out.append(_colorize(tok, pal["sql_kw"]))
             elif upper in _SQL_FUNCTIONS:
-                out.append(_colorize(tok, _COLOR_BUILTIN))
+                out.append(_colorize(tok, pal["builtin"]))
             elif tok in tables:
-                out.append(_colorize(tok, _COLOR_TABLE))
+                out.append(_colorize(tok, pal["table"]))
             else:
                 out.append(tok)
         else:
@@ -383,10 +460,11 @@ def _highlight_sql(
     return "".join(out)
 
 
-def _highlight_quoted_sql(tok: str, tables: AbstractSet[str]) -> str:
+def _highlight_quoted_sql(tok: str, tables: AbstractSet[str], palette: dict[str, str]) -> str:
     """Highlight a quoted -sql argument string ('...' or \"...\") with SQL tokens inside."""
+    c_str = palette["string"]
     if len(tok) < 2:
-        return _colorize(tok, _COLOR_STRING)
+        return _colorize(tok, c_str)
     quote = tok[0]
     inner_start = 1
     if tok.startswith(('"""', "'''")):
@@ -395,13 +473,13 @@ def _highlight_quoted_sql(tok: str, tables: AbstractSet[str]) -> str:
     if len(tok) >= inner_start * 2 and tok.endswith(quote):
         inner = tok[inner_start : len(tok) - len(quote)]
         return (
-            _colorize(quote, _COLOR_STRING)
-            + _highlight_sql(inner, tables=tables)
-            + _colorize(quote, _COLOR_STRING)
+            _colorize(quote, c_str)
+            + _highlight_sql(inner, tables=tables, palette=palette)
+            + _colorize(quote, c_str)
         )
     # Unclosed SQL string (mid-typing)
     inner = tok[inner_start:]
-    return _colorize(quote, _COLOR_STRING) + _highlight_sql(inner, tables=tables)
+    return _colorize(quote, c_str) + _highlight_sql(inner, tables=tables, palette=palette)
 
 
 def _find_matching_brace_close(text: str, open_brace_idx: int, *, sql_mode: bool = False) -> int | None:
@@ -462,26 +540,28 @@ def _highlight_dsl(
     tables: AbstractSet[str] = frozenset(),
     variables: AbstractSet[str] = frozenset(),
     py_env: AbstractSet[str] = frozenset(),
+    palette: dict[str, str] | None = None,
 ) -> str:
     """Highlight Pytae DSL commands, flags, tables, @vars, inline -sql, sql { ... }, and py { ... }."""
+    pal = palette or THEMES["default"]
     # Check for 'py { ... }' block at line start (or leading whitespace)
     py_match = re.match(r"^(\s*)(py)(\s*)(\{)", text)
     if py_match:
         ws1, py_kw, ws2, open_b = py_match.groups()
         open_idx = py_match.end() - 1
         close_idx = _find_matching_brace_close(text, open_idx, sql_mode=False)
-        prefix = f"{ws1}{_colorize(py_kw, _COLOR_CMD)}{ws2}{_colorize(open_b, _COLOR_BRACE)}"
+        prefix = f"{ws1}{_colorize(py_kw, pal['cmd'])}{ws2}{_colorize(open_b, pal['brace'])}"
         if close_idx is not None:
             body = text[open_idx + 1 : close_idx]
             tail = text[close_idx + 1 :]
             return (
                 prefix
-                + _highlight_python(body, tables=tables, variables=variables, py_env=py_env)
-                + _colorize("}", _COLOR_BRACE)
-                + _highlight_dsl(tail, tables=tables, variables=variables, py_env=py_env)
+                + _highlight_python(body, tables=tables, variables=variables, py_env=py_env, palette=pal)
+                + _colorize("}", pal["brace"])
+                + _highlight_dsl(tail, tables=tables, variables=variables, py_env=py_env, palette=pal)
             )
         body = text[open_idx + 1 :]
-        return prefix + _highlight_python(body, tables=tables, variables=variables, py_env=py_env)
+        return prefix + _highlight_python(body, tables=tables, variables=variables, py_env=py_env, palette=pal)
 
     # Check for 'sql { ... }' or '<var> = sql { ... }' block
     sql_match = re.match(r"^(\s*(?:[A-Za-z_][A-Za-z0-9_]*\s*=\s*)?)(sql)(\s*)(\{)", text, flags=re.IGNORECASE)
@@ -489,19 +569,23 @@ def _highlight_dsl(
         lead_part, sql_kw, ws2, open_b = sql_match.groups()
         open_idx = sql_match.end() - 1
         close_idx = _find_matching_brace_close(text, open_idx, sql_mode=True)
-        lead_hl = _highlight_dsl(lead_part, tables=tables, variables=variables, py_env=py_env) if lead_part.strip() else lead_part
-        prefix = f"{lead_hl}{_colorize(sql_kw, _COLOR_CMD)}{ws2}{_colorize(open_b, _COLOR_BRACE)}"
+        lead_hl = (
+            _highlight_dsl(lead_part, tables=tables, variables=variables, py_env=py_env, palette=pal)
+            if lead_part.strip()
+            else lead_part
+        )
+        prefix = f"{lead_hl}{_colorize(sql_kw, pal['cmd'])}{ws2}{_colorize(open_b, pal['brace'])}"
         if close_idx is not None:
             body = text[open_idx + 1 : close_idx]
             tail = text[close_idx + 1 :]
             return (
                 prefix
-                + _highlight_sql(body, tables=tables)
-                + _colorize("}", _COLOR_BRACE)
-                + _highlight_dsl(tail, tables=tables, variables=variables, py_env=py_env)
+                + _highlight_sql(body, tables=tables, palette=pal)
+                + _colorize("}", pal["brace"])
+                + _highlight_dsl(tail, tables=tables, variables=variables, py_env=py_env, palette=pal)
             )
         body = text[open_idx + 1 :]
-        return prefix + _highlight_sql(body, tables=tables)
+        return prefix + _highlight_sql(body, tables=tables, palette=pal)
 
     out: list[str] = []
     last = 0
@@ -516,37 +600,37 @@ def _highlight_dsl(
         kind = m.lastgroup
         tok = m.group(0)
         if kind == "COMMENT":
-            out.append(_colorize(tok, _COLOR_COMMENT))
+            out.append(_colorize(tok, pal["comment"]))
             pending_sql = False
         elif kind in ("TRIPLE", "STRING"):
             if pending_sql:
-                out.append(_highlight_quoted_sql(tok, tables=tables))
+                out.append(_highlight_quoted_sql(tok, tables=tables, palette=pal))
                 pending_sql = False
             else:
-                out.append(_colorize_dsl_string(tok))
+                out.append(_colorize_dsl_string(tok, palette=pal))
         elif kind == "VAR":
-            out.append(_colorize(tok, _COLOR_KEYWORD))
+            out.append(_colorize(tok, pal["keyword"]))
             pending_sql = False
         elif kind == "FLAG":
-            out.append(_colorize(tok, _COLOR_CMD))
+            out.append(_colorize(tok, pal["cmd"]))
             pending_sql = tok == "-sql"
         elif kind == "SAMPLE":
-            out.append(_colorize(tok, _COLOR_TABLE))
+            out.append(_colorize(tok, pal["table"]))
             pending_sql = False
         elif kind == "NUMBER":
-            out.append(_colorize(tok, _COLOR_NUMBER))
+            out.append(_colorize(tok, pal["number"]))
             pending_sql = False
         elif kind == "BACKSLASH":
-            out.append(_colorize(tok, _COLOR_COMMENT))
+            out.append(_colorize(tok, pal["comment"]))
         elif kind == "BRACE":
-            out.append(_colorize(tok, _COLOR_BRACE))
+            out.append(_colorize(tok, pal["brace"]))
             pending_sql = False
         elif kind == "IDENT":
             pending_sql = False
             if tok in tables:
-                out.append(_colorize(tok, _COLOR_TABLE))
+                out.append(_colorize(tok, pal["table"]))
             elif tok in _REPL_COMMANDS:
-                out.append(_colorize(tok, _COLOR_CMD))
+                out.append(_colorize(tok, pal["cmd"]))
             else:
                 out.append(tok)
         else:
@@ -632,12 +716,14 @@ def highlight_repl_text(
     tables: AbstractSet[str] = frozenset(),
     variables: AbstractSet[str] = frozenset(),
     py_env: AbstractSet[str] = frozenset(),
+    theme: str = "default",
 ) -> str:
     """Apply ANSI syntax highlighting to REPL input buffer text while preserving all characters and newlines."""
     if not text:
         return text
+    pal = get_theme_palette(theme)
     if mode == "py":
-        return _highlight_python(text, tables=tables, variables=variables, py_env=py_env)
+        return _highlight_python(text, tables=tables, variables=variables, py_env=py_env, palette=pal)
     if mode.startswith("sql"):
         close_re_map = {
             "sql_dq": r'^((?:[^"\\]|\\.)*?)(")([\s\S]*)$',
@@ -651,27 +737,50 @@ def highlight_repl_text(
             if m:
                 sql_part, q_char, rest = m.groups()
                 return (
-                    _highlight_sql(sql_part, tables=tables)
-                    + _colorize(q_char, _COLOR_STRING)
-                    + _highlight_dsl(rest, tables=tables, variables=variables, py_env=py_env)
+                    _highlight_sql(sql_part, tables=tables, palette=pal)
+                    + _colorize(q_char, pal["string"])
+                    + _highlight_dsl(rest, tables=tables, variables=variables, py_env=py_env, palette=pal)
                 )
-        return _highlight_sql(text, tables=tables)
-    return _highlight_dsl(text, tables=tables, variables=variables, py_env=py_env)
+        return _highlight_sql(text, tables=tables, palette=pal)
+    return _highlight_dsl(text, tables=tables, variables=variables, py_env=py_env, palette=pal)
 
 
-def highlight_prompt(prompt: str) -> str:
+def highlight_prompt(prompt: str, theme: str = "default") -> str:
     """Colorize REPL prompt ('pytae [table: 100x5]> ' or '... ') preserving exact visible characters."""
     if not prompt or "\x1b[" in prompt:
         return prompt
+    pal = get_theme_palette(theme)
+    c_dim = pal["prompt_dim"]
+    c_cmd = pal["cmd"]
+    c_tbl = pal["table"]
     if prompt == "... ":
-        return f"{_COLOR_PROMPT_DIM}... {RESET}"
+        return _colorize("... ", c_dim)
     m = re.match(r"^([^\s\[]+)(\s*)(\[[^\]]*\])?(>\s*)$", prompt)
     if not m:
         return prompt
     brand, ws, meta, arrow = m.groups()
-    out = [f"{_COLOR_CMD}{brand}{RESET}", ws]
+    out = [_colorize(brand, c_cmd), ws]
     if meta:
         inner = meta[1:-1]
-        out.append(f"{_COLOR_PROMPT_DIM}[{RESET}{_COLOR_TABLE}{inner}{RESET}{_COLOR_PROMPT_DIM}]{RESET}")
-    out.append(f"{_COLOR_CMD}{arrow}{RESET}")
+        out.append(f"{_colorize('[', c_dim)}{_colorize(inner, c_tbl)}{_colorize(']', c_dim)}")
+    out.append(_colorize(arrow, c_cmd))
     return "".join(out)
+
+
+def format_theme_preview(active_theme: str = "default", *, color: bool = True) -> list[str]:
+    """Build lines showing all available themes with optional live colored sample snippets."""
+    active_key = (active_theme or "default").lower().strip()
+    lines: list[str] = []
+    sample_dsl = 'orders -filter "amt > @min"'
+    sample_sql = "sql { SELECT COUNT(*) FROM orders }"
+    sample_py = "py { pd.Series([1, 2]) }"
+    for name in AVAILABLE_THEMES:
+        marker = "* " if name == active_key else "  "
+        if color:
+            p_dsl = highlight_repl_text(sample_dsl, mode="dsl", tables={"orders"}, theme=name)
+            p_sql = highlight_repl_text(sample_sql, mode="dsl", tables={"orders"}, theme=name)
+            p_py = highlight_repl_text(sample_py, mode="dsl", tables={"orders"}, theme=name)
+            lines.append(f"{marker}{name:<8} : {p_dsl}  |  {p_sql}  |  {p_py}")
+        else:
+            lines.append(f"{marker}{name}")
+    return lines

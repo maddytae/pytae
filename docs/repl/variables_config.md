@@ -259,10 +259,11 @@ max_cols        = all (options: <int>, all, default)
 float_precision = auto (options: <int>, auto, default)
 comma           = off (options: on, off)
 syntax_highlight = on (options: on, off)
+theme            = default (options: default, monokai, dracula, nord, light, minimal)
 (Tip: Run 'set save' to persist settings across REPL sessions)
 ```
 
-Query a specific key using `set <key>`:
+Query a specific key using `set <key>` (running `set theme` also prints a live colored preview of all available themes):
 
 ```text
 pytae> set max_rows
@@ -278,6 +279,7 @@ max_rows        = 10 (options: <int>, default)
 | **`float_precision`** | `precision` | `<int>`, `auto`, `default`| `auto` | Decimal places shown for floating-point values. |
 | **`comma`** | — | `on`, `off` | `off` | Format large numbers with thousands separators (`1,234,567`). |
 | **`syntax_highlight`** | `highlight` | `on`, `off` | `on` | Live ANSI syntax highlighting across Pytae DSL, `sql { ... }`, `py { ... }`, and prompts. |
+| **`theme`** | `color_theme` | `default`, `monokai`, `dracula`, `nord`, `light`, `minimal` | `default` | Syntax highlighting color palette (run `set theme` for live visual samples). |
 
 Multiple settings can be combined on a single line:
 
@@ -302,7 +304,8 @@ On subsequent launches, the REPL automatically reads `~/.pytae/config.json`:
   "max_cols": "all",
   "float_precision": 2,
   "comma": "on",
-  "syntax_highlight": "on"
+  "syntax_highlight": "on",
+  "theme": "monokai"
 }
 ```
 

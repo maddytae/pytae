@@ -1356,7 +1356,7 @@ STATE & WORKBENCH:
   rm table <name>        : Delete an in-memory table (or 'rm table *')
   rm checkpoint <name>   : Delete a saved checkpoint (or 'rm checkpoint *')
   rm var <name>          : Delete a session variable (or 'rm var *')
-  set [key [= value]]    : Configure display settings (max_rows, max_cols, float_precision, comma, syntax_highlight)
+  set [key [= value]]    : Configure display settings (max_rows, max_cols, float_precision, comma, syntax_highlight, theme)
   set save               : Save current display settings permanently to ~/.pytae/config.json
   clear                  : Clear the terminal screen
   exit [-s [path]]       : Exit REPL (optionally save session history to ./history.txt or <path>)
@@ -1713,6 +1713,8 @@ _SET_KNOWN_KEYS = {
     "comma",
     "syntax_highlight",
     "highlight",
+    "theme",
+    "color_theme",
 }
 
 _SET_RETIRED_KEYS = {
@@ -2732,6 +2734,7 @@ class PytaeRepl:
         self.float_precision: int | None = None
         self.comma: bool = False
         self.syntax_highlight: bool = True
+        self.theme: str = "default"
         self._load_config()
         self.table_sources: dict[str, str] = {}
         self.history: list[str] = []
@@ -4912,6 +4915,7 @@ class PytaeRepl:
                     "float_precision": "auto",
                     "comma": "off",
                     "syntax_highlight": "on",
+                    "theme": "default",
                 }
                 cfg_path.write_text(json.dumps(default_data, indent=2) + "\n", encoding="utf-8")
             except Exception:
@@ -4983,6 +4987,14 @@ class PytaeRepl:
                     self.syntax_highlight = True
                 elif str(val).lower() in ("off", "false", "0", "no"):
                     self.syntax_highlight = False
+
+            # 6. theme: syntax highlight palette name
+            if "theme" in data:
+                from pytae._highlight import AVAILABLE_THEMES
+
+                val_t = str(data["theme"]).lower().strip()
+                if val_t in AVAILABLE_THEMES:
+                    self.theme = val_t
         except Exception:
             pass
 
@@ -5000,11 +5012,14 @@ class PytaeRepl:
             "float_precision": prec_val,
             "comma": comma_val,
             "syntax_highlight": sh_val,
+            "theme": self.theme,
         }
         cfg_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
     def _cmd_set(self, args: list[str], output_fn: Callable[[str], None], raw_line: str = "") -> None:
-        """Handle REPL configuration settings (max_rows, max_cols, float_precision, comma, syntax_highlight)."""
+        """Handle REPL configuration settings (max_rows, max_cols, float_precision, comma, syntax_highlight, theme)."""
+        from pytae._highlight import AVAILABLE_THEMES, format_theme_preview, is_color_enabled
+
         if not args:
             max_cols_str = str(self.max_cols) if self.max_cols is not None else "all"
             prec_str = str(self.float_precision) if self.float_precision is not None else "auto"
@@ -5016,6 +5031,7 @@ class PytaeRepl:
             output_fn(f"float_precision = {prec_str} (options: <int>, auto, default)")
             output_fn(f"comma           = {comma_str} (options: on, off)")
             output_fn(f"syntax_highlight = {sh_str} (options: on, off)")
+            output_fn(f"theme            = {self.theme} (options: {', '.join(AVAILABLE_THEMES)})")
             output_fn("(Tip: Run 'set save' to persist settings across REPL sessions)")
             return
 
@@ -5134,9 +5150,23 @@ class PytaeRepl:
                     output_fn("Set syntax_highlight = off.")
                 else:
                     output_fn(f"pytae: invalid syntax_highlight '{val}'. Supported options: on, off.")
+            elif k in ("theme", "color_theme"):
+                clean_val = val.lower().strip("'\"") if val else ""
+                if not clean_val or clean_val == "preview":
+                    output_fn(f"theme            = {self.theme} (options: {', '.join(AVAILABLE_THEMES)})")
+                    for p_line in format_theme_preview(self.theme, color=is_color_enabled()):
+                        output_fn(p_line)
+                    continue
+                if clean_val in AVAILABLE_THEMES:
+                    self.theme = clean_val
+                    output_fn(f"Set theme = {clean_val}.")
+                else:
+                    output_fn(
+                        f"pytae: invalid theme '{val}'. Supported themes: {', '.join(AVAILABLE_THEMES)}."
+                    )
             else:
                 output_fn(
-                    f"pytae: unknown setting '{k}'. Supported settings: max_rows, max_cols, float_precision, comma, syntax_highlight."
+                    f"pytae: unknown setting '{k}'. Supported settings: max_rows, max_cols, float_precision, comma, syntax_highlight, theme."
                 )
 
     def _cmd_checkpoint(self, name: str, output_fn: Callable[[str], None]) -> None:
@@ -6966,12 +6996,18 @@ class PytaeRepl:
                     "max_cols",
                     "float_precision",
                     "comma",
+                    "syntax_highlight",
+                    "theme",
                 ]
                 return [c for c in configs if c.startswith(text)]
             if "checkpoint_format" in [t.lower() for t in prefix_tokens]:
                 return [fmt for fmt in ("ipc", "parquet", "arrow") if fmt.startswith(text)]
-            if "comma" in [t.lower() for t in prefix_tokens]:
+            if any(k in [t.lower() for t in prefix_tokens] for k in ("comma", "syntax_highlight", "highlight")):
                 return [opt for opt in ("on", "off") if opt.startswith(text)]
+            if any(k in [t.lower() for t in prefix_tokens] for k in ("theme", "color_theme")):
+                from pytae._highlight import AVAILABLE_THEMES
+
+                return [opt for opt in (*AVAILABLE_THEMES, "preview") if opt.startswith(text)]
             if any(k in [t.lower() for t in prefix_tokens] for k in ("max_rows", "rows")):
                 return [opt for opt in ("10", "20", "50", "100", "default") if opt.startswith(text)]
             if any(k in [t.lower() for t in prefix_tokens] for k in ("max_cols", "cols")):
@@ -7267,6 +7303,8 @@ class PytaeRepl:
                     "__builtins__",
                 }
 
+                cur_theme = self.theme
+
                 def _hl(txt: str) -> str:
                     return highlight_repl_text(
                         txt,
@@ -7274,11 +7312,12 @@ class PytaeRepl:
                         tables=cur_tables,
                         variables=cur_vars,
                         py_env=cur_py_env,
+                        theme=cur_theme,
                     )
 
                 hl_fn = _hl
-                console_prompt = highlight_prompt(effective_prompt)
-                hl_cont_prompt = highlight_prompt("... ")
+                console_prompt = highlight_prompt(effective_prompt, theme=cur_theme)
+                hl_cont_prompt = highlight_prompt("... ", theme=cur_theme)
 
             if sys.platform == "win32":
                 if sys.stdin.isatty():
