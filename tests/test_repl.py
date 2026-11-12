@@ -4032,6 +4032,9 @@ def test_export_script_preserves_py_block_without_to_pytae(tmp_path, monkeypatch
     py_path = tmp_path / "session.py"
     assert py_path.exists()
     py_content = py_path.read_text(encoding="utf-8")
+    assert py_content.count("import pandas as pd") == 1
+    assert py_content.count("import polars as pl") == 1
+    assert py_content.count("import pytae as pt") == 1
     assert "k=df.head(10)" in py_content
     assert "def take_n(d, n=5):" in py_content
     assert "top5 = take_n(df, 5)" in py_content
@@ -4042,6 +4045,22 @@ def test_export_script_preserves_py_block_without_to_pytae(tmp_path, monkeypatch
     exec(compile(py_content, str(py_path), "exec"), ns)
     assert ns["k"].shape == (10, 7)
     assert ns["top5"].shape == (5, 7)
+
+    # Also test deduplication across repeated imports in multiple py blocks
+    from pytae.repl import _compile_history_to_python
+
+    dedup_py = _compile_history_to_python(
+        [
+            "df = sample:penguins",
+            "py {\nimport pandas as pd, math\nk = df.head(math.ceil(2.5))\n}",
+            "py {\nimport math\nk2 = df.head(3)\n}",
+        ]
+    )
+    assert dedup_py.count("import pandas as pd") == 1
+    assert dedup_py.count("import math") == 1
+    assert "k = df.head(math.ceil(2.5))" in dedup_py
+    assert "k2 = df.head(3)" in dedup_py
+    ast.parse(dedup_py)
 
     # Also verify .pt export preserves the py blocks and skips print()
     assert r.execute_line("export script session.pt", output_fn=out.append)

@@ -2235,6 +2235,11 @@ def _compile_history_to_python(
     ]
 
     known_tables: set[str] = set()
+    seen_imports: set[tuple[Any, ...]] = {
+        ("import", "pandas", "pd"),
+        ("import", "polars", "pl"),
+        ("import", "pytae", "pt"),
+    }
 
     def _compile_sql_assignment(target_var: str, query_text: str) -> str:
         sql_words = re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*\b", query_text)
@@ -2273,20 +2278,79 @@ def _compile_history_to_python(
             if py_body:
                 try:
                     py_tree = ast.parse(py_body)
+                    py_lines = py_body.splitlines()
+                    line_replacements: dict[int, tuple[int, list[str]]] = {}
                     for stmt in py_tree.body:
+                        if isinstance(stmt, ast.Import):
+                            new_parts: list[str] = []
+                            for alias in stmt.names:
+                                key = ("import", alias.name, alias.asname)
+                                if key not in seen_imports:
+                                    seen_imports.add(key)
+                                    new_parts.append(
+                                        f"{alias.name} as {alias.asname}" if alias.asname else alias.name
+                                    )
+                            if len(new_parts) < len(stmt.names):
+                                start_idx = stmt.lineno - 1
+                                end_idx = (stmt.end_lineno or stmt.lineno) - 1
+                                line_replacements[start_idx] = (
+                                    end_idx,
+                                    [f"import {', '.join(new_parts)}"] if new_parts else [],
+                                )
+                            continue
+                        if isinstance(stmt, ast.ImportFrom):
+                            new_parts = []
+                            for alias in stmt.names:
+                                key = ("from", stmt.module or "", stmt.level, alias.name, alias.asname)
+                                if key not in seen_imports:
+                                    seen_imports.add(key)
+                                    new_parts.append(
+                                        f"{alias.name} as {alias.asname}" if alias.asname else alias.name
+                                    )
+                            if len(new_parts) < len(stmt.names):
+                                start_idx = stmt.lineno - 1
+                                end_idx = (stmt.end_lineno or stmt.lineno) - 1
+                                dots = "." * stmt.level
+                                mod = stmt.module or ""
+                                line_replacements[start_idx] = (
+                                    end_idx,
+                                    [f"from {dots}{mod} import {', '.join(new_parts)}"] if new_parts else [],
+                                )
+                            continue
                         targets = []
                         if isinstance(stmt, ast.Assign):
                             targets = stmt.targets
                         elif isinstance(stmt, (ast.AnnAssign, ast.AugAssign)):
                             targets = [stmt.target]
+                        elif isinstance(stmt, ast.Delete):
+                            targets = stmt.targets
                         for tgt in targets:
                             if isinstance(tgt, ast.Name):
-                                known_tables.add(tgt.id)
+                                if not isinstance(stmt, ast.Delete):
+                                    known_tables.add(tgt.id)
+                                seen_imports = {
+                                    imp
+                                    for imp in seen_imports
+                                    if (imp[2] or imp[1].split(".")[0] if imp[0] == "import" else imp[4] or imp[3]) != tgt.id
+                                }
+                    if line_replacements:
+                        rebuilt: list[str] = []
+                        idx = 0
+                        while idx < len(py_lines):
+                            if idx in line_replacements:
+                                end_idx, repl = line_replacements[idx]
+                                rebuilt.extend(repl)
+                                idx = end_idx + 1
+                            else:
+                                rebuilt.append(py_lines[idx])
+                                idx += 1
+                        py_body = "\n".join(rebuilt).strip()
                 except SyntaxError:
                     pass
-                lines.append("# Custom Python transformation")
-                lines.append(py_body)
-                lines.append("")
+                if py_body:
+                    lines.append("# Custom Python transformation")
+                    lines.append(py_body)
+                    lines.append("")
             continue
 
         # 2. Ingestion: `load <path> as <alias>` or `load <path>`
