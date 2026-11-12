@@ -564,6 +564,63 @@ def test_repl_py_block_del_or_overwrite_evicts_from_env():
     assert len(r._py_env) == 0
 
 
+def test_console_input_unix_pty_up_arrow_history(monkeypatch):
+    """Verify that pressing Up Arrow (ESC [ A) over a real Unix PTY recalls history rather than typing '[A'."""
+    import sys
+
+    if sys.platform == "win32":
+        return
+
+    import os
+    import pty
+    import select
+    import threading
+    import tty
+
+    from pytae.repl import _console_input
+
+    master, slave = pty.openpty()
+    slave_in = None
+    slave_out = None
+    done = threading.Event()
+    try:
+        tty.setcbreak(slave)
+        slave_in = os.fdopen(os.dup(slave), "r", encoding="utf-8", buffering=1)
+        slave_out = os.fdopen(os.dup(slave), "w", encoding="utf-8", buffering=1)
+        monkeypatch.setattr(sys, "stdin", slave_in)
+        monkeypatch.setattr(sys, "stdout", slave_out)
+
+        def _drain_master() -> None:
+            while not done.is_set():
+                try:
+                    if select.select([master], [], [], 0.05)[0]:
+                        os.read(master, 4096)
+                except OSError:
+                    break
+
+        drain_thread = threading.Thread(target=_drain_master, daemon=True)
+        drain_thread.start()
+
+        # Write Up Arrow escape sequence + Enter all in one packet (tests unbuffered read vs select)
+        threading.Timer(0.05, lambda: os.write(master, b"\x1b[A\r")).start()
+        res = _console_input("pytae> ", ["df = sample:penguins"])
+        assert res == "df = sample:penguins"
+    finally:
+        done.set()
+        for obj in (slave_in, slave_out):
+            if obj is not None:
+                try:
+                    obj.close()
+                except Exception:
+                    pass
+        for fd_num in (master, slave):
+            try:
+                os.close(fd_num)
+            except Exception:
+                pass
+
+
+
 
 
 

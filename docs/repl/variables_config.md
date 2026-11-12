@@ -258,6 +258,7 @@ max_rows        = 10 (options: <int>, default)
 max_cols        = all (options: <int>, all, default)
 float_precision = auto (options: <int>, auto, default)
 comma           = off (options: on, off)
+syntax_highlight = on (options: on, off)
 (Tip: Run 'set save' to persist settings across REPL sessions)
 ```
 
@@ -276,6 +277,7 @@ max_rows        = 10 (options: <int>, default)
 | **`max_cols`** | `cols` | `<int>`, `all`, `default` | `all` | Maximum columns printed in wide tables before truncating. |
 | **`float_precision`** | `precision` | `<int>`, `auto`, `default`| `auto` | Decimal places shown for floating-point values. |
 | **`comma`** | — | `on`, `off` | `off` | Format large numbers with thousands separators (`1,234,567`). |
+| **`syntax_highlight`** | `highlight` | `on`, `off` | `on` | Live ANSI syntax highlighting across Pytae DSL, `-sql`, `py { ... }`, and prompts. |
 
 Multiple settings can be combined on a single line:
 
@@ -299,7 +301,8 @@ On subsequent launches, the REPL automatically reads `~/.pytae/config.json`:
   "max_rows": 25,
   "max_cols": "all",
   "float_precision": 2,
-  "comma": "on"
+  "comma": "on",
+  "syntax_highlight": "on"
 }
 ```
 

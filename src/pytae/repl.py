@@ -497,6 +497,8 @@ def _console_input(
     has_input_fn: Callable[[], bool] | None = None,
     initial_text: str = "",
     pending_queue: list[str] | None = None,
+    highlight_fn: Callable[[str], str] | None = None,
+    cont_prompt_raw: str | None = None,
 ) -> str:
     """Read console input with arrow key history navigation, line editing, multiline break, and Tab autocompletion."""
     old_termios = None
@@ -509,19 +511,27 @@ def _console_input(
             has_input_fn = getattr(msvcrt, "kbhit", None)
         except (ImportError, AttributeError):
             try:
+                import codecs
                 import select
                 import termios
                 import tty
 
                 fd = sys.stdin.fileno()
                 old_termios = termios.tcgetattr(fd)
-                tty.setcbreak(fd)
+                tty.setcbreak(fd, when=termios.TCSADRAIN)
+                utf8_decoder = codecs.getincrementaldecoder("utf-8")("replace")
 
                 def _unix_read_char() -> str:
-                    return sys.stdin.read(1)
+                    while True:
+                        b = os.read(fd, 1)
+                        if not b:
+                            raise EOFError
+                        ch_dec = utf8_decoder.decode(b, final=False)
+                        if ch_dec:
+                            return ch_dec
 
                 def _unix_has_input() -> bool:
-                    return bool(select.select([sys.stdin], [], [], 0)[0])
+                    return bool(select.select([fd], [], [], 0)[0])
 
                 read_char_fn = _unix_read_char
                 has_input_fn = _unix_has_input
@@ -563,11 +573,24 @@ def _console_input(
             c_col = 0
             display_lines: list[str] = []
 
+            plain_lines = ["".join(l_chars) for l_chars in lines]
+            if highlight_fn is not None:
+                try:
+                    highlighted_full = highlight_fn("\n".join(plain_lines))
+                    colored_lines = highlighted_full.split("\n")
+                    if len(colored_lines) != len(plain_lines):
+                        colored_lines = plain_lines
+                except Exception:
+                    colored_lines = plain_lines
+            else:
+                colored_lines = plain_lines
+
+            cont_raw = cont_prompt_raw if cont_prompt_raw is not None else cont_prompt
+
             for l_idx, l_chars in enumerate(lines):
                 pfx_clean = clean_prompt if l_idx == 0 else cont_prompt
-                pfx_raw = prompt if l_idx == 0 else "... "
-                line_str = "".join(l_chars)
-                display_lines.append(pfx_raw + line_str)
+                pfx_raw = prompt if l_idx == 0 else cont_raw
+                display_lines.append(pfx_raw + colored_lines[l_idx])
 
                 if l_idx == target_line:
                     c_on_line = len(pfx_clean) + target_col
@@ -1326,7 +1349,7 @@ STATE & WORKBENCH:
   rm table <name>        : Delete an in-memory table (or 'rm table *')
   rm checkpoint <name>   : Delete a saved checkpoint (or 'rm checkpoint *')
   rm var <name>          : Delete a session variable (or 'rm var *')
-  set [key [= value]]    : Configure display settings (max_rows, max_cols, float_precision, comma)
+  set [key [= value]]    : Configure display settings (max_rows, max_cols, float_precision, comma, syntax_highlight)
   set save               : Save current display settings permanently to ~/.pytae/config.json
   clear                  : Clear the terminal screen
   exit [-s [path]]       : Exit REPL (optionally save session history to ./history.txt or <path>)
@@ -1681,6 +1704,8 @@ _SET_KNOWN_KEYS = {
     "float_precision",
     "precision",
     "comma",
+    "syntax_highlight",
+    "highlight",
 }
 
 _SET_RETIRED_KEYS = {
@@ -2655,6 +2680,7 @@ class PytaeRepl:
         self.max_cols: int | None = None
         self.float_precision: int | None = None
         self.comma: bool = False
+        self.syntax_highlight: bool = True
         self._load_config()
         self.table_sources: dict[str, str] = {}
         self.history: list[str] = []
@@ -4835,6 +4861,7 @@ class PytaeRepl:
                     "max_cols": "all",
                     "float_precision": "auto",
                     "comma": "off",
+                    "syntax_highlight": "on",
                 }
                 cfg_path.write_text(json.dumps(default_data, indent=2) + "\n", encoding="utf-8")
             except Exception:
@@ -4896,6 +4923,16 @@ class PytaeRepl:
                     self.comma = True
                 elif str(val).lower() in ("off", "false", "0", "no"):
                     self.comma = False
+
+            # 5. syntax_highlight: "on", "off" (or boolean)
+            if "syntax_highlight" in data:
+                val = data["syntax_highlight"]
+                if isinstance(val, bool):
+                    self.syntax_highlight = val
+                elif str(val).lower() in ("on", "true", "1", "yes"):
+                    self.syntax_highlight = True
+                elif str(val).lower() in ("off", "false", "0", "no"):
+                    self.syntax_highlight = False
         except Exception:
             pass
 
@@ -4906,25 +4943,29 @@ class PytaeRepl:
         max_cols_val: Any = self.max_cols if self.max_cols is not None else "all"
         prec_val: Any = self.float_precision if self.float_precision is not None else "auto"
         comma_val = "on" if self.comma else "off"
+        sh_val = "on" if self.syntax_highlight else "off"
         data = {
             "max_rows": self.max_rows,
             "max_cols": max_cols_val,
             "float_precision": prec_val,
             "comma": comma_val,
+            "syntax_highlight": sh_val,
         }
         cfg_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
     def _cmd_set(self, args: list[str], output_fn: Callable[[str], None], raw_line: str = "") -> None:
-        """Handle REPL configuration settings (max_rows, max_cols, float_precision, comma)."""
+        """Handle REPL configuration settings (max_rows, max_cols, float_precision, comma, syntax_highlight)."""
         if not args:
             max_cols_str = str(self.max_cols) if self.max_cols is not None else "all"
             prec_str = str(self.float_precision) if self.float_precision is not None else "auto"
             comma_str = "on" if self.comma else "off"
+            sh_str = "on" if self.syntax_highlight else "off"
 
             output_fn(f"max_rows        = {self.max_rows} (options: <int>, default)")
             output_fn(f"max_cols        = {max_cols_str} (options: <int>, all, default)")
             output_fn(f"float_precision = {prec_str} (options: <int>, auto, default)")
             output_fn(f"comma           = {comma_str} (options: on, off)")
+            output_fn(f"syntax_highlight = {sh_str} (options: on, off)")
             output_fn("(Tip: Run 'set save' to persist settings across REPL sessions)")
             return
 
@@ -5029,9 +5070,23 @@ class PytaeRepl:
                     output_fn("Set comma = off.")
                 else:
                     output_fn(f"pytae: invalid comma '{val}'. Supported options: on, off.")
+            elif k in ("syntax_highlight", "highlight"):
+                if not val:
+                    curr = "on" if self.syntax_highlight else "off"
+                    output_fn(f"syntax_highlight = {curr} (options: on, off)")
+                    continue
+                clean_val = val.lower().strip("'\"")
+                if clean_val in ("on", "true", "1", "yes"):
+                    self.syntax_highlight = True
+                    output_fn("Set syntax_highlight = on.")
+                elif clean_val in ("off", "false", "0", "no"):
+                    self.syntax_highlight = False
+                    output_fn("Set syntax_highlight = off.")
+                else:
+                    output_fn(f"pytae: invalid syntax_highlight '{val}'. Supported options: on, off.")
             else:
                 output_fn(
-                    f"pytae: unknown setting '{k}'. Supported settings: max_rows, max_cols, float_precision, comma."
+                    f"pytae: unknown setting '{k}'. Supported settings: max_rows, max_cols, float_precision, comma, syntax_highlight."
                 )
 
     def _cmd_checkpoint(self, name: str, output_fn: Callable[[str], None]) -> None:
@@ -7101,7 +7156,19 @@ class PytaeRepl:
                 pass
             return False
 
+        from pytae._highlight import (
+            detect_multiline_mode,
+            enable_windows_vt_mode,
+            highlight_prompt,
+            highlight_repl_text,
+            is_color_enabled,
+        )
+
+        if self.syntax_highlight and is_color_enabled():
+            enable_windows_vt_mode()
+
         pending_input_queue: list[str] = []
+        multi_buffer: list[str] = []
 
         def _get_input(prompt_text: str) -> str:
             effective_prompt = "" if is_redirected_input else prompt_text
@@ -7112,23 +7179,56 @@ class PytaeRepl:
                 except TypeError:
                     return input_fn()  # type: ignore[call-arg]
 
+            use_highlight = bool(self.syntax_highlight and is_color_enabled() and not is_redirected_input)
+            hl_fn: Callable[[str], str] | None = None
+            hl_cont_prompt: str | None = None
+            console_prompt = effective_prompt
+            if use_highlight and effective_prompt:
+                cur_mode = detect_multiline_mode(multi_buffer)
+                cur_tables = set(self.tables.keys())
+                cur_vars = set(self.variables.keys())
+                cur_py_env = set(self._py_env.keys()) - {
+                    "df",
+                    "pldf",
+                    "pl",
+                    "pt",
+                    "pd",
+                    "DataFrame",
+                    "__builtins__",
+                }
+
+                def _hl(txt: str) -> str:
+                    return highlight_repl_text(
+                        txt,
+                        mode=cur_mode,
+                        tables=cur_tables,
+                        variables=cur_vars,
+                        py_env=cur_py_env,
+                    )
+
+                hl_fn = _hl
+                console_prompt = highlight_prompt(effective_prompt)
+                hl_cont_prompt = highlight_prompt("... ")
+
             if sys.platform == "win32":
                 if sys.stdin.isatty():
                     try:
                         return _console_input(
-                            effective_prompt,
+                            console_prompt,
                             self._raw_history,
                             completer=self._complete,
                             completions_fn=self._get_completions,
                             initial_text=initial_text,
                             pending_queue=pending_input_queue,
+                            highlight_fn=hl_fn,
+                            cont_prompt_raw=hl_cont_prompt,
                         )
                     except Exception:
                         pass
                 elif git_bash_raw_active:
                     try:
                         return _console_input(
-                            effective_prompt,
+                            console_prompt,
                             self._raw_history,
                             completer=self._complete,
                             completions_fn=self._get_completions,
@@ -7136,6 +7236,8 @@ class PytaeRepl:
                             has_input_fn=_pipe_has_input,
                             initial_text=initial_text,
                             pending_queue=pending_input_queue,
+                            highlight_fn=hl_fn,
+                            cont_prompt_raw=hl_cont_prompt,
                         )
                     except Exception:
                         pass
@@ -7148,12 +7250,14 @@ class PytaeRepl:
                 if sys.stdin.isatty() and not is_redirected_input:
                     try:
                         return _console_input(
-                            effective_prompt,
+                            console_prompt,
                             self._raw_history,
                             completer=self._complete,
                             completions_fn=self._get_completions,
                             initial_text=initial_text,
                             pending_queue=pending_input_queue,
+                            highlight_fn=hl_fn,
+                            cont_prompt_raw=hl_cont_prompt,
                         )
                     except Exception:
                         pass
@@ -7163,8 +7267,6 @@ class PytaeRepl:
                     except Exception:
                         pass
             return input(effective_prompt)
-
-        multi_buffer: list[str] = []
 
         try:
             while True:
