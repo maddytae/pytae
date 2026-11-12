@@ -5160,6 +5160,8 @@ class PytaeRepl:
                 if clean_val in AVAILABLE_THEMES:
                     self.theme = clean_val
                     output_fn(f"Set theme = {clean_val}.")
+                    if not self.syntax_highlight:
+                        output_fn("(Note: syntax_highlight is currently off; run 'set syntax_highlight = on' to enable colors.)")
                 else:
                     output_fn(
                         f"pytae: invalid theme '{val}'. Supported themes: {', '.join(AVAILABLE_THEMES)}."

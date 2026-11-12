@@ -24,51 +24,51 @@ THEMES: dict[str, dict[str, str]] = {
         "prompt_dim": "\x1b[90m",
     },
     "monokai": {
-        "cmd": "\x1b[1;38;5;81m",
-        "keyword": "\x1b[38;5;197m",
-        "sql_kw": "\x1b[1;38;5;81m",
-        "builtin": "\x1b[38;5;81m",
-        "table": "\x1b[1;38;5;148m",
-        "string": "\x1b[38;5;186m",
-        "number": "\x1b[38;5;141m",
-        "brace": "\x1b[38;5;208m",
-        "comment": "\x1b[38;5;243m",
+        "cmd": "\x1b[1m\x1b[38;5;208m",       # Bold Orange
+        "keyword": "\x1b[38;5;197m",           # Monokai Pink/Magenta
+        "sql_kw": "\x1b[1m\x1b[38;5;197m",     # Bold Pink/Magenta
+        "builtin": "\x1b[38;5;81m",            # Monokai Cyan
+        "table": "\x1b[1m\x1b[38;5;148m",      # Bold Lime Green
+        "string": "\x1b[38;5;186m",            # Warm Yellow
+        "number": "\x1b[38;5;141m",            # Purple
+        "brace": "\x1b[38;5;208m",             # Orange
+        "comment": "\x1b[38;5;243m",           # Slate Gray
         "prompt_dim": "\x1b[38;5;243m",
     },
     "dracula": {
-        "cmd": "\x1b[1;38;5;117m",
-        "keyword": "\x1b[38;5;212m",
-        "sql_kw": "\x1b[1;38;5;141m",
-        "builtin": "\x1b[38;5;117m",
-        "table": "\x1b[1;38;5;84m",
-        "string": "\x1b[38;5;228m",
-        "number": "\x1b[38;5;141m",
-        "brace": "\x1b[38;5;215m",
-        "comment": "\x1b[38;5;103m",
+        "cmd": "\x1b[1m\x1b[38;5;141m",       # Bold Purple
+        "keyword": "\x1b[38;5;212m",           # Dracula Pink
+        "sql_kw": "\x1b[1m\x1b[38;5;212m",     # Bold Pink
+        "builtin": "\x1b[38;5;117m",           # Dracula Cyan
+        "table": "\x1b[1m\x1b[38;5;84m",       # Bold Neon Green
+        "string": "\x1b[38;5;228m",            # Dracula Yellow
+        "number": "\x1b[38;5;141m",            # Dracula Purple
+        "brace": "\x1b[38;5;215m",             # Dracula Orange
+        "comment": "\x1b[38;5;103m",           # Muted Comment Blue
         "prompt_dim": "\x1b[38;5;103m",
     },
     "nord": {
-        "cmd": "\x1b[1;38;5;110m",
-        "keyword": "\x1b[38;5;139m",
-        "sql_kw": "\x1b[1;38;5;75m",
-        "builtin": "\x1b[38;5;116m",
-        "table": "\x1b[1;38;5;108m",
-        "string": "\x1b[38;5;108m",
-        "number": "\x1b[38;5;222m",
-        "brace": "\x1b[38;5;180m",
-        "comment": "\x1b[38;5;243m",
+        "cmd": "\x1b[1m\x1b[38;5;75m",        # Bold Frost Blue
+        "keyword": "\x1b[38;5;139m",           # Aurora Purple
+        "sql_kw": "\x1b[1m\x1b[38;5;110m",     # Bold Frost Ice
+        "builtin": "\x1b[38;5;116m",           # Frost Teal
+        "table": "\x1b[1m\x1b[38;5;108m",      # Aurora Sage Green
+        "string": "\x1b[38;5;108m",            # Aurora Green
+        "number": "\x1b[38;5;222m",            # Aurora Yellow
+        "brace": "\x1b[38;5;180m",             # Sand
+        "comment": "\x1b[38;5;243m",           # Polar Gray
         "prompt_dim": "\x1b[38;5;243m",
     },
     "light": {
-        "cmd": "\x1b[1;38;5;24m",
-        "keyword": "\x1b[38;5;126m",
-        "sql_kw": "\x1b[1;38;5;19m",
-        "builtin": "\x1b[38;5;30m",
-        "table": "\x1b[1;38;5;28m",
-        "string": "\x1b[38;5;28m",
-        "number": "\x1b[38;5;166m",
-        "brace": "\x1b[38;5;130m",
-        "comment": "\x1b[38;5;244m",
+        "cmd": "\x1b[1m\x1b[38;5;24m",        # Deep Steel Teal
+        "keyword": "\x1b[38;5;126m",           # Deep Magenta
+        "sql_kw": "\x1b[1m\x1b[38;5;19m",      # Deep Navy
+        "builtin": "\x1b[38;5;30m",            # Dark Cyan-Teal
+        "table": "\x1b[1m\x1b[38;5;28m",       # Forest Green
+        "string": "\x1b[38;5;28m",             # Forest Green
+        "number": "\x1b[38;5;166m",            # Burnt Orange
+        "brace": "\x1b[38;5;130m",             # Bronze
+        "comment": "\x1b[38;5;244m",           # Mid Gray
         "prompt_dim": "\x1b[38;5;244m",
     },
     "minimal": {

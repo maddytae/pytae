@@ -2,9 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [3.14.3] - 2026-11-11
 
 ### Added
+- **Pre-Loaded `pd` & Session-Wide Persistent Imports (`src/pytae/repl.py`, `docs/repl/sql_python_interop.md`)**:
+  - `pd` (Pandas) is now pre-loaded into the Python execution scope alongside `pl` (Polars), `pt` (Pytae), and `DataFrame`. You can use `pd.Series(...)` and Pandas utilities directly without `import pandas as pd`.
+  - Modules imported via `import ...` or `from ... import ...` and custom functions/classes defined inside any `py { ... }` block persist across blocks throughout the entire REPL session until `exit`.
+  - Helper functions retain full access to their imported module dependencies in subsequent blocks.
+  - Ephemeral scratch data (NumPy arrays, lists, dicts, numbers, strings, intermediate DataFrames) continues to be purged between blocks to prevent RAM bloat.
+  - Modules and functions can be explicitly removed with `del <name>` within a `py { ... }` block.
 - **Strict `sql { ... }` Block Syntax & Non-Destructive Preview in REPL (`src/pytae/repl.py`, `src/pytae/__init__.py`)**:
   - Replaced `-sql "..."` in the REPL with symmetric, bracket-matched `sql { ... }` and `<var> = sql { ... }` syntax (CLI `-sql "..."` with `FROM data` / aliased tables remains unchanged).
   - Bare `sql { ... }` now executes non-destructively and prints a formatted table preview (like `-head`) without mutating the active DataFrame; `<var> = sql { ... }` assigns results into a named workbench table.
@@ -22,12 +28,6 @@ All notable changes to this project are documented in this file.
 ## [3.14.2] - 2026-11-11
 
 ### Added
-- **Pre-Loaded `pd` & Session-Wide Persistent Imports (`src/pytae/repl.py`, `docs/repl/sql_python_interop.md`)**:
-  - `pd` (Pandas) is now pre-loaded into the Python execution scope alongside `pl` (Polars), `pt` (Pytae), and `DataFrame`. You can use `pd.Series(...)` and Pandas utilities directly without `import pandas as pd`.
-  - Modules imported via `import ...` or `from ... import ...` and custom functions/classes defined inside any `py { ... }` block persist across blocks throughout the entire REPL session until `exit`.
-  - Helper functions retain full access to their imported module dependencies in subsequent blocks.
-  - Ephemeral scratch data (NumPy arrays, lists, dicts, numbers, strings, intermediate DataFrames) continues to be purged between blocks to prevent RAM bloat.
-  - Modules and functions can be explicitly removed with `del <name>` within a `py { ... }` block.
 - **Strict `py { ... }` Block Execution (`src/pytae/repl.py`, `docs/repl/sql_python_interop.md`)**:
   - Replaced the modal `in_py_block` state machine with unambiguous, bracket-matched `py { ... }` syntax.
   - Multi-line Python blocks can contain arbitrary blank lines and nested functions/loops without triggering accidental early execution.

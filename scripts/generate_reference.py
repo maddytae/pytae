@@ -1098,7 +1098,7 @@ Dataset Ingest & Interactive Workbench:
   - Operations on active table  : `-filter "amount > 100"`, `-head 5`, `-pivot "..."`.
   - Subject-first operations    : `df1 -filter "amount > 100"`, `df2 -head 5`.
   - Relational joins & assign   : `df3 = df1 -join df2 on=cust_id`.
-  - Polars ANSI SQL engine      : `df4 = -sql "SELECT df1.order_id, df2.name FROM df1 JOIN df2 ON df1.cust_id = df2.id"`.
+  - Polars ANSI SQL engine      : `sql { ... }` for preview; `df4 = sql { SELECT df1.order_id, df2.name FROM df1 JOIN df2 ON df1.cust_id = df2.id }` to assign.
 
 State Management & Rollback Commands:
   - `reset`                   : Rollback to latest saved checkpoint (or initial dataset read if none).
@@ -1137,7 +1137,9 @@ Terminal Control & Utilities:
   - `status table [name] [-v]`: Inspect active table or specific table schema.
   - `status tables [-v]`      : List all loaded tables in memory with shapes and memory footprints.
   - `<cmd> | <sh>`            : Pipe command output to external shell tools (e.g. `-cols | grep bill`).
-  - `py { <expr> }`           : Evaluate arbitrary Python expression or block with `df` and `pldf` in scope.
+  - `sql { <query> }`           : Non-destructive ANSI SQL preview across loaded tables (or `<var> = sql { ... }`).
+  - `py { <expr> }`           : Evaluate Python code with `df`, `pldf`, `pd`, `pl`, `pt`; imports & functions persist across blocks.
+  - `set syntax_highlight = on|off`, `set theme = <name>` : Configure REPL live syntax highlighting and color themes (`default`, `monokai`, `dracula`, `nord`, `light`, `minimal`).
   - `exit` / `exit -s [path]` : Exit REPL (optionally save session history to ./history.txt or a named file).
 
 
@@ -1642,7 +1644,7 @@ pytae [df1, df2]> checkpoint baseline
 
 # Perform join and SQL exploration
 pytae [df1, df2]> df3 = df1 -join df2 on=cust_id
-pytae [df1, df2, df3]> -sql "SELECT df1.order_id, df2.name, df1.amount FROM df1 JOIN df2 ON df1.cust_id = df2.id"
+pytae [df1, df2, df3]> sql { SELECT df1.order_id, df2.name, df1.amount FROM df1 JOIN df2 ON df1.cust_id = df2.id }
 
 # Revert to snapshot
 pytae [df1, df2, df3]> restore baseline
