@@ -144,7 +144,7 @@ CHEATSHEET_TEXT = """\
   #   set save                Persist current display settings to ~/.pytae/config.json
   #   history                 Show session audit log
   #   exit [-s [pt|py|path]]  Exit REPL (default: session.pt, py: session.py)
-  #   switch <name>           Switch active table cursor (use deprecated)
+  #   switch <name>           Switch active table cursor
   #   reset                   Restore original dataset from disk (instant O(1))
   #   checkpoint <name>       Save ephemeral IPC snapshot across all session tables (0 MB RAM)
   #   restore [name]          Restore entire workbench to named snapshot (or latest)

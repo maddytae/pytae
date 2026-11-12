@@ -387,8 +387,8 @@ def test_repl_variable_assignment_and_multi_tables(tmp_path):
     r.execute_line('df1 = df1 -filter "amount > 50"', output_fn=outputs.append)
     assert r.tables["df1"].shape == (2, 3)
 
-    # 6. Switch active table with bare name or `use`
-    r.execute_line("use df2", output_fn=outputs.append)
+    # 6. Switch active table with `switch`
+    r.execute_line("switch df2", output_fn=outputs.append)
     assert r.path_str == "df2"
     assert r.current_df.shape == (2, 3)
 
@@ -449,7 +449,7 @@ def test_repl_standard_cli_join_and_output(tmp_path):
     r.execute_line(f"df2 = {f_customers}", output_fn=outputs.append)
 
     # 1. Standard -join with -o destination
-    r.execute_line("use df1", output_fn=outputs.append)
+    r.execute_line("switch df1", output_fn=outputs.append)
     r.execute_line(f"-join df2 on=cust_id -o {f_merged}", output_fn=outputs.append)
     assert f_merged.exists()
     saved = pl.read_parquet(f_merged)
@@ -1185,9 +1185,9 @@ def test_repl_table_resolution_targeted_and_use(sample_parquet):
     r.execute_line("penguins_sample -cols", output_fn=outputs.append)
     assert "body_mass_g" in outputs[-1]
 
-    # 'use penguins_sample' stem
+    # 'switch penguins_sample' stem
     outputs.clear()
-    r.execute_line("use penguins_sample", output_fn=outputs.append)
+    r.execute_line("switch penguins_sample", output_fn=outputs.append)
     assert "Switched active dataset to 'penguins_sample.parquet'" in outputs[-1]
 
 
@@ -1529,12 +1529,12 @@ def test_repl_reset_single_table_does_not_affect_other_tables():
     orig_df2_shape = r.tables["df2"].shape
 
     # 2. Filter both tables to distinct smaller subsets via assignment
-    r.execute_line("use df1", output_fn=outputs.append)
+    r.execute_line("switch df1", output_fn=outputs.append)
     r.execute_line("df1 = -filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     df1_gentoo_shape = r.tables["df1"].shape
     assert df1_gentoo_shape[0] < orig_df1_shape[0]
 
-    r.execute_line("use df2", output_fn=outputs.append)
+    r.execute_line("switch df2", output_fn=outputs.append)
     r.execute_line('df2 = -filter "tip > 5"', output_fn=outputs.append)
     df2_tip5_shape = r.tables["df2"].shape
     assert df2_tip5_shape[0] < orig_df2_shape[0]
@@ -1551,7 +1551,7 @@ def test_repl_reset_single_table_does_not_affect_other_tables():
     assert r.tables["df2"].shape == df2_tip5_shape  # df2 is untouched!
 
     # 4. Now filter df1 again and create a checkpoint 'v1'
-    r.execute_line("use df1", output_fn=outputs.append)
+    r.execute_line("switch df1", output_fn=outputs.append)
     r.execute_line("df1 = -filter \"species == 'Chinstrap'\"", output_fn=outputs.append)
     df1_chin_shape = r.tables["df1"].shape
     r.execute_line("checkpoint v1", output_fn=outputs.append)
@@ -1900,7 +1900,7 @@ def test_repl_preview_by_default_and_assignment_mutation():
 
     # 9. Active table assignment: df1 = -filter "species == 'Gentoo'"
     outputs.clear()
-    r.execute_line("use df1", output_fn=outputs.append)
+    r.execute_line("switch df1", output_fn=outputs.append)
     r.execute_line("df1 = -filter \"species == 'Gentoo'\"", output_fn=outputs.append)
     assert r.tables["df1"].shape == (124, 7)
     assert r.current_df.shape == (124, 7)
@@ -1988,12 +1988,11 @@ def test_repl_time_bare_table_switch(sample_df):
     assert r.path_str == "df1"
     assert "Switched active dataset to 'df1'" in outputs[0]
 
-    # Deprecated 'use df2' also works with deprecation notice
+    # Deprecated 'use df2' is rejected and points to 'switch <name>'
     outputs.clear()
     r.execute_line("use df2", output_fn=outputs.append)
-    assert r.path_str == "df2"
-    assert "Switched active dataset to 'df2'" in outputs[0]
-    assert "use' is deprecated" in outputs[0]
+    assert r.path_str == "df1"
+    assert "'use' is deprecated and has been removed; use 'switch <name>' instead." in outputs[0]
 
     r.close()
 
@@ -2654,11 +2653,11 @@ def test_repl_tab_autocompletions():
     r.execute_line("orders = sample:tips")
     r.execute_line("checkpoint cp_v1")
 
-    # Table completion after 'switch ' and 'use '
+    # Table completion after 'switch ' (and not after removed 'use ')
     matches = r._get_completions("cu", "switch cu")
     assert matches == ["customers"]
     matches = r._get_completions("cu", "use cu")
-    assert matches == ["customers"]
+    assert matches == []
 
     # Table completion after 'rename '
     matches = r._get_completions("or", "rename or")
@@ -2706,10 +2705,10 @@ def test_repl_tab_autocompletions():
     matches = r._get_completions("par", "set checkpoint_format = par")
     assert "parquet" in matches
 
-    # Replay entry includes rename, switch, and use
+    # Replay entry includes rename and switch (removed 'use' is excluded)
     assert r._is_replayable_entry("rename df1 customers") is True
     assert r._is_replayable_entry("switch customers") is True
-    assert r._is_replayable_entry("use customers") is True
+    assert r._is_replayable_entry("use customers") is False
 
     r.close()
 

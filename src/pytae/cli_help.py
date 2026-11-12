@@ -1438,16 +1438,16 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         name="use",
         flag="use <table_name>",
         syntax="use <table_name>",
-        summary="Switch the active in-memory table cursor (Deprecated; use 'switch').",
+        summary="Switch the active in-memory table cursor (Deprecated and removed; use 'switch').",
         description=(
-            "Deprecated command for switching active dataset cursor.\n"
+            "Deprecated and removed command for switching active dataset cursor.\n"
             "Use 'switch <table_name>' instead."
         ),
         options=[
             "<table_name> : Name of an existing loaded table.",
         ],
         examples=[
-            "pytae -i  # Inside REPL: switch df2  (preferred over 'use df2')",
+            "pytae -i  # Inside REPL: switch df2",
         ],
         see_also=["switch", "status", "load"],
     ),

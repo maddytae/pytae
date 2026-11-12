@@ -234,12 +234,11 @@ def test_repl_ephemeral_ipc_checkpoint_and_switch():
     assert "Switched active dataset to 't2'" in outs[0]
     assert "deprecated" not in outs[0]
 
-    # 2. Legacy 'use' works with deprecation notice
+    # 2. Legacy 'use' is deprecated and removed, redirecting to 'switch'
     outs.clear()
     r.execute_line("use t1", output_fn=outs.append)
-    assert r.path_str == "t1"
-    assert "Switched active dataset to 't1'" in outs[0]
-    assert "'use' is deprecated" in outs[0]
+    assert r.path_str == "t2"
+    assert "'use' is deprecated and has been removed; use 'switch <name>' instead." in outs[0]
 
     # 3. Save ephemeral IPC checkpoint
     outs.clear()

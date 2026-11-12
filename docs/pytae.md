@@ -399,7 +399,7 @@ The **Pytae REPL** provides stateful, iterative in-memory data manipulation and 
 ### Core Architecture & Guarantees
 
 1. **Dedicated Entrypoint (`pytae -i`)**: Interactive sessions launch cleanly with `pytae -i`. Datasets are loaded explicitly with `df = file.parquet`, guaranteeing that session logs and exported replay scripts are 100% reproducible and self-contained.
-2. **Subject-First Multi-Table Workbench**: Load multiple datasets simultaneously (`df1`, `df2`, `orders`, `cust`). Run commands with clear prefixes (`df1 -head 5`, `orders -join cust on=id`), or switch active tables with `switch <name>` (`use` deprecated).
+2. **Subject-First Multi-Table Workbench**: Load multiple datasets simultaneously (`df1`, `df2`, `orders`, `cust`). Run commands with clear prefixes (`df1 -head 5`, `orders -join cust on=id`), or switch active tables with `switch <name>`.
 3. **Non-Destructive by Default**: Bare exploratory queries (`-pivot`, `-filter`, `-head`) format and display previews in the terminal without altering underlying tables in memory. State changes require explicit assignment (`df = df -filter ...`).
 4. **Ephemeral Python Sandboxing & Persistent Logic**: Embedded Python execution (`py { ... }`) provides an extensibility escape hatch. Pre-loads `pd`, `pl`, `pt`, and `DataFrame`. Imported modules, custom functions, and classes persist throughout the REPL session, while transient scratch variables, arrays, and intermediate data objects are immediately purged from RAM upon block exit via `gc.collect()`. Only tables explicitly converted via `.to_pytae()` or assigned to `df` are registered in the workbench.
 5. **Ephemeral IPC Checkpoints (0 MB RAM Overhead)**: Checkpoints serialize frozen table states to ephemeral Arrow IPC format on disk. They consume **0 MB of RAM** and are automatically purged upon session exit, allowing safe instant restoration via `restore [name]` or `reset`.
@@ -410,7 +410,7 @@ The **Pytae REPL** provides stateful, iterative in-memory data manipulation and 
 |:---|:---|:---|:---|
 | **Ingestion** | Assignment | `df = sales.parquet`<br>`cust = cust.csv -dlim ";"` | Ingest file into named table variable |
 | **Workbench** | `status table` | `status table [-v]` | View loaded tables, shapes, memory, and columns |
-| | `switch` | `switch cust` | Switch active dataset cursor (`use` deprecated) |
+| | `switch` | `switch cust` | Switch active dataset cursor |
 | | `rename` | `rename df1 customers` | Zero-copy $O(1)$ in-memory table pointer rename |
 | | Subject-First | `cust -head 5`, `cust -shape` | Execute command directly on named table |
 | | `rm table` | `rm table df1`, `rm table *` | Free table memory and trigger immediate OS page trim |

@@ -1312,7 +1312,7 @@ DATASET INGEST & MANAGEMENT:
   scan <path> [as <alias>]: Scan dataset into lazy table (deprecated; use '<var> = scan <path>')
   load <path> [as <var>]  : Load dataset into memory (deprecated; use '<var> = <path>')
   status table [name] [-v] : Inspect active table or loaded table inventory with RAM
-  switch <name>          : Switch active dataset (e.g. switch df, switch orders; 'use' deprecated)
+  switch <name>          : Switch active dataset (e.g. switch df, switch orders)
   rename <old> <new>     : Rename in-memory table (zero-copy alias reassignment)
   rm table <table_name>  : Remove in-memory table (e.g. rm table df1, or rm table *)
 
@@ -2046,7 +2046,7 @@ def _extract_entry_def_and_uses(entry: str) -> tuple[set[str], set[str], bool, b
         return set(), set(), True, True
 
     # 2. History / Session barriers and explicit resets
-    if clean.startswith(("reset", "restore ", "checkpoint ", "rm table ", "rename ", "switch ", "use ")):
+    if clean.startswith(("reset", "restore ", "checkpoint ", "rm table ", "rename ", "switch ")):
         toks = clean.split()
         if len(toks) >= 3 and toks[0] == "rename":
             return {toks[2]}, {toks[1]}, False, True
@@ -2610,7 +2610,7 @@ def _is_replayable_entry_static(entry: str) -> bool:
         return True
     if clean.startswith("rm table ") or clean == "rm table *":
         return True
-    if clean.startswith("rename ") or clean.startswith(("switch ", "use ")):
+    if clean.startswith("rename ") or clean.startswith("switch "):
         return True
     if clean.endswith(" -collect") or clean == "-collect":
         return True
@@ -3657,15 +3657,16 @@ class PytaeRepl:
             output_fn("pytae: bare 'vars' is not recognized; use 'status var' (or 'status var -v').")
             return True
 
-        # Switch active dataset (`switch <name>`, or deprecated `use <name>`)
-        if first_lower in ("switch", "use"):
-            is_use = (first_lower == "use")
+        # Switch active dataset (`switch <name>`); legacy `use` is deprecated and removed
+        if first_lower == "use":
+            output_fn("pytae: 'use' is deprecated and has been removed; use 'switch <name>' instead.")
+            return True
+        if first_lower == "switch":
             if len(tokens) >= 2:
-                self._cmd_switch(tokens[1], output_fn, is_deprecated_use=is_use)
+                self._cmd_switch(tokens[1], output_fn)
             else:
                 avail = ", ".join(self.tables.keys()) if self.tables else "none"
-                cmd_name = "use" if is_use else "switch"
-                output_fn(f"Usage: {cmd_name} <table_name> (available: {avail})")
+                output_fn(f"Usage: switch <table_name> (available: {avail})")
             return True
 
         # Remove entity: `rm table <name>`, `rm table *`, `rm checkpoint <name>`, `rm checkpoint *`, `rm var <name>`, `rm var *`
@@ -5665,7 +5666,7 @@ class PytaeRepl:
         except Exception as exc:
             output_fn(f"pytae diff error: {exc}")
 
-    def _cmd_switch(self, name: str, output_fn: Callable[[str], None], is_deprecated_use: bool = False) -> None:
+    def _cmd_switch(self, name: str, output_fn: Callable[[str], None]) -> None:
         resolved = self._resolve_table_name(name)
         if resolved is None:
             avail = ", ".join(self.tables.keys()) if self.tables else "none"
@@ -5676,13 +5677,11 @@ class PytaeRepl:
         self.initial_df = self.initial_tables.get(resolved)
         self.path_str = resolved
         msg = f"Switched active dataset to '{resolved}'. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})"
-        if is_deprecated_use:
-            msg += "\n(Note: 'use' is deprecated and will be removed in a future release; use 'switch <name>' instead.)"
         output_fn(msg)
 
     def _cmd_use(self, name: str, output_fn: Callable[[str], None]) -> None:
-        """Deprecated: use switch <table_name> instead."""
-        self._cmd_switch(name, output_fn, is_deprecated_use=True)
+        """Deprecated and removed: use switch <table_name> instead."""
+        output_fn("pytae: 'use' is deprecated and has been removed; use 'switch <name>' instead.")
 
     def _cmd_assign(
         self,
@@ -7039,8 +7038,8 @@ class PytaeRepl:
         if text.startswith(("./", "../", "/", "~")):
             return _complete_paths(text)
 
-        # Case 2: 'switch ' (or 'use ') -> complete table names
-        if last_token in ("switch", "use"):
+        # Case 2: 'switch ' -> complete table names
+        if last_token == "switch":
             return [t for t in self.tables if t.startswith(text)]
 
         # Case 3: 'rename ' -> complete table names (for first argument)
@@ -7115,7 +7114,7 @@ class PytaeRepl:
         # Case 10: Start of line (no prefix tokens)
         if not prefix_tokens:
             top_cmds = [
-                "use", "diff", "rename", "rm", "status", "set", "load", "checkpoint", "restore",
+                "switch", "diff", "rename", "rm", "status", "set", "load", "checkpoint", "restore",
                 "reset", "history", "session", "sessions", "sql", "py",
                 "exit", "quit", "help", "time",
                 "clear",

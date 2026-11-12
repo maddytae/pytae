@@ -398,7 +398,7 @@ pytae> sessions
 # 1. State Management & Checkpoints
 status [-v]          # Display unified session status, active table, RAM consumption, and history
 status table [-v]    # Inspect active table and list all loaded tables (-v for cols & RAM)
-switch orders        # Switch active dataset cursor to 'orders' ('use' deprecated)
+switch orders        # Switch active dataset cursor to 'orders'
 rename df1 customers # Zero-copy O(1) in-memory table rename
 -diff [target]       # Diff active table vs latest checkpoint, another table, or checkpoint:table
 reset                # Revert to latest checkpoint (or initial dataset if none)

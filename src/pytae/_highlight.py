@@ -97,7 +97,6 @@ _REPL_COMMANDS: frozenset[str] = frozenset(
     {
         "status",
         "switch",
-        "use",
         "rename",
         "rm",
         "checkpoint",
