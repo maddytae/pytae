@@ -2653,11 +2653,15 @@ def test_repl_tab_autocompletions():
     r.execute_line("orders = sample:tips")
     r.execute_line("checkpoint cp_v1")
 
-    # Table completion after 'switch ' (and not after removed 'use ')
+    # Table completion after 'switch ' (and not after removed 'use ' or after table name)
     matches = r._get_completions("cu", "switch cu")
     assert matches == ["customers"]
+    matches = r._get_completions("", "switch customers ")
+    assert matches == []
     matches = r._get_completions("cu", "use cu")
     assert matches == []
+    assert r._get_completions("", "restore cp_v1 ") == []
+    assert r._get_completions("", "rm table customers ") == []
 
     # Table completion after 'rename '
     matches = r._get_completions("or", "rename or")

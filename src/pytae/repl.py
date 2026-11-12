@@ -7015,6 +7015,7 @@ class PytaeRepl:
                 return [opt for opt in ("all", "default", "5", "10", "20") if opt.startswith(text)]
             if any(k in [t.lower() for t in prefix_tokens] for k in ("float_precision", "precision")):
                 return [opt for opt in ("auto", "default", "2", "4", "6") if opt.startswith(text)]
+            return []
 
         # Case 0b: 'export ' or 'save ' -> complete subcommands and paths
         if first_token in ("export", "save"):
@@ -7038,55 +7039,80 @@ class PytaeRepl:
         if text.startswith(("./", "../", "/", "~")):
             return _complete_paths(text)
 
-        # Case 2: 'switch ' -> complete table names
-        if last_token == "switch":
-            return [t for t in self.tables if t.startswith(text)]
+        # Case 2: 'switch ' -> complete table names only for first argument
+        if first_token == "switch":
+            if len(prefix_tokens) == 1:
+                return [t for t in self.tables if t.startswith(text)]
+            return []
 
-        # Case 3: 'rename ' -> complete table names (for first argument)
-        if last_token == "rename":
-            return [t for t in self.tables if t.startswith(text)]
+        # Deprecated/removed 'use' has no completions
+        if first_token == "use":
+            return []
 
-        # Case 4: 'restore ' (or 'revert ', 'rollback ') -> complete checkpoint names
-        if last_token in ("restore", "revert", "rollback"):
-            return [c for c in self.checkpoints if c.startswith(text)]
+        # Case 3: 'rename ' -> complete table names (for first argument only)
+        if first_token == "rename":
+            if len(prefix_tokens) == 1:
+                return [t for t in self.tables if t.startswith(text)]
+            return []
+
+        # Case 4: 'restore ' / 'checkpoint ' / 'reset ' -> complete checkpoint/table names, never column names
+        if first_token in ("restore", "revert", "rollback"):
+            if len(prefix_tokens) == 1:
+                return [c for c in self.checkpoints if c.startswith(text)]
+            return []
+        if first_token == "checkpoint":
+            if len(prefix_tokens) == 1:
+                return [c for c in self.checkpoints if c.startswith(text)]
+            return []
+        if first_token == "reset":
+            if len(prefix_tokens) == 1:
+                opts = ["initial"] + list(self.tables.keys())
+                return [o for o in opts if o.startswith(text)]
+            if len(prefix_tokens) == 2 and prefix_tokens[1].lower() != "initial":
+                return ["initial"] if "initial".startswith(text) else []
+            return []
 
         # Case 5: 'rm ' -> complete categories: table, checkpoint, var
-        if last_token == "rm":
-            return [opt for opt in ("table", "checkpoint", "var") if opt.startswith(text)]
-        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "rm" and prefix_tokens[-1].lower() == "table":
-            options = ["*"] + list(self.tables.keys())
-            return [t for t in options if t.startswith(text)]
-        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "rm" and prefix_tokens[-1].lower() == "checkpoint":
-            options = ["*"] + list(self.checkpoints.keys())
-            return [c for c in options if c.startswith(text)]
-        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "rm" and prefix_tokens[-1].lower() == "var":
-            options = ["*"] + list(self.variables.keys())
-            return [v for v in options if v.startswith(text)]
+        if first_token == "rm":
+            if len(prefix_tokens) == 1:
+                return [opt for opt in ("table", "checkpoint", "var") if opt.startswith(text)]
+            if len(prefix_tokens) == 2 and prefix_tokens[1].lower() == "table":
+                options = ["*"] + list(self.tables.keys())
+                return [t for t in options if t.startswith(text)]
+            if len(prefix_tokens) == 2 and prefix_tokens[1].lower() == "checkpoint":
+                options = ["*"] + list(self.checkpoints.keys())
+                return [c for c in options if c.startswith(text)]
+            if len(prefix_tokens) == 2 and prefix_tokens[1].lower() == "var":
+                options = ["*"] + list(self.variables.keys())
+                return [v for v in options if v.startswith(text)]
+            return []
 
         # Case 5b: 'status ' -> complete subcommands: session, table, checkpoint, var, -v
-        if last_token == "status":
-            return [
-                opt
-                for opt in (
-                    "session",
-                    "table",
-                    "checkpoint",
-                    "var",
-                    "-v",
-                )
-                if opt.startswith(text)
-            ]
-        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "status" and prefix_tokens[-1].lower() == "session":
-            return [opt for opt in ("-v", "-verbose") if opt.startswith(text)]
-        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "status" and prefix_tokens[-1].lower() == "table":
-            options = list(self.tables.keys()) + ["-v"]
-            return [t for t in options if t.startswith(text)]
-        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "status" and prefix_tokens[-1].lower() == "checkpoint":
-            options = list(self.checkpoints.keys()) + ["-v"]
-            return [c for c in options if c.startswith(text)]
-        if len(prefix_tokens) >= 2 and prefix_tokens[-2].lower() == "status" and prefix_tokens[-1].lower() == "var":
-            options = list(self.variables.keys()) + ["-v"]
-            return [v for v in options if v.startswith(text)]
+        if first_token == "status":
+            if len(prefix_tokens) == 1:
+                return [
+                    opt
+                    for opt in ("session", "table", "checkpoint", "var", "-v")
+                    if opt.startswith(text)
+                ]
+            if len(prefix_tokens) == 2 and prefix_tokens[1].lower() == "session":
+                return [opt for opt in ("-v", "-verbose") if opt.startswith(text)]
+            if len(prefix_tokens) == 2 and prefix_tokens[1].lower() == "table":
+                options = list(self.tables.keys()) + ["-v"]
+                return [t for t in options if t.startswith(text)]
+            if len(prefix_tokens) == 2 and prefix_tokens[1].lower() == "checkpoint":
+                options = list(self.checkpoints.keys()) + ["-v"]
+                return [c for c in options if c.startswith(text)]
+            if len(prefix_tokens) == 2 and prefix_tokens[1].lower() == "var":
+                options = list(self.variables.keys()) + ["-v"]
+                return [v for v in options if v.startswith(text)]
+            return []
+
+        # Exit / session control commands do not take DataFrame columns
+        if first_token in ("exit", "quit"):
+            return [opt for opt in ("-s", "-relative") if opt.startswith(text) and opt not in prefix_tokens]
+        if first_token in ("history", "clear"):
+            return []
 
         # Case 6: '-diff ' -> complete table names, checkpoint names, flags, or on= columns
         if first_token == "-diff":
