@@ -65,17 +65,18 @@ def test_highlight_semantic_tokens():
     assert "\x1b[35m@limit\x1b[0m" in dsl_hl
     assert "\x1b[33m10\x1b[0m" in dsl_hl
 
-    # SQL inside -sql "..."
+    # SQL inside sql { ... } and <var> = sql { ... }
     sql_hl = highlight_repl_text(
-        '-sql "SELECT COUNT(*) FROM orders WHERE status = \'ok\'"',
+        "summary = sql { SELECT COUNT(*) FROM orders WHERE status = 'ok' }",
         mode="dsl",
         tables={"orders"},
     )
-    assert "\x1b[1;36m-sql\x1b[0m" in sql_hl
+    assert "\x1b[1;36msql\x1b[0m" in sql_hl
     assert "\x1b[1;34mSELECT\x1b[0m" in sql_hl
     assert "\x1b[36mCOUNT\x1b[0m" in sql_hl
     assert "\x1b[1;32morders\x1b[0m" in sql_hl
     assert "\x1b[32m'ok'\x1b[0m" in sql_hl
+    assert strip_ansi(sql_hl) == "summary = sql { SELECT COUNT(*) FROM orders WHERE status = 'ok' }"
 
     # Python mode + preloaded stack + persisted py_env + session variables without @
     py_hl = highlight_repl_text(
@@ -98,6 +99,9 @@ def test_detect_multiline_mode():
     assert detect_multiline_mode(["py {", "  for i in range(3):"]) == "py"
     assert detect_multiline_mode(["py {", "  d = {'a': 1}"]) == "py"
     assert detect_multiline_mode(["py {", "  x = 1", "}"]) == "dsl"
+    assert detect_multiline_mode(["sql {", "  SELECT * FROM df"]) == "sql"
+    assert detect_multiline_mode(["summary = sql {", "  SELECT * FROM df WHERE msg = '}'"]) == "sql"
+    assert detect_multiline_mode(["summary = sql {", "  SELECT * FROM df", "}"]) == "dsl"
     assert detect_multiline_mode(['summary = -sql "', "  SELECT * FROM df", "  WHERE x = 'abc'"]) == "sql_dq"
     assert detect_multiline_mode(['summary = -sql "', '  SELECT * FROM df"']) == "dsl"
     assert detect_multiline_mode(["summary = -sql '", "  SELECT * FROM df"]) == "sql_sq"

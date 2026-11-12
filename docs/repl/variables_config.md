@@ -12,7 +12,7 @@ This guide covers defining session parameters and constants (`@var`), traversing
   - [Defining Variables (`<name> = <literal>`)](#defining-variables-name--literal)
   - [Supported Data Types](#supported-data-types)
   - [Traversing Nested Dictionaries & Lists (`@cfg.key`, `@cfg[idx]`)](#traversing-nested-dictionaries--lists-cfgkey-cfgidx)
-  - [Using Variables in Pipeline Verbs (`-filter`, `-mutate`, `-sql`)](#using-variables-in-pipeline-verbs--filter--mutate--sql)
+  - [Using Variables in Pipeline Verbs (`-filter`, `-mutate`, `sql { ... }`)](#using-variables-in-pipeline-verbs--filter--mutate-sql----)
   - [Accessing Session Variables in Python (`py` blocks)](#accessing-session-variables-in-python-py-blocks)
   - [Inspecting Variables (`status var`, `status var <name>`)](#inspecting-variables-status-var-status-var-name)
   - [Deleting Variables (`rm var <name>`, `rm var *`)](#deleting-variables-rm-var-name-rm-var-)
@@ -139,7 +139,7 @@ pytae> @tiers[2]
 'gold'
 ```
 
-### Using Variables in Pipeline Verbs (`-filter`, `-mutate`, `-sql`)
+### Using Variables in Pipeline Verbs (`-filter`, `-mutate`, `sql { ... }`)
 
 Inject session variables directly into pipeline filter expressions, column derivations, and SQL queries:
 
@@ -151,7 +151,7 @@ pytae [orders]> -filter "amount >= @threshold and country in @target_countries"
 pytae [orders]> orders = -mutate "gross_amount = amount * (1 + @tax_rate)"
 
 # 3. Use in ANSI SQL
-pytae [orders]> -sql "SELECT * FROM orders WHERE amount > @thresholds.medium"
+pytae [orders]> sql { SELECT * FROM orders WHERE amount > @thresholds.medium }
 ```
 
 Variables are substituted at query compile time, ensuring full Polars SIMD optimization without Python interpreter overhead.
@@ -277,7 +277,7 @@ max_rows        = 10 (options: <int>, default)
 | **`max_cols`** | `cols` | `<int>`, `all`, `default` | `all` | Maximum columns printed in wide tables before truncating. |
 | **`float_precision`** | `precision` | `<int>`, `auto`, `default`| `auto` | Decimal places shown for floating-point values. |
 | **`comma`** | — | `on`, `off` | `off` | Format large numbers with thousands separators (`1,234,567`). |
-| **`syntax_highlight`** | `highlight` | `on`, `off` | `on` | Live ANSI syntax highlighting across Pytae DSL, `-sql`, `py { ... }`, and prompts. |
+| **`syntax_highlight`** | `highlight` | `on`, `off` | `on` | Live ANSI syntax highlighting across Pytae DSL, `sql { ... }`, `py { ... }`, and prompts. |
 
 Multiple settings can be combined on a single line:
 

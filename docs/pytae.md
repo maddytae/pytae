@@ -418,11 +418,11 @@ The **Pytae REPL** provides stateful, iterative in-memory data manipulation and 
 | | Relational Joins | `orders -join cust on=id how=left` | Relational join across workbench tables |
 | **Inspection** | Metadata | `-shape`, `-cols [asc\|desc\|pattern]`, `-schema`, `-nulls` | Non-destructive structural inspection |
 | | Previews | `-head 10`, `-tail 5`, `-sample 10`, `-diff [target]` | Non-destructive formatted row previews & milestone diffs |
-| **SQL & Python**| `-sql` | `-sql "SELECT * FROM orders JOIN cust ..."` | Pure ANSI SQL across all loaded workbench tables |
+| **SQL & Python**| `sql` | `sql { SELECT * FROM orders JOIN cust ... }` | Non-destructive SQL preview (or `res = sql { ... }`) |
 | | `py` | `py { k = df.to("pandas"); pt.DataFrame(k).to_pytae("k") }` | Embedded Python with persistent imports, ephemeral sandboxing & `.to_pytae()` |
 | **Checkpoints** | `checkpoint` | `checkpoint baseline` | Save ephemeral IPC snapshot (0 MB RAM overhead) |
 | | `restore` / `reset` | `restore baseline`, `reset` | Instantly revert workbench state to checkpoint |
-| **Parameters** | `@var` | `min_val = 3500`, `@cfg.threshold` | Session variables substituted in `-filter`, `-mutate`, `-sql` |
+| **Parameters** | `@var` | `min_val = 3500`, `@cfg.threshold` | Session variables substituted in `-filter`, `-mutate`, `sql { ... }` |
 | **Export & Replay**| `exit -s` / `export` | `exit -s`, `exit -s py`, `export pipeline.pt` | Export reproducible script (on exit or in-session) |
 | | Batch Replay | `pytae pipeline.pt`, `pytae -i pipeline.pt` | Headless execution or interactive session preload |
 

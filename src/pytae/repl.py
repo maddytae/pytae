@@ -817,6 +817,13 @@ def _console_input(
                             next_indent = 0
                         else:
                             next_indent = max(4, cur_indent)
+                    elif re.match(r"^(?:[A-Za-z_][A-Za-z0-9_]*\s*=\s*)?sql\s*\{", buf_text.strip(), re.IGNORECASE):
+                        if stripped_cur.lower() in ("sql {", "sql{", "{") or re.match(r"^[A-Za-z_][A-Za-z0-9_]*\s*=\s*sql\s*\{$", stripped_cur, re.IGNORECASE):
+                            next_indent = 4
+                        elif stripped_cur.startswith("}"):
+                            next_indent = 0
+                        else:
+                            next_indent = max(4, cur_indent)
                     else:
                         next_indent = 2
 
@@ -1321,7 +1328,7 @@ DATA TRANSFORMATION & PIPELINES:
   <tbl> -<pipeline>      : Run pipeline on specific table (e.g. df1 -filter "amount > 100")
   <tbl> -join <t2> on=<k>: Join tables (e.g. df1 -join df2 on=cust_id -o merged.parquet)
   <var> = <tbl> -<pipe>  : Assign pipeline result to new variable (e.g. df3 = df1 -filter ...)
-  <var> = -sql "<query>" : Create table from ANSI SQL across loaded tables
+  <var> = sql { <query> }: Create table from ANSI SQL across loaded tables
 
 INSPECTION & EXPORT:
   -head [N] / -tail [N]  : Non-destructive preview of top/bottom N rows (e.g. -head 10)
@@ -1357,12 +1364,12 @@ STATE & WORKBENCH:
 VARIABLES & PARAMETERS:
   <name> = <literal>     : Define scalar, list, or dict variable (e.g. min_mass = 3500, cfg = {"a": 1})
   @<name>                : Print value of variable (e.g. @min_mass, @cfg.a)
-  @<name> in expressions : Reference variable in -filter / -mutate / -sql (e.g. -filter "mass > @min_mass")
+  @<name> in expressions : Reference variable in -filter / -mutate / sql { ... } (e.g. -filter "mass > @min_mass")
   status var [name] [-v] : List all session variables and constants (or inspect specific variable)
   rm var <name>          : Delete a session variable (or 'rm var *')
 
 QUERY & PYTHON EXPRESSIONS:
-  -sql "<query>"         : Run ANSI SQL across loaded tables (e.g. -sql "SELECT * FROM df1 JOIN df2 ON ...")
+  sql { <query> }        : Non-destructive preview of ANSI SQL across loaded tables (e.g. sql { SELECT * FROM df1 JOIN df2 ON ... })
   py { <python code> }   : Run Python block/expression with 'df' (pytae), 'pldf' (polars), and loaded tables
 
 AUTOCOMPLETION & SHORTCUTS:
@@ -1442,7 +1449,6 @@ _DISALLOWED_ALIASES: dict[str, str] = {
     "--rename": "-rename",
     "--join": "-join",
     "--concat": "-concat",
-    "--sql": "-sql",
     "--time": "-time",
     "--output": "-o <path>",
     "-output": "-o <path>",
@@ -1524,13 +1530,14 @@ _BARE_PIPELINE_VERBS = frozenset(
         "describe",
         "head",
         "tail",
-        "sql",
         "time",
     )
 )
 
 _RESERVED_VARIABLE_NAMES = _BARE_PIPELINE_VERBS | frozenset(
     (
+        "sql",
+        "py",
         "help",
         "exit",
         "quit",
@@ -2085,7 +2092,7 @@ def _extract_entry_def_and_uses(entry: str) -> tuple[set[str], set[str], bool, b
         if left.isidentifier():
             defs.add(left)
             # Find uses on the right side:
-            if right.startswith(("-sql", "--sql")):
+            if re.match(r"^(?:sql\s*\{|-sql|--sql)\b|^(?:sql\s*\{)", right, re.IGNORECASE):
                 words = set(re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*\b", right))
                 sql_keywords = {
                     "select", "from", "where", "join", "inner", "left", "right", "outer",
@@ -2140,11 +2147,10 @@ def _extract_entry_def_and_uses(entry: str) -> tuple[set[str], set[str], bool, b
 
             return defs, uses, has_side_effect, False
 
-    # 6. Direct SQL statement: -sql "..."
-    if clean.startswith(("-sql", "--sql")):
-        has_side_effect = True
+    # 6. Direct SQL statement: sql { ... } (non-destructive preview) or legacy -sql
+    if clean.startswith(("-sql", "--sql")) or clean.lower().startswith(("sql {", "sql{")):
         words = set(re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*\b", clean))
-        return defs, words, has_side_effect, False
+        return defs, words, False, False
 
     # 7. Bare table action or collect: e.g. tbl -collect
     if toks and toks[0].isidentifier():
@@ -2226,6 +2232,26 @@ def _compile_history_to_python(
         "",
     ]
 
+    known_tables: set[str] = set()
+
+    def _compile_sql_assignment(target_var: str, query_text: str) -> str:
+        sql_words = re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*\b", query_text)
+        ref_tables: list[str] = []
+        seen_t: set[str] = set()
+        for w in sql_words:
+            if w in known_tables and w not in seen_t:
+                seen_t.add(w)
+                ref_tables.append(w)
+        if not ref_tables and "df" in known_tables:
+            ref_tables.append("df")
+        if not ref_tables and known_tables:
+            ref_tables.extend(sorted(known_tables))
+        q_lit = f'"""\n{query_text}\n"""' if ("\n" in query_text and '"""' not in query_text) else repr(query_text)
+        if ref_tables:
+            frames_str = ", ".join(f"{repr(t)}: {t}" for t in ref_tables)
+            return f"{target_var} = pt.sql({{{frames_str}}}, {q_lit})"
+        return f"{target_var} = pt.sql(df, {q_lit})"
+
     for raw_entry in entries:
         clean = raw_entry.strip()
         if not clean or clean.startswith("#"):
@@ -2259,14 +2285,17 @@ def _compile_history_to_python(
                     lines.append(f"{alias} = pl.from_pandas(pd.read_clipboard())")
                 else:
                     lines.append(f"{alias} = pt.read({repr(in_path)})")
+                known_tables.add(alias)
             elif len(toks) >= 2:
                 path = toks[1].strip("\"'")
                 in_path = _to_relative_path(path) if relative else path
                 if path.lower() in ("clip", "clipboard"):
                     lines.append("df = pl.from_pandas(pd.read_clipboard())")
+                    known_tables.add("df")
                 else:
                     alias = Path(path).stem or "df"
                     lines.append(f"{alias} = pt.read({repr(in_path)})")
+                    known_tables.add(alias)
             continue
 
         # 2b. Lazy scan: `scan <path> as <alias>` or `scan <path>`
@@ -2291,6 +2320,7 @@ def _compile_history_to_python(
                     )
                 )
                 lines.append(f"{alias} = pl.{scan_fn}({repr(in_path)}{scan_extra})")
+                known_tables.add(alias)
             elif len(toks) >= 2:
                 path = toks[1].strip("\"'")
                 in_path = _to_relative_path(path) if relative else path
@@ -2306,6 +2336,7 @@ def _compile_history_to_python(
                     )
                 )
                 lines.append(f"{alias} = pl.{scan_fn}({repr(in_path)}{scan_extra})")
+                known_tables.add(alias)
             continue
 
         # 3. Assignments: `<target> = <expression>`
@@ -2332,6 +2363,22 @@ def _compile_history_to_python(
                         if sp in ("-dlim", "--dlim", "-sep", "--sep") and idx_p + 1 < len(scan_parts[1:]):
                             scan_extra = f", separator={repr(scan_parts[1:][idx_p + 1])}"
                     lines.append(f"{target} = pl.{scan_fn}({repr(in_sp)}{scan_extra})")
+                    known_tables.add(target)
+                    continue
+                if re.match(r"^sql\s*\{", expr, re.IGNORECASE):
+                    import textwrap
+
+                    raw_sql = expr[expr.index("{") + 1 :]
+                    if raw_sql.endswith("}"):
+                        raw_sql = raw_sql[:-1]
+                    q = textwrap.dedent(raw_sql).strip()
+                    lines.append(_compile_sql_assignment(target, q))
+                    known_tables.add(target)
+                    continue
+                if expr.startswith(("-sql", "--sql")):
+                    q = expr.split(None, 1)[1].strip().strip("\"'") if len(expr.split(None, 1)) > 1 else ""
+                    lines.append(_compile_sql_assignment(target, q))
+                    known_tables.add(target)
                     continue
                 toks = shlex.split(expr)
                 if toks and toks[0].lower() in ("clip", "clipboard"):
@@ -2343,10 +2390,12 @@ def _compile_history_to_python(
                             except ValueError:
                                 pass
                     lines.append(f"{target} = {clip_code}")
+                    known_tables.add(target)
                     continue
                 if expr.startswith("sample:"):
                     s_name = expr.split(":", 1)[1].strip()
                     lines.append(f"{target} = pt.sample({repr(s_name)})")
+                    known_tables.add(target)
                     continue
                 if expr.startswith("load "):
                     p = expr.split("load ", 1)[1].strip().strip("\"'")
@@ -2355,10 +2404,7 @@ def _compile_history_to_python(
                         lines.append(f"{target} = pl.from_pandas(pd.read_clipboard())")
                     else:
                         lines.append(f"{target} = pt.read({repr(in_p)})")
-                    continue
-                if expr.startswith(("-sql", "--sql")):
-                    q = expr.split(None, 1)[1].strip().strip("\"'") if len(expr.split(None, 1)) > 1 else ""
-                    lines.append(f"{target} = pt.sql({repr(q)})")
+                    known_tables.add(target)
                     continue
 
                 cleaned_src_tokens, src_reader_kwargs, src_nrows = _parse_reader_options(toks)
@@ -2386,13 +2432,16 @@ def _compile_history_to_python(
                         pipe_toks = toks[1:]
                     chain = _transpile_pipeline_tokens_to_python(pipe_toks)
                     lines.append(f"{target} = {src_code}{chain}")
+                    known_tables.add(target)
                     continue
 
-        # 5. Direct SQL: `-sql "<query>"`
+        # 5. Exploratory bare SQL preview: skip or comment in script
+        if clean.lower().startswith(("sql {", "sql{")):
+            continue
         if clean.startswith(("-sql", "--sql")):
             parts = clean.split(None, 1)
             q = parts[1].strip().strip("\"'") if len(parts) > 1 else ""
-            lines.append(f"res = pt.sql({repr(q)})")
+            lines.append(_compile_sql_assignment("res", q))
             continue
 
         # 6. Output commands: `<tbl> -o <path>` or `export <path>`
@@ -2548,7 +2597,9 @@ def _is_replayable_entry_static(entry: str) -> bool:
                 continue
             return True
 
-    # SQL statements: -sql "<query>"
+    # Bare SQL statements: sql { ... } are non-destructive previews (not replayable state changes)
+    if clean.lower().startswith(("sql {", "sql{", "sql ")) or clean.lower() == "sql":
+        return False
     if clean.startswith(("-sql", "--sql")):
         return True
 
@@ -3289,7 +3340,7 @@ class PytaeRepl:
         """Core dispatch logic for one REPL command line."""
         original_line = line
         # Collapse multi-line and inline line continuations (backslash followed by newline or whitespace)
-        if "\\" in line and not line.startswith(("py\n", "py {", "py{", "py\t")):
+        if "\\" in line and not line.startswith(("py\n", "py {", "py{", "py\t", "sql\n", "sql {", "sql{", "sql\t")) and not re.match(r"^[A-Za-z_][A-Za-z0-9_]*\s*=\s*sql\s*\{", line, re.IGNORECASE):
             line = re.sub(r"\s*\\\s*\n\s*", " ", line)
             line = _collapse_inline_line_continuations(line)
         # Handle ANSI arrow keys sent directly via Git Bash / MinTTY terminal pipe
@@ -4026,14 +4077,13 @@ class PytaeRepl:
             output_fn("pytae: '-output' is not recognized; use '-o <path>'.")
             return True
 
-        # SQL Query: -sql "<query>"
+        # SQL Query: strict sql { ... } block syntax in REPL
         if first_lower in ("-sql", "--sql"):
-            if first_lower == "--sql":
-                output_fn("pytae: '--sql' uses double hyphens; pytae uses single hyphen '-sql'.")
-                return True
-            raw_query = line[4:].strip()
-            query = raw_query.strip("\"'")
-            self._cmd_sql(query, output_fn)
+            output_fn("pytae: '-sql' is not used in the REPL; enclose SQL queries in braces: sql { ... }")
+            return True
+        if first_lower == "sql" or line.lower().startswith("sql{"):
+            expr = line[3:].strip()
+            self._cmd_sql(expr, output_fn)
             return True
 
         # Python Expression
@@ -5652,14 +5702,26 @@ class PytaeRepl:
             self._record_history(hist_line)
             return
 
-        # 1. SQL query assignment: `df3 = -sql "<query>"`
-        if right_expr.startswith(("-sql ", "-sql=", "-sql\n", "-sql\t")):
+        # 1. SQL query assignment: strict `<var> = sql { <query> }`
+        if right_expr.startswith(("-sql", "--sql")):
+            output_fn(f"pytae: '-sql' is not used in the REPL; enclose SQL queries in braces: {var_name} = sql {{ ... }}")
+            return
+
+        if re.match(r"^sql(?:\s|\{|$)", right_expr, re.IGNORECASE):
+            sql_expr = right_expr[3:].strip()
+            if not (sql_expr.startswith("{") and sql_expr.endswith("}")):
+                output_fn(f"pytae error: SQL commands must be enclosed in braces: {var_name} = sql {{ ... }}")
+                return
             if var_name in self.variables:
                 output_fn(
                     f"pytae: '{var_name}' is already a session variable; cannot assign as a table. Use 'rm var {var_name}' first."
                 )
                 return
-            query = right_expr[4:].lstrip(" =").strip().strip("\"'")
+            import textwrap
+
+            query = textwrap.dedent(sql_expr[1:-1]).strip()
+            if not query:
+                return
             try:
                 query = self._substitute_variables(query)
             except KeyError as exc:
@@ -5682,16 +5744,13 @@ class PytaeRepl:
                 self.orig_df = self.orig_tables.get(var_name)
                 self.initial_df = self.initial_tables.get(var_name)
                 self.path_str = var_name
-                self._record_history(f'{var_name} = -sql "{query}"')
+                rec_entry = f"{var_name} = sql {{\n{query}\n}}" if "\n" in query else f"{var_name} = sql {{ {query} }}"
+                self._record_history(rec_entry)
                 output_fn(f"Created '{var_name}' from SQL query ({res.shape[0]:,} rows x {res.shape[1]} cols).")
                 return
             except Exception as exc:
                 output_fn(f"pytae SQL Error: {exc}")
                 return
-
-        if right_expr.lower().startswith("sql "):
-            output_fn("pytae: bare 'sql' is not recognized; use '-sql \"<query>\"' (matching CLI syntax).")
-            return
 
         # 1b. Literal collection assignment: `species = ['Gentoo', 'Adelie']` or `cfg = {'a': 1}`
         if right_expr.lstrip().startswith(("[", "{")):
@@ -6073,10 +6132,8 @@ class PytaeRepl:
             output_fn("pytae: '-output' is not recognized; use '-o <path>'.")
         elif first_sub == "-join":
             self._cmd_join(sub_tokens[1:], output_fn)
-        elif first_sub == "-sql":
-            raw_query = norm_sub[4:].strip()
-            query = raw_query.strip("\"'")
-            self._cmd_sql(query, output_fn)
+        elif first_sub in ("-sql", "--sql", "sql"):
+            output_fn("pytae: target-prefixed SQL is not used; write SQL directly inside 'sql { ... }' referencing loaded table names.")
         else:
             self._cmd_pipeline(norm_sub, sub_tokens, output_fn)
 
@@ -6403,12 +6460,21 @@ class PytaeRepl:
             output_fn(f"pytae: failed to save to {out_path}: {exc}")
             return False
 
-    def _cmd_sql(self, query: str, output_fn: Callable[[str], None]) -> None:
-        if self.current_df is None:
+    def _cmd_sql(self, expr: str, output_fn: Callable[[str], None]) -> None:
+        if self.current_df is None and not self.tables:
             output_fn("pytae: no dataset loaded for SQL query.")
             return
+        raw_expr = expr.strip()
+        if not raw_expr:
+            output_fn("Usage: sql { <SQL query> }")
+            return
+        if not (raw_expr.startswith("{") and raw_expr.endswith("}")):
+            output_fn("pytae error: SQL commands must be enclosed in braces: sql { ... }")
+            return
+        import textwrap
+
+        query = textwrap.dedent(raw_expr[1:-1]).strip()
         if not query:
-            output_fn('Usage: -sql "<query>" (e.g. -sql "SELECT species, COUNT(*) FROM df GROUP BY 1")')
             return
         try:
             query = self._substitute_variables(query)
@@ -6425,12 +6491,10 @@ class PytaeRepl:
                     if cp_df is not None:
                         ctx.register(cp_name, cp_df)
             res = ctx.execute(query).collect()
-            output_fn(f"-> {self.path_str or 'df'}: {res.shape[0]:,} rows x {res.shape[1]} cols")
-            # Update state with SQL query result
-            self.current_df = res
-            if self.path_str and self.path_str in self.tables:
-                self.tables[self.path_str] = res
-            self._record_history(f'-sql "{query}"')
+            # Non-destructive preview only (like -head / bare exploration)
+            output_fn(self._format_table(res))
+            rec_entry = f"sql {{\n{query}\n}}" if "\n" in query else f"sql {{ {query} }}"
+            self._record_history(rec_entry)
         except Exception as exc:
             output_fn(f"pytae SQL Error: {exc}")
 
@@ -7006,7 +7070,7 @@ class PytaeRepl:
                 "-head", "-tail", "-sample", "-describe", "-glimpse", "-schema",
                 "-columns", "-cols", "-info", "-shape", "-print", "-o", "-sort", "-where",
                 "-drop", "-rename", "-relocate", "-tol", "-save", "-restore", "-time",
-                "-dropna", "-fillna", "-sql", "-opts",
+                "-dropna", "-fillna", "-opts",
             ]
             return [f for f in flags if f.startswith(text)]
 
@@ -7014,8 +7078,8 @@ class PytaeRepl:
         if not prefix_tokens:
             top_cmds = [
                 "use", "diff", "rename", "rm", "status", "set", "load", "checkpoint", "restore",
-                "reset", "history", "session", "sessions", "sql",
-                "python", "exit", "quit", "help", "time",
+                "reset", "history", "session", "sessions", "sql", "py",
+                "exit", "quit", "help", "time",
                 "clear",
                 # Bare verbs
                 "filter", "select", "mutate", "arrange", "group_by", "by", "summarize",
@@ -7025,8 +7089,14 @@ class PytaeRepl:
             candidates = top_cmds + list(self.tables.keys())
             return [c for c in candidates if c.startswith(text)]
 
-        # Case 11: SQL Context (Option A: only explicit table names and checkpoints, no magic aliases)
-        if first_token in ("sql", "-sql") or "SELECT" in [t.upper() for t in prefix_tokens]:
+        # Case 11: SQL Context (only explicit table names and checkpoints, no magic aliases)
+        in_sql_ctx = (
+            first_token in ("sql", "-sql")
+            or first_token.lower().startswith("sql{")
+            or any(t.lower() in ("sql", "sql{") for t in prefix_tokens)
+            or "SELECT" in [t.upper() for t in prefix_tokens]
+        )
+        if in_sql_ctx:
             sql_keywords = [
                 "SELECT", "FROM", "WHERE", "GROUP BY", "ORDER BY", "LIMIT", "JOIN",
                 "LEFT JOIN", "INNER JOIN", "ON", "AS", "COUNT", "SUM", "AVG", "MIN", "MAX",
@@ -7331,7 +7401,7 @@ class PytaeRepl:
                             else:
                                 output_fn(f"pytae error: {msg}")
                 else:
-                    # Smart auto-indentation inside incomplete multi-line blocks (e.g. py { ... })
+                    # Smart auto-indentation inside incomplete multi-line blocks (e.g. py { ... }, sql { ... })
                     if any(b.strip().startswith(("py {", "py{")) for b in multi_buffer):
                         cur_line = line.rstrip()
                         cur_indent = len(line) - len(line.lstrip(" "))
@@ -7342,6 +7412,22 @@ class PytaeRepl:
                             next_indent = cur_indent + 4
                         elif stripped_cur in ("return", "pass", "break", "continue") or stripped_cur.startswith(("return ", "raise ")):
                             next_indent = max(4, cur_indent - 4)
+                        elif stripped_cur.startswith("}"):
+                            next_indent = 0
+                        else:
+                            next_indent = cur_indent
+                        if next_indent > 0:
+                            pending_input_queue.append(" " * next_indent)
+                    elif any(
+                        re.match(r"^(?:[A-Za-z_][A-Za-z0-9_]*\s*=\s*)?sql\s*\{", b.strip(), re.IGNORECASE)
+                        for b in multi_buffer
+                    ):
+                        cur_indent = len(line) - len(line.lstrip(" "))
+                        stripped_cur = line.strip()
+                        if stripped_cur.lower() in ("sql {", "sql{", "{") or re.match(
+                            r"^[A-Za-z_][A-Za-z0-9_]*\s*=\s*sql\s*\{$", stripped_cur, re.IGNORECASE
+                        ):
+                            next_indent = 4
                         elif stripped_cur.startswith("}"):
                             next_indent = 0
                         else:

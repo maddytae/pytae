@@ -51,6 +51,7 @@ _REPL_COMMANDS: frozenset[str] = frozenset(
         "on",
         "off",
         "diff",
+        "sql",
     }
 )
 
@@ -226,7 +227,7 @@ _SQL_TOKEN_RE = re.compile(
     r"|(?P<VAR>@[A-Za-z_][A-Za-z0-9_.]*)"
     r"|(?P<NUMBER>\b\d+(?:\.\d+)?\b)"
     r"|(?P<IDENT>\b[A-Za-z_][A-Za-z0-9_]*\b)"
-    r"|(?P<BRACE>[()])"
+    r"|(?P<BRACE>[{}()])"
 )
 
 _DSL_TOKEN_RE = re.compile(
@@ -403,8 +404,8 @@ def _highlight_quoted_sql(tok: str, tables: AbstractSet[str]) -> str:
     return _colorize(quote, _COLOR_STRING) + _highlight_sql(inner, tables=tables)
 
 
-def _find_matching_py_close(text: str, open_brace_idx: int) -> int | None:
-    """Find matching closing '}' for a 'py {' block starting at open_brace_idx, ignoring strings/comments."""
+def _find_matching_brace_close(text: str, open_brace_idx: int, *, sql_mode: bool = False) -> int | None:
+    """Find matching closing '}' for a brace block starting at open_brace_idx, ignoring strings/comments."""
     depth = 1
     idx = open_brace_idx + 1
     n = len(text)
@@ -418,7 +419,10 @@ def _find_matching_py_close(text: str, open_brace_idx: int) -> int | None:
             idx += 1
             continue
         if quote is not None:
-            if ch == "\\" and idx + 1 < n:
+            if not sql_mode and ch == "\\" and idx + 1 < n:
+                idx += 2
+                continue
+            if sql_mode and quote == "'" and text[idx : idx + 2] == "''":
                 idx += 2
                 continue
             if text.startswith(quote, idx):
@@ -427,11 +431,15 @@ def _find_matching_py_close(text: str, open_brace_idx: int) -> int | None:
                 continue
             idx += 1
             continue
-        if ch == "#":
+        if sql_mode and text[idx : idx + 2] == "--":
+            in_comment = True
+            idx += 2
+            continue
+        if not sql_mode and ch == "#":
             in_comment = True
             idx += 1
             continue
-        if text[idx : idx + 3] in ('"""', "'''"):
+        if not sql_mode and text[idx : idx + 3] in ('"""', "'''"):
             quote = text[idx : idx + 3]
             idx += 3
             continue
@@ -455,13 +463,13 @@ def _highlight_dsl(
     variables: AbstractSet[str] = frozenset(),
     py_env: AbstractSet[str] = frozenset(),
 ) -> str:
-    """Highlight Pytae DSL commands, flags, tables, @vars, inline -sql, and py { ... }."""
-    # Fast check for 'py { ... }' block at line start (or leading whitespace)
+    """Highlight Pytae DSL commands, flags, tables, @vars, inline -sql, sql { ... }, and py { ... }."""
+    # Check for 'py { ... }' block at line start (or leading whitespace)
     py_match = re.match(r"^(\s*)(py)(\s*)(\{)", text)
     if py_match:
         ws1, py_kw, ws2, open_b = py_match.groups()
         open_idx = py_match.end() - 1
-        close_idx = _find_matching_py_close(text, open_idx)
+        close_idx = _find_matching_brace_close(text, open_idx, sql_mode=False)
         prefix = f"{ws1}{_colorize(py_kw, _COLOR_CMD)}{ws2}{_colorize(open_b, _COLOR_BRACE)}"
         if close_idx is not None:
             body = text[open_idx + 1 : close_idx]
@@ -474,6 +482,26 @@ def _highlight_dsl(
             )
         body = text[open_idx + 1 :]
         return prefix + _highlight_python(body, tables=tables, variables=variables, py_env=py_env)
+
+    # Check for 'sql { ... }' or '<var> = sql { ... }' block
+    sql_match = re.match(r"^(\s*(?:[A-Za-z_][A-Za-z0-9_]*\s*=\s*)?)(sql)(\s*)(\{)", text, flags=re.IGNORECASE)
+    if sql_match:
+        lead_part, sql_kw, ws2, open_b = sql_match.groups()
+        open_idx = sql_match.end() - 1
+        close_idx = _find_matching_brace_close(text, open_idx, sql_mode=True)
+        lead_hl = _highlight_dsl(lead_part, tables=tables, variables=variables, py_env=py_env) if lead_part.strip() else lead_part
+        prefix = f"{lead_hl}{_colorize(sql_kw, _COLOR_CMD)}{ws2}{_colorize(open_b, _COLOR_BRACE)}"
+        if close_idx is not None:
+            body = text[open_idx + 1 : close_idx]
+            tail = text[close_idx + 1 :]
+            return (
+                prefix
+                + _highlight_sql(body, tables=tables)
+                + _colorize("}", _COLOR_BRACE)
+                + _highlight_dsl(tail, tables=tables, variables=variables, py_env=py_env)
+            )
+        body = text[open_idx + 1 :]
+        return prefix + _highlight_sql(body, tables=tables)
 
     out: list[str] = []
     last = 0
@@ -539,8 +567,14 @@ def detect_multiline_mode(multi_buffer: list[str]) -> str:
     py_match = re.match(r"^\s*py\s*\{", acc)
     if py_match:
         open_idx = acc.index("{")
-        if _find_matching_py_close(acc, open_idx) is None:
+        if _find_matching_brace_close(acc, open_idx, sql_mode=False) is None:
             return "py"
+
+    sql_match = re.match(r"^\s*(?:[A-Za-z_][A-Za-z0-9_]*\s*=\s*)?sql\s*\{", acc, flags=re.IGNORECASE)
+    if sql_match:
+        open_idx = acc.index("{")
+        if _find_matching_brace_close(acc, open_idx, sql_mode=True) is None:
+            return "sql"
 
     # Check if there is an unclosed string following -sql
     in_quote: str | None = None

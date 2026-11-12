@@ -8,10 +8,10 @@ This guide covers ANSI SQL querying across loaded tables, embedded Python execut
 
 ## Contents
 
-- [ANSI SQL across Tables (`-sql`)](#ansi-sql-across-tables--sql)
+- [ANSI SQL across Tables (`sql { ... }`)](#ansi-sql-across-tables-sql----)
   - [Explicit Table Names in SQL](#explicit-table-names-in-sql)
+  - [Non-Destructive Preview vs. Assignment (`res = sql { ... }`)](#non-destructive-preview-vs-assignment-res--sql----)
   - [Cross-Table SQL Joins](#cross-table-sql-joins)
-  - [SQL Variable Assignment (`df3 = -sql "..."`)](#sql-variable-assignment-df3---sql-)
   - [Multi-Line SQL Queries](#multi-line-sql-queries)
 - [Python Execution (`py { ... }`)](#python-execution-py----)
   - [Single-Line Evaluation](#single-line-evaluation)
@@ -29,16 +29,16 @@ This guide covers ANSI SQL querying across loaded tables, embedded Python execut
 
 ---
 
-## ANSI SQL across Tables (`-sql`)
+## ANSI SQL across Tables (`sql { ... }`)
 
 Pytae embeds a native Polars `SQLContext` directly into the REPL, allowing you to run standard ANSI SQL queries across all loaded tables without copying data into an external database engine like SQLite or DuckDB.
 
 ### Explicit Table Names in SQL
 
-All loaded tables in the workbench are registered into the SQL catalog using their exact table variable names:
+All loaded tables in the workbench are registered into the SQL catalog using their exact table variable names (`df`, `orders`, `cust`, etc.). Unlike one-shot CLI usage (`pytae file.parquet -sql "... FROM data"`), there is no automatic `data` alias in the REPL because every table already has an explicit name:
 
 ```text
-pytae [orders: 100,000x6]> -sql "SELECT status, count(*) AS n, sum(amount) AS total FROM orders GROUP BY 1 ORDER BY total DESC"
+pytae [orders: 100,000x6]> sql { SELECT status, count(*) AS n, sum(amount) AS total FROM orders GROUP BY 1 ORDER BY total DESC }
 shape: (4, 3)
 ┌───────────┬───────┬────────────┐
 │ status    ┆ n     ┆ total      │
@@ -52,42 +52,43 @@ shape: (4, 3)
 └───────────┴───────┴────────────┘
 ```
 
+### Non-Destructive Preview vs. Assignment (`res = sql { ... }`)
+
+- **Bare `sql { ... }`**: Executes the query non-destructively and prints a formatted table preview (like `-head`). Your active table in RAM remains untouched.
+- **Assigned `<var> = sql { ... }`**: Assigns the SQL query result into a new or existing workbench table variable:
+
+```text
+pytae [orders, cust]> top_customers = sql { SELECT customer_id, sum(amount) as ltv FROM orders GROUP BY 1 HAVING ltv > 5000 ORDER BY ltv DESC }
+Created 'top_customers' from SQL query (342 rows x 2 cols).
+
+pytae [orders, cust, top_customers]> 
+```
+
 ### Cross-Table SQL Joins
 
 Execute complex relational SQL joins across multiple independent tables held in RAM:
 
 ```text
-pytae [orders, cust]> -sql "SELECT c.country, count(o.order_id) as orders_count, avg(o.amount) as avg_amount FROM orders o LEFT JOIN cust c ON o.customer_id = c.customer_id GROUP BY 1 ORDER BY orders_count DESC"
-```
-
-### SQL Variable Assignment (`df3 = -sql "..."`)
-
-Assign SQL query outputs directly into new or existing table variables:
-
-```text
-pytae [orders, cust]> top_customers = -sql "SELECT customer_id, sum(amount) as ltv FROM orders GROUP BY 1 HAVING ltv > 5000 ORDER BY ltv DESC"
-Created 'top_customers' (342 rows x 2 cols).
-
-pytae [orders, cust, top_customers]> 
+pytae [orders, cust]> sql { SELECT c.country, count(o.order_id) as orders_count, avg(o.amount) as avg_amount FROM orders o LEFT JOIN cust c ON o.customer_id = c.customer_id GROUP BY 1 ORDER BY orders_count DESC }
 ```
 
 ### Multi-Line SQL Queries
 
-Queries containing unclosed quotes automatically open a multi-line continuation prompt:
+Opening `sql {` (or `<var> = sql {`) automatically enters multi-line block mode (`... ` prompt with 4-space auto-indentation). Arbitrary blank lines, `-- comments`, single quotes `'...'`, and double-quoted column identifiers `"..."` work naturally without escaping. Type `}` to execute:
 
 ```text
-pytae [orders, cust]> summary = -sql "
-...> SELECT 
-...>   c.country,
-...>   count(*) AS total_orders,
-...>   round(sum(o.amount), 2) AS gross_revenue
-...> FROM orders o
-...> JOIN cust c ON o.customer_id = c.customer_id
-...> WHERE o.status = 'completed'
-...> GROUP BY c.country
-...> ORDER BY gross_revenue DESC
-...> "
-Created 'summary' (18 rows x 3 cols).
+pytae [orders, cust]> summary = sql {
+...     SELECT
+...         c.country,
+...         count(*) AS total_orders,
+...         round(sum(o.amount), 2) AS gross_revenue
+...     FROM orders o
+...     JOIN cust c ON o.customer_id = c.customer_id
+...     WHERE o.status = 'completed'
+...     GROUP BY c.country
+...     ORDER BY gross_revenue DESC
+... }
+Created 'summary' from SQL query (18 rows x 3 cols).
 ```
 
 ---
@@ -314,8 +315,8 @@ Loaded tips.parquet as 'df' (244 rows x 7 cols).
 pytae [df: 244x7]> df = -filter "total_bill > 10"
 
 # 3. Aggregate using ANSI SQL
-pytae [df: 226x7]> summary = -sql "SELECT day, time, avg(tip) as avg_tip, count(*) as count FROM df GROUP BY 1, 2"
-Created 'summary' (6 rows x 4 cols).
+pytae [df: 226x7]> summary = sql { SELECT day, time, avg(tip) as avg_tip, count(*) as count FROM df GROUP BY 1, 2 }
+Created 'summary' from SQL query (6 rows x 4 cols).
 
 # 4. Fit statistical regression in Python using Scipy (import persists!)
 pytae [df, summary]> py {

@@ -429,7 +429,7 @@ pytae> df = -filter "species == 'Gentoo'" \
 ...   -mutate "kg = body_mass_g / 1000.0"
 
 # 3. Direct Query Engines & Export
-pytae> -sql "SELECT species, AVG(body_mass_g) FROM df GROUP BY 1" # Query loaded tables directly by name
+pytae> sql { SELECT species, AVG(body_mass_g) FROM df GROUP BY 1 } # Preview ANSI SQL across tables
 pytae> py { df.shape }
 pytae> -o clean.parquet
 pytae> -o clip                                               # Copy active table to system clipboard

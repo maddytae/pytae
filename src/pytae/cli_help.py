@@ -1016,7 +1016,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "restore <name> : Restore table to a saved checkpoint.",
             "<var> = <path> : Load a new dataset (or glob pattern) into named table (replaces deprecated 'load').",
             "-o <path> : Save active table to Parquet/CSV/Feather or clipboard (-o clip).",
-            "-sql <query> : Run ANSI SQL queries against in-memory table `df`.",
+            "sql { <query> } : Non-destructive ANSI SQL preview across loaded tables (or `<var> = sql { ... }`).",
             "py { <expr> } : Evaluate arbitrary Python expressions on `df` / `pldf`.",
         ],
         examples=[
@@ -1334,7 +1334,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         options=[
             "df = sample:penguins : Load built-in sample dataset.",
             "-filter, -mutate, -select, -arrange, -by -agg : Core verb pipelines.",
-            "-sql <query> : Run ANSI SQL queries across in-memory tables.",
+            "sql { <query> } : Preview ANSI SQL queries across in-memory tables (or `tbl = sql { ... }`).",
             "checkpoint <name> / restore <name> : Stateful snapshot management.",
         ],
         examples=[

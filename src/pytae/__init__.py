@@ -235,6 +235,20 @@ def rename(df: Any, *args: Any, columns: dict[str, str] | None = None, **kwargs:
 
 
 def sql(df: Any, query: str) -> DataFrame:
+    """Execute ANSI SQL over a single DataFrame (as 'data') or a mapping of named frames."""
+    if isinstance(df, dict):
+        import polars as pl
+
+        ctx_frames: dict[str, pl.DataFrame | pl.LazyFrame] = {}
+        for name, tbl in df.items():
+            if isinstance(tbl, DataFrame):
+                ctx_frames[name] = tbl._df
+            elif isinstance(tbl, (pl.DataFrame, pl.LazyFrame)):
+                ctx_frames[name] = tbl
+            else:
+                ctx_frames[name] = DataFrame(tbl)._df
+        res = pl.SQLContext(frames=ctx_frames).execute(query).collect()
+        return DataFrame(res)
     return DataFrame(df).sql(query)
 
 

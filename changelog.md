@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Strict `sql { ... }` Block Syntax & Non-Destructive Preview in REPL (`src/pytae/repl.py`, `src/pytae/__init__.py`)**:
+  - Replaced `-sql "..."` in the REPL with symmetric, bracket-matched `sql { ... }` and `<var> = sql { ... }` syntax (CLI `-sql "..."` with `FROM data` / aliased tables remains unchanged).
+  - Bare `sql { ... }` now executes non-destructively and prints a formatted table preview (like `-head`) without mutating the active DataFrame; `<var> = sql { ... }` assigns results into a named workbench table.
+  - Strict brace enforcement redirects `-sql` and unbraced `sql ...` in the REPL with clear usage errors.
+  - Extended `pt.sql(df_or_frames, query)` to accept a `dict` of named tables (`pt.sql({"c": c, "o": o}, ...)`) and fixed `.py` script export compilation for single- and multi-table SQL queries.
+- **Live REPL Syntax Highlighting (`src/pytae/_highlight.py`, `src/pytae/repl.py`)**:
+  - Zero-dependency, context-aware ANSI syntax highlighting across Pytae DSL, `sql { ... }` blocks, `py { ... }` blocks, live table names, `@variables`, and prompts.
+  - Toggleable via `set syntax_highlight = on|off` (persisted via `set save`), and automatically respects `NO_COLOR`, `TERM=dumb`, and Windows VT100 mode.
+
+### Fixed
+- **macOS / Unix Arrow Keys Printing `[A` (`src/pytae/repl.py`)**:
+  - Replaced buffered `sys.stdin.read(1)` in `_console_input` with unbuffered `os.read(fd, 1)` + incremental UTF-8 decoding and `select.select([fd], ...)`, and switched `tty.setcbreak` to `termios.TCSADRAIN` so multi-byte escape sequences (`\x1b[A`, `\x1b[B`, etc.) are never split across Python's user-space buffer.
+
 ## [3.14.2] - 2026-11-11
 
 ### Added

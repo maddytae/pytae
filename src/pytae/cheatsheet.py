@@ -152,7 +152,7 @@ CHEATSHEET_TEXT = """\
   #   rm checkpoint <name>    Delete a saved checkpoint (or rm checkpoint *)
   #   -cols [asc|desc]        List column names (file order or sorted)
   #   <cmd> | <shell_cmd>     Pipe output to shell utility (e.g. -cols | grep mass)
-  #   -sql "<query>"          Run ANSI SQL across loaded tables
+  #   sql { <query> }         Preview ANSI SQL across loaded tables (or tbl = sql { ... })
   #   -o <path|clip>          Export active dataset to file or clipboard
   #   Up / Down arrow keys    Recall command history from current session
   #   -filter, -mutate, etc.  Standard pytae pipeline flags executed in RAM!

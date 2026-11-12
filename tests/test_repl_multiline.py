@@ -70,39 +70,49 @@ def test_repl_multiline_sql_query():
     outputs: list[str] = []
     r = PytaeRepl()
     r.execute_line("df = sample:penguins", output_fn=outputs.append)
+    orig_shape = r.current_df.shape
 
-    # Multi-line preview SQL
+    # Multi-line bare SQL is non-destructive preview (does not mutate active df)
     sql_cmd = (
-        "-sql '\n"
+        "sql {\n"
         "  SELECT species, COUNT(*) as n\n"
         "  FROM df\n"
         "  WHERE body_mass_g > 3500\n"
         "  GROUP BY species\n"
         "  ORDER BY n DESC\n"
-        "'"
+        "}"
     )
     outputs.clear()
     r.execute_line(sql_cmd, output_fn=outputs.append)
-    assert any("-> df: 3 rows x 2 cols" in o for o in outputs)
+    preview_text = "\n".join(outputs)
+    assert "Gentoo" in preview_text
     assert r.current_df is not None
-    assert r.current_df.shape == (3, 2)
-    assert "Gentoo" in r.current_df["species"].to_list()
+    assert r.current_df.shape == orig_shape
 
-    # Reload full dataset for next query
-    r.execute_line("df = sample:penguins", output_fn=outputs.append)
-
-    # Multi-line assigned SQL
+    # Multi-line assigned SQL creates new table
     assign_sql_cmd = (
-        "summary = -sql '\n"
+        "summary = sql {\n"
         "  SELECT island, COUNT(*) as n\n"
         "  FROM df\n"
         "  GROUP BY island\n"
-        "'"
+        "}"
     )
     outputs.clear()
     r.execute_line(assign_sql_cmd, output_fn=outputs.append)
     assert "summary" in r.tables
     assert r.tables["summary"].shape[0] == 3
+
+    # Export compiled Python script executes cleanly
+    from pytae.repl import _compile_history_to_python, _is_replayable_entry_static
+
+    replayable = [h for h in r.history if _is_replayable_entry_static(h)]
+    # Bare sql { ... } preview is excluded; assigned summary = sql { ... } is kept
+    assert len(replayable) == 2
+    py_script = _compile_history_to_python(replayable)
+    assert "pt.sql({'df': df}" in py_script
+    ns: dict[str, object] = {}
+    exec(compile(py_script, "<test_sql_export>", "exec"), ns)
+    assert ns["summary"].shape[0] == 3
 
 
 def test_repl_multiline_variable_assignment():

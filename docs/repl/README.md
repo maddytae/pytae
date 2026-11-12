@@ -61,7 +61,7 @@ Saved checkpoint 'baseline' (2 tables: orders, cust).
 
 # 5. Relational joins & ANSI SQL across tables
 pytae [orders, cust]> enriched = orders -join cust on=customer_id how=left
-pytae [orders, cust, enriched]> top_spenders = -sql "SELECT cust.name, sum(orders.amount) as total FROM orders JOIN cust ON orders.customer_id = cust.customer_id GROUP BY 1 ORDER BY total DESC LIMIT 5"
+pytae [orders, cust, enriched]> top_spenders = sql { SELECT cust.name, sum(orders.amount) as total FROM orders JOIN cust ON orders.customer_id = cust.customer_id GROUP BY 1 ORDER BY total DESC LIMIT 5 }
 
 # 6. Milestone diffing & instant rollback
 pytae> -diff baseline
@@ -92,7 +92,7 @@ pytae> exit -s
 | | State Mutation | `df = -filter "..."` | Update table state via explicit assignment. |
 | | Relational Joins | `-join <right> on=key how=left` | Relational join across loaded tables. |
 | | Inspection | `-schema`, `-cols`, `-summary` | Instant schema, column list, or statistical glimpse. |
-| **Advanced Query** | ANSI SQL | `-sql "SELECT ..."` | Native Polars SQLContext querying across active tables. |
+| **Advanced Query** | ANSI SQL | `sql { SELECT ... }` | Non-destructive SQL preview (or `res = sql { ... }` to assign table). |
 | | Python Eval | `py { <expr> }` | Python expression evaluation in `{ ... }`. |
 | | Python Block | `py { ... }` | Multi-line Python block with ephemeral RAM sandboxing. |
 | | Register Table | `py { df.to_pytae('tbl') }` | Register Python DataFrame back to Pytae workbench. |

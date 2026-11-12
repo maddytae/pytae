@@ -123,18 +123,33 @@ def test_repl_sql_query(sample_df):
     outputs = []
     r = PytaeRepl(df=sample_df)
 
-    # Bare sql rejected
+    # Bare unbraced sql and legacy -sql are rejected in REPL
     r.execute_line("sql SELECT species FROM df", output_fn=outputs.append)
-    assert "bare 'sql' is not recognized; use '-sql'" in outputs[-1]
+    assert "must be enclosed in braces: sql { ... }" in outputs[-1]
 
-    # -sql query succeeds
+    outputs.clear()
+    r.execute_line('-sql "SELECT species FROM df"', output_fn=outputs.append)
+    assert "enclose SQL queries in braces: sql { ... }" in outputs[-1]
+
+    # Bare sql { ... } prints preview non-destructively without changing active df
     outputs.clear()
     r.execute_line(
-        '-sql "SELECT species, COUNT(*) as cnt FROM df GROUP BY species ORDER BY cnt DESC"',
+        "sql { SELECT species, COUNT(*) as cnt FROM df GROUP BY species ORDER BY cnt DESC }",
+        output_fn=outputs.append,
+    )
+    preview_text = "\n".join(outputs)
+    assert "Adelie" in preview_text or "Gentoo" in preview_text
+    assert r.current_df.shape == (5, 3)
+
+    # Assigned sql { ... } creates a new table
+    outputs.clear()
+    r.execute_line(
+        "res_sql = sql { SELECT species, COUNT(*) as cnt FROM df GROUP BY species ORDER BY cnt DESC }",
         output_fn=outputs.append,
     )
     assert r.current_df.shape == (3, 2)
     assert "cnt" in r.current_df.columns
+    assert "res_sql" in r.tables
 
     # Reset restores original dataframe
     r.execute_line("reset", output_fn=outputs.append)
@@ -271,9 +286,18 @@ def test_repl_join_tables_and_sql(tmp_path):
     assert r.current_df.shape == (2, 3)
     assert "name" in r.current_df.columns
 
-    # SQL join between tables
+    # SQL join between tables (non-destructive preview)
+    outputs.clear()
     r.execute_line(
-        '-sql "SELECT ord.order_id, cust.name FROM ord JOIN cust ON ord.cust_id = cust.cust_id"',
+        "sql { SELECT ord.order_id, cust.name FROM ord JOIN cust ON ord.cust_id = cust.cust_id }",
+        output_fn=outputs.append,
+    )
+    assert "Alice" in "\n".join(outputs)
+    assert r.current_df.shape == (2, 3)
+
+    # Assigned SQL join creates new table
+    r.execute_line(
+        "sql_joined = sql { SELECT ord.order_id, cust.name FROM ord JOIN cust ON ord.cust_id = cust.cust_id }",
         output_fn=outputs.append,
     )
     assert r.current_df.shape == (2, 2)
@@ -379,17 +403,21 @@ def test_repl_variable_assignment_and_multi_tables(tmp_path):
 
     # 8. Assignment from SQL query
     r.execute_line(
-        'df4 = -sql "SELECT df1.order_id, df2.name, df1.amount FROM df1 JOIN df2 ON df1.cust_id = df2.cust_id"',
+        "df4 = sql { SELECT df1.order_id, df2.name, df1.amount FROM df1 JOIN df2 ON df1.cust_id = df2.cust_id }",
         output_fn=outputs.append,
     )
     assert "df4" in r.tables
     assert r.tables["df4"].shape == (2, 3)
     assert set(r.tables["df4"].columns) == {"order_id", "name", "amount"}
 
-    # Bare sql assignment rejected
+    # Unbraced sql or -sql assignment rejected
     outputs.clear()
     r.execute_line("df5 = sql SELECT * FROM df1", output_fn=outputs.append)
-    assert "bare 'sql' is not recognized; use '-sql" in outputs[-1]
+    assert "must be enclosed in braces: df5 = sql { ... }" in outputs[-1]
+
+    outputs.clear()
+    r.execute_line('df5 = -sql "SELECT * FROM df1"', output_fn=outputs.append)
+    assert "enclose SQL queries in braces: df5 = sql { ... }" in outputs[-1]
 
 
 def test_repl_standard_cli_join_and_output(tmp_path):
@@ -498,10 +526,14 @@ def test_repl_bare_verb_rejection(sample_df):
     assert "bare 'select' is not recognized; use '-select'" in outputs[-1]
 
     # Bare inspection & query verbs rejected
-    for verb in ("shape", "cols", "dtype", "nulls", "glimpse", "describe", "head", "tail", "sql"):
+    for verb in ("shape", "cols", "dtype", "nulls", "glimpse", "describe", "head", "tail"):
         outputs.clear()
         r.execute_line(verb, output_fn=outputs.append)
         assert f"bare '{verb}' is not recognized; use '-{verb}'" in outputs[-1]
+
+    outputs.clear()
+    r.execute_line("sql", output_fn=outputs.append)
+    assert "Usage: sql { <SQL query> }" in outputs[-1]
 
     # Targeted bare verb rejected
     r.tables["df1"] = sample_df
@@ -2594,23 +2626,23 @@ def test_repl_sql_pure_explicit_registration():
 
     # Explicit table name query succeeds
     outputs.clear()
-    r.execute_line('res1 = -sql "SELECT COUNT(*) as cnt FROM t1"', output_fn=outputs.append)
+    r.execute_line("res1 = sql { SELECT COUNT(*) as cnt FROM t1 }", output_fn=outputs.append)
     assert "res1" in r.tables
     assert r.tables["res1"]["cnt"][0] == 344
 
     # Assign from SQL with explicit table and group by
     outputs.clear()
-    r.execute_line('res2 = -sql "SELECT species, COUNT(*) as cnt FROM t1 GROUP BY species"', output_fn=outputs.append)
+    r.execute_line("res2 = sql { SELECT species, COUNT(*) as cnt FROM t1 GROUP BY species }", output_fn=outputs.append)
     assert "res2" in r.tables
     assert r.tables["res2"].shape[0] == 3
 
-    # Option A: No magic aliases ('this', 'self', 'data' fail when no table is named that)
+    # No magic aliases ('this', 'self', 'data' fail when no table is named that)
     outputs.clear()
-    r.execute_line('-sql "SELECT * FROM this"', output_fn=outputs.append)
+    r.execute_line("sql { SELECT * FROM this }", output_fn=outputs.append)
     assert "error" in outputs[-1].lower() or "not found" in outputs[-1].lower()
 
     outputs.clear()
-    r.execute_line('-sql "SELECT * FROM data"', output_fn=outputs.append)
+    r.execute_line("sql { SELECT * FROM data }", output_fn=outputs.append)
     assert "error" in outputs[-1].lower() or "not found" in outputs[-1].lower()
 
     r.close()
@@ -2653,11 +2685,11 @@ def test_repl_tab_autocompletions():
     assert "bill_length_mm" in matches
     assert "bill_depth_mm" in matches
 
-    # SQL context completion (Option A: explicit table names, no magic aliases)
-    matches = r._get_completions("cu", "-sql SELECT * FROM cu")
+    # SQL context completion (explicit table names, no magic aliases)
+    matches = r._get_completions("cu", "sql { SELECT * FROM cu")
     assert "customers" in matches
 
-    matches = r._get_completions("th", "-sql SELECT * FROM th")
+    matches = r._get_completions("th", "sql { SELECT * FROM th")
     assert "this" not in matches
 
     # Config completion after 'set '

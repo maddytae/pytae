@@ -267,16 +267,18 @@ def test_repl_sql_with_variables():
     r.execute_line("threshold = 5500", output_fn=outputs.append)
 
     outputs.clear()
-    r.execute_line('-sql "SELECT species, body_mass_g FROM df WHERE body_mass_g > @threshold"', output_fn=outputs.append)
+    r.execute_line("sql { SELECT species, body_mass_g FROM df WHERE body_mass_g > @threshold }", output_fn=outputs.append)
+    # Non-destructive preview prints rows without mutating df (344 rows remain intact)
+    assert any("Gentoo" in o or "344" not in o for o in outputs)
     assert r.current_df is not None
-    assert r.current_df.shape[0] == 28
-    assert (r.current_df["body_mass_g"] > 5500).all()
+    assert r.current_df.shape[0] == 344
 
     # SQL assignment with variables
     outputs.clear()
-    r.execute_line('heavy = -sql "SELECT * FROM df WHERE body_mass_g > @threshold"', output_fn=outputs.append)
+    r.execute_line("heavy = sql { SELECT * FROM df WHERE body_mass_g > @threshold }", output_fn=outputs.append)
     assert "heavy" in r.tables
     assert r.tables["heavy"].shape[0] == 28
+    assert (r.tables["heavy"]["body_mass_g"] > 5500).all()
 
 
 def test_repl_status_vars_and_rm_var():
