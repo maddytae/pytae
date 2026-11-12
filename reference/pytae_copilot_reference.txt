@@ -1,6 +1,6 @@
 ================================================================================
 PYTAE COMPREHENSIVE KNOWLEDGE BASE & AGENT TRAINING REFERENCE MANUAL
-RELEASE VERSION: 3.14.3
+RELEASE VERSION: 3.14.4
 ================================================================================
 
 TABLE OF CONTENTS
@@ -189,7 +189,7 @@ RULE 7: THE "TWIN PROOF" RULE (GROUND ON SAMPLE DATASETS)
 
 1. OVERVIEW & CORE PHILOSOPHY
 --------------------------------------------------------------------------------
-Package: pytae (Current Release Version: 3.14.3)
+Package: pytae (Current Release Version: 3.14.4)
 
 `pytae` is an ergonomic, high-performance tabular data manipulation library and 
 command-line tool powered by a 100% native multithreaded SIMD Polars engine with 
@@ -229,8 +229,8 @@ Key principles:
 
 2. PACKAGE ARCHITECTURE & IMPORT PATTERNS
 --------------------------------------------------------------------------------
-Installation (PyPI: https://pypi.org/project/pytae/3.14.3/):
-  pip install pytae==3.14.3
+Installation (PyPI: https://pypi.org/project/pytae/3.14.4/):
+  pip install pytae==3.14.4
   pip install 'pytae[plot]'    # includes matplotlib, scipy
 
 Importing:
@@ -13300,7 +13300,7 @@ When exporting scripts via `export <path>` or `exit -s`, Pytae automatically app
    k -o tes2_sample.csv
    ```
 3. **Fail-Safe Conservative Boundaries**:
-   Commands with side effects (saving to disk via `-o`, `export`, `save`, clipboard), custom Python blocks (`py ... py`), and explicit table resets (`reset`) act as opaque barriers. The pruner never eliminates assignments across these boundaries.
+   Commands with side effects (saving to disk via `-o`, `export`, `save`, clipboard), custom Python blocks (`py { ... }`), and explicit table resets (`reset`) act as opaque barriers. The pruner never eliminates assignments across these boundaries.
 4. **Disabling Pruning with `-no-prune`**:
    To export verbatim, unpruned execution logs containing every repeated command, pass `-no-prune`:
    ```bash
@@ -13342,7 +13342,7 @@ Native Pytae pipeline scripts contain zero-boilerplate assignments and flags (`o
 
 ### Python Scripts (`.py`)
 
-Python scripts exported via `export pipeline.py` or `exit -s py` contain standard Python code using `pytae` and `polars`.
+Python scripts exported via `export pipeline.py` or `exit -s py` contain standard Python code using `pytae` and `polars`. State-mutating `py { ... }` blocks (including direct assignments like `k = df.head(10)`, `.to_pytae()` conversions, and persistent helper definitions) are emitted with redundant top-level imports (`pd`, `pl`, `pt`, or repeated imports across blocks) automatically deduplicated, while pure inspection blocks (`py { print(df.shape) }`) are omitted.
 
 - **Headless Execution**:
   ```bash
@@ -13963,7 +13963,7 @@ Pytae balances **interactive convenience** with **strict memory hygiene** throug
    - `gc.collect()` is explicitly executed.
    - Kernel page trimming (`libc.malloc_trim(0)` on Linux, `mach_task` on macOS, `K32EmptyWorkingSet` on Windows) is triggered after every block to return resident heap pages back to the operating system.
 3. **Explicit Workbench Tables**:
-   - Only tables explicitly registered via `.to_pytae()` or direct reassignment to active `df` are promoted into the Pytae table registry.
+   - Only tables explicitly registered via `.to_pytae()`, assigned directly from a Pytae `DataFrame` (e.g. `k = df.head(10)`), or assigned back to active `df` are promoted into the Pytae table registry and preserved in exported `.pt`/`.py` scripts.
 
 ### Immediate Garbage Collection & Memory Zeroing
 
@@ -14634,7 +14634,7 @@ pytae [cust: 15,000x5]>
 ```
 
 > [!NOTE]
-> The legacy command `use <name>` is deprecated in favor of `switch <name>`.
+> The legacy command `use <name>` has been deprecated and removed in favor of `switch <name>`.
 
 ### Zero-Copy Table Renaming (`rename <old> <new>`)
 
@@ -15169,9 +15169,9 @@ The **Pytae REPL** provides stateful, iterative in-memory data manipulation and 
 ### Core Architecture & Guarantees
 
 1. **Dedicated Entrypoint (`pytae -i`)**: Interactive sessions launch cleanly with `pytae -i`. Datasets are loaded explicitly with `df = file.parquet`, guaranteeing that session logs and exported replay scripts are 100% reproducible and self-contained.
-2. **Subject-First Multi-Table Workbench**: Load multiple datasets simultaneously (`df1`, `df2`, `orders`, `cust`). Run commands with clear prefixes (`df1 -head 5`, `orders -join cust on=id`), or switch active tables with `switch <name>` (`use` deprecated).
+2. **Subject-First Multi-Table Workbench**: Load multiple datasets simultaneously (`df1`, `df2`, `orders`, `cust`). Run commands with clear prefixes (`df1 -head 5`, `orders -join cust on=id`), or switch active tables with `switch <name>`.
 3. **Non-Destructive by Default**: Bare exploratory queries (`-pivot`, `-filter`, `-head`) format and display previews in the terminal without altering underlying tables in memory. State changes require explicit assignment (`df = df -filter ...`).
-4. **Ephemeral Python Sandboxing & Persistent Logic**: Embedded Python execution (`py { ... }`) provides an extensibility escape hatch. Pre-loads `pd`, `pl`, `pt`, and `DataFrame`. Imported modules, custom functions, and classes persist throughout the REPL session, while transient scratch variables, arrays, and intermediate data objects are immediately purged from RAM upon block exit via `gc.collect()`. Only tables explicitly converted via `.to_pytae()` or assigned to `df` are registered in the workbench.
+4. **Ephemeral Python Sandboxing & Persistent Logic**: Embedded Python execution (`py { ... }`) provides an extensibility escape hatch. Pre-loads `pd`, `pl`, `pt`, and `DataFrame`. Imported modules, custom functions, and classes persist throughout the REPL session, while transient scratch variables, arrays, and intermediate data objects are immediately purged from RAM upon block exit via `gc.collect()`. Tables converted via `.to_pytae()`, directly assigned from a Pytae `DataFrame` (e.g. `k = df.head(10)`), or assigned to `df` are registered in the workbench and exported cleanly by `exit -s` / `export script`.
 5. **Ephemeral IPC Checkpoints (0 MB RAM Overhead)**: Checkpoints serialize frozen table states to ephemeral Arrow IPC format on disk. They consume **0 MB of RAM** and are automatically purged upon session exit, allowing safe instant restoration via `restore [name]` or `reset`.
 
 ### Quick Reference of REPL Commands
@@ -15180,7 +15180,7 @@ The **Pytae REPL** provides stateful, iterative in-memory data manipulation and 
 |:---|:---|:---|:---|
 | **Ingestion** | Assignment | `df = sales.parquet`<br>`cust = cust.csv -dlim ";"` | Ingest file into named table variable |
 | **Workbench** | `status table` | `status table [-v]` | View loaded tables, shapes, memory, and columns |
-| | `switch` | `switch cust` | Switch active dataset cursor (`use` deprecated) |
+| | `switch` | `switch cust` | Switch active dataset cursor |
 | | `rename` | `rename df1 customers` | Zero-copy $O(1)$ in-memory table pointer rename |
 | | Subject-First | `cust -head 5`, `cust -shape` | Execute command directly on named table |
 | | `rm table` | `rm table df1`, `rm table *` | Free table memory and trigger immediate OS page trim |
@@ -15614,7 +15614,7 @@ pytae> sessions
 # 1. State Management & Checkpoints
 status [-v]          # Display unified session status, active table, RAM consumption, and history
 status table [-v]    # Inspect active table and list all loaded tables (-v for cols & RAM)
-switch orders        # Switch active dataset cursor to 'orders' ('use' deprecated)
+switch orders        # Switch active dataset cursor to 'orders'
 rename df1 customers # Zero-copy O(1) in-memory table rename
 -diff [target]       # Diff active table vs latest checkpoint, another table, or checkpoint:table
 reset                # Revert to latest checkpoint (or initial dataset if none)
@@ -16822,7 +16822,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.14.3"
+version = "3.14.4"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"

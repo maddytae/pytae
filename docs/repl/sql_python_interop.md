@@ -246,7 +246,7 @@ Pytae balances **interactive convenience** with **strict memory hygiene** throug
    - `gc.collect()` is explicitly executed.
    - Kernel page trimming (`libc.malloc_trim(0)` on Linux, `mach_task` on macOS, `K32EmptyWorkingSet` on Windows) is triggered after every block to return resident heap pages back to the operating system.
 3. **Explicit Workbench Tables**:
-   - Only tables explicitly registered via `.to_pytae()` or direct reassignment to active `df` are promoted into the Pytae table registry.
+   - Only tables explicitly registered via `.to_pytae()`, assigned directly from a Pytae `DataFrame` (e.g. `k = df.head(10)`), or assigned back to active `df` are promoted into the Pytae table registry and preserved in exported `.pt`/`.py` scripts.
 
 ### Immediate Garbage Collection & Memory Zeroing
 

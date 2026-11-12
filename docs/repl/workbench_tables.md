@@ -220,7 +220,7 @@ pytae [cust: 15,000x5]>
 ```
 
 > [!NOTE]
-> The legacy command `use <name>` is deprecated in favor of `switch <name>`.
+> The legacy command `use <name>` has been deprecated and removed in favor of `switch <name>`.
 
 ### Zero-Copy Table Renaming (`rename <old> <new>`)
 

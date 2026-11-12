@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.14.4] - 2026-11-12
+
+### Changed
+- **Removed Deprecated `use` Alias (`src/pytae/repl.py`, `src/pytae/_highlight.py`, docs)**:
+  - Removed the legacy `use <name>` alias in favor of `switch <name>`, returning a clear deprecation/removal hint redirecting to `switch <name>`.
+
+### Fixed
+- **Reproducible `py { ... }` Block Export & Import Deduplication (`src/pytae/repl.py`)**:
+  - Replaced the literal `.to_pytae(` substring check in `_is_replayable_entry_static` with AST inspection so `py { ... }` blocks that directly assign/register Pytae DataFrames (e.g., `k = df.head(10)`) or define persistent imports, functions, or classes are included in `exit -s` and `export script` (`.py` and `.pt`), while pure inspection expressions (`py { print(df.shape) }`) stay omitted.
+  - Persistent imports, helper functions, and classes added to `self._py_env` are now recorded in session history even when no table is registered in the same block.
+  - Automatically registers top-level variables assigned inside `py` blocks for downstream `sql { ... }` script export resolution.
+  - Deduplicates pre-loaded script header imports (`import pandas as pd`, `import polars as pl`, `import pytae as pt`) and repeated top-level imports across `py { ... }` blocks in exported `.py` scripts.
+- **REPL Tab Completion Scope (`src/pytae/repl.py`)**:
+  - Fixed trailing-space Tab completion after non-pipeline commands such as `switch <name> ` so it no longer suggests active table column names.
+
 ## [3.14.3] - 2026-11-11
 
 ### Added

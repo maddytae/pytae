@@ -250,7 +250,7 @@ When exporting scripts via `export <path>` or `exit -s`, Pytae automatically app
    k -o tes2_sample.csv
    ```
 3. **Fail-Safe Conservative Boundaries**:
-   Commands with side effects (saving to disk via `-o`, `export`, `save`, clipboard), custom Python blocks (`py ... py`), and explicit table resets (`reset`) act as opaque barriers. The pruner never eliminates assignments across these boundaries.
+   Commands with side effects (saving to disk via `-o`, `export`, `save`, clipboard), custom Python blocks (`py { ... }`), and explicit table resets (`reset`) act as opaque barriers. The pruner never eliminates assignments across these boundaries.
 4. **Disabling Pruning with `-no-prune`**:
    To export verbatim, unpruned execution logs containing every repeated command, pass `-no-prune`:
    ```bash
@@ -292,7 +292,7 @@ Native Pytae pipeline scripts contain zero-boilerplate assignments and flags (`o
 
 ### Python Scripts (`.py`)
 
-Python scripts exported via `export pipeline.py` or `exit -s py` contain standard Python code using `pytae` and `polars`.
+Python scripts exported via `export pipeline.py` or `exit -s py` contain standard Python code using `pytae` and `polars`. State-mutating `py { ... }` blocks (including direct assignments like `k = df.head(10)`, `.to_pytae()` conversions, and persistent helper definitions) are emitted with redundant top-level imports (`pd`, `pl`, `pt`, or repeated imports across blocks) automatically deduplicated, while pure inspection blocks (`py { print(df.shape) }`) are omitted.
 
 - **Headless Execution**:
   ```bash
