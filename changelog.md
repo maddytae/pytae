@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.14.5] - 2026-11-13
+
+### Added
+- **Interactive Terminal Data Grid Browser (`-browse`) (`src/pytae/tui_browser.py`, `src/pytae/repl.py`, `src/pytae/cli.py`)**:
+  - Full-screen alternate-screen buffer TUI data grid browser for both REPL (`pytae> -browse`) and CLI (`pytae data.parquet -browse`).
+  - Features sticky row index and column header pins, horizontal and vertical scrolling with arrow keys and vi keys (`h`/`j`/`k`/`l`, `g`/`G`, `Ctrl-U`/`Ctrl-D`), dynamic terminal resizing (`SIGWINCH`), live column sorting (`s` to cycle ASC/DESC/None), and an in-grid help modal (`?`).
+  - Safely falls back to formatted text output when stdout is non-interactive or redirected.
+- **Direct Database & Cloud Ingestion URIs (`sqlite://`, `duckdb://`, `s3://`, `gcs://`) (`src/pytae/readers.py`, `src/pytae/repl.py`, `src/pytae/cli.py`, `src/pytae/cli_parsing.py`, `src/pytae/cli_run.py`)**:
+  - Native connection string ingestion syntax in both REPL (`orders = sqlite://app.db:orders`, `cust = duckdb://analytics.duckdb:customers`, `lake = scan s3://bucket/data.parquet`) and CLI (`pytae sqlite://app.db:orders -head`).
+  - SQLite ingestion powered by standard library `sqlite3` without extra driver dependencies; DuckDB ingestion powered by zero-copy Apache Arrow buffers.
+  - Supports custom SQL queries via URI (e.g. `sqlite://app.db:SELECT id, amount FROM orders WHERE amount > 50`).
+  - Native lazy pushdown scanning via `scan` (`orders = scan sqlite://app.db:orders`, `lake = scan s3://...`).
+  - Cross-database relational joins on CLI (e.g. `pytae o=sqlite://app.db:orders c=duckdb://analytics.duckdb:customers -join right=c,on=customer_id:cust_id -head`).
+- **Contextual SQL & Python Autocompletion in REPL (`src/pytae/repl.py`)**:
+  - Contextual Tab autocompletion inside `sql { ... }` blocks (completing SQL keywords, loaded table names, column names, and table-qualified columns `tbl.col`).
+  - Contextual Tab autocompletion inside `py { ... }` blocks (completing environment variables, attribute/methods like `df.head()`, library symbols like `pl.col()`, builtins, and keywords).
+  - Clean in-place Tab candidate preview redraw directly below the prompt without repeating prompt rows or polluting terminal scrollback.
+  - Pruned retired/unadvertised flag completions (`-pivot_longer`, `-pivot_wider`, `-unpivot`, `-group_by`, `-summarize`, `-slice`, `-where`, `-sort`) in favor of canonical verbs (`-long`, `-wide`, `-agg`, `-diff`, `-assert`, `-explode`).
+- **Trailing Expression Auto-Display in Multiline `py { ... }` Blocks (`src/pytae/repl.py`)**:
+  - AST-split execution in multi-line `py { ... }` blocks automatically evaluates and displays the return value of any trailing expression (e.g. `df.head()`, `df.describe()`, or calculations) in IPython/Jupyter style, while still updating persistent session tables when mutations occur.
+
 ## [3.14.4] - 2026-11-12
 
 ### Changed

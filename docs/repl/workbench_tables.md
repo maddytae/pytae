@@ -113,6 +113,31 @@ pytae> sales_2025 = "sales_2025/part_*.parquet"
 Loaded 12 files matching 'sales_2025/part_*.parquet' as 'sales_2025' (1,200,000 rows x 8 cols).
 ```
 
+### Direct Database & Cloud Ingestion (`sqlite://`, `duckdb://`, `s3://`, `gcs://`)
+
+Load tables or execute direct queries from SQLite, DuckDB, or cloud data lakes into the workbench:
+
+```text
+# SQLite eager table ingestion
+pytae> orders = sqlite://app.db:orders
+Loaded app.db:orders as 'orders' (100,000 rows x 5 cols).
+
+# SQLite custom query ingestion
+pytae> top_orders = sqlite://app.db:SELECT id, amount FROM orders WHERE amount > 50
+Loaded app.db:query as 'top_orders' (12,450 rows x 2 cols).
+
+# DuckDB eager table ingestion (zero-copy via Apache Arrow)
+pytae> customers = duckdb://analytics.duckdb:customers
+Loaded analytics.duckdb:customers as 'customers' (25,000 rows x 4 cols).
+
+# Lazy scan with projection and filter pushdown
+pytae> lake = scan s3://my-bucket/lake/events.parquet
+Scanned events.parquet as 'lake' (lazy, 18 cols).
+
+pytae> orders_lazy = scan sqlite://app.db:orders
+Scanned app.db:orders as 'orders_lazy' (lazy, 5 cols).
+```
+
 ### Windows, UNC & Git Bash Path Formats (`/c/Users/...`, `//c/...`, `\\server\share\...`)
 
 On Windows, Git Bash (MSYS2), and WSL environments, path conventions often vary. Pytae seamlessly normalizes Git Bash drive mounts (`/c/path/file.parquet` and `//c/path/file.parquet`), WSL mounts (`/mnt/c/...`), Cygwin mounts (`/cygdrive/c/...`), and UNC network shares directly into valid Windows filesystem paths (`C:/path/file.parquet`), whether passed bare or quoted:
@@ -285,13 +310,15 @@ The REPL prompt dynamically reflects the active workbench state:
 
 ### Context-Aware Tab Autocompletion
 
-The Pytae REPL provides comprehensive `readline` autocompletion:
+The Pytae REPL provides comprehensive `readline` autocompletion with clean in-place candidate preview:
 
+- **In-Place Ephemeral Preview**: Displays matching candidates directly underneath the prompt and clears cleanly upon selection, avoiding duplicate prompt lines or terminal scrollback clutter.
 - **Top-Level Verbs**: Press `[Tab]` at an empty prompt to view top-level commands (`switch`, `rename`, `rm`, `checkpoint`, `restore`, `export`, `status`, `set`, etc.).
-- **Flags**: Type `-` and press `[Tab]` to autocomplete CLI pipeline verbs (`-filter`, `-mutate`, `-select`, `-arrange`, `-pivot`, etc.).
+- **Flags**: Type `-` and press `[Tab]` to autocomplete CLI pipeline verbs (`-filter`, `-mutate`, `-select`, `-arrange`, `-pivot`, `-browse`, etc.).
 - **Table Names**: Autocompletes loaded table names after `switch `, `rename `, `diff `, and `rm table `.
 - **Column Names**: Inside pipeline flags (`-select `, `-filter `, `-by `, `-arrange `), autocompletes column names from the active table.
-- **File Paths**: Autocompletes local filesystem files and directories during assignment (`df = `).
+- **File Paths & URIs**: Autocompletes local filesystem files, directories, and connection strings during assignment (`df = `).
+- **SQL & Python Context**: Contextually autocompletes SQL keywords, table names, and column names inside `sql { ... }`, and Python environment variables, methods/attributes (`df.h`, `pl.col`), builtins, and keywords inside `py { ... }`.
 - **Settings**: Autocompletes configuration keys and values after `set ` (e.g. `set comma = ` $\to$ `on`, `off`).
 
 ### Persistent Arrow-Key History

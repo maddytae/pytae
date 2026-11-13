@@ -601,6 +601,31 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         see_also=["-diff"],
     ),
+    "browse": KeywordHelp(
+        name="browse",
+        flag="-browse",
+        syntax="pytae <path> -browse",
+        summary="Launch full-screen interactive terminal data grid browser.",
+        description=(
+            "Launches an interactive full-screen alternate-screen buffer data grid browser.\n"
+            "- Sticky row index and column header pins while scrolling.\n"
+            "- Navigation with arrow keys, PageUp/PageDown, Home/End, and vi keys (h/j/k/l, g/G, Ctrl-U/Ctrl-D).\n"
+            "- Live multi-column sorting: press 's' to cycle sort direction (ASC, DESC, None) on active column.\n"
+            "- Dynamic terminal window resizing (SIGWINCH).\n"
+            "- Press '?' for in-grid keybindings help, and 'q' or 'Esc' to exit back to terminal."
+        ),
+        options=[
+            "Arrow keys / h,j,k,l : Scroll viewport through rows and columns.",
+            "s : Toggle sort on highlighted column (ASC -> DESC -> None).",
+            "? : Toggle keyboard shortcuts and help modal.",
+            "q / Esc : Exit data grid browser.",
+        ],
+        examples=[
+            "pytae data.parquet -browse",
+            'pytae data.parquet -filter "body_mass_g > 4000" -browse',
+        ],
+        see_also=["-head", "-tail", "-glimpse", "-describe"],
+    ),
     "head": KeywordHelp(
         name="head",
         flag="-head [LIMIT]",

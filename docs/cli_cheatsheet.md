@@ -12,6 +12,9 @@ Inspect Parquet, CSV, TSV, JSONL, and SAS7BDAT datasets with zero startup overhe
 # Print row and column dimensions (zero-cost on Parquet)
 pytae data.parquet -shape
 
+# Interactive full-screen terminal data grid browser (sticky headers, arrow/vi navigation, live column sort)
+pytae data.parquet -browse
+
 # Preview the first or last 5 rows (custom limit optional)
 pytae data.parquet -head
 pytae data.parquet -head 10
@@ -267,6 +270,29 @@ pytae s=sales.parquet st=stores.csv \
 # Load globbed multi-file partitions into a named alias
 pytae all_parts="parts/*.parquet" st=stores.csv \
   -join "left=all_parts, right=st, on=store_id, how=left"
+```
+
+---
+
+## 8b. 🗄️ Direct Database & Cloud Ingestion (`sqlite://`, `duckdb://`, `s3://`, `gcs://`)
+
+Query SQLite/DuckDB databases and cloud data lakes directly with zero-copy Arrow and native lazy pushdown:
+
+```bash
+# Query SQLite tables or custom queries
+pytae sqlite://app.db:orders -head
+pytae sqlite://app.db:"SELECT id, amount FROM orders WHERE amount > 50" -head
+
+# Query DuckDB tables or custom queries
+pytae duckdb://analytics.duckdb:customers -head
+
+# Scan cloud data lakes directly with lazy pushdown (s3://, gcs://, gs://)
+pytae s3://bucket/data.parquet -filter "status == 'complete'" -head
+pytae gcs://bucket/data.parquet -head
+
+# Cross-database relational join across SQLite and DuckDB
+pytae o=sqlite://app.db:orders c=duckdb://analytics.duckdb:customers \
+  -join "right=c, on=customer_id:cust_id" -head
 ```
 
 ---

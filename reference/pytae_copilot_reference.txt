@@ -1,6 +1,6 @@
 ================================================================================
 PYTAE COMPREHENSIVE KNOWLEDGE BASE & AGENT TRAINING REFERENCE MANUAL
-RELEASE VERSION: 3.14.4
+RELEASE VERSION: 3.14.5
 ================================================================================
 
 TABLE OF CONTENTS
@@ -189,7 +189,7 @@ RULE 7: THE "TWIN PROOF" RULE (GROUND ON SAMPLE DATASETS)
 
 1. OVERVIEW & CORE PHILOSOPHY
 --------------------------------------------------------------------------------
-Package: pytae (Current Release Version: 3.14.4)
+Package: pytae (Current Release Version: 3.14.5)
 
 `pytae` is an ergonomic, high-performance tabular data manipulation library and 
 command-line tool powered by a 100% native multithreaded SIMD Polars engine with 
@@ -229,8 +229,8 @@ Key principles:
 
 2. PACKAGE ARCHITECTURE & IMPORT PATTERNS
 --------------------------------------------------------------------------------
-Installation (PyPI: https://pypi.org/project/pytae/3.14.4/):
-  pip install pytae==3.14.4
+Installation (PyPI: https://pypi.org/project/pytae/3.14.5/):
+  pip install pytae==3.14.5
   pip install 'pytae[plot]'    # includes matplotlib, scipy
 
 Importing:
@@ -13626,7 +13626,7 @@ pytae [q1, q2]> all_sales = -concat "tables=q1,q2, how=vertical"
 
 Pytae provides a comprehensive suite of inspection tools that never alter your underlying data.
 
-### Previews (`-head`, `-tail`, `-sample`)
+### Previews (`-head`, `-tail`, `-sample`, `-browse`)
 
 ```text
 # Preview first 5 rows
@@ -13634,6 +13634,10 @@ pytae [df: 344x7]> -head 5
 
 # Preview last 10 rows
 pytae [df: 344x7]> -tail 10
+
+# Interactive full-screen terminal grid browser with live sorting and sticky headers
+pytae [df: 344x7]> -browse
+# Controls: arrow keys / vi keys (h/j/k/l), s (toggle sort column/direction), ? (help), q (exit)
 
 # Deterministic random sample (percentage or row count)
 pytae [df: 344x7]> -sample 10% -seed 42
@@ -13840,6 +13844,38 @@ pytae [orders]> py {
 ... }
 Mean rate: 0.08333333333333333
 ```
+
+#### Trailing Expression Auto-Display (IPython / Jupyter Style)
+
+Just like in Jupyter notebooks or IPython, multi-line `py { ... }` blocks automatically evaluate and format the return value of any trailing expression (such as `df.head()`, `df.describe()`, or calculations) without needing an explicit `print()` call:
+
+```text
+pytae> py {
+...     import pandas as pd
+...     import polars as pl
+...     df = pt.sample('penguins')
+...     df.head()
+... }
+shape: (5, 7)
+┌─────────┬───────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
+│ species ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
+│ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
+│ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
+╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
+│ Adelie  ┆ Torgersen ┆ 39.1           ┆ 18.7          ┆ 181.0             ┆ 3750.0      ┆ Male   │
+│ Adelie  ┆ Torgersen ┆ 39.5           ┆ 17.4          ┆ 186.0             ┆ 3800.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 40.3           ┆ 18.0          ┆ 195.0             ┆ 3250.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ null           ┆ null          ┆ null              ┆ null        ┆ null   │
+│ Adelie  ┆ Torgersen ┆ 36.7           ┆ 19.3          ┆ 193.0             ┆ 3450.0      ┆ Female │
+└─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
+Updated active table 'df' (344 rows x 7 cols).
+```
+
+#### Contextual Tab Autocompletion inside `py { ... }` and `sql { ... }`
+
+The REPL contextually inspects your input block:
+- **Inside `py { ... }`**: Pressing `[Tab]` autocompletes object methods and attributes (`df.h` $\to$ `df.head()`, `df.hist()`), library functions (`pl.c` $\to$ `pl.col()`), loaded table references, and Python builtins/keywords.
+- **Inside `sql { ... }`**: Pressing `[Tab]` autocompletes ANSI SQL keywords (`SELECT`, `WHERE`, `ORDER BY`, etc.), loaded table names, column names, and table-qualified columns (`orders.amount`).
 
 ### Pre-Loaded Libraries (`pd`, `pl`, `pt`, `DataFrame`)
 
@@ -14527,6 +14563,31 @@ pytae> sales_2025 = "sales_2025/part_*.parquet"
 Loaded 12 files matching 'sales_2025/part_*.parquet' as 'sales_2025' (1,200,000 rows x 8 cols).
 ```
 
+### Direct Database & Cloud Ingestion (`sqlite://`, `duckdb://`, `s3://`, `gcs://`)
+
+Load tables or execute direct queries from SQLite, DuckDB, or cloud data lakes into the workbench:
+
+```text
+# SQLite eager table ingestion
+pytae> orders = sqlite://app.db:orders
+Loaded app.db:orders as 'orders' (100,000 rows x 5 cols).
+
+# SQLite custom query ingestion
+pytae> top_orders = sqlite://app.db:SELECT id, amount FROM orders WHERE amount > 50
+Loaded app.db:query as 'top_orders' (12,450 rows x 2 cols).
+
+# DuckDB eager table ingestion (zero-copy via Apache Arrow)
+pytae> customers = duckdb://analytics.duckdb:customers
+Loaded analytics.duckdb:customers as 'customers' (25,000 rows x 4 cols).
+
+# Lazy scan with projection and filter pushdown
+pytae> lake = scan s3://my-bucket/lake/events.parquet
+Scanned events.parquet as 'lake' (lazy, 18 cols).
+
+pytae> orders_lazy = scan sqlite://app.db:orders
+Scanned app.db:orders as 'orders_lazy' (lazy, 5 cols).
+```
+
 ### Windows, UNC & Git Bash Path Formats (`/c/Users/...`, `//c/...`, `\\server\share\...`)
 
 On Windows, Git Bash (MSYS2), and WSL environments, path conventions often vary. Pytae seamlessly normalizes Git Bash drive mounts (`/c/path/file.parquet` and `//c/path/file.parquet`), WSL mounts (`/mnt/c/...`), Cygwin mounts (`/cygdrive/c/...`), and UNC network shares directly into valid Windows filesystem paths (`C:/path/file.parquet`), whether passed bare or quoted:
@@ -14699,13 +14760,15 @@ The REPL prompt dynamically reflects the active workbench state:
 
 ### Context-Aware Tab Autocompletion
 
-The Pytae REPL provides comprehensive `readline` autocompletion:
+The Pytae REPL provides comprehensive `readline` autocompletion with clean in-place candidate preview:
 
+- **In-Place Ephemeral Preview**: Displays matching candidates directly underneath the prompt and clears cleanly upon selection, avoiding duplicate prompt lines or terminal scrollback clutter.
 - **Top-Level Verbs**: Press `[Tab]` at an empty prompt to view top-level commands (`switch`, `rename`, `rm`, `checkpoint`, `restore`, `export`, `status`, `set`, etc.).
-- **Flags**: Type `-` and press `[Tab]` to autocomplete CLI pipeline verbs (`-filter`, `-mutate`, `-select`, `-arrange`, `-pivot`, etc.).
+- **Flags**: Type `-` and press `[Tab]` to autocomplete CLI pipeline verbs (`-filter`, `-mutate`, `-select`, `-arrange`, `-pivot`, `-browse`, etc.).
 - **Table Names**: Autocompletes loaded table names after `switch `, `rename `, `diff `, and `rm table `.
 - **Column Names**: Inside pipeline flags (`-select `, `-filter `, `-by `, `-arrange `), autocompletes column names from the active table.
-- **File Paths**: Autocompletes local filesystem files and directories during assignment (`df = `).
+- **File Paths & URIs**: Autocompletes local filesystem files, directories, and connection strings during assignment (`df = `).
+- **SQL & Python Context**: Contextually autocompletes SQL keywords, table names, and column names inside `sql { ... }`, and Python environment variables, methods/attributes (`df.h`, `pl.col`), builtins, and keywords inside `py { ... }`.
 - **Settings**: Autocompletes configuration keys and values after `set ` (e.g. `set comma = ` $\to$ `on`, `off`).
 
 ### Persistent Arrow-Key History
@@ -15228,6 +15291,9 @@ Inspect Parquet, CSV, TSV, JSONL, and SAS7BDAT datasets with zero startup overhe
 # Print row and column dimensions (zero-cost on Parquet)
 pytae data.parquet -shape
 
+# Interactive full-screen terminal data grid browser (sticky headers, arrow/vi navigation, live column sort)
+pytae data.parquet -browse
+
 # Preview the first or last 5 rows (custom limit optional)
 pytae data.parquet -head
 pytae data.parquet -head 10
@@ -15483,6 +15549,29 @@ pytae s=sales.parquet st=stores.csv \
 # Load globbed multi-file partitions into a named alias
 pytae all_parts="parts/*.parquet" st=stores.csv \
   -join "left=all_parts, right=st, on=store_id, how=left"
+```
+
+---
+
+## 8b. 🗄️ Direct Database & Cloud Ingestion (`sqlite://`, `duckdb://`, `s3://`, `gcs://`)
+
+Query SQLite/DuckDB databases and cloud data lakes directly with zero-copy Arrow and native lazy pushdown:
+
+```bash
+# Query SQLite tables or custom queries
+pytae sqlite://app.db:orders -head
+pytae sqlite://app.db:"SELECT id, amount FROM orders WHERE amount > 50" -head
+
+# Query DuckDB tables or custom queries
+pytae duckdb://analytics.duckdb:customers -head
+
+# Scan cloud data lakes directly with lazy pushdown (s3://, gcs://, gs://)
+pytae s3://bucket/data.parquet -filter "status == 'complete'" -head
+pytae gcs://bucket/data.parquet -head
+
+# Cross-database relational join across SQLite and DuckDB
+pytae o=sqlite://app.db:orders c=duckdb://analytics.duckdb:customers \
+  -join "right=c, on=customer_id:cust_id" -head
 ```
 
 ---
@@ -16822,7 +16911,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.14.4"
+version = "3.14.5"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"

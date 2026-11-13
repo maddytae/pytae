@@ -160,7 +160,7 @@ pytae [q1, q2]> all_sales = -concat "tables=q1,q2, how=vertical"
 
 Pytae provides a comprehensive suite of inspection tools that never alter your underlying data.
 
-### Previews (`-head`, `-tail`, `-sample`)
+### Previews (`-head`, `-tail`, `-sample`, `-browse`)
 
 ```text
 # Preview first 5 rows
@@ -168,6 +168,10 @@ pytae [df: 344x7]> -head 5
 
 # Preview last 10 rows
 pytae [df: 344x7]> -tail 10
+
+# Interactive full-screen terminal grid browser with live sorting and sticky headers
+pytae [df: 344x7]> -browse
+# Controls: arrow keys / vi keys (h/j/k/l), s (toggle sort column/direction), ? (help), q (exit)
 
 # Deterministic random sample (percentage or row count)
 pytae [df: 344x7]> -sample 10% -seed 42

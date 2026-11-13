@@ -124,6 +124,38 @@ pytae [orders]> py {
 Mean rate: 0.08333333333333333
 ```
 
+#### Trailing Expression Auto-Display (IPython / Jupyter Style)
+
+Just like in Jupyter notebooks or IPython, multi-line `py { ... }` blocks automatically evaluate and format the return value of any trailing expression (such as `df.head()`, `df.describe()`, or calculations) without needing an explicit `print()` call:
+
+```text
+pytae> py {
+...     import pandas as pd
+...     import polars as pl
+...     df = pt.sample('penguins')
+...     df.head()
+... }
+shape: (5, 7)
+┌─────────┬───────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
+│ species ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
+│ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
+│ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
+╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
+│ Adelie  ┆ Torgersen ┆ 39.1           ┆ 18.7          ┆ 181.0             ┆ 3750.0      ┆ Male   │
+│ Adelie  ┆ Torgersen ┆ 39.5           ┆ 17.4          ┆ 186.0             ┆ 3800.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ 40.3           ┆ 18.0          ┆ 195.0             ┆ 3250.0      ┆ Female │
+│ Adelie  ┆ Torgersen ┆ null           ┆ null          ┆ null              ┆ null        ┆ null   │
+│ Adelie  ┆ Torgersen ┆ 36.7           ┆ 19.3          ┆ 193.0             ┆ 3450.0      ┆ Female │
+└─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
+Updated active table 'df' (344 rows x 7 cols).
+```
+
+#### Contextual Tab Autocompletion inside `py { ... }` and `sql { ... }`
+
+The REPL contextually inspects your input block:
+- **Inside `py { ... }`**: Pressing `[Tab]` autocompletes object methods and attributes (`df.h` $\to$ `df.head()`, `df.hist()`), library functions (`pl.c` $\to$ `pl.col()`), loaded table references, and Python builtins/keywords.
+- **Inside `sql { ... }`**: Pressing `[Tab]` autocompletes ANSI SQL keywords (`SELECT`, `WHERE`, `ORDER BY`, etc.), loaded table names, column names, and table-qualified columns (`orders.amount`).
+
 ### Pre-Loaded Libraries (`pd`, `pl`, `pt`, `DataFrame`)
 
 To maximize interactive ergonomics, Pytae automatically pre-loads the core data stack directly into every `py { ... }` scope:
