@@ -545,6 +545,7 @@ def _console_input(
         draft = ""
         prev_c_row = 0
         prev_total_rows = 0
+        preview_rows = 0  # Number of preview candidate rows rendered directly below the prompt
 
         def calc_pos(prompt: str, chars: list[str], cur_pos: int, width: int) -> tuple[int, int, int, str]:
             clean_prompt = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", prompt)
@@ -606,8 +607,8 @@ def _console_input(
             display_str = "\n".join(display_lines)
             return c_row, c_col, total_rows, display_str
 
-        def render() -> None:
-            nonlocal prev_c_row, prev_total_rows
+        def render(preview_text: str | None = None) -> None:
+            nonlocal prev_c_row, prev_total_rows, preview_rows
             width = max(20, shutil.get_terminal_size((80, 24)).columns or 80)
             c_row, c_col, total_rows, display_str = calc_pos(prompt_text, line_chars, cursor_pos, width)
 
@@ -617,15 +618,22 @@ def _console_input(
             else:
                 sys.stdout.write("\r")
 
-            # Clear everything from row 0 downwards
+            # Clear everything from row 0 downwards (clears prompt and any previous preview rows)
             sys.stdout.write("\x1b[J")
 
             # Write prompt and text (including any multi-line continuations)
             sys.stdout.write(display_str)
 
-            # Cursor is currently at bottom of display_str
+            # Append preview text directly below without scrolling or creating new prompt lines
+            if preview_text:
+                sys.stdout.write("\n" + preview_text)
+                preview_rows = preview_text.count("\n") + 1
+            else:
+                preview_rows = 0
+
+            # Cursor is currently at the bottom of the rendered text (or bottom of preview)
             # Move cursor up to target row (c_row) and column (c_col)
-            row_up = total_rows - c_row
+            row_up = (total_rows - c_row) + preview_rows
             if row_up > 0:
                 sys.stdout.write(f"\x1b[{row_up}A")
             sys.stdout.write(f"\x1b[{c_col + 1}G")
@@ -635,6 +643,9 @@ def _console_input(
             prev_total_rows = total_rows
 
         def exit_and_return(text: str) -> str:
+            # If a preview was showing, erase it before returning
+            if preview_rows > 0:
+                render()
             row_down = prev_total_rows - prev_c_row
             if row_down > 0:
                 sys.stdout.write(f"\x1b[{row_down}B")
@@ -1040,6 +1051,13 @@ def _console_input(
                         line_chars.insert(cursor_pos, " ")
                         cursor_pos += 1
                     render()
+                elif word in matches and len(common := os.path.commonprefix(matches)) <= len(word):
+                    # Word is already an exact match of a candidate and cannot be expanded further:
+                    # Append a trailing space so the user can continue typing the next token
+                    if not word.endswith(("/", "\\", "=", os.sep)) and (cursor_pos == len(line_chars) or line_chars[cursor_pos] != " "):
+                        line_chars.insert(cursor_pos, " ")
+                        cursor_pos += 1
+                    render()
                 else:
                     common = os.path.commonprefix(matches)
                     if len(common) > len(word):
@@ -1047,7 +1065,6 @@ def _console_input(
                         cursor_pos = begidx + len(common)
                         render()
                     else:
-                        sys.stdout.write("\n")
                         col_width = min(40, max(len(m) for m in matches) + 2)
                         term_cols = 80
                         try:
@@ -1056,14 +1073,13 @@ def _console_input(
                             pass
                         num_cols = max(1, term_cols // col_width)
                         disp_matches = matches[:40]
+                        preview_lines: list[str] = []
                         for i in range(0, len(disp_matches), num_cols):
                             row_items = disp_matches[i : i + num_cols]
-                            sys.stdout.write("  " + "".join(m.ljust(col_width) for m in row_items).rstrip() + "\n")
+                            preview_lines.append("  " + "".join(m.ljust(col_width) for m in row_items).rstrip())
                         if len(matches) > 40:
-                            sys.stdout.write(f"  ... and {len(matches) - 40} more\n")
-                        prev_c_row = 0
-                        prev_total_rows = 0
-                        render()
+                            preview_lines.append(f"  ... and {len(matches) - 40} more")
+                        render("\n".join(preview_lines))
             elif ch >= " ":  # Printable character
                 line_chars.insert(cursor_pos, ch)
                 cursor_pos += 1
@@ -7247,14 +7263,25 @@ class PytaeRepl:
         # Case 7: Flag completion (starts with '-')
         if text.startswith("-"):
             flags = [
-                "-filter", "-select", "-mutate", "-arrange", "-group_by", "-by",
-                "-summarize", "-count", "-slice", "-distinct", "-join", "-left_join",
-                "-inner_join", "-outer_join", "-cross_join", "-semi_join", "-anti_join",
-                "-pivot", "-pivot_longer", "-pivot_wider", "-unpivot",
-                "-head", "-tail", "-sample", "-describe", "-glimpse", "-schema",
-                "-columns", "-cols", "-info", "-shape", "-print", "-o", "-sort", "-where",
-                "-drop", "-rename", "-relocate", "-tol", "-save", "-restore", "-time",
-                "-dropna", "-fillna", "-opts",
+                # Core verbs
+                "-filter", "-select", "-mutate", "-arrange", "-by", "-agg",
+                "-distinct", "-count", "-join", "-concat",
+                # Reshaping
+                "-long", "-wide", "-pivot",
+                # Missing data & cleanup
+                "-dropna", "-fillna", "-clean_columns",
+                # Validation & advanced
+                "-assert", "-explode",
+                # Inspections & Previews
+                "-head", "-tail", "-sample", "-shape", "-cols", "-dtype",
+                "-schema", "-describe", "-glimpse", "-nulls", "-meta",
+                "-diff", "-tol",
+                # Plotting & Diagnostics
+                "-plot", "-hist", "-freq", "-bar", "-scatter", "-corr",
+                # Data Masking / Privacy
+                "-mask", "-unmask",
+                # Export & Ingestion
+                "-o", "-opts", "-time",
             ]
             return [f for f in flags if f.startswith(text)]
 
@@ -7263,12 +7290,13 @@ class PytaeRepl:
             top_cmds = [
                 "switch", "diff", "rename", "rm", "status", "set", "load", "checkpoint", "restore",
                 "reset", "history", "session", "sessions", "sql", "py",
-                "exit", "quit", "help", "time",
-                "clear",
+                "exit", "quit", "help", "time", "clear", "export",
                 # Bare verbs
-                "filter", "select", "mutate", "arrange", "group_by", "by", "summarize",
-                "count", "slice", "distinct", "join", "pivot", "head", "tail", "sample",
-                "describe", "glimpse", "schema", "columns", "info", "shape", "print",
+                "filter", "select", "mutate", "arrange", "by", "agg",
+                "distinct", "count", "join", "concat",
+                "long", "wide", "pivot",
+                "dropna", "fillna", "clean_columns",
+                "head", "tail", "sample", "describe", "glimpse", "schema", "cols", "dtype", "shape", "nulls",
             ]
             candidates = top_cmds + list(self.tables.keys())
             return [c for c in candidates if c.startswith(text)]
@@ -7293,6 +7321,10 @@ class PytaeRepl:
             return [c for c in candidates if c.lower().startswith(text.lower())]
 
         # Case 12: Pipeline context (columns of active or referenced table)
+        if last_token in ("-join", "join"):
+            # When completing the table argument for join, prioritize table names first
+            return [t for t in self.tables if t.startswith(text)]
+
         target_df = self.current_df
         if prefix_tokens and prefix_tokens[0] in self.tables:
             target_df = self.tables[prefix_tokens[0]]
@@ -7300,9 +7332,6 @@ class PytaeRepl:
         matches: list[str] = []
         if target_df is not None:
             matches.extend([c for c in target_df.columns if c.startswith(text)])
-
-        if last_token in ("-join", "-left_join", "-inner_join", "-outer_join", "-cross_join", "-semi_join", "-anti_join", "join"):
-            matches.extend([t for t in self.tables if t.startswith(text)])
 
         return list(dict.fromkeys(matches))
 
