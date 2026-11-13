@@ -164,6 +164,20 @@ def test_repl_python_expression(sample_df):
     assert outputs[-1] == "5"
 
 
+def test_repl_python_multiline_trailing_expression():
+    outputs = []
+    r = PytaeRepl()
+
+    code = """py {
+    import pandas as pd
+    df = pt.sample('penguins')
+    df.head(3)
+}"""
+    r.execute_line(code, output_fn=outputs.append)
+    assert any("shape: (3, 7)" in o for o in outputs)
+    assert any("Updated active table 'df'" in o for o in outputs)
+
+
 def test_repl_save_export(sample_df, tmp_path):
     outputs = []
     r = PytaeRepl(df=sample_df)

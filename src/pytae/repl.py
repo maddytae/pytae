@@ -6761,26 +6761,39 @@ class PytaeRepl:
                 and k not in injected_var_keys
             }
 
+            import ast
             import contextlib
             import io
 
             buf = io.StringIO()
+            res = None
+            has_expr = False
             try:
+                tree = ast.parse(code)
+                has_expr = bool(tree.body and isinstance(tree.body[-1], ast.Expr))
                 with contextlib.redirect_stdout(buf):
-                    res = eval(code, self._py_env)
-                out_val = buf.getvalue().rstrip()
-                if out_val:
-                    output_fn(out_val)
-                if isinstance(res, (pl.DataFrame, PytaeDataFrame)):
-                    output_fn(self._format_table(res))
-                elif res is not None:
-                    output_fn(repr(res))
+                    if has_expr:
+                        if len(tree.body) > 1:
+                            exec_mod = ast.Module(body=tree.body[:-1], type_ignores=[])
+                            exec(compile(exec_mod, "<py_block>", "exec"), self._py_env)
+                        eval_expr = ast.Expression(body=tree.body[-1].value)
+                        res = eval(compile(eval_expr, "<py_block>", "eval"), self._py_env)
+                    else:
+                        exec(compile(tree, "<py_block>", "exec"), self._py_env)
             except SyntaxError:
                 with contextlib.redirect_stdout(buf):
                     exec(code, self._py_env)
-                out_val = buf.getvalue().rstrip()
-                if out_val:
-                    output_fn(out_val)
+
+            out_val = buf.getvalue().rstrip()
+            if out_val:
+                output_fn(out_val)
+            if has_expr:
+                if isinstance(res, (pl.DataFrame, PytaeDataFrame, pl.LazyFrame)):
+                    output_fn(self._format_table(res))
+                elif pd is not None and isinstance(res, (pd.DataFrame, pd.Series)):
+                    output_fn(self._format_table(pl.from_pandas(res if isinstance(res, pd.DataFrame) else res.to_frame())))
+                elif res is not None:
+                    output_fn(repr(res))
 
             # Ephemeral Python Sandboxing: Only keep dataframes explicitly converted via .to_pytae()
             mutated = False
