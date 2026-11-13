@@ -182,6 +182,7 @@ _CLI_FLAGS = {
     "-scatter",
     "-corr",
     "-plot",
+    "-browse",
     "-finalize",
     "-i",
     "-sessions",
@@ -416,6 +417,12 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         dest="describe",
         action=_OrderedFlag,
         help="print pandas describe() summary (count/mean/std/min/quartiles/max)",
+    )
+    parser.add_argument(
+        "-browse",
+        dest="browse",
+        action=_OrderedFlag,
+        help="launch interactive terminal data grid browser with sticky headers and live sorting",
     )
     parser.add_argument(
         "-glimpse",
@@ -1212,6 +1219,7 @@ def main(argv: list[str] | None = None) -> int:
             args.nulls,
             args.schema,
             args.describe,
+            args.browse,
             args.glimpse,
             args.distinct is not None,
             args.count is not None,
@@ -1257,6 +1265,7 @@ def main(argv: list[str] | None = None) -> int:
             args.nulls,
             args.schema,
             args.describe,
+            args.browse,
             show_all,
             args.distinct is not None,
             args.count is not None,

@@ -1106,6 +1106,14 @@ def _process_path(
                 )
             if is_clip:
                 clip_action = lambda d=described: _apply_round(d, args.round_ndigits).to_clipboard(index=True)
+        elif op == "browse":
+            from pytae.tui_browser import browse_dataframe
+
+            browse_dataframe(
+                pipeline.current_frame(),
+                title=str(path) if path is not None else "pipeline",
+                output_fn=lambda msg: _output_text(msg, args),
+            )
         elif op == "glimpse":
             from pytae.other_utilities import format_glimpse
 

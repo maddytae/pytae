@@ -1544,6 +1544,7 @@ _BARE_PIPELINE_VERBS = frozenset(
         "nulls",
         "glimpse",
         "describe",
+        "browse",
         "head",
         "tail",
         "time",
@@ -4293,6 +4294,7 @@ class PytaeRepl:
                 "-schema",
                 "-glimpse",
                 "-describe",
+                "-browse",
                 "-head",
                 "-tail",
                 "-collect",
@@ -4427,6 +4429,16 @@ class PytaeRepl:
         elif first_lower == "-describe":
             collected = df.collect() if isinstance(df, pl.LazyFrame) else df
             output_fn(self._format_table(collected.describe()))
+        elif first_lower == "-browse":
+            from pytae.tui_browser import browse_dataframe
+
+            tbl_title = self.path_str or "df"
+            # When output_fn is intercepted (e.g. testing or scripts), fallback to text preview
+            if output_fn is not print:
+                output_fn(f"--- {tbl_title} ({df.shape[0]:,} rows x {df.shape[1]} cols) ---")
+                output_fn(self._format_table(df.head(50), tbl_rows=50))
+            else:
+                browse_dataframe(df, title=tbl_title, output_fn=output_fn)
         elif first_lower == "-head":
             n = int(tokens[1]) if len(tokens) > 1 and tokens[1].isdigit() else 5
             collected = df.head(n).collect() if isinstance(df, pl.LazyFrame) else df.head(n)
@@ -7273,7 +7285,7 @@ class PytaeRepl:
                 # Validation & advanced
                 "-assert", "-explode",
                 # Inspections & Previews
-                "-head", "-tail", "-sample", "-shape", "-cols", "-dtype",
+                "-head", "-tail", "-sample", "-browse", "-shape", "-cols", "-dtype",
                 "-schema", "-describe", "-glimpse", "-nulls", "-meta",
                 "-diff", "-tol",
                 # Plotting & Diagnostics
