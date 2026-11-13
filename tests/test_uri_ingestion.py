@@ -3,8 +3,12 @@
 import sqlite3
 from pathlib import Path
 
-import duckdb
 import pytest
+
+try:
+    import duckdb
+except ImportError:
+    duckdb = None  # type: ignore[assignment]
 
 import pytae as pt
 from pytae.cli import main
@@ -25,6 +29,8 @@ def sqlite_db_path(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def duckdb_file_path(tmp_path: Path) -> Path:
+    if duckdb is None:
+        pytest.skip("duckdb is not installed")
     duck_file = tmp_path / "analytics.duckdb"
     conn = duckdb.connect(str(duck_file))
     conn.execute("CREATE TABLE customers (cust_id INT, name VARCHAR, region VARCHAR)")
@@ -105,6 +111,8 @@ def test_duckdb_query_uri(duckdb_file_path: Path):
 
 
 def test_duckdb_in_memory_query():
+    if duckdb is None:
+        pytest.skip("duckdb is not installed")
     uri = "duckdb://:memory::SELECT 42 AS answer, 'hello' AS greeting"
     df = pt.read(uri)
     assert df.shape == (1, 2)

@@ -1175,7 +1175,12 @@ def read_uri(uri: str | Path, **opts: Any) -> tuple[Path, Any]:
             conn.close()
 
     if scheme == "duckdb":
-        import duckdb
+        try:
+            import duckdb
+        except ImportError:
+            raise ImportError(
+                "duckdb is required to read duckdb:// URIs. Install it with: pip install duckdb"
+            ) from None
 
         _, db_path_str, target = parse_db_uri(clean)
         if db_path_str in (":memory:", ""):
