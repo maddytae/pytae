@@ -842,7 +842,9 @@ def parse_input_target(token: str, *, _force_nt: bool = False) -> dict[str, Any]
     rest = normalize_git_bash_path(rest, _force_nt=_force_nt)
 
     # Guard against mistaken colon sheet syntax (e.g. data.xlsx:Sheet1)
-    if ":" in rest and not rest.startswith("sample:"):
+    from pytae.readers import is_db_or_cloud_uri, parse_db_uri
+
+    if ":" in rest and not rest.startswith("sample:") and not is_db_or_cloud_uri(rest):
         p_part, _, s_part = rest.rpartition(":")
         # Check if p_part is not just a Windows drive letter (e.g. 'C' or 'D')
         if not (len(p_part) == 1 and p_part.isalpha()):
@@ -858,6 +860,16 @@ def parse_input_target(token: str, *, _force_nt: bool = False) -> dict[str, Any]
     if not alias:
         if path_str.startswith("sample:"):
             alias = path_str[7:].removesuffix(".parquet")
+        elif is_db_or_cloud_uri(path_str):
+            if any(path_str.lower().startswith(pfx) for pfx in ("sqlite://", "sqlite:/", "duckdb://", "duckdb:/")):
+                _, db_p, target = parse_db_uri(path_str)
+                if target and not (target.lower().startswith("select") or " " in target):
+                    alias = target
+                else:
+                    alias = Path(db_p).stem or "db"
+            else:
+                clean_base = os.path.basename(path_str.rstrip("/").split("?")[0])
+                alias = os.path.splitext(clean_base)[0] or "cloud"
         else:
             clean_base = os.path.basename(path_str.replace("\\", "/"))
             alias = os.path.splitext(clean_base)[0]

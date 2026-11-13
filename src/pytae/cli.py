@@ -45,7 +45,7 @@ from pytae.cli_run import (
     _fail,
     _process_path,
 )
-from pytae.readers import get_reader
+from pytae.readers import get_reader, is_db_or_cloud_uri
 
 try:
     __version__ = _pkg_version("pytae")
@@ -94,6 +94,8 @@ def _is_path_like(token: str) -> bool:
         return True
     if token.startswith("-"):
         return False
+    if is_db_or_cloud_uri(token):
+        return True
     if "=" in token:
         _, _, rhs = token.partition("=")
         return _is_path_like(rhs.strip())
@@ -1375,7 +1377,9 @@ def main(argv: list[str] | None = None) -> int:
                     parser.error(f"duplicate alias '{alias}'; assign explicit aliases like 'a={raw_tok}'")
                 aliases_seen.add(alias)
                 raw_entry = entry["path"].strip()
-                if raw_entry.startswith("sample:"):
+                if is_db_or_cloud_uri(raw_entry):
+                    entry_path = Path(raw_entry)
+                elif raw_entry.startswith("sample:"):
                     from pytae import _DATASET_NAMES, DATA_PATH
 
                     sample_name = raw_entry[7:].strip().removesuffix(".parquet")

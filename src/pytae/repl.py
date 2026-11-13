@@ -91,7 +91,16 @@ def _resolve_to_canonical_path(path_str: str) -> str:
 
     raw = path_str.strip().strip("'\"")
     raw = normalize_git_bash_path(raw)
-    if not raw or raw.lower() in ("clip", "clipboard") or raw.startswith("sample:") or raw.startswith("http://") or raw.startswith("https://"):
+    from pytae.readers import is_db_or_cloud_uri
+
+    if (
+        not raw
+        or raw.lower() in ("clip", "clipboard")
+        or raw.startswith("sample:")
+        or raw.startswith("http://")
+        or raw.startswith("https://")
+        or is_db_or_cloud_uri(raw)
+    ):
         return raw
 
     try:
@@ -2862,6 +2871,7 @@ class PytaeRepl:
         self.comma: bool = False
         self.syntax_highlight: bool = True
         self.theme: str = "default"
+        self._active_multiline_buffer: list[str] = []
         self._load_config()
         self.table_sources: dict[str, str] = {}
         self.history: list[str] = []
@@ -3271,9 +3281,13 @@ class PytaeRepl:
     def _read_file_to_df(self, path: Path | str, **reader_opts: Any) -> tuple[Path, pl.DataFrame]:
         """Resolve a dataset path and load it into a Polars DataFrame using reader kwargs with schema fallback."""
         from pytae.cli_parsing import parse_input_target
+        from pytae.readers import is_db_or_cloud_uri, read_uri
 
         target = parse_input_target(str(path))
         raw_path = target["path"]
+        if is_db_or_cloud_uri(raw_path):
+            return read_uri(raw_path, **reader_opts)
+
         if raw_path.strip().lower() in ("clip", "clipboard"):
             import pandas as pd
 
@@ -3337,9 +3351,13 @@ class PytaeRepl:
         import polars as pl
 
         from pytae.cli_parsing import parse_input_target
+        from pytae.readers import is_db_or_cloud_uri, scan_uri
 
         target = parse_input_target(str(path))
         raw_path = target["path"]
+        if is_db_or_cloud_uri(raw_path):
+            return scan_uri(raw_path, **scan_opts)
+
         if raw_path.strip().lower() in ("clip", "clipboard"):
             raise ValueError("scan is not supported for clipboard. Use '<var> = clip' to load into memory.")
 
@@ -6023,6 +6041,7 @@ class PytaeRepl:
                 import glob
 
                 from pytae import DATA_PATH
+                from pytae.readers import is_db_or_cloud_uri
 
                 has_glob = any(ch in target_path for ch in "*?[")
                 is_file = (
@@ -6031,7 +6050,8 @@ class PytaeRepl:
                     or (has_glob and bool(glob.glob(target_path)))
                 )
                 is_data_cand = (DATA_PATH / p.name).exists() or (DATA_PATH / f"{p.stem}.parquet").exists()
-                if is_clip or is_sample or is_file or is_data_cand:
+                is_uri = is_db_or_cloud_uri(target_path)
+                if is_clip or is_sample or is_file or is_data_cand or is_uri:
                     if var_name in self.variables:
                         output_fn(
                             f"pytae: '{var_name}' is already a session variable; cannot assign as a table. Use 'rm var {var_name}' first."
@@ -6337,7 +6357,10 @@ class PytaeRepl:
             return
 
         is_clip = path_str.strip().lower() in ("clip", "clipboard")
-        if not is_clip:
+        from pytae.readers import is_db_or_cloud_uri
+
+        is_uri = is_db_or_cloud_uri(path_str)
+        if not is_clip and not is_uri:
             p = Path(path_str).expanduser()
             if not path_str.startswith("sample:") and not p.exists() and not any(ch in path_str for ch in "*?["):
                 from pytae import DATA_PATH
@@ -7134,6 +7157,119 @@ class PytaeRepl:
         first_token = prefix_tokens[0].lower() if prefix_tokens else ""
         last_token = prefix_tokens[-1].lower() if prefix_tokens else ""
 
+        # Case 0a: Python block context ('py { ... }')
+        full_ctx = line_buf
+        if hasattr(self, "_active_multiline_buffer") and self._active_multiline_buffer:
+            full_ctx = "\n".join(self._active_multiline_buffer) + "\n" + line_buf
+
+        in_py_ctx = (
+            re.search(r"(?:^|\n)\s*py\s*\{", full_ctx) is not None
+            or first_token in ("py", "py{")
+            or first_token.startswith("py{")
+        )
+        if in_py_ctx:
+            # Prepare transient Python scope with current tables and active DataFrame
+            py_scope: dict[str, Any] = dict(self._py_env)
+            import polars as pl
+
+            import pytae as pt
+
+            try:
+                import pandas as pd
+            except ImportError:
+                pd = None
+            from pytae.dataframe import DataFrame as PytaeDataFrame
+
+            if "pl" not in py_scope:
+                py_scope["pl"] = pl
+            if "pt" not in py_scope:
+                py_scope["pt"] = pt
+            if pd is not None and "pd" not in py_scope:
+                py_scope["pd"] = pd
+            if "DataFrame" not in py_scope:
+                py_scope["DataFrame"] = PytaeDataFrame
+            if "df" not in py_scope and self.current_df is not None:
+                py_scope["df"] = PytaeDataFrame(self.current_df)
+            for tbl_name, tbl_df in self.tables.items():
+                if tbl_name not in py_scope:
+                    py_scope[tbl_name] = PytaeDataFrame(tbl_df)
+
+            # Attribute completion: e.g. 'df.', 'df.h', 'pl.col.', etc.
+            if "." in text:
+                obj_expr, _, attr_prefix = text.rpartition(".")
+                try:
+                    target_obj = eval(obj_expr, py_scope)
+                    matches = []
+                    for a in dir(target_obj):
+                        if a.startswith(attr_prefix) and not a.startswith("__"):
+                            try:
+                                val = getattr(target_obj, a)
+                                suffix = "()" if callable(val) else ""
+                                matches.append(f"{obj_expr}.{a}{suffix}")
+                            except Exception:
+                                matches.append(f"{obj_expr}.{a}")
+                    return sorted(matches)
+                except Exception:
+                    pass
+
+            # Top-level identifier completion (scope variables, builtins, keywords)
+            import builtins
+            import keyword
+
+            candidates = (
+                list(py_scope.keys())
+                + [b for b in dir(builtins) if not b.startswith("__")]
+                + keyword.kwlist
+            )
+            return sorted({c for c in candidates if c.startswith(text)})
+
+        # Case 0a-sql: SQL block context ('sql { ... }' or '<var> = sql { ... }')
+        in_sql_ctx = (
+            re.search(r"(?:^|\n)\s*(?:[A-Za-z_][A-Za-z0-9_]*\s*=\s*)?sql\s*\{", full_ctx, re.IGNORECASE) is not None
+            or first_token in ("sql", "sql{")
+            or first_token.startswith("sql{")
+            or (len(prefix_tokens) >= 3 and prefix_tokens[1] == "=" and prefix_tokens[2].lower().startswith("sql"))
+        )
+        if in_sql_ctx:
+            sql_keywords = [
+                "SELECT", "FROM", "WHERE", "JOIN", "LEFT JOIN", "INNER JOIN", "RIGHT JOIN",
+                "FULL JOIN", "CROSS JOIN", "ON", "GROUP BY", "ORDER BY", "HAVING", "LIMIT",
+                "AS", "AND", "OR", "NOT", "IN", "BETWEEN", "LIKE", "IS NULL", "IS NOT NULL",
+                "DISTINCT", "CASE", "WHEN", "THEN", "ELSE", "END", "UNION", "ALL", "WITH",
+                "OVER", "PARTITION BY", "COUNT", "SUM", "AVG", "MIN", "MAX",
+            ]
+            table_names = list(self.tables.keys()) + [cp for cp in self.checkpoints if cp not in self.tables]
+
+            # table.column completion inside SQL: e.g. 'df.c' or 'orders.total'
+            if "." in text:
+                tbl_prefix, _, col_prefix = text.rpartition(".")
+                target_df = self.tables.get(tbl_prefix)
+                if target_df is None and tbl_prefix == "df" and self.current_df is not None:
+                    target_df = self.current_df
+                if target_df is not None:
+                    cols = _get_frame_columns(target_df)
+                    return sorted([f"{tbl_prefix}.{c}" for c in cols if c.lower().startswith(col_prefix.lower())])
+
+            all_cols: set[str] = set()
+            if self.current_df is not None:
+                all_cols.update(_get_frame_columns(self.current_df))
+            for t_df in self.tables.values():
+                all_cols.update(_get_frame_columns(t_df))
+
+            lower_text = text.lower()
+            candidates = set()
+            for kw in sql_keywords:
+                if kw.lower().startswith(lower_text):
+                    candidates.add(kw if text.isupper() else kw.lower() if text.islower() else kw)
+            for tbl in table_names:
+                if tbl.lower().startswith(lower_text):
+                    candidates.add(tbl)
+            for col in all_cols:
+                if col.lower().startswith(lower_text):
+                    candidates.add(col)
+
+            return sorted(candidates)
+
         # Variable reference completion (@var)
         if text.startswith("@"):
             return [f"@{v}" for v in self.variables.keys() if f"@{v}".startswith(text)]
@@ -7464,6 +7600,7 @@ class PytaeRepl:
 
         pending_input_queue: list[str] = []
         multi_buffer: list[str] = []
+        self._active_multiline_buffer = multi_buffer
 
         def _get_input(prompt_text: str) -> str:
             effective_prompt = "" if is_redirected_input else prompt_text

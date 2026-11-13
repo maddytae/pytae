@@ -29,6 +29,7 @@ from pytae.readers import (
     StdinReader,
     _split_path_suffixes,
     get_reader,
+    is_db_or_cloud_uri,
     write_dataframe,
 )
 
@@ -780,6 +781,28 @@ def _process_path(
                     **opts,
                 )
             except (ValueError, ImportError) as exc:
+                return _fail(parser, batch, str(exc))
+
+            pipeline = _Pipeline(
+                reader,
+                nrows=args.nrows,
+                progress=args.progress,
+                chunk_size=chunk_size,
+            )
+        elif path is not None and is_db_or_cloud_uri(str(path)):
+            opts = dict(reader_opts or {})
+            sep_val = opts.pop("sep", None) or opts.pop("delimiter", None) or args.dlim
+            enc_val = opts.pop("encoding", None) or args.encoding
+            chunk_val = opts.pop("chunk_size", None) or chunk_size
+            try:
+                reader = get_reader(
+                    path,
+                    sep=sep_val,
+                    encoding=enc_val,
+                    chunk_size=chunk_val,
+                    **opts,
+                )
+            except (ValueError, ImportError, FileNotFoundError) as exc:
                 return _fail(parser, batch, str(exc))
 
             pipeline = _Pipeline(

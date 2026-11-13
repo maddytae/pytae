@@ -1056,6 +1056,8 @@ _TXT_DEFAULT_ENCODING = {".dat": "latin-1"}
 
 def _normalize_source(source: Any, *, _force_nt: bool = False) -> Any:
     """Normalize Git Bash / MSYS paths on Windows when source is a path string, Path, or list of them."""
+    if is_db_or_cloud_uri(source):
+        return _normalize_uri(source)
     if isinstance(source, (str, Path)):
         from pytae.cli_parsing import normalize_git_bash_path
 
@@ -1067,8 +1069,257 @@ def _normalize_source(source: Any, *, _force_nt: bool = False) -> Any:
     return source
 
 
+def is_db_or_cloud_uri(s: Any) -> bool:
+    """Return True if s is a supported database or cloud storage URI."""
+    if not isinstance(s, (str, Path)):
+        return False
+    s_str = str(s).strip().lower()
+    return any(
+        s_str.startswith(pfx)
+        for pfx in (
+            "sqlite://",
+            "sqlite:/",
+            "duckdb://",
+            "duckdb:/",
+            "s3://",
+            "s3:/",
+            "gcs://",
+            "gcs:/",
+            "gs://",
+            "gs:/",
+        )
+    )
+
+
+def _normalize_uri(s: str | Path) -> str:
+    s_str = str(s).strip()
+    for pfx in ("sqlite", "duckdb", "s3", "gcs", "gs"):
+        if s_str.lower().startswith(f"{pfx}:///"):
+            return s_str
+        if s_str.lower().startswith(f"{pfx}://"):
+            return s_str
+        if s_str.lower().startswith(f"{pfx}:/"):
+            rest = s_str[len(pfx) + 1 :]
+            if pfx in ("sqlite", "duckdb"):
+                return f"{pfx}://{rest}"
+            else:
+                return f"{pfx}://{rest.lstrip('/')}"
+    return s_str
+
+
+def parse_db_uri(uri: str | Path) -> tuple[str, str, str]:
+    """Parse a sqlite:// or duckdb:// URI.
+
+    Returns: (scheme, db_path, target)
+      where target is a table name or SQL query string (or empty if omitted).
+    """
+    clean = _normalize_uri(uri)
+    scheme, _, rest = clean.partition("://")
+    scheme = scheme.lower()
+    if ":" in rest:
+        p_part, _, target = rest.rpartition(":")
+        if len(p_part) == 1 and p_part.isalpha():
+            p_part = rest
+            target = ""
+    else:
+        p_part = rest
+        target = ""
+    return scheme, p_part.strip(), target.strip()
+
+
+def read_uri(uri: str | Path, **opts: Any) -> tuple[Path, Any]:
+    """Read a dataset from a database (sqlite://, duckdb://) or cloud URI (s3://, gcs://, gs://)."""
+    import polars as pl
+
+    clean = _normalize_uri(uri)
+    scheme = clean.split("://", 1)[0].lower()
+
+    if scheme == "sqlite":
+        import sqlite3
+
+        _, db_path_str, target = parse_db_uri(clean)
+        db_path = Path(db_path_str).expanduser()
+        if not db_path.exists():
+            raise FileNotFoundError(f"SQLite database file not found: {db_path}")
+
+        conn = sqlite3.connect(str(db_path))
+        try:
+            if not target:
+                cursor = conn.cursor()
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+                tables = [row[0] for row in cursor.fetchall()]
+                if len(tables) == 1:
+                    target = tables[0]
+                elif not tables:
+                    raise ValueError(f"SQLite database '{db_path.name}' contains no user tables.")
+                else:
+                    raise ValueError(
+                        f"Table name required for sqlite URI: sqlite://{db_path.name}:<table_name>. "
+                        f"Available tables: {', '.join(tables)}"
+                    )
+
+            if re.match(r"^\s*select\s+", target, re.IGNORECASE):
+                query = target
+                tbl_label = "query"
+            else:
+                query = f'SELECT * FROM "{target}"'
+                tbl_label = target
+
+            nrows = opts.pop("nrows", None) or opts.pop("n_rows", None)
+            if nrows is not None:
+                query = f"{query.rstrip(';')} LIMIT {int(nrows)}"
+
+            df = pl.read_database(query, conn)
+            return Path(f"sqlite://{db_path.name}:{tbl_label}"), df
+        finally:
+            conn.close()
+
+    if scheme == "duckdb":
+        import duckdb
+
+        _, db_path_str, target = parse_db_uri(clean)
+        if db_path_str in (":memory:", ""):
+            conn = duckdb.connect()
+            db_name = ":memory:"
+        else:
+            db_path = Path(db_path_str).expanduser()
+            if not db_path.exists():
+                raise FileNotFoundError(f"DuckDB database file not found: {db_path}")
+            conn = duckdb.connect(str(db_path), read_only=True)
+            db_name = db_path.name
+
+        try:
+            if not target:
+                cursor = conn.cursor()
+                tables = [row[0] for row in cursor.execute("SHOW TABLES").fetchall()]
+                if len(tables) == 1:
+                    target = tables[0]
+                elif not tables:
+                    raise ValueError(f"DuckDB database '{db_name}' contains no user tables.")
+                else:
+                    raise ValueError(
+                        f"Table name required for duckdb URI: duckdb://{db_name}:<table_name>. "
+                        f"Available tables: {', '.join(tables)}"
+                    )
+
+            if re.match(r"^\s*select\s+", target, re.IGNORECASE):
+                query = target
+                tbl_label = "query"
+            else:
+                query = f'SELECT * FROM "{target}"'
+                tbl_label = target
+
+            nrows = opts.pop("nrows", None) or opts.pop("n_rows", None)
+            if nrows is not None:
+                query = f"{query.rstrip(';')} LIMIT {int(nrows)}"
+
+            rel = conn.execute(query)
+            arrow_obj = rel.arrow()
+            arrow_tbl = arrow_obj.read_all() if hasattr(arrow_obj, "read_all") else arrow_obj
+            df = pl.from_arrow(arrow_tbl)
+            if not isinstance(df, pl.DataFrame):
+                df = pl.DataFrame(df)
+            return Path(f"duckdb://{db_name}:{tbl_label}"), df
+        finally:
+            conn.close()
+
+    if scheme in ("s3", "gcs", "gs"):
+        fmt = opts.pop("fmt", opts.pop("format", None))
+        low = clean.lower()
+        if fmt:
+            fmt = fmt.lower().lstrip(".")
+        elif any(low.endswith(ext) for ext in (".parquet", ".pq")):
+            fmt = "parquet"
+        elif any(low.endswith(ext) for ext in (".csv", ".tsv", ".txt", ".dat")):
+            fmt = "csv"
+        elif any(low.endswith(ext) for ext in (".ipc", ".arrow", ".feather")):
+            fmt = "ipc"
+        elif any(low.endswith(ext) for ext in (".ndjson", ".jsonl")):
+            fmt = "ndjson"
+        else:
+            fmt = "parquet"
+
+        nrows = opts.pop("nrows", None) or opts.pop("n_rows", None)
+        if fmt == "parquet":
+            if nrows is not None:
+                df = pl.scan_parquet(clean, **opts).head(nrows).collect()
+            else:
+                df = pl.read_parquet(clean, **opts)
+        elif fmt == "csv":
+            sep = opts.pop("sep", None) or opts.pop("delimiter", None)
+            if sep:
+                opts["separator"] = sep
+            if nrows is not None:
+                opts["n_rows"] = nrows
+            df = pl.read_csv(clean, **opts)
+        elif fmt == "ipc":
+            if nrows is not None:
+                df = pl.scan_ipc(clean, **opts).head(nrows).collect()
+            else:
+                df = pl.read_ipc(clean, **opts)
+        elif fmt == "ndjson":
+            if nrows is not None:
+                df = pl.scan_ndjson(clean, **opts).head(nrows).collect()
+            else:
+                df = pl.read_ndjson(clean, **opts)
+        else:
+            raise ValueError(f"Unsupported cloud file format '{fmt}' for URI: {clean}")
+
+        cloud_name = clean.rstrip("/").rpartition("/")[2] or clean
+        return Path(cloud_name), df
+
+    raise ValueError(f"Unsupported database/cloud URI scheme: '{scheme}' in '{uri}'")
+
+
+def scan_uri(uri: str | Path, **opts: Any) -> tuple[Path, Any]:
+    """Lazily scan a dataset from a database (sqlite://, duckdb://) or cloud URI (s3://, gcs://, gs://)."""
+    import polars as pl
+
+    clean = _normalize_uri(uri)
+    scheme = clean.split("://", 1)[0].lower()
+
+    if scheme in ("sqlite", "duckdb"):
+        p, df = read_uri(clean, **opts)
+        return p, df.lazy()
+
+    if scheme in ("s3", "gcs", "gs"):
+        fmt = opts.pop("fmt", opts.pop("format", None))
+        low = clean.lower()
+        if fmt:
+            fmt = fmt.lower().lstrip(".")
+        elif any(low.endswith(ext) for ext in (".parquet", ".pq")):
+            fmt = "parquet"
+        elif any(low.endswith(ext) for ext in (".csv", ".tsv", ".txt", ".dat")):
+            fmt = "csv"
+        elif any(low.endswith(ext) for ext in (".ipc", ".arrow", ".feather")):
+            fmt = "ipc"
+        elif any(low.endswith(ext) for ext in (".ndjson", ".jsonl")):
+            fmt = "ndjson"
+        else:
+            fmt = "parquet"
+
+        if fmt == "parquet":
+            lf = pl.scan_parquet(clean, **opts)
+        elif fmt == "csv":
+            sep = opts.pop("sep", None) or opts.pop("delimiter", None)
+            if sep:
+                opts["separator"] = sep
+            lf = pl.scan_csv(clean, **opts)
+        elif fmt == "ipc":
+            lf = pl.scan_ipc(clean, **opts)
+        elif fmt == "ndjson":
+            lf = pl.scan_ndjson(clean, **opts)
+        else:
+            raise ValueError(f"Unsupported cloud file format '{fmt}' for scanning URI: {clean}")
+
+        cloud_name = clean.rstrip("/").rpartition("/")[2] or clean
+        return Path(cloud_name), lf
+
+    raise ValueError(f"Unsupported database/cloud URI scheme: '{scheme}' in '{uri}'")
+
+
 def get_reader(
-    path: Path,
+    path: Path | str,
     *,
     sep: str | None = None,
     encoding: str | None = None,
@@ -1076,6 +1327,9 @@ def get_reader(
     sheet_name: str | int | None = None,
     **reader_kwargs: Any,
 ):
+    if is_db_or_cloud_uri(path):
+        p, df = read_uri(path, sep=sep, encoding=encoding, chunk_size=chunk_size, sheet_name=sheet_name, **reader_kwargs)
+        return DataFrameReader(df, path=p)
     path = Path(_normalize_source(path))
     if (path.exists() and path.is_dir()) or (not path.exists() and any(ch in str(path) for ch in "*?[")):
         return GlobReader(
@@ -1456,6 +1710,9 @@ def read(source: Any, *args: Any, **kwargs: Any) -> Any:
             return DataFrame(pl.concat([d._df for d in dfs]))
 
     norm_src = _normalize_source(source)
+    if is_db_or_cloud_uri(norm_src):
+        _, df = read_uri(norm_src, *args, **kwargs)
+        return DataFrame(df)
 
     if fmt:
         fmt = fmt.lower().lstrip(".")
@@ -1560,6 +1817,9 @@ def scan(source: Any, *args: Any, **kwargs: Any) -> Any:
             return DataFrame(pl.concat([d._df for d in lazy_dfs]))
 
     norm_src = _normalize_source(source)
+    if is_db_or_cloud_uri(norm_src):
+        _, lf = scan_uri(norm_src, *args, **kwargs)
+        return DataFrame(lf)
     p = Path(norm_src) if isinstance(norm_src, (str, Path)) else None
 
     if p and p.exists() and p.is_dir():
@@ -1705,11 +1965,15 @@ def read_excel(source: Any, *args: Any, **kwargs: Any) -> Any:
     return _read_excel_impl(_normalize_source(source), *args, **kwargs)
 
 
-def read_database(query: Any, connection: Any, *args: Any, **kwargs: Any) -> Any:
-    """Read SQL query results into a pytae.DataFrame (wraps polars.read_database)."""
+def read_database(query: Any, connection: Any = None, *args: Any, **kwargs: Any) -> Any:
+    """Read SQL query results or database URI into a pytae.DataFrame (wraps polars.read_database)."""
+    from pytae.dataframe import DataFrame
+
+    if connection is None and isinstance(query, (str, Path)) and is_db_or_cloud_uri(query):
+        _, df = read_uri(query, *args, **kwargs)
+        return DataFrame(df)
     import polars as pl
 
-    from pytae.dataframe import DataFrame
     return DataFrame(pl.read_database(query, connection, *args, **kwargs))
 
 
