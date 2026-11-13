@@ -1218,10 +1218,29 @@ def read_uri(uri: str | Path, **opts: Any) -> tuple[Path, Any]:
             if nrows is not None:
                 query = f"{query.rstrip(';')} LIMIT {int(nrows)}"
 
-            rel = conn.execute(query)
-            arrow_obj = rel.arrow()
-            arrow_tbl = arrow_obj.read_all() if hasattr(arrow_obj, "read_all") else arrow_obj
-            df = pl.from_arrow(arrow_tbl)
+            if hasattr(conn, "sql"):
+                rel = conn.sql(query)
+            elif hasattr(conn, "query"):
+                rel = conn.query(query)
+            else:
+                rel = conn.execute(query)
+
+            if hasattr(rel, "pl"):
+                df = rel.pl()
+            elif hasattr(rel, "arrow"):
+                arrow_obj = rel.arrow()
+                arrow_tbl = arrow_obj.read_all() if hasattr(arrow_obj, "read_all") else arrow_obj
+                df = pl.from_arrow(arrow_tbl)
+            elif hasattr(rel, "to_arrow_table"):
+                df = pl.from_arrow(rel.to_arrow_table())
+            elif hasattr(rel, "fetch_arrow_table"):
+                df = pl.from_arrow(rel.fetch_arrow_table())
+            elif hasattr(conn, "fetch_arrow_table"):
+                df = pl.from_arrow(conn.fetch_arrow_table())
+            elif hasattr(rel, "df"):
+                df = pl.from_pandas(rel.df())
+            else:
+                df = pl.from_pandas(conn.df())
             if not isinstance(df, pl.DataFrame):
                 df = pl.DataFrame(df)
             return Path(f"duckdb://{db_name}:{tbl_label}"), df
