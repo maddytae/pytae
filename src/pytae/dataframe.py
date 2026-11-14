@@ -184,23 +184,25 @@ class DataFrame:
     ) -> None:
         self._orig_col_map: dict[str, Any] = dict(orig_col_map) if orig_col_map else {}
         self._col_collisions: set[str] = set()
-        self._orig_index: list[Any] | None = (
-            list(data.index) if hasattr(data, "index") and not callable(getattr(data, "index", None)) else None
-        )
+        self._object_series: dict[str, Any] = {}
+        self._orig_index: list[Any] | None = None
+        if hasattr(data, "index") and not callable(getattr(data, "index", None)):
+            idx = data.index
+            if type(idx).__name__ == "RangeIndex" and getattr(idx, "start", 0) == 0 and getattr(idx, "step", 1) == 1 and getattr(idx, "name", None) is None:
+                self._orig_index = None
+            else:
+                self._orig_index = list(idx)
         self._last_sort_cols: list[str] | None = _last_sort_cols
         self._last_sort_desc: list[bool] | None = _last_sort_desc
 
-        def _detect_collisions(pdf: Any) -> set[str]:
-            collisions = set()
-            for col in pdf.columns:
-                if pdf[col].dtype == object:
-                    vals = pdf[col].tolist()
-                    import pandas as pd
+        def _extract_object_series(pdf: Any) -> dict[str, Any]:
+            return {str(col): pdf[col] for col in pdf.columns if pdf[col].dtype == object}
 
-                    str_vals = ["nan" if pd.isna(x) else str(x) for x in vals]
-                    if len(set(vals)) != len(set(str_vals)):
-                        collisions.add(str(col))
-            return collisions
+        def _extract_index(pdf: Any) -> list[Any] | None:
+            idx = pdf.index
+            if type(idx).__name__ == "RangeIndex" and getattr(idx, "start", 0) == 0 and getattr(idx, "step", 1) == 1 and getattr(idx, "name", None) is None:
+                return None
+            return list(idx)
 
         if isinstance(data, (pl.DataFrame, pl.LazyFrame)):
             self._df = data
@@ -209,6 +211,7 @@ class DataFrame:
             if not self._orig_col_map:
                 self._orig_col_map = dict(data._orig_col_map)
             self._col_collisions = set(data._col_collisions)
+            self._object_series = dict(data._object_series)
             self._orig_index = data._orig_index
             if self._last_sort_cols is None:
                 self._last_sort_cols = data._last_sort_cols
@@ -225,8 +228,8 @@ class DataFrame:
 
                 if isinstance(data, pd.DataFrame):
                     self._orig_col_map = {str(c): c for c in data.columns}
-                    self._col_collisions = _detect_collisions(data)
-                    self._orig_index = list(data.index)
+                    self._object_series = _extract_object_series(data)
+                    self._orig_index = _extract_index(data)
                     try:
                         self._df = pl.from_pandas(data)
                     except Exception:
@@ -238,8 +241,8 @@ class DataFrame:
                 else:
                     pdf = data.to_pandas()
                     self._orig_col_map = {str(c): c for c in pdf.columns}
-                    self._col_collisions = _detect_collisions(pdf)
-                    self._orig_index = list(pdf.index)
+                    self._object_series = _extract_object_series(pdf)
+                    self._orig_index = _extract_index(pdf)
                     try:
                         self._df = pl.from_pandas(pdf)
                     except Exception:
@@ -258,8 +261,8 @@ class DataFrame:
 
                 if isinstance(data, pd.DataFrame):
                     self._orig_col_map = {str(c): c for c in data.columns}
-                    self._col_collisions = _detect_collisions(data)
-                    self._orig_index = list(data.index)
+                    self._object_series = _extract_object_series(data)
+                    self._orig_index = _extract_index(data)
                     try:
                         self._df = pl.from_pandas(data)
                     except Exception:
@@ -1230,8 +1233,17 @@ class DataFrame:
     ) -> DataFrame:
         c_list = [c] if isinstance(c, str) else (list(c) if c else [])
         for col in c_list:
-            if str(col) in self._col_collisions:
+            col_s = str(col)
+            if col_s in self._col_collisions:
                 raise ValueError("Pivoting would result in column headers that contain duplicate names")
+            if col_s in self._object_series:
+                import pandas as pd
+
+                vals = self._object_series[col_s].tolist()
+                str_vals = ["nan" if pd.isna(x) else str(x) for x in vals]
+                if len(set(vals)) != len(set(str_vals)):
+                    self._col_collisions.add(col_s)
+                    raise ValueError("Pivoting would result in column headers that contain duplicate names")
         return DataFrame(
             pivot_polars(self._df, r=r, c=c, v=v, a=a, dropna=dropna, f_v=f_v, _func_name="pivot", **kwargs)
         )
@@ -1832,15 +1844,17 @@ class GroupedDataFrame:
 
     def rename(self, *args: Any, columns: dict[str, str] | None = None, **kwargs: Any) -> GroupedDataFrame:
         """Rename columns using string mapping, dict, or keyword arguments, preserving grouping keys."""
-        renamed = DataFrame(self._df, orig_col_map=self._orig_col_map).rename(*args, columns=columns, **kwargs)
+        df_wrapper = DataFrame(self._df, orig_col_map=self._orig_col_map)
+        df_wrapper._orig_index = self._orig_index
+        renamed = df_wrapper.rename(*args, columns=columns, **kwargs)
         mapping: dict[str, str] = {}
-        if args:
-            if isinstance(args[0], dict):
-                mapping.update({str(k): str(v) for k, v in args[0].items()})
-            elif isinstance(args[0], str):
-                from pytae._parsing import parse_rename_spec
+        from pytae._parsing import parse_rename_spec
 
-                mapping.update(parse_rename_spec(args[0]))
+        for arg in args:
+            if isinstance(arg, dict):
+                mapping.update({str(k): str(v) for k, v in arg.items()})
+            elif isinstance(arg, str):
+                mapping.update(parse_rename_spec(arg))
         if columns:
             mapping.update({str(k): str(v) for k, v in columns.items()})
         if kwargs:

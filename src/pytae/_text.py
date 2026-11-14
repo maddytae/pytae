@@ -60,12 +60,35 @@ def _is_enclosed_pair(raw: str, open_ch: str, close_ch: str) -> bool:
     if len(raw) < 2 or raw[0] != open_ch or raw[-1] != close_ch:
         return False
     if open_ch == close_ch:
+        escaped = False
         for idx in range(1, len(raw)):
-            if raw[idx] == open_ch:
+            ch = raw[idx]
+            if escaped:
+                escaped = False
+                continue
+            if ch == "\\":
+                escaped = True
+                continue
+            if ch == open_ch:
                 return idx == len(raw) - 1
         return False
     depth = 0
+    quote: str | None = None
+    escaped = False
     for idx, ch in enumerate(raw):
+        if quote is not None:
+            if escaped:
+                escaped = False
+                continue
+            if ch == "\\":
+                escaped = True
+                continue
+            if ch == quote:
+                quote = None
+            continue
+        if ch in "'\"":
+            quote = ch
+            continue
         if ch == open_ch:
             depth += 1
         elif ch == close_ch:
@@ -80,7 +103,7 @@ def unquote_name(raw: str) -> str:
     changed = True
     while changed and len(raw) >= 2:
         changed = False
-        if raw[0] in "'\"" and _is_enclosed_pair(raw, raw[0], raw[0]):
+        if raw[0] in "'\"`" and _is_enclosed_pair(raw, raw[0], raw[0]):
             raw = raw[1:-1].strip()
             changed = True
         elif raw[0] == "[" and _is_enclosed_pair(raw, "[", "]"):

@@ -21,13 +21,19 @@ _VALID_METHODS = ("hash", "sha256", "redact", "encrypt", "tokenize", "token")
 # =============================================================================
 
 
-def _encrypt_val(val: Any, key: str) -> str | None:
+def _derive_keys(key: str) -> tuple[bytes, bytes]:
+    salt = _DEFAULT_SALT
+    key_bytes = key.encode("utf-8")
+    k_enc = hashlib.sha256(key_bytes + salt + b":enc").digest()
+    k_mac = hashlib.sha256(key_bytes + salt + b":mac").digest()
+    return k_enc, k_mac
+
+
+def _encrypt_val(val: Any, key: str, _keys: tuple[bytes, bytes] | None = None) -> str | None:
     if val is None:
         return None
     val_str = str(val)
-    salt = _DEFAULT_SALT
-    k_enc = hashlib.sha256(key.encode("utf-8") + salt + b":enc").digest()
-    k_mac = hashlib.sha256(key.encode("utf-8") + salt + b":mac").digest()
+    k_enc, k_mac = _keys if _keys is not None else _derive_keys(key)
     nonce = os.urandom(12)
     data = val_str.encode("utf-8")
     keystream = bytearray()
@@ -40,7 +46,7 @@ def _encrypt_val(val: Any, key: str) -> str | None:
     return base64.urlsafe_b64encode(nonce + tag + ciphertext).decode("ascii")
 
 
-def _decrypt_val(val: Any, key: str) -> str | None:
+def _decrypt_val(val: Any, key: str, _keys: tuple[bytes, bytes] | None = None) -> str | None:
     if val is None:
         return None
     token = str(val)
@@ -49,9 +55,7 @@ def _decrypt_val(val: Any, key: str) -> str | None:
         if len(raw) < 28:
             raise ValueError("invalid encrypted token length")
         nonce, tag, ciphertext = raw[:12], raw[12:28], raw[28:]
-        salt = _DEFAULT_SALT
-        k_enc = hashlib.sha256(key.encode("utf-8") + salt + b":enc").digest()
-        k_mac = hashlib.sha256(key.encode("utf-8") + salt + b":mac").digest()
+        k_enc, k_mac = _keys if _keys is not None else _derive_keys(key)
         expected_tag = hmac.new(k_mac, nonce + ciphertext, hashlib.sha256).digest()[:16]
         if not hmac.compare_digest(tag, expected_tag):
             raise ValueError("invalid key or corrupted ciphertext")
@@ -124,33 +128,43 @@ def _save_vault(
     dtypes: dict[str, str],
     vault_path: Path,
 ) -> None:
-    """Save vault mapping: {col_name: {original_str: token_str}}."""
+    """Save vault mapping: {col_name: {original_str: token_str}} atomically."""
     vault_path.parent.mkdir(parents=True, exist_ok=True)
     suffix = vault_path.suffix.lower()
+    tmp_path = vault_path.with_name(f".{vault_path.name}.{os.getpid()}.tmp")
     records = []
     for col, mapping in vault_map.items():
         dt = dtypes.get(col, "String")
         for orig, tok in mapping.items():
             records.append({"column": col, "token": tok, "original": orig, "dtype": dt})
 
-    if suffix == ".json":
-        data = {"mappings": vault_map, "dtypes": dtypes}
-        with open(vault_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-        return
+    try:
+        if suffix == ".json":
+            data = {"mappings": vault_map, "dtypes": dtypes}
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            os.replace(tmp_path, vault_path)
+            return
 
-    vdf = pl.DataFrame(
-        records,
-        schema={"column": pl.String, "token": pl.String, "original": pl.String, "dtype": pl.String},
-    )
-    if suffix in (".parquet", ".pq"):
-        vdf.write_parquet(vault_path)
-    elif suffix == ".csv":
-        vdf.write_csv(vault_path)
-    elif suffix in (".jsonl", ".ndjson"):
-        vdf.write_ndjson(vault_path)
-    else:
-        vdf.write_parquet(vault_path)
+        vdf = pl.DataFrame(
+            records,
+            schema={"column": pl.String, "token": pl.String, "original": pl.String, "dtype": pl.String},
+        )
+        if suffix in (".parquet", ".pq"):
+            vdf.write_parquet(tmp_path)
+        elif suffix == ".csv":
+            vdf.write_csv(tmp_path)
+        elif suffix in (".jsonl", ".ndjson"):
+            vdf.write_ndjson(tmp_path)
+        else:
+            vdf.write_parquet(tmp_path)
+        os.replace(tmp_path, vault_path)
+    finally:
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
 
 
 # =============================================================================
@@ -280,14 +294,23 @@ def mask_polars(
 
     for col, method in spec.items():
         if method == "hash":
-            expr = pl.col(col).map_elements(lambda x, s=salt: _hash_val(x, s), return_dtype=pl.String).alias(col)
+
+            def _do_hash(x: Any, s: str | None = salt) -> str | None:
+                return _hash_val(x, s)
+
+            expr = pl.col(col).map_elements(_do_hash, return_dtype=pl.String).alias(col)
             exprs.append(expr)
         elif method == "redact":
             expr = pl.when(pl.col(col).is_not_null()).then(pl.lit(redact_val)).otherwise(None).alias(col)
             exprs.append(expr)
         elif method == "encrypt":
             assert key is not None
-            expr = pl.col(col).map_elements(lambda x, k=key: _encrypt_val(x, k), return_dtype=pl.String).alias(col)
+            derived_keys = _derive_keys(key)
+
+            def _do_encrypt(x: Any, k: str = key, dk: tuple[bytes, bytes] = derived_keys) -> str | None:
+                return _encrypt_val(x, k, _keys=dk)
+
+            expr = pl.col(col).map_elements(_do_encrypt, return_dtype=pl.String).alias(col)
             exprs.append(expr)
         elif method == "tokenize":
             assert vault_path is not None
@@ -362,7 +385,12 @@ def unmask_polars(
 
             exprs.append(expr.alias(col))
         elif key is not None:
-            expr = pl.col(col).map_elements(lambda x, k=key: _decrypt_val(x, k), return_dtype=pl.String).alias(col)
+            derived_keys = _derive_keys(key)
+
+            def _do_decrypt(x: Any, k: str = key, dk: tuple[bytes, bytes] = derived_keys) -> str | None:
+                return _decrypt_val(x, k, _keys=dk)
+
+            expr = pl.col(col).map_elements(_do_decrypt, return_dtype=pl.String).alias(col)
             exprs.append(expr)
         else:
             raise ValueError(

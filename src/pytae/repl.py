@@ -1660,12 +1660,38 @@ def _substitute_variables(text: str, variables: dict[str, Any]) -> str:
     if not variables or "@" not in text:
         return text
 
-    def repl(match: re.Match[str]) -> str:
-        expr_str = match.group(1)
-        val = _eval_var_reference(expr_str, variables)
-        return repr(val)
-
-    return _VAR_REF_PATTERN.sub(repl, text)
+    out: list[str] = []
+    i = 0
+    n = len(text)
+    in_quote: str | None = None
+    while i < n:
+        ch = text[i]
+        if in_quote is not None:
+            if ch == "\\" and i + 1 < n:
+                out.append(text[i : i + 2])
+                i += 2
+                continue
+            if ch == in_quote:
+                in_quote = None
+            out.append(ch)
+            i += 1
+            continue
+        if ch in ("'", '"'):
+            in_quote = ch
+            out.append(ch)
+            i += 1
+            continue
+        if ch == "@" and (i == 0 or not (text[i - 1].isalnum() or text[i - 1] == "_")):
+            m = _VAR_REF_PATTERN.match(text, i)
+            if m is not None:
+                expr_str = m.group(1)
+                val = _eval_var_reference(expr_str, variables)
+                out.append(repr(val))
+                i = m.end()
+                continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
 
 
 def _parse_reader_options(tokens: list[str]) -> tuple[list[str], dict[str, Any], int | None]:
@@ -2081,6 +2107,93 @@ def _transpile_pipeline_tokens_to_python(tokens: list[str]) -> str:
         if low in ("-collect", "--collect"):
             calls.append(".collect()")
             i += 1
+            continue
+
+        # -pivot <spec>
+        if low in ("-pivot", "--pivot") and i + 1 < n:
+            from pytae.cli_parsing import parse_pivot_arg
+
+            pspec = parse_pivot_arg(tokens[i + 1])
+            p_args: list[str] = []
+            if pspec.get("r") is not None:
+                p_args.append(f"r={repr(pspec['r'])}")
+            if pspec.get("c") is not None:
+                p_args.append(f"c={repr(pspec['c'])}")
+            if pspec.get("v") is not None:
+                p_args.append(f"v={repr(pspec['v'])}")
+            if pspec.get("a") is not None and pspec["a"] != "sum":
+                p_args.append(f"a={repr(pspec['a'])}")
+            calls.append(f".pivot({', '.join(p_args)})")
+            i += 2
+            continue
+
+        # -long [spec]
+        if low in ("-long", "--long"):
+            if i + 1 < n and not tokens[i + 1].startswith("-"):
+                from pytae.cli_parsing import parse_long_arg
+
+                lspec = parse_long_arg(tokens[i + 1])
+                l_args: list[str] = []
+                if lspec.get("cols") is not None:
+                    l_args.append(f"cols={repr(lspec['cols'])}")
+                if lspec.get("id_vars") is not None:
+                    l_args.append(f"id_vars={repr(lspec['id_vars'])}")
+                if lspec.get("c") is not None and lspec["c"] != "variable":
+                    l_args.append(f"c={repr(lspec['c'])}")
+                if lspec.get("v") is not None and lspec["v"] != "value":
+                    l_args.append(f"v={repr(lspec['v'])}")
+                calls.append(f".long({', '.join(l_args)})")
+                i += 2
+            else:
+                calls.append(".long()")
+                i += 1
+            continue
+
+        # -wide [spec]
+        if low in ("-wide", "--wide"):
+            if i + 1 < n and not tokens[i + 1].startswith("-"):
+                from pytae.cli_parsing import parse_wide_arg
+
+                wspec = parse_wide_arg(tokens[i + 1])
+                w_args: list[str] = []
+                if wspec.get("r") is not None:
+                    w_args.append(f"r={repr(wspec['r'])}")
+                if wspec.get("c") is not None and wspec["c"] != "variable":
+                    w_args.append(f"c={repr(wspec['c'])}")
+                if wspec.get("v") is not None and wspec["v"] != "value":
+                    w_args.append(f"v={repr(wspec['v'])}")
+                calls.append(f".wide({', '.join(w_args)})")
+                i += 2
+            else:
+                calls.append(".wide()")
+                i += 1
+            continue
+
+        # -assert <expr>
+        if low in ("-assert", "--assert") and i + 1 < n:
+            calls.append(f".assert_({repr(tokens[i + 1])})")
+            i += 2
+            continue
+
+        # -explode <cols>
+        if low in ("-explode", "--explode") and i + 1 < n:
+            cols_val = tokens[i + 1]
+            col_parts = [c.strip() for c in cols_val.split(",") if c.strip()]
+            formatted_cols = ", ".join(repr(c) for c in col_parts)
+            calls.append(f".explode({formatted_cols})")
+            i += 2
+            continue
+
+        # -mask <spec>
+        if low in ("-mask", "--mask") and i + 1 < n:
+            calls.append(f".mask({repr(tokens[i + 1])})")
+            i += 2
+            continue
+
+        # -unmask <cols>
+        if low in ("-unmask", "--unmask") and i + 1 < n:
+            calls.append(f".unmask({repr(tokens[i + 1])})")
+            i += 2
             continue
 
         # -o <dest>
@@ -4338,6 +4451,8 @@ class PytaeRepl:
             for t in tokens
         )
         if has_output:
+            return False
+        if any(t.startswith("-") and t.lower() not in ("-v", "-verbose", "--verbose") for t in tokens[1:]):
             return False
         if first_lower == "-frac":
             output_fn("pytae: -frac is not recognized; use '-sample <val>' (e.g. -sample 0.05 or -sample 5%).")

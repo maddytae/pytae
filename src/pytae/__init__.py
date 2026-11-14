@@ -135,7 +135,7 @@ class _SampleData(Mapping[str, DataFrame]):
     def __len__(self) -> int:
         return len(_DATASET_NAMES)
 
-    def keys(self) -> tuple[str, ...]:
+    def keys(self) -> tuple[str, ...]:  # type: ignore[override]
         """Dataset names as a plain tuple (not a KeysView) so it's printable/readable
         directly, e.g. print(pytae.sample_data.keys())."""
         return _DATASET_NAMES

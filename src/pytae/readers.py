@@ -166,6 +166,25 @@ class CsvReader:
 
     def shape(self) -> tuple[int, int]:
         n_cols = len(self.columns())
+        skip_rows = self.reader_kwargs.get("skip_rows", self.reader_kwargs.get("skiprows", 0))
+        if (
+            not self.reader_kwargs
+            or (set(self.reader_kwargs.keys()) <= {"skip_rows", "skiprows"} and isinstance(skip_rows, int))
+        ):
+            try:
+                import polars as pl
+
+                lf = pl.scan_csv(
+                    self.path,
+                    separator=self.sep,
+                    encoding=self.encoding or "utf8",
+                    truncate_ragged_lines=True,
+                    infer_schema_length=0,
+                    skip_rows=skip_rows if isinstance(skip_rows, int) else 0,
+                )
+                return (int(lf.select(pl.len()).collect().item()), n_cols)
+            except Exception:
+                pass
         total = 0
         pd_kwargs = {}
         if "skiprows" in self.reader_kwargs:
@@ -536,6 +555,13 @@ class JsonlReader:
 
     def shape(self) -> tuple[int, int]:
         n_cols = len(self.columns())
+        try:
+            import polars as pl
+
+            lf = pl.scan_ndjson(self.path)
+            return (int(lf.select(pl.len()).collect().item()), n_cols)
+        except Exception:
+            pass
         total = 0
         for chunk in pd.read_json(
             self.path,
@@ -1158,11 +1184,12 @@ def read_uri(uri: str | Path, **opts: Any) -> tuple[Path, Any]:
                         f"Available tables: {', '.join(tables)}"
                     )
 
-            if re.match(r"^\s*select\s+", target, re.IGNORECASE):
+            if re.match(r"^\s*(?:select|with)\s+", target, re.IGNORECASE):
                 query = target
                 tbl_label = "query"
             else:
-                query = f'SELECT * FROM "{target}"'
+                safe_target = target.replace('"', '""')
+                query = f'SELECT * FROM "{safe_target}"'
                 tbl_label = target
 
             nrows = opts.pop("nrows", None) or opts.pop("n_rows", None)
@@ -1207,11 +1234,12 @@ def read_uri(uri: str | Path, **opts: Any) -> tuple[Path, Any]:
                         f"Available tables: {', '.join(tables)}"
                     )
 
-            if re.match(r"^\s*select\s+", target, re.IGNORECASE):
+            if re.match(r"^\s*(?:select|with)\s+", target, re.IGNORECASE):
                 query = target
                 tbl_label = "query"
             else:
-                query = f'SELECT * FROM "{target}"'
+                safe_target = target.replace('"', '""')
+                query = f'SELECT * FROM "{safe_target}"'
                 tbl_label = target
 
             nrows = opts.pop("nrows", None) or opts.pop("n_rows", None)

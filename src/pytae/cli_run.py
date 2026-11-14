@@ -741,7 +741,7 @@ def _process_path(
     *,
     show_all: bool,
     select_specs: list[tuple[list[str], dict]],
-    filter_specs: list[list[tuple[str, Any]]] | None = None,
+    filter_specs: list[Any] | None = None,
     mutate_specs: list[str] | None = None,
     sql_specs: list[str] | None = None,
     rename_specs: list[dict[str, str]] | None = None,
@@ -1587,7 +1587,7 @@ def _process_path(
     elif is_file:
         assert out_target is not None
         fmt = out_target.lower()
-        out_dir: Path | None = getattr(args, "out_dir", None)
+        out_dir = getattr(args, "out_dir", None)
         valid_formats = (
             "csv",
             "parquet",

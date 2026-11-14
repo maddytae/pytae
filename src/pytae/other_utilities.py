@@ -242,8 +242,8 @@ def schema_dataframe(df: Any) -> Any:
 
     total = len(pldf)
     if total == 0:
-        nulls = [0] * len(pldf.columns)
-        uniques = [0] * len(pldf.columns)
+        nulls: tuple[Any, ...] = tuple([0] * len(pldf.columns))
+        uniques: tuple[Any, ...] = tuple([0] * len(pldf.columns))
     else:
         nulls = pldf.null_count().row(0)
         uniques = pldf.select(pl.all().n_unique()).row(0)
@@ -360,8 +360,10 @@ def freq(
 
     counted = s_df.group_by(target_col).agg(pl.len().alias("Count")).sort("Count", descending=True)
 
-    total = counted["Count"].sum() if len(counted) > 0 else 0
-    max_cnt = counted["Count"].max() if len(counted) > 0 else 1
+    from typing import cast
+
+    total = int(cast(Any, counted["Count"].sum())) if len(counted) > 0 else 0
+    max_cnt = int(cast(Any, counted["Count"].max() or 1)) if len(counted) > 0 else 1
     bar_max_width = width
 
     cats: list[str] = []
@@ -496,18 +498,17 @@ def hist(
 
     step = (max_val - min_val) / bins
     edges = [min_val + i * step for i in range(bins + 1)]
+    idx_expr = (
+        pl.when(pl.col("v") == max_val)
+        .then(pl.lit(bins - 1))
+        .otherwise(((pl.col("v") - min_val) / step).cast(pl.Int64).clip(0, bins - 1))
+        .alias("idx")
+    )
+    vc = s_clean.to_frame("v").select(idx_expr).group_by("idx").len()
     bin_counts = [0] * bins
-    vals = s_clean.to_list()
-    for v in vals:
-        if v == max_val:
-            idx = bins - 1
-        else:
-            idx = int((v - min_val) / step)
-            if idx >= bins:
-                idx = bins - 1
-            elif idx < 0:
-                idx = 0
-        bin_counts[idx] += 1
+    for row_idx, cnt_val in vc.iter_rows():
+        if row_idx is not None and 0 <= row_idx < bins:
+            bin_counts[int(row_idx)] = int(cnt_val)
 
     max_cnt = max(bin_counts) if bin_counts else 1
     bar_max_width = width
@@ -955,22 +956,40 @@ def corr(
     if method_clean not in ("pearson", "spearman"):
         raise ValueError(f"corr: invalid method '{method}'; must be 'pearson' or 'spearman'")
 
-    def _pair_corr(col_x: str, col_y: str) -> float:
-        clean = pldf.select(
-            [
-                pl.col(col_x).cast(pl.Float64, strict=False).alias("x"),
-                pl.col(col_y).cast(pl.Float64, strict=False).alias("y"),
-            ]
-        ).filter(
-            pl.col("x").is_not_null() & pl.col("y").is_not_null() & pl.col("x").is_not_nan() & pl.col("y").is_not_nan()
+    needed_cols = list(
+        dict.fromkeys(
+            num_cols
+            + (
+                [_unquote_name(str(target).strip())]
+                if target is not None and _unquote_name(str(target).strip()) in all_num_cols
+                else []
+            )
         )
-        if clean.height < 2:
+    )
+    clean_pldf = pldf.select(
+        [pl.col(c).cast(pl.Float64, strict=False).fill_nan(None).alias(c) for c in needed_cols]
+    )
+
+    corr_cache: dict[tuple[str, str], float] = {}
+
+    def _pair_corr(col_x: str, col_y: str) -> float:
+        if col_x == col_y:
+            return 1.0
+        key = (col_x, col_y) if col_x <= col_y else (col_y, col_x)
+        if key in corr_cache:
+            return corr_cache[key]
+        pair_df = clean_pldf.select([col_x, col_y]).drop_nulls()
+        if pair_df.height < 2:
+            corr_cache[key] = 0.0
             return 0.0
         try:
-            r = clean.select(pl.corr("x", "y", method=method_clean)).item()
-            return float(r) if (r is not None and not math.isnan(r)) else 0.0
+            corr_method = "pearson" if method_clean == "pearson" else "spearman"
+            r = pair_df.select(pl.corr(col_x, col_y, method=corr_method)).item()  # type: ignore[call-overload]
+            val = float(r) if (r is not None and not math.isnan(r)) else 0.0
         except Exception:
-            return 0.0
+            val = 0.0
+        corr_cache[key] = val
+        return val
 
     if target is not None:
         target_col = _unquote_name(str(target).strip())
@@ -1043,13 +1062,13 @@ def corr(
                 strengths.append(strength_bar)
                 abs_vals.append(abs_r)
 
-        paired = sorted(zip(col_a_list, col_b_list, corr_vals, strengths, abs_vals), key=lambda t: t[4], reverse=True)
+        paired_pairs = sorted(zip(col_a_list, col_b_list, corr_vals, strengths, abs_vals), key=lambda t: t[4], reverse=True)
         out_pl = pl.DataFrame(
             {
-                "Column A": [p[0] for p in paired],
-                "Column B": [p[1] for p in paired],
-                "Corr": [p[2] for p in paired],
-                "Strength": [p[3] for p in paired],
+                "Column A": [p[0] for p in paired_pairs],
+                "Column B": [p[1] for p in paired_pairs],
+                "Corr": [p[2] for p in paired_pairs],
+                "Strength": [p[3] for p in paired_pairs],
             }
         )
         return DataFrame(out_pl)

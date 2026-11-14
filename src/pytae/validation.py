@@ -235,20 +235,24 @@ def check_dsl_string(verb: str, spec: str) -> list[str]:
                             )
 
     elif verb == "filter":
-        from pytae._parsing import _tokenize
+        from pytae._parsing import _parse_dict_literal, _parse_filter_node, _strip_at_refs
 
-        tokens = _tokenize(raw, ",", track_brackets=True)
-        for token in tokens:
-            t = token.strip()
-            if not t:
-                continue
-            safe_t = _sanitize_for_ast(t)
-            # Check if not a criteria matcher
-            if not any(safe_t.startswith(kw + "=") for kw in ("contains", "startswith", "endswith", "regex", "dtype")):
-                try:
-                    ast.parse(safe_t, mode="eval")
-                except SyntaxError:
-                    pass
+        if _parse_dict_literal(raw) is None:
+            clean_raw, _ = _strip_at_refs(raw)
+            try:
+                _parse_filter_node(clean_raw)
+            except (SystemExit, ValueError) as exc:
+                errors.append(str(exc))
+            else:
+                safe_t = _sanitize_for_ast(raw)
+                if not any(
+                    safe_t.startswith(kw + "=")
+                    for kw in ("contains", "startswith", "endswith", "regex", "dtype")
+                ):
+                    try:
+                        ast.parse(safe_t, mode="eval")
+                    except SyntaxError as exc:
+                        errors.append(f"syntax error in filter expression: {exc.msg}")
 
     elif verb == "select":
         from pytae._parsing import _tokenize
@@ -437,8 +441,8 @@ def check_dsl_paths(paths: Sequence[str | Path]) -> tuple[int, list[DSLDiagnosti
                         files_to_check.append(Path(root) / f)
 
     all_diagnostics: list[DSLDiagnostic] = []
-    for f in sorted(set(files_to_check)):
-        all_diagnostics.extend(check_dsl_file(f))
+    for file_path in sorted(set(files_to_check)):
+        all_diagnostics.extend(check_dsl_file(file_path))
 
     return len(files_to_check), all_diagnostics
 

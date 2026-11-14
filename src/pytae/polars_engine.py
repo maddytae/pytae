@@ -23,7 +23,6 @@ from pytae._parsing import (
     _replace_underscore_placeholder,
     _resolve_multi_target_cols,
     _rewrite_col_refs,
-    _strip_at_refs,
 )
 from pytae._text import _ColRef
 from pytae._text import unquote_name as _unquote_name
@@ -1788,21 +1787,9 @@ def mutate_polars(
 
             expr_str = val.strip()
             if "@" in expr_str:
-                _, at_tokens = _strip_at_refs(expr_str)
-                for var_name in at_tokens:
-                    if params and var_name in params:
-                        val_p = params[var_name]
-                        if callable(val_p):
-                            expr_str = re.sub(rf"@{var_name}\b", var_name, expr_str)
-                        else:
-                            expr_str = re.sub(rf"@{var_name}\b", repr(val_p), expr_str)
-                    else:
-                        all_avail = list(params.keys()) if params else []
-                        import difflib
+                from pytae._parsing import _substitute_at_params
 
-                        close = difflib.get_close_matches(var_name, all_avail, n=1)
-                        hint = f" (did you mean '@{close[0]}'?)" if close else ""
-                        raise KeyError(f"local variable '@{var_name}' is not defined{hint}")
+                expr_str = _substitute_at_params(expr_str, params, allow_callables=True)
 
             cur_cols = set(_df_columns(cur))
             safe_expr, col_map = _rewrite_col_refs(expr_str, cur_cols)

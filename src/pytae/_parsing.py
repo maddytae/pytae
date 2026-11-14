@@ -226,13 +226,16 @@ def _split_top_level(text: str, operator_words: list[str]) -> list[str]:
     return splits
 
 
+_LHS_COL_PATTERN = r"((?:\[[^\]]+\]|`[^`]+`|[^>=<!:\[\]`])+?)"
+
+
 def _parse_predicate(raw_entry: str) -> Predicate:
     raw = raw_entry.strip()
     if not raw:
         raise SystemExit("invalid filter condition: empty expression")
 
     # 1. Direct comparison first: col > 5, col >= 5, col == 5, col != 5, etc.
-    m_cmp = re.match(r"^([^>=<!:]+?)\s*(>=|<=|!=|==|>|<)\s*(.+)$", raw)
+    m_cmp = re.match(rf"^{_LHS_COL_PATTERN}\s*(>=|<=|!=|==|>|<)\s*(.+)$", raw)
     if m_cmp:
         col = _unquote_name(m_cmp.group(1).strip())
         op = m_cmp.group(2).strip()
@@ -261,7 +264,10 @@ def _parse_predicate(raw_entry: str) -> Predicate:
             return Predicate(col, (op_null, None))
 
         if (val_str.startswith("'") and val_str.endswith("'")) or (val_str.startswith('"') and val_str.endswith('"')):
-            sub_val = val_str[1:-1]
+            try:
+                sub_val = ast.literal_eval(val_str)
+            except (ValueError, SyntaxError):
+                sub_val = val_str[1:-1]
         elif val_str.startswith("col(") and val_str.endswith(")"):
             inner = val_str[4:-1].strip().strip("'\"")
             sub_val = _ColRef(_unquote_name(inner))
@@ -273,7 +279,7 @@ def _parse_predicate(raw_entry: str) -> Predicate:
         return Predicate(col, (op, sub_val))
 
     # 2. In / not in
-    m_in = re.match(r"^([^>=<!:]+?)\s+(not\s+in|in)\s+(.+)$", raw, flags=re.IGNORECASE)
+    m_in = re.match(rf"^{_LHS_COL_PATTERN}\s+(not\s+in|in)\s+(.+)$", raw, flags=re.IGNORECASE)
     if m_in:
         col = _unquote_name(m_in.group(1).strip())
         op = "not in" if "not" in m_in.group(2).lower() else "in"
@@ -328,7 +334,7 @@ def _parse_predicate(raw_entry: str) -> Predicate:
         return Predicate(col, (op, None))
 
     # 7. Single '=' detection (strictly disallow)
-    m_eq = re.match(r"^([^>=<!:]+?)\s*=\s*(.+)$", raw)
+    m_eq = re.match(rf"^{_LHS_COL_PATTERN}\s*=\s*(.+)$", raw)
     if m_eq:
         col = m_eq.group(1).strip()
         val = m_eq.group(2).strip()
@@ -472,15 +478,46 @@ def _parse_dict_literal(raw: str) -> dict[str, Any] | None:
     return None
 
 
-def _parse_filter_string(raw: str, params: dict[str, Any] | None = None) -> FilterNode | dict[str, Any]:
-    """Parse filter conditions from a query string."""
-    stripped = raw.strip()
-    if "@" in stripped:
-        _, at_tokens = _strip_at_refs(stripped)
-        for var_name in at_tokens:
+def _substitute_at_params(
+    expr: str,
+    params: dict[str, Any] | None,
+    *,
+    allow_callables: bool = False,
+) -> str:
+    """Substitute `@name` local-variable references outside string literals with `repr(params[name])`."""
+    if "@" not in expr:
+        return expr
+    out_chars: list[str] = []
+    quote: str | None = None
+    i, n = 0, len(expr)
+    while i < n:
+        ch = expr[i]
+        if quote is not None:
+            out_chars.append(ch)
+            if ch == "\\" and i + 1 < n:
+                out_chars.append(expr[i + 1])
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+            i += 1
+            continue
+        if ch in "'\"":
+            quote = ch
+            out_chars.append(ch)
+            i += 1
+            continue
+        if ch == "@" and i + 1 < n and (expr[i + 1].isalpha() or expr[i + 1] == "_"):
+            j = i + 1
+            while j < n and (expr[j].isalnum() or expr[j] == "_"):
+                j += 1
+            var_name = expr[i + 1 : j]
             if params and var_name in params:
                 val_p = params[var_name]
-                stripped = re.sub(rf"@{var_name}\b", repr(val_p), stripped)
+                if allow_callables and callable(val_p):
+                    out_chars.append(var_name)
+                else:
+                    out_chars.append(repr(val_p))
             else:
                 all_avail = list(params.keys()) if params else []
                 import difflib
@@ -488,6 +525,16 @@ def _parse_filter_string(raw: str, params: dict[str, Any] | None = None) -> Filt
                 close = difflib.get_close_matches(var_name, all_avail, n=1)
                 hint = f" (did you mean '@{close[0]}'?)" if close else ""
                 raise KeyError(f"local variable '@{var_name}' is not defined{hint}")
+            i = j
+            continue
+        out_chars.append(ch)
+        i += 1
+    return "".join(out_chars)
+
+
+def _parse_filter_string(raw: str, params: dict[str, Any] | None = None) -> FilterNode | dict[str, Any]:
+    """Parse filter conditions from a query string."""
+    stripped = _substitute_at_params(raw.strip(), params)
 
     parsed_dict = _parse_dict_literal(stripped)
     if parsed_dict is not None:
@@ -500,8 +547,64 @@ def _parse_filter_string(raw: str, params: dict[str, Any] | None = None) -> Filt
 
 
 # -----------------------------------------------------------------------------
-# Mutate Parsing
+# Mutate & Rename Parsing
 # -----------------------------------------------------------------------------
+
+
+def parse_rename_spec(raw: str) -> dict[str, str]:
+    """Parse a rename specification string like 'old:new, c1:c2' into a dict."""
+    rename_map: dict[str, str] = {}
+    for pair in _tokenize(raw, ","):
+        if not pair:
+            continue
+        if ":" not in pair:
+            raise ValueError(f"invalid rename pair '{pair}': expected 'old:new'")
+        old, _, new = pair.partition(":")
+        old_c, new_c = _unquote_name(old), _unquote_name(new)
+        if not old_c or not new_c:
+            raise ValueError(f"invalid rename pair '{pair}': expected 'old:new'")
+        if old_c in rename_map and rename_map[old_c] != new_c:
+            raise ValueError(
+                f"conflicting rename mappings for '{old_c}': '{rename_map[old_c]}' and '{new_c}'"
+            )
+        rename_map[old_c] = new_c
+    return rename_map
+
+
+def _find_top_level_assign(entry: str) -> int:
+    """Return index of the first top-level single '=' assignment operator, or -1 if none."""
+    quote: str | None = None
+    depth = 0
+    i, n = 0, len(entry)
+    while i < n:
+        ch = entry[i]
+        if quote is not None:
+            if ch == "\\" and i + 1 < n:
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+            i += 1
+            continue
+        if ch in "'\"":
+            quote = ch
+            i += 1
+            continue
+        if ch in "([{":
+            depth += 1
+            i += 1
+            continue
+        if ch in ")]}":
+            depth = max(0, depth - 1)
+            i += 1
+            continue
+        if depth == 0 and ch == "=":
+            prev_ch = entry[i - 1] if i > 0 else ""
+            next_ch = entry[i + 1] if i + 1 < n else ""
+            if prev_ch not in ("<", ">", "!", "=") and next_ch != "=":
+                return i
+        i += 1
+    return -1
 
 
 def _split_mutate_entries(raw: str) -> list[tuple[str, str]]:
@@ -511,12 +614,9 @@ def _split_mutate_entries(raw: str) -> list[tuple[str, str]]:
     for raw_entry in _tokenize(cleaned, ",\n", keep_quotes=True, track_brackets=True):
         if not raw_entry:
             continue
-        m_eq = re.match(
-            r"^((?:[^\x22\x27\[\]()=]|\x22[^\x22]*\x22|\x27[^\x27]*\x27|\[[^\]]*\]|\([^)]*\))+?)(?<![<>!=])=(?!=)(.+)$",
-            raw_entry,
-        )
-        if m_eq:
-            entries.append((m_eq.group(1).strip(), m_eq.group(2).strip()))
+        eq_idx = _find_top_level_assign(raw_entry)
+        if eq_idx != -1:
+            entries.append((raw_entry[:eq_idx].strip(), raw_entry[eq_idx + 1 :].strip()))
             continue
         pieces = _tokenize(raw_entry, ":", keep_quotes=True, track_brackets=True)
         if len(pieces) >= 2:

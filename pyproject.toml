@@ -77,5 +77,10 @@ pretty = true
 exclude = ["src/pytae/plotting.py"]
 
 [[tool.mypy.overrides]]
-module = ["pytae.*"]
+module = [
+    "pytae.dataframe",
+    "pytae.polars_engine",
+    "pytae.readers",
+    "pytae.repl",
+]
 ignore_errors = true
