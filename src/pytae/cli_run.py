@@ -1629,9 +1629,12 @@ def _process_path(
             emit_frame(idx)
         elif op == "fillna":
             val_str = _next_op_val("fillna", args.fillna)
-            fill_val, fill_cols, fill_nans = parse_fillna_spec(
-                val_str, flag_name="-fillna", available_cols=pipeline.columns()
-            )
+            try:
+                fill_val, fill_cols, fill_nans = parse_fillna_spec(
+                    val_str, flag_name="-fillna", available_cols=pipeline.columns()
+                )
+            except SystemExit as exc:
+                return _fail(parser, batch, str(exc))
             err = pipeline.apply_fillna(fill_val, cols=fill_cols, nans=fill_nans)
             if err:
                 return _fail(parser, batch, err)

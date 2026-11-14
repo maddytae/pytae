@@ -113,14 +113,14 @@ def parse_dropna_spec(
     flag_name: str = "-dropna",
     available_cols: Sequence[str] | None = None,
 ) -> tuple[list[str], str | None, bool]:
-    """Parse -dropna SPEC into (cols, how, drop_nans).
+    """Parse -dropna SPEC into (cols, how, nans).
 
     Zero-Data-Loss Safety Defaults:
-      - Bare flag / "": cols=[], how=None (defaults to 'all' to prevent accidental data loss), drop_nans=True
-      - "col1,col2": cols=['col1', 'col2'], how=None (defaults to 'any' for targeted columns), drop_nans=True
-      - "how=any" or "how=all": cols=[], how='any'/'all', drop_nans=True
-      - "col1,col2,how=all": cols=['col1', 'col2'], how='all', drop_nans=True
-      - "drop_nans=false": drop_nans=False
+      - Bare flag / "": cols=[], how=None (defaults to 'all' to prevent accidental data loss), nans=True
+      - "col1,col2": cols=['col1', 'col2'], how=None (defaults to 'any' for targeted columns), nans=True
+      - "how=any" or "how=all": cols=[], how='any'/'all', nans=True
+      - "col1,col2,how=all": cols=['col1', 'col2'], how='all', nans=True
+      - "nans=false": nans=False
     """
     if not raw or not raw.strip():
         return [], None, True
@@ -128,7 +128,7 @@ def parse_dropna_spec(
     tokens = [t.strip() for t in _tokenize(raw, ",", track_brackets=True) if t.strip()]
     cols: list[str] = []
     how: str | None = None
-    drop_nans: bool = True
+    nans: bool = True
 
     for token in tokens:
         if re.match(r"^how\s*[:=]\s*", token, re.IGNORECASE):
@@ -137,9 +137,13 @@ def parse_dropna_spec(
                 how = val
             else:
                 raise SystemExit(f"{flag_name}: invalid how value '{val}'. Expected 'any' or 'all'")
-        elif re.match(r"^(drop_nans|nans)\s*[:=]\s*", token, re.IGNORECASE):
-            val = re.sub(r"^(drop_nans|nans)\s*[:=]\s*", "", token, flags=re.IGNORECASE).strip().strip("'\"").lower()
-            drop_nans = val not in ("false", "0", "no")
+        elif re.match(r"^drop_nans\s*[:=]\s*", token, re.IGNORECASE):
+            raise SystemExit(
+                f"{flag_name}: 'drop_nans=' is retired in favor of canonical 'nans='. Use {flag_name} 'nans=false' instead."
+            )
+        elif re.match(r"^nans\s*[:=]\s*", token, re.IGNORECASE):
+            val = re.sub(r"^nans\s*[:=]\s*", "", token, flags=re.IGNORECASE).strip().strip("'\"").lower()
+            nans = val not in ("false", "0", "no")
         elif token.lower() in ("any", "all"):
             if available_cols and token in available_cols:
                 cols.append(_unquote_name(token))
@@ -148,7 +152,7 @@ def parse_dropna_spec(
         else:
             cols.append(_unquote_name(token))
 
-    return cols, how, drop_nans
+    return cols, how, nans
 
 
 def parse_fillna_spec(
@@ -173,7 +177,12 @@ def parse_fillna_spec(
     nans = True
     clean_tokens: list[str] = []
     for t in tokens:
-        if re.match(r"^nans\s*[:=]\s*", t, re.IGNORECASE):
+        if re.match(r"^(fill_nans|drop_nans)\s*[:=]\s*", t, re.IGNORECASE):
+            matched = re.match(r"^([a-z_]+)", t, re.IGNORECASE).group(1)
+            raise SystemExit(
+                f"{flag_name}: '{matched}=' is invalid or retired in favor of canonical 'nans='. Use {flag_name} 'nans=false' instead."
+            )
+        elif re.match(r"^nans\s*[:=]\s*", t, re.IGNORECASE):
             val = re.sub(r"^nans\s*[:=]\s*", "", t, flags=re.IGNORECASE).strip().strip("'\"").lower()
             nans = val not in ("false", "0", "no")
         else:

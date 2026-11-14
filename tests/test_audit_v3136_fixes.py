@@ -59,6 +59,26 @@ def test_dropna_and_fillna_subset_string():
     with pytest.raises(KeyError, match="fillna: column.*not found"):
         df.fillna(0, subset="unknown_col")
 
+    # nans=False on dropna preserves float NaN
+    df_float = pt.DataFrame({"x": [1.0, float("nan"), None]})
+    assert len(df_float.dropna("x", nans=False)) == 2
+    assert len(df_float.dropna("x", nans=True)) == 1
+
+    # retired drop_nans on dropna raises ValueError
+    with pytest.raises(ValueError, match="'drop_nans' is retired in favor of canonical 'nans'"):
+        df.dropna(drop_nans=False)
+
+    # standalone pt.dropna with drop_nans raises ValueError
+    with pytest.raises(ValueError, match="'drop_nans' is retired in favor of canonical 'nans'"):
+        pt.dropna(df, drop_nans=False)
+
+    # invalid drop_nans or fill_nans on fillna raises ValueError
+    with pytest.raises(ValueError, match="'fill_nans' is retired in favor of canonical 'nans'"):
+        df.fillna(0, fill_nans=False)
+
+    with pytest.raises(ValueError, match="'drop_nans' is invalid for fillna"):
+        df.fillna(0, drop_nans=False)
+
 
 def test_grouped_dataframe_preserves_grouping_on_cleaning():
     df = pt.DataFrame({

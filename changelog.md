@@ -6,6 +6,8 @@ All notable changes to this project are documented in this file.
 
 ### Added & Standardized
 - **Naming Standardizations Across All Interfaces**:
+  - Standardized on `nans=True|False` everywhere across Python (`df.dropna(nans=...)`, `df.fillna(..., nans=...)`, `pt.dropna(nans=...)`, `pt.fillna(nans=...)`) and the CLI (`-dropna "nans=false"`, `-fillna "0, nans=false"`).
+  - Hard-deprecated legacy `drop_nans` and `fill_nans` across the Python API and CLI parser with actionable `ValueError` and `SystemExit` messages pointing directly to `nans`.
   - Standardized on snake_case `starts_with` and `ends_with` across `select`, `filter`, `mutate`, and the CLI. Retired legacy `startswith` and `endswith` with actionable `ValueError` and `SystemExit` messages pointing to canonical syntax.
   - Standardized on `not` as the single unary boolean negation operator in `filter()` expressions (matching `and` and `or`). Retired `~` and `!` in filter predicates with helpful errors guiding users to `not`.
   - Enforced `count()` as the canonical row counting function and `count(col)` as non-null column counting in expressions. Retired legacy `n()` and bare `n` identifier row counting in expressions (`mutate`), eliminating column collision and shadowing bugs.

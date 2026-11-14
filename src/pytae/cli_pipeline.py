@@ -311,7 +311,7 @@ class _Pipeline:
 
         available = self._available_columns()
         try:
-            cols, how, drop_nans = parse_dropna_spec(spec, flag_name="-dropna", available_cols=available)
+            cols, how, nans = parse_dropna_spec(spec, flag_name="-dropna", available_cols=available)
         except SystemExit as exc:
             return str(exc)
 
@@ -327,7 +327,7 @@ class _Pipeline:
                 self.polars_lazy_frame(),
                 cols=cols if cols else None,
                 how=how,
-                drop_nans=drop_nans,
+                nans=nans,
             )
             self._df = None
             return None

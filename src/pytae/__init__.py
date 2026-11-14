@@ -199,8 +199,15 @@ def count(df: Any, *cols: Any, sort: bool = True, name: str = "n") -> DataFrame:
     return DataFrame(df).count(*cols, sort=sort, name=name)
 
 
-def dropna(df: Any, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-    return DataFrame(df).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
+def dropna(
+    df: Any,
+    *cols: Any,
+    subset: Any = None,
+    how: str | None = None,
+    nans: bool = True,
+    drop_nans: bool | None = None,
+) -> DataFrame:
+    return DataFrame(df).dropna(*cols, subset=subset, how=how, nans=nans, drop_nans=drop_nans)
 
 
 def fillna(

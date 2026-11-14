@@ -42,8 +42,8 @@ class _BasePtAccessor:
     def count(self, *cols: Any, sort: bool = True, name: str = "n") -> DataFrame:
         return DataFrame(self._obj).count(*cols, sort=sort, name=name)
 
-    def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-        return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, drop_nans=drop_nans)
+    def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, nans: bool = True, drop_nans: bool | None = None) -> DataFrame:
+        return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, nans=nans, drop_nans=drop_nans)
 
     def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True, **kwargs: Any) -> DataFrame:
         return DataFrame(self._obj).fillna(value, *cols, subset=subset, nans=nans, **kwargs)

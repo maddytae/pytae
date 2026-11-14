@@ -908,15 +908,24 @@ class DataFrame:
                 resolved.append(str(c))
         return DataFrame(count_polars(self._df, cols=resolved, sort=sort, name=name))
 
-    def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
+    def dropna(
+        self,
+        *cols: Any,
+        subset: Any = None,
+        how: str | None = None,
+        nans: bool = True,
+        drop_nans: bool | None = None,
+    ) -> DataFrame:
         """Drop rows containing missing values (Arrow null and/or float NaN).
 
         Zero-Data-Loss Safety Defaults:
         - Without arguments: drops completely empty rows (all columns null/NaN, how='all').
         - With column names: drops rows where any of the specified columns are null/NaN (how='any').
         - Pass how='any' or how='all' to explicitly override.
-        - drop_nans=True (default) drops float NaNs in addition to Arrow nulls.
+        - nans=True (default) drops float NaNs in addition to Arrow nulls. Pass nans=False to drop only Arrow nulls.
         """
+        if drop_nans is not None:
+            raise ValueError("dropna(): 'drop_nans' is retired in favor of canonical 'nans'. Use dropna(nans=...) instead.")
         raw_target = (
             [subset]
             if isinstance(subset, str)
@@ -934,7 +943,7 @@ class DataFrame:
             missing = [c for c in resolved if c not in avail]
             if missing:
                 raise KeyError(f"dropna: column(s) {missing} not found in DataFrame")
-        return DataFrame(dropna_polars(self._df, cols=resolved, how=how, drop_nans=drop_nans))
+        return DataFrame(dropna_polars(self._df, cols=resolved, how=how, nans=nans))
 
     def fillna(
         self,
@@ -961,6 +970,12 @@ class DataFrame:
         **kwargs : Any
             Per-column fill values as keyword arguments (e.g. ``df.fillna(a=0, b="N/A")``).
         """
+        if "fill_nans" in kwargs:
+            raise ValueError(
+                "fillna(): 'fill_nans' is retired in favor of canonical 'nans'. Use fillna(..., nans=...) instead."
+            )
+        if "drop_nans" in kwargs:
+            raise ValueError("fillna(): 'drop_nans' is invalid for fillna. Use fillna(..., nans=...) instead.")
         raw_target = (
             [subset]
             if isinstance(subset, str)
@@ -1877,8 +1892,17 @@ class GroupedDataFrame:
         """Execute a SQL query against this DataFrame."""
         return DataFrame(sql_polars(self._df, query))
 
-    def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> GroupedDataFrame:
+    def dropna(
+        self,
+        *cols: Any,
+        subset: Any = None,
+        how: str | None = None,
+        nans: bool = True,
+        drop_nans: bool | None = None,
+    ) -> GroupedDataFrame:
         """Drop rows containing missing values (Arrow null and/or float NaN), preserving grouping."""
+        if drop_nans is not None:
+            raise ValueError("dropna(): 'drop_nans' is retired in favor of canonical 'nans'. Use dropna(nans=...) instead.")
         raw_target = (
             [subset]
             if isinstance(subset, str)
@@ -1896,7 +1920,7 @@ class GroupedDataFrame:
             missing = [c for c in resolved if c not in avail]
             if missing:
                 raise KeyError(f"dropna: column(s) {missing} not found in DataFrame")
-        res_df = dropna_polars(self._df, cols=resolved, how=how, drop_nans=drop_nans)
+        res_df = dropna_polars(self._df, cols=resolved, how=how, nans=nans)
         return GroupedDataFrame(
             res_df,
             by_cols=self._by,
@@ -1915,6 +1939,12 @@ class GroupedDataFrame:
         **kwargs: Any,
     ) -> GroupedDataFrame:
         """Fill missing values (Arrow null and/or float NaN), preserving grouping."""
+        if "fill_nans" in kwargs:
+            raise ValueError(
+                "fillna(): 'fill_nans' is retired in favor of canonical 'nans'. Use fillna(..., nans=...) instead."
+            )
+        if "drop_nans" in kwargs:
+            raise ValueError("fillna(): 'drop_nans' is invalid for fillna. Use fillna(..., nans=...) instead.")
         raw_target = (
             [subset]
             if isinstance(subset, str)

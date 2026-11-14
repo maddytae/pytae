@@ -188,10 +188,14 @@ def test_dropna_polars_option_b_semantics():
     assert res_any.shape == (1, 2)
     assert res_any["b"].to_list() == ["x"]
 
-    # 4. drop_nans=False preserves float('nan') while dropping None
-    res_no_drop_nans = dropna_polars(df, cols=["a"], drop_nans=False)
+    # 4. nans=False preserves float('nan') while dropping None
+    res_no_drop_nans = dropna_polars(df, cols=["a"], nans=False)
     assert res_no_drop_nans.shape == (2, 2)
     assert res_no_drop_nans["b"].to_list() == ["x", "z"]
+
+    # 4b. Retired drop_nans parameter raises ValueError
+    with pytest.raises(ValueError, match="'drop_nans' is retired in favor of canonical 'nans'"):
+        dropna_polars(df, drop_nans=False)
 
     # 5. LazyFrame support
     res_lazy = dropna_polars(df.lazy(), cols=["a"]).collect()

@@ -603,7 +603,8 @@ def dropna_polars(
     cols: list[str] | Sequence[str] | None = None,
     *,
     how: str | None = None,
-    drop_nans: bool = True,
+    nans: bool = True,
+    drop_nans: bool | None = None,
 ) -> Any:
     """Drop rows containing missing values (Arrow null and/or float NaN).
 
@@ -611,8 +612,13 @@ def dropna_polars(
     - If `cols` is None/empty: defaults to how='all' (only drop completely empty rows).
     - If `cols` is specified: defaults to how='any' (drop rows missing any of the specified columns).
     - `how` can be explicitly 'any' or 'all' to override.
-    - `drop_nans=True` (default) drops float NaNs in addition to Arrow nulls.
+    - `nans=True` (default) drops float NaNs in addition to Arrow nulls.
     """
+    if drop_nans is not None:
+        raise ValueError(
+            "dropna(): 'drop_nans' is retired in favor of canonical 'nans'. Use dropna(nans=...) instead."
+        )
+
     import polars as pl
 
     schema = _df_schema(df)
@@ -641,7 +647,7 @@ def dropna_polars(
     is_null_exprs = []
     for c in target_cols:
         dt = schema[c]
-        if drop_nans and dt.is_float():
+        if nans and dt.is_float():
             is_null_exprs.append(pl.col(c).is_null() | pl.col(c).is_nan())
         else:
             is_null_exprs.append(pl.col(c).is_null())
@@ -665,6 +671,13 @@ def fillna_polars(
     **kwargs: Any,
 ) -> Any:
     """Fill missing values (Arrow null and/or float NaN) in a Polars DataFrame or LazyFrame."""
+    if "fill_nans" in kwargs:
+        raise ValueError(
+            "fillna(): 'fill_nans' is retired in favor of canonical 'nans'. Use fillna(..., nans=...) instead."
+        )
+    if "drop_nans" in kwargs:
+        raise ValueError("fillna(): 'drop_nans' is invalid for fillna. Use fillna(..., nans=...) instead.")
+
     import polars as pl
 
     if value is None and kwargs:

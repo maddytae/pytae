@@ -411,8 +411,55 @@ pytae tips.parquet \
 ### Injected Aggregation Helpers
 
 Within grouped `-mutate` expressions, the following aggregations evaluate per group:
-- `mean(col)`, `sum(col)`, `median(col)`, `min(col)`, `max(col)`, `std(col)`, `var(col)`
-- `count()`: Group row count (sample size)
+- **Summary Statistics**: `mean(col)`, `sum(col)`, `median(col)`, `min(col)`, `max(col)`, `std(col)`, `var(col)`
+- **Running / Cumulative Transforms**: `cumsum(col)`, `cummax(col)`, `cummin(col)`, `cumprod(col)` (running windows that automatically reset at group boundaries)
+- **Counting**:
+  - `count()`: Group row count including all rows (matches SQL `COUNT(*)`)
+  - `count(col)`: Count of **non-null** values in `col` (matches SQL `COUNT(col)`)
+
+### Counting Rows vs. Non-Null Column Values (`count()` vs. `count(col)`)
+
+Pytae adheres to standard SQL and Pandas counting semantics:
+- **`count()`** counts all rows within the group/table, regardless of nulls.
+- **`count(col)`** counts strictly **non-null** observations of `col`, skipping missing values (`null`, `NA`, or float `NaN`).
+
+#### Example on Palmer Penguins (Handling Missing Data):
+
+In the penguins dataset, several rows have missing `sex` or `body_mass_g`:
+
+```bash
+pytae sample:penguins \
+  -select "species,sex,body_mass_g" \
+  -by species \
+  -mutate "n_rows = count(), n_sex = count(sex), n_mass = count(body_mass_g)" \
+  -by species \
+  -head 3
+```
+
+**Output:**
+
+| species   | sex    |   body_mass_g |   n_rows |   n_sex |   n_mass |
+|:----------|:-------|--------------:|---------:|--------:|---------:|
+| Adelie    | Male   |          3750 |      152 |     146 |      151 |
+| Adelie    | Female |          3800 |      152 |     146 |      151 |
+| Adelie    | Female |          3250 |      152 |     146 |      151 |
+| Chinstrap | Female |          3500 |       68 |      68 |       68 |
+| Chinstrap | Male   |          3900 |       68 |      68 |       68 |
+| Chinstrap | Male   |          3650 |       68 |      68 |       68 |
+| Gentoo    | Female |          4500 |      124 |     119 |      123 |
+| Gentoo    | Male   |          5700 |      124 |     119 |      123 |
+| Gentoo    | Female |          4450 |      124 |     119 |      123 |
+
+> [!NOTE]
+> Notice that for **Adelie**:
+> - `n_rows = count()` is `152` (total rows recorded for Adelie).
+> - `n_sex = count(sex)` is `146` (6 Adelie penguins have `null` sex).
+> - `n_mass = count(body_mass_g)` is `151` (1 Adelie penguin has `null` body mass).
+>
+> The exact same non-null filtering behavior applies without `-by` across the whole table:
+> ```bash
+> pytae sample:penguins -mutate "total_rows = count(), valid_sex = count(sex)"
+> ```
 
 ### Multi-Column Grouping and Spaced Columns
 

@@ -91,7 +91,7 @@ Pytae adheres to a **Zero Data Loss by Default** philosophy for missing values (
 - **Bare `-dropna`**: Defaults to `how="all"`. Drops **only completely empty rows** (rows where every column is null/NaN), preserving partially populated rows.
 - **Targeted `-dropna "col1, col2"`**: Defaults to `how="any"`. Drops rows missing *any* of the specified columns.
 - **Explicit `how=any`**: Drops rows containing *any* missing value across all columns.
-- **Optional `drop_nans=false`**: Drops only Arrow nulls, preserving float IEEE-754 NaNs.
+- **Optional `nans=false`**: Drops only Arrow nulls, preserving float IEEE-754 NaNs.
 
 ```bash
 # Bare flag defaults to how='all' (Zero Data Loss: keeps 344 rows in penguins)
@@ -105,6 +105,9 @@ pytae penguins.parquet -dropna body_mass_g -shape
 # Explicit how=any drops rows with any missing value (344 -> 333 rows)
 pytae penguins.parquet -dropna how=any -shape
 # (333, 7)
+
+# Drop only Arrow nulls, leaving float IEEE-754 NaNs untouched
+pytae dataset.parquet -dropna "nans=false" -head 5
 ```
 
 > [!NOTE]

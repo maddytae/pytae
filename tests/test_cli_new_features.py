@@ -75,6 +75,35 @@ def test_cli_dropna_unknown_column(capsys):
     assert "Column 'nonexistent_col' does not exist" in captured.err or "unknown column" in captured.err.lower()
 
 
+def test_cli_dropna_and_fillna_nans_options(tmp_path, capsys):
+    import polars as pl
+    pq = tmp_path / "data.parquet"
+    pl.DataFrame({"a": [1.0, float("nan"), None], "b": ["x", "y", "z"]}).write_parquet(pq)
+
+    # nans=false preserves float NaN while dropping null
+    ret = main([str(pq), "-dropna", "a, nans=false", "-shape"])
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert "(2, 2)" in captured.out
+
+    # retired drop_nans= in -dropna raises SystemExit with helpful message
+    with pytest.raises(SystemExit):
+        main([str(pq), "-dropna", "drop_nans=false"])
+    captured = capsys.readouterr()
+    assert "'drop_nans=' is retired in favor of canonical 'nans='" in captured.err
+
+    # retired drop_nans= or fill_nans= in -fillna raises SystemExit with helpful message
+    with pytest.raises(SystemExit):
+        main([str(pq), "-fillna", "0, fill_nans=false"])
+    captured = capsys.readouterr()
+    assert "'fill_nans=' is invalid or retired in favor of canonical 'nans='" in captured.err
+
+    with pytest.raises(SystemExit):
+        main([str(pq), "-fillna", "0, drop_nans=false"])
+    captured = capsys.readouterr()
+    assert "'drop_nans=' is invalid or retired in favor of canonical 'nans='" in captured.err
+
+
 def test_cli_auto_pipe_detection(monkeypatch, capsys):
     # Simulate piped stdin
     csv_data = b"col1,col2\n10,20\n30,40\n"
