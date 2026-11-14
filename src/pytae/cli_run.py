@@ -348,21 +348,21 @@ def _extract_metadata(path: Path, *, sep: str | None = None, encoding: str | Non
     return "\n".join(lines)
 
 
-def _parse_diff_arg(
-    raw_diff: str,
-    default_tol: float = 0.0,
-) -> tuple[str, list[str] | None, float, float]:
-    """Parse `-diff` argument string, extracting optional `,on=...`, `,tol=...`, `,rtol=...`."""
+def _parse_diff_spec(
+    raw_diff: str, default_tol: float = 0.0
+) -> tuple[str, list[str] | None, float, float, bool]:
+    """Parse `-diff` argument string, extracting optional `,on=...`, `,tol=...`, `,rtol=...`, and `,schema`."""
     from pytae._text import tokenize as _tok
 
     parts = [p.strip() for p in _tok(raw_diff, ",", keep_quotes=False, track_brackets=True) if p.strip()]
     if not parts:
-        return raw_diff, None, default_tol, 0.0
+        return raw_diff, None, default_tol, 0.0, False
 
     target_str = normalize_git_bash_path(parts[0])
     on_cols: list[str] | None = None
     tol = default_tol
     rtol = 0.0
+    schema_only = False
 
     for tok in parts[1:]:
         if "=" in tok:
@@ -381,11 +381,96 @@ def _parse_diff_arg(
                     rtol = float(v_clean)
                 except ValueError:
                     pass
+            elif k_clean == "schema":
+                schema_only = v_clean.lower() not in ("false", "0", "no", "off")
+        else:
+            t_lower = tok.strip().strip("\"'").lower()
+            if t_lower in ("schema", "schema_only", "schema-only"):
+                schema_only = True
+    return target_str, on_cols, tol, rtol, schema_only
+
+
+def _parse_diff_arg(
+    raw_diff: str, default_tol: float = 0.0
+) -> tuple[str, list[str] | None, float, float]:
+    """Parse `-diff` argument string, extracting optional `,on=...`, `,tol=...`, `,rtol=...`."""
+    target_str, on_cols, tol, rtol, _ = _parse_diff_spec(raw_diff, default_tol=default_tol)
     return target_str, on_cols, tol, rtol
 
 
+def _extract_polars_schema_and_nulls(
+    obj: Any,
+    default_name: str,
+    *,
+    sep: str | None = None,
+    encoding: str | None = None,
+) -> tuple[str, int, list[str], dict[str, str], dict[str, int]]:
+    """Return (name, row_count, cols, dtypes_by_col, null_counts_by_col) using Polars lazy/eager inspection."""
+    import polars as pl
+
+    from pytae.dataframe import DataFrame as PytaeDataFrame
+
+    if isinstance(obj, PytaeDataFrame):
+        name = getattr(obj, "_name", default_name)
+        obj = obj._df
+    else:
+        name = getattr(obj, "_name", default_name)
+
+    if isinstance(obj, pl.LazyFrame):
+        schema_map = obj.collect_schema()
+        cols = list(schema_map.names())
+        dtypes = {c: str(schema_map[c]) for c in cols}
+        stats_df = obj.select(
+            pl.len().alias("__pytae_len__"),
+            *[pl.col(c).null_count().alias(c) for c in cols],
+        ).collect()
+        row_count = int(stats_df["__pytae_len__"][0]) if len(stats_df) else 0
+        null_counts = {c: int(stats_df[c][0]) for c in cols}
+        return name, row_count, cols, dtypes, null_counts
+
+    if isinstance(obj, pl.DataFrame):
+        cols = list(obj.columns)
+        dtypes = {c: str(obj.schema[c]) for c in cols}
+        row_count = len(obj)
+        if row_count == 0 or not cols:
+            null_counts = {c: 0 for c in cols}
+        else:
+            nc_row = obj.null_count().row(0)
+            null_counts = {c: int(n) for c, n in zip(cols, nc_row)}
+        return name, row_count, cols, dtypes, null_counts
+
+    if isinstance(obj, pd.DataFrame):
+        try:
+            pldf = pl.from_pandas(obj)
+            return _extract_polars_schema_and_nulls(pldf, name)
+        except Exception:
+            cols = [str(c) for c in obj.columns]
+            dtypes = {str(c): str(obj[c].dtype) for c in obj.columns}
+            row_count = len(obj)
+            null_counts = {str(c): int(obj[c].isna().sum()) for c in obj.columns}
+            return name, row_count, cols, dtypes, null_counts
+
+    if hasattr(obj, "_to_pandas_internal"):
+        return _extract_polars_schema_and_nulls(obj._to_pandas_internal(), name)
+    if hasattr(obj, "to_pandas"):
+        return _extract_polars_schema_and_nulls(obj.to_pandas(), name)
+
+    right_path = Path(str(obj))
+    if not right_path.exists() and not any(ch in str(right_path) for ch in "*?["):
+        raise FileNotFoundError(f"Diff target not found: {right_path}")
+    reader = get_reader(right_path, sep=sep, encoding=encoding)
+    if hasattr(reader, "to_polars_lazy"):
+        try:
+            lf = reader.to_polars_lazy()
+            return _extract_polars_schema_and_nulls(lf, right_path.name)
+        except Exception:
+            pass
+    df = reader.to_dataframe()
+    return _extract_polars_schema_and_nulls(df, right_path.name)
+
+
 def _compute_diff(
-    left_df: pd.DataFrame,
+    left_df: Any,
     right_target: Any,
     left_name: str,
     *,
@@ -394,8 +479,106 @@ def _compute_diff(
     rtol: float = 0.0,
     sep: str | None = None,
     encoding: str | None = None,
+    schema: bool = False,
 ) -> str:
     """Compare the current pipeline result against another tabular file or DataFrame."""
+    if isinstance(right_target, str) and "," in right_target and not Path(right_target).exists():
+        parsed_target, parsed_on, parsed_tol, parsed_rtol, parsed_schema = _parse_diff_spec(
+            right_target, default_tol=tol
+        )
+        right_target = parsed_target
+        if on is None and parsed_on is not None:
+            on = parsed_on
+        tol = parsed_tol
+        if rtol == 0.0 and parsed_rtol > 0.0:
+            rtol = parsed_rtol
+        if parsed_schema:
+            schema = True
+
+    if schema:
+        try:
+            _, r1, cols1, dtypes1, nulls1 = _extract_polars_schema_and_nulls(
+                left_df, left_name, sep=sep, encoding=encoding
+            )
+        except Exception as exc:
+            return f"Cannot read left diff dataset '{left_name}': {exc}"
+
+        try:
+            right_name, r2, cols2, dtypes2, nulls2 = _extract_polars_schema_and_nulls(
+                right_target, "<right>", sep=sep, encoding=encoding
+            )
+        except FileNotFoundError as exc:
+            return str(exc)
+        except UnicodeError as exc:
+            return _encoding_error_message(Path(str(right_target)), encoding, exc)
+        except Exception as exc:
+            return f"Cannot read diff target '{right_target}': {exc}"
+
+        c1 = len(cols1)
+        c2 = len(cols2)
+        schema_lines: list[str] = [
+            "Comparing:",
+            f"  Left (source):  {left_name} ({r1:,} rows, {c1} cols)",
+            f"  Right (target): {right_name} ({r2:,} rows, {c2} cols)",
+            "",
+            "Shape:",
+            f"  Rows: {r1:,} vs {r2:,} ({'+' if r1 >= r2 else ''}{r1 - r2:,})",
+            f"  Cols: {c1} vs {c2} ({'+' if c1 >= c2 else ''}{c1 - c2})",
+        ]
+
+        added_cols = [c for c in cols1 if c not in cols2]
+        removed_cols = [c for c in cols2 if c not in cols1]
+        common_cols = [c for c in cols1 if c in cols2]
+
+        schema_lines.append("")
+        schema_lines.append("Columns:")
+        if added_cols:
+            schema_lines.append(f"  + Added in left ({len(added_cols)}):   {', '.join(added_cols)}")
+        if removed_cols:
+            schema_lines.append(f"  - Removed in left ({len(removed_cols)}): {', '.join(removed_cols)}")
+        schema_lines.append(f"  Common ({len(common_cols)}):        {', '.join(common_cols)}")
+
+        schema_dtype_diffs: list[str] = []
+        for c in common_cols:
+            d1 = dtypes1[c]
+            d2 = dtypes2[c]
+            if d1 != d2:
+                schema_dtype_diffs.append(f"  * {c}: {d2} (right) -> {d1} (left)")
+
+        schema_lines.append("")
+        schema_lines.append("Schema Drift:")
+        if schema_dtype_diffs:
+            schema_lines.extend(schema_dtype_diffs)
+        else:
+            schema_lines.append("  None (all common columns have matching dtypes)")
+
+        schema_null_diffs: list[str] = []
+        for c in common_cols:
+            n1 = nulls1[c]
+            n2 = nulls2[c]
+            if n1 != n2:
+                schema_null_diffs.append(f"  * {c}: {n1:,} vs {n2:,} nulls ({'+' if n1 >= n2 else ''}{n1 - n2:,})")
+
+        schema_lines.append("")
+        schema_lines.append("Null Counts:")
+        if schema_null_diffs:
+            schema_lines.extend(schema_null_diffs)
+        else:
+            schema_lines.append("  None (all common columns have matching null counts)")
+
+        schema_lines.append("")
+        schema_lines.append("Values:")
+        schema_lines.append("  Skipped (schema-only diff)")
+        return "\n".join(schema_lines)
+
+    if not isinstance(left_df, pd.DataFrame):
+        if hasattr(left_df, "_to_pandas_internal"):
+            left_df = left_df._to_pandas_internal()
+        elif hasattr(left_df, "to_pandas"):
+            left_df = left_df.to_pandas()
+        elif hasattr(left_df, "collect"):
+            left_df = left_df.collect().to_pandas()
+
     if isinstance(right_target, pd.DataFrame):
         right_df = right_target
         right_name = getattr(right_target, "_name", "<right>")
@@ -408,15 +591,10 @@ def _compute_diff(
     elif hasattr(right_target, "to_pandas"):
         right_df = right_target.to_pandas()
         right_name = getattr(right_target, "_name", "<right>")
+    elif hasattr(right_target, "collect"):
+        right_df = right_target.collect().to_pandas()
+        right_name = getattr(right_target, "_name", "<right>")
     else:
-        if isinstance(right_target, str) and "," in right_target and not Path(right_target).exists():
-            parsed_target, parsed_on, parsed_tol, parsed_rtol = _parse_diff_arg(right_target, default_tol=tol)
-            right_target = parsed_target
-            if on is None and parsed_on is not None:
-                on = parsed_on
-            tol = parsed_tol
-            if rtol == 0.0 and parsed_rtol > 0.0:
-                rtol = parsed_rtol
         right_path = Path(right_target)
         if not right_path.exists() and not any(ch in str(right_path) for ch in "*?["):
             return f"Diff target not found: {right_path}"
@@ -1160,26 +1338,57 @@ def _process_path(
         elif op == "schema":
             from pytae.other_utilities import format_schema, schema_dataframe
 
-            schema_df = schema_dataframe(pipeline.polars_frame())
-            schema_str = format_schema(pipeline.polars_frame(), is_tty=getattr(args, "pretty", False) or None)
+            raw_schema_fmt = _next_op_val("schema", getattr(args, "schema", None))
+            schema_fmt = (
+                "table"
+                if (raw_schema_fmt is None or isinstance(raw_schema_fmt, bool) or not str(raw_schema_fmt).strip())
+                else str(raw_schema_fmt).strip().lower()
+            )
+            tbl_name = (
+                getattr(args, "_table_name", None)
+                or (path.stem if path is not None and str(path) not in ("<memory>", "<joined>", "-") else "data")
+            )
+            schema_str = format_schema(
+                pipeline.polars_frame(),
+                is_tty=getattr(args, "pretty", False) or None,
+                fmt=schema_fmt,
+                table_name=str(tbl_name),
+            )
             if should_print(idx):
                 _output_text(schema_str, args)
-            if is_clip:
-                clip_action = lambda d=schema_df: _copy_df_to_clipboard(d, index=False)
-            elif is_file and out_target is not None and Path(out_target).suffix.lower() in (".txt", ".md", ".log"):
-                dest = Path(out_target)
-                out_dir = getattr(args, "out_dir", None)
-                if out_dir is not None and not dest.is_absolute():
-                    dest = out_dir / dest
-                dest.write_text(schema_str + "\n", encoding="utf-8")
-                output_fn = getattr(args, "output_fn", None)
-                if output_fn is not None:
-                    output_fn(f"Wrote schema to {dest}")
-                else:
-                    print(f"Wrote schema to {dest}")
-                return False
-            pipeline._pldf = schema_df
-            pipeline._df = None
+            if schema_fmt == "table":
+                schema_df = schema_dataframe(pipeline.polars_frame())
+                if is_clip:
+                    clip_action = lambda d=schema_df: _copy_df_to_clipboard(d, index=False)
+                elif is_file and out_target is not None and Path(out_target).suffix.lower() in (".txt", ".md", ".log"):
+                    dest = Path(out_target)
+                    out_dir = getattr(args, "out_dir", None)
+                    if out_dir is not None and not dest.is_absolute():
+                        dest = out_dir / dest
+                    dest.write_text(schema_str + "\n", encoding="utf-8")
+                    output_fn = getattr(args, "output_fn", None)
+                    if output_fn is not None:
+                        output_fn(f"Wrote schema to {dest}")
+                    else:
+                        print(f"Wrote schema to {dest}")
+                    return False
+                pipeline._pldf = schema_df
+                pipeline._df = None
+            else:
+                if is_clip:
+                    clip_action = lambda s=schema_str: _copy_to_clipboard(s)
+                elif is_file and out_target is not None:
+                    dest = Path(out_target)
+                    out_dir = getattr(args, "out_dir", None)
+                    if out_dir is not None and not dest.is_absolute():
+                        dest = out_dir / dest
+                    dest.write_text(schema_str + "\n", encoding="utf-8")
+                    output_fn = getattr(args, "output_fn", None)
+                    if output_fn is not None:
+                        output_fn(f"Wrote schema ({schema_fmt}) to {dest}")
+                    else:
+                        print(f"Wrote schema ({schema_fmt}) to {dest}")
+                    return False
         elif op == "describe":
             described = pipeline.dataframe().describe()
             pipeline._df = described
@@ -1215,13 +1424,32 @@ def _process_path(
                 clip_action = lambda s=meta_str: _copy_to_clipboard(s)
         elif op == "diff":
             diff_tol = getattr(args, "tol", None) or 0.0
+            raw_diff_str = str(args.diff)
+            _, _, _, _, is_schema_diff = _parse_diff_spec(raw_diff_str, default_tol=diff_tol)
+            left_source: Any
+            if is_schema_diff:
+                if (
+                    pipeline._df is None
+                    and pipeline._pldf is None
+                    and pipeline._reader is not None
+                    and hasattr(pipeline._reader, "to_polars_lazy")
+                ):
+                    try:
+                        left_source = pipeline.polars_lazy_frame()
+                    except Exception:
+                        left_source = pipeline.current_frame()
+                else:
+                    left_source = pipeline.current_frame()
+            else:
+                left_source = pipeline.dataframe()
             diff_str = _compute_diff(
-                pipeline.dataframe(),
-                str(args.diff),
+                left_source,
+                raw_diff_str,
                 path.name if path is not None else "<pipeline>",
                 tol=diff_tol,
                 sep=args.dlim,
                 encoding=args.encoding,
+                schema=is_schema_diff,
             )
             if should_print(idx):
                 _output_text(diff_str, args)

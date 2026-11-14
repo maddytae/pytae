@@ -1543,6 +1543,10 @@ _DISALLOWED_ALIASES: dict[str, str] = {
     "q": "exit",
     ":q": "exit",
     "?": "help",
+    "-diff_schema": '-diff "<target>,schema"',
+    "-diff-schema": '-diff "<target>,schema"',
+    "--diff_schema": '-diff "<target>,schema"',
+    "--diff-schema": '-diff "<target>,schema"',
 }
 
 _BARE_PIPELINE_VERBS = frozenset(
@@ -4435,6 +4439,7 @@ class PytaeRepl:
                 "-collect",
                 "-explain",
             )
+            or first_lower.startswith("-schema=")
             or first_lower == "-cols"
             or first_lower.startswith("-cols=")
             or first_lower == "-dtype"
@@ -4492,14 +4497,24 @@ class PytaeRepl:
                 output_fn(f"(LazyFrame: {len(_get_frame_columns(df))} cols; use '-collect' or '-head' to view rows)")
             else:
                 output_fn(f"({df.shape[0]}, {df.shape[1]})")
-        elif first_lower == "-schema":
+        elif first_lower == "-schema" or first_lower.startswith("-schema="):
             from pytae.other_utilities import format_schema
 
-            if isinstance(df, pl.LazyFrame):
-                collected = df.head(5).collect()
-                output_fn(format_schema(collected))
-            else:
-                output_fn(format_schema(df))
+            fmt_arg = "table"
+            if "=" in first_lower:
+                fmt_arg = first_lower.split("=", 1)[1].strip("\"'").lower()
+            elif len(tokens) > 1 and tokens[1].lower() not in ("-v", "-verbose", "--verbose"):
+                fmt_arg = tokens[1].strip("\"'").lower()
+
+            tbl_name = getattr(self, "path_str", None) or "data"
+            try:
+                if isinstance(df, pl.LazyFrame) and fmt_arg in ("", "table", "default", "summary"):
+                    collected = df.head(5).collect()
+                    output_fn(format_schema(collected, fmt=fmt_arg, table_name=tbl_name))
+                else:
+                    output_fn(format_schema(df, fmt=fmt_arg, table_name=tbl_name))
+            except ValueError as exc:
+                output_fn(f"pytae: {exc}")
         elif first_lower == "-cols" or first_lower.startswith("-cols="):
             order = "file"
             if "=" in first_lower:
@@ -5785,6 +5800,7 @@ class PytaeRepl:
         right_tbl_name: str | None = None
         tol_val: float = 0.0
         on_val: str | list[str] | None = None
+        schema_only: bool = False
 
         clean_args = []
         i = 0
@@ -5812,28 +5828,46 @@ class PytaeRepl:
                 on_cols = [c.strip() for c in raw_on.replace(":", ",").split(",") if c.strip()]
                 on_val = on_cols[0] if len(on_cols) == 1 else on_cols
                 i += 1
+            elif a.lower() in ("-schema", "--schema", "schema"):
+                schema_only = True
+                i += 1
+            elif a.lower().startswith(("-schema=", "--schema=", "schema=")):
+                v_clean = a.split("=", 1)[1].strip().strip("'\"").lower()
+                schema_only = v_clean not in ("false", "0", "no", "off")
+                i += 1
             else:
                 clean_args.append(a)
                 i += 1
 
-        # Check for embedded ',on=' or ',tol=' in targets (e.g. "df2,on=id" or 'df2,on=id:date,tol=1e-3')
+        # Check for embedded ',on=', ',tol=', or ',schema' in targets (e.g. "df2,schema" or "df2,on=id")
         for idx, arg_item in enumerate(clean_args):
-            if "," in arg_item and any(k in arg_item.lower() for k in ("on=", "tol=", "atol=")):
+            if "," in arg_item:
                 parts = [p.strip() for p in arg_item.split(",")]
-                clean_args[idx] = parts[0]
-                for p in parts[1:]:
-                    if "=" in p:
-                        pk, pv = p.split("=", 1)
-                        pk_clean = pk.strip().lower()
-                        pv_clean = pv.strip().strip("'\"")
-                        if pk_clean in ("on", "key", "keys") and on_val is None:
-                            cols = [c.strip() for c in pv_clean.replace(":", ",").split(",") if c.strip()]
-                            on_val = cols[0] if len(cols) == 1 else cols
-                        elif pk_clean in ("tol", "atol") and tol_val == 0.0:
-                            try:
-                                tol_val = float(pv_clean)
-                            except ValueError:
-                                pass
+                has_opt = any(
+                    "=" in p or p.lower().strip("'\"") in ("schema", "schema_only", "schema-only")
+                    for p in parts[1:]
+                )
+                if has_opt:
+                    clean_args[idx] = parts[0]
+                    for p in parts[1:]:
+                        if "=" in p:
+                            pk, pv = p.split("=", 1)
+                            pk_clean = pk.strip().lower()
+                            pv_clean = pv.strip().strip("'\"")
+                            if pk_clean in ("on", "key", "keys") and on_val is None:
+                                cols = [c.strip() for c in pv_clean.replace(":", ",").split(",") if c.strip()]
+                                on_val = cols[0] if len(cols) == 1 else cols
+                            elif pk_clean in ("tol", "atol") and tol_val == 0.0:
+                                try:
+                                    tol_val = float(pv_clean)
+                                except ValueError:
+                                    pass
+                            elif pk_clean == "schema":
+                                schema_only = pv_clean.lower() not in ("false", "0", "no", "off")
+                        else:
+                            p_lower = p.strip().strip("'\"").lower()
+                            if p_lower in ("schema", "schema_only", "schema-only"):
+                                schema_only = True
 
         def _resolve_diff_target(target: str, default_tbl_hint: str | None = None) -> tuple[str | None, pl.DataFrame | None]:
             resolved = self._resolve_table_name(target)
@@ -5911,7 +5945,7 @@ class PytaeRepl:
         from pytae import diff as pt_diff
 
         try:
-            diff_res = pt_diff(left_df, right_df, tol=tol_val, on=on_val)
+            diff_res = pt_diff(left_df, right_df, tol=tol_val, on=on_val, schema=schema_only)
             # Re-label header for clarity
             header = f"Comparing '{left_tbl_name}' vs '{right_tbl_name}':"
             output_fn(header)
@@ -6893,6 +6927,7 @@ class PytaeRepl:
             cfg_kwargs["thousands_separator"] = True
 
         args._memory_df = source_df
+        args._table_name = getattr(self, "path_str", None) or "data"
         args.in_repl = True
         args.quiet = quiet
         args.output_fn = (lambda s: None) if quiet else output_fn

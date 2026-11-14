@@ -1343,8 +1343,12 @@ class DataFrame:
         print(format_glimpse(self, width=width))
         return self
 
-    def schema_df(self) -> DataFrame:
-        """Return the schema summary as a 4-column DataFrame: Column, Type, Nulls, Unique."""
+    def schema_df(self, fmt: str | None = None, *, table_name: str = "data") -> Any:
+        """Return the schema summary as a 4-column DataFrame, or DDL/model string when fmt is specified."""
+        if fmt is not None and fmt.strip().lower() not in ("", "table", "default", "summary"):
+            from pytae.other_utilities import format_schema
+
+            return format_schema(self, fmt=fmt, table_name=table_name)
         from pytae.other_utilities import schema_dataframe
 
         return DataFrame(schema_dataframe(self))

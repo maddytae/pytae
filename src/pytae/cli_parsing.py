@@ -1261,3 +1261,17 @@ def parse_corr_spec(raw: str | None) -> dict[str, Any]:
             else:
                 result["target"] = _unquote_name(token)
     return result
+
+
+def parse_schema_format(raw: str | None) -> str:
+    """Parse optional -schema format argument (default: 'table')."""
+    if not raw or not raw.strip():
+        return "table"
+    v = raw.strip().lower()
+    if v in ("table", "default", "summary"):
+        return "table"
+    if v in ("sql", "bq", "bigquery", "pydantic", "json", "jsonschema"):
+        return v
+    raise argparse.ArgumentTypeError(
+        f"invalid schema format '{raw}'. Expected 'table', 'sql', 'bq', 'pydantic', or 'json'"
+    )

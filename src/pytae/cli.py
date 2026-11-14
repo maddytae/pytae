@@ -30,6 +30,7 @@ from pytae.cli_parsing import (
     parse_reader_opts,
     parse_rename,
     parse_sample_arg,
+    parse_schema_format,
     parse_select_spec,
 )
 from pytae.cli_pipeline import (
@@ -237,6 +238,21 @@ def _normalize_cli_args(argv: list[str]) -> list[str]:
                 out.append("-time=1")
                 i += 1
                 continue
+        elif arg == "-schema":
+            if i + 1 < len(argv):
+                nxt = argv[i + 1]
+                if nxt.startswith("-") or _is_path_like(nxt) or nxt in ("clip", "<memory>"):
+                    out.append("-schema=table")
+                    i += 1
+                    continue
+                out.append(arg)
+                out.append(nxt)
+                i += 2
+                continue
+            else:
+                out.append("-schema=table")
+                i += 1
+                continue
         elif arg == "-select" and "=" not in arg:
             if i + 1 < len(argv):
                 nxt = argv[i + 1]
@@ -408,9 +424,13 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-schema",
-        dest="schema",
-        action=_OrderedFlag,
-        help="print concise schema summary: columns, dtypes, null counts/percentages, and cardinality",
+        nargs="?",
+        const="table",
+        default=None,
+        metavar="FORMAT",
+        type=parse_schema_format,
+        action=_OrderedValue,
+        help="print concise schema summary or generate DDL/model (optional format: sql, bq, pydantic, json)",
     )
     parser.add_argument(
         "-describe",
@@ -1085,6 +1105,10 @@ def main(argv: list[str] | None = None) -> int:
         (("-s",), "'-s' is not recognized; start REPL with 'pytae -i' and use 'set load_session = <name>' inside"),
         (("-opt",), "'-opt' is not recognized; use '-opts' instead"),
         (("-frac",), "-frac is deprecated and removed; use '-sample <val>' (e.g. -sample 0.05 or -sample 5%)"),
+        (
+            ("-diff_schema", "-diff-schema"),
+            "'-diff_schema' is not recognized; use '-diff \"<target>,schema\"' instead",
+        ),
     ]
     for aliases, msg in retired_redirects:
         if any(arg in aliases for arg in raw_argv):

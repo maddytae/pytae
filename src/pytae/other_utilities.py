@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Hashable, Sequence
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -261,8 +262,234 @@ def schema_dataframe(df: Any) -> Any:
     return pl.DataFrame(rows)
 
 
-def format_schema(df: Any, is_tty: bool | None = None) -> str:
-    """Format DataFrame as a concise schema summary table: Column, Type, Nulls (%), Unique."""
+def _extract_schema_info(df: Any) -> tuple[list[tuple[str, str, int]], int]:
+    """Return ([(col_name, polars_dtype_str, null_count), ...], total_rows) for a dataset."""
+    import polars as pl
+
+    from pytae.dataframe import DataFrame as PytaeDataFrame
+
+    underlying = df._df if isinstance(df, PytaeDataFrame) else df
+    if isinstance(underlying, pl.LazyFrame):
+        pldf = underlying.collect()
+    elif isinstance(underlying, pl.DataFrame):
+        pldf = underlying
+    else:
+        try:
+            pldf = pl.from_pandas(underlying) if hasattr(underlying, "to_pandas") else pl.DataFrame(underlying)
+        except Exception:
+            pldf = pl.DataFrame(underlying)
+
+    total = len(pldf)
+    if total == 0:
+        nulls: tuple[Any, ...] = tuple([0] * len(pldf.columns))
+    else:
+        nulls = pldf.null_count().row(0)
+
+    info: list[tuple[str, str, int]] = []
+    for col, n_null in zip(pldf.columns, nulls):
+        info.append((str(col), str(pldf.schema[col]), int(n_null)))
+    return info, total
+
+
+def _generate_schema_ddl(df: Any, fmt: str, table_name: str = "data") -> str:
+    """Generate schema DDL or model definition in 'sql', 'bq', 'pydantic', or 'json' format."""
+    import json
+
+    fmt_clean = fmt.strip().lower()
+    info, total = _extract_schema_info(df)
+    clean_tbl = re.sub(r"[^A-Za-z0-9_]", "_", Path(str(table_name)).stem or "data").strip("_") or "data"
+    if clean_tbl[0].isdigit():
+        clean_tbl = f"t_{clean_tbl}"
+
+    if fmt_clean == "sql":
+        col_lines: list[str] = []
+        for col, dtype_str, n_null in info:
+            dt_upper = dtype_str.upper()
+            if dt_upper in ("INT64", "UINT64"):
+                sql_type = "BIGINT"
+            elif dt_upper in ("INT32", "UINT32"):
+                sql_type = "INTEGER"
+            elif dt_upper in ("INT16", "INT8", "UINT16", "UINT8"):
+                sql_type = "SMALLINT"
+            elif dt_upper == "FLOAT64":
+                sql_type = "DOUBLE PRECISION"
+            elif dt_upper == "FLOAT32":
+                sql_type = "REAL"
+            elif dt_upper.startswith("DECIMAL"):
+                sql_type = "NUMERIC"
+            elif dt_upper in ("BOOLEAN", "BOOL"):
+                sql_type = "BOOLEAN"
+            elif dt_upper == "DATE":
+                sql_type = "DATE"
+            elif dt_upper.startswith("DATETIME"):
+                sql_type = "TIMESTAMP"
+            elif dt_upper == "TIME":
+                sql_type = "TIME"
+            elif dt_upper == "BINARY":
+                sql_type = "BYTEA"
+            else:
+                sql_type = "VARCHAR"
+
+            null_clause = " NOT NULL" if (total > 0 and n_null == 0) else ""
+            col_ident = col if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", col) else f'"{col}"'
+            col_lines.append(f"    {col_ident} {sql_type}{null_clause}")
+        body = ",\n".join(col_lines)
+        return f"CREATE TABLE {clean_tbl} (\n{body}\n);"
+
+    if fmt_clean in ("bq", "bigquery"):
+        fields = []
+        for col, dtype_str, n_null in info:
+            dt_upper = dtype_str.upper()
+            if dt_upper.startswith(("INT", "UINT")):
+                bq_type = "INT64"
+            elif dt_upper.startswith("FLOAT"):
+                bq_type = "FLOAT64"
+            elif dt_upper.startswith("DECIMAL"):
+                bq_type = "NUMERIC"
+            elif dt_upper in ("BOOLEAN", "BOOL"):
+                bq_type = "BOOL"
+            elif dt_upper == "DATE":
+                bq_type = "DATE"
+            elif dt_upper.startswith("DATETIME"):
+                bq_type = "TIMESTAMP"
+            elif dt_upper == "TIME":
+                bq_type = "TIME"
+            elif dt_upper == "BINARY":
+                bq_type = "BYTES"
+            else:
+                bq_type = "STRING"
+            mode = "REQUIRED" if (total > 0 and n_null == 0) else "NULLABLE"
+            fields.append({"name": col, "type": bq_type, "mode": mode})
+        return json.dumps(fields, indent=2)
+
+    if fmt_clean == "pydantic":
+        needs_optional = any(total == 0 or n_null > 0 for _, _, n_null in info)
+        needs_date = any(dt.upper() == "DATE" for _, dt, _ in info)
+        needs_datetime = any(dt.upper().startswith("DATETIME") for _, dt, _ in info)
+        needs_time = any(dt.upper() == "TIME" for _, dt, _ in info)
+        needs_any = any(dt.upper().startswith(("LIST", "STRUCT", "OBJECT", "NULL")) for _, dt, _ in info)
+
+        imports: list[str] = []
+        dt_imports: list[str] = []
+        if needs_date:
+            dt_imports.append("date")
+        if needs_datetime:
+            dt_imports.append("datetime")
+        if needs_time:
+            dt_imports.append("time")
+        if dt_imports:
+            imports.append(f"from datetime import {', '.join(dt_imports)}")
+
+        typing_imports: list[str] = []
+        if needs_any:
+            typing_imports.append("Any")
+        if needs_optional:
+            typing_imports.append("Optional")
+        if typing_imports:
+            imports.append(f"from typing import {', '.join(typing_imports)}")
+
+        imports.append("from pydantic import BaseModel")
+
+        class_name = "".join(part.capitalize() for part in clean_tbl.split("_") if part) + "Record"
+        lines = ["\n".join(imports), "", "", f"class {class_name}(BaseModel):"]
+        if not info:
+            lines.append("    pass")
+            return "\n".join(lines)
+
+        for col, dtype_str, n_null in info:
+            dt_upper = dtype_str.upper()
+            if dt_upper.startswith(("INT", "UINT")):
+                py_type = "int"
+            elif dt_upper.startswith(("FLOAT", "DECIMAL")):
+                py_type = "float"
+            elif dt_upper in ("BOOLEAN", "BOOL"):
+                py_type = "bool"
+            elif dt_upper == "DATE":
+                py_type = "date"
+            elif dt_upper.startswith("DATETIME"):
+                py_type = "datetime"
+            elif dt_upper == "TIME":
+                py_type = "time"
+            elif dt_upper == "BINARY":
+                py_type = "bytes"
+            elif dt_upper.startswith("LIST"):
+                py_type = "list[Any]"
+            elif dt_upper.startswith("STRUCT"):
+                py_type = "dict[str, Any]"
+            elif dt_upper in ("OBJECT", "NULL", "UNKNOWN"):
+                py_type = "Any"
+            else:
+                py_type = "str"
+
+            py_ident = re.sub(r"[^A-Za-z0-9_]", "_", col).strip("_") or "field"
+            if py_ident[0].isdigit():
+                py_ident = f"f_{py_ident}"
+
+            is_nullable = total == 0 or n_null > 0
+            if is_nullable:
+                lines.append(f"    {py_ident}: Optional[{py_type}] = None")
+            else:
+                lines.append(f"    {py_ident}: {py_type}")
+        return "\n".join(lines)
+
+    if fmt_clean in ("json", "jsonschema"):
+        properties: dict[str, Any] = {}
+        required: list[str] = []
+        for col, dtype_str, n_null in info:
+            dt_upper = dtype_str.upper()
+            prop: dict[str, Any] = {}
+            if dt_upper.startswith(("INT", "UINT")):
+                js_type = "integer"
+            elif dt_upper.startswith(("FLOAT", "DECIMAL")):
+                js_type = "number"
+            elif dt_upper in ("BOOLEAN", "BOOL"):
+                js_type = "boolean"
+            elif dt_upper == "DATE":
+                js_type = "string"
+                prop["format"] = "date"
+            elif dt_upper.startswith("DATETIME"):
+                js_type = "string"
+                prop["format"] = "date-time"
+            elif dt_upper.startswith("LIST"):
+                js_type = "array"
+            elif dt_upper.startswith("STRUCT"):
+                js_type = "object"
+            else:
+                js_type = "string"
+
+            is_nullable = total == 0 or n_null > 0
+            if is_nullable:
+                prop["type"] = [js_type, "null"]
+            else:
+                prop["type"] = js_type
+                required.append(col)
+            properties[col] = prop
+
+        class_title = "".join(part.capitalize() for part in clean_tbl.split("_") if part) + "Record"
+        schema_obj: dict[str, Any] = {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "title": class_title,
+            "type": "object",
+            "properties": properties,
+        }
+        if required:
+            schema_obj["required"] = required
+        return json.dumps(schema_obj, indent=2)
+
+    raise ValueError(f"Unsupported schema format '{fmt}'. Expected 'table', 'sql', 'bq', 'pydantic', or 'json'.")
+
+
+def format_schema(
+    df: Any,
+    is_tty: bool | None = None,
+    *,
+    fmt: str | None = None,
+    table_name: str = "data",
+) -> str:
+    """Format DataFrame as a concise schema summary table or DDL/code generation."""
+    if fmt is not None and fmt.strip().lower() not in ("", "table", "default", "summary"):
+        return _generate_schema_ddl(df, fmt=fmt, table_name=table_name)
+
     import polars as pl
 
     from pytae.cli_run import _format_table

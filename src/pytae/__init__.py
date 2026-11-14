@@ -312,8 +312,12 @@ def unmask(
     return DataFrame(df).unmask(cols, *args, key=key, vault=vault, **kwargs)
 
 
-def schema(df: Any) -> DataFrame:
-    """Return the schema summary as a 4-column DataFrame: Column, Type, Nulls, Unique."""
+def schema(df: Any, fmt: str | None = None, *, table_name: str = "data") -> Any:
+    """Return the schema summary as a 4-column DataFrame, or DDL/model string when fmt is specified."""
+    if fmt is not None and fmt.strip().lower() not in ("", "table", "default", "summary"):
+        from pytae.other_utilities import format_schema
+
+        return format_schema(df, fmt=fmt, table_name=table_name)
     return DataFrame(df).schema_df()
 
 
@@ -404,25 +408,39 @@ def diff(
     rtol: float = 0.0,
     *,
     on: str | Sequence[str] | None = None,
+    schema: bool = False,
 ) -> str:
     """Compare schema and contents between two datasets with optional key alignment and numeric tolerance."""
     from pathlib import Path
 
+    from pytae.cli_run import _compute_diff, _parse_diff_spec
+
+    is_schema = schema
+    if not is_schema and isinstance(right, str) and "," in right:
+        _, _, _, _, is_schema = _parse_diff_spec(right, default_tol=tol)
+
     left_name = "<left>"
     if isinstance(left, (str, Path)):
-        from pytae.readers import read
+        from pytae.readers import get_reader, read
 
         left_path = Path(left)
         left_name = left_path.name
+        if is_schema:
+            reader = get_reader(left_path)
+            left_source: Any = (
+                reader.to_polars_lazy() if hasattr(reader, "to_polars_lazy") else read(left_path)._df
+            )
+            return _compute_diff(left_source, right, left_name, on=on, tol=tol, rtol=rtol, schema=True)
         left_df = read(left_path)
     elif isinstance(left, DataFrame):
         left_df = left
     else:
         left_df = DataFrame(left)
 
-    from pytae.cli_run import _compute_diff
+    if is_schema:
+        return _compute_diff(left_df._df, right, left_name, on=on, tol=tol, rtol=rtol, schema=True)
 
-    return _compute_diff(left_df._to_pandas_internal(), right, left_name, on=on, tol=tol, rtol=rtol)
+    return _compute_diff(left_df._to_pandas_internal(), right, left_name, on=on, tol=tol, rtol=rtol, schema=False)
 
 
 def concat(

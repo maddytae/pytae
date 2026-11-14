@@ -144,3 +144,155 @@ def test_dataframe_default_range_index_not_materialized():
     df = pt.DataFrame(pdf)
     assert df._orig_index is None
     assert list(df.index) == [0, 1, 2]
+
+
+def test_schema_only_diff_cli_repl_and_api(tmp_path, capsys):
+    from pytae.cli import main
+
+    jan_df = pl.DataFrame(
+        {
+            "id": pl.Series([1, 2, 3], dtype=pl.Int32),
+            "name": ["Alice", "Bob", "Charlie"],
+            "amount": [10.5, 20.0, 30.0],
+            "legacy_code": ["A", "B", "C"],
+        }
+    )
+    feb_df = pl.DataFrame(
+        {
+            "id": pl.Series([1, 2, 3, 4], dtype=pl.Int64),
+            "name": ["Alice_changed", "Bob", None, "Diana"],
+            "amount": [999.0, None, 30.0, 40.0],
+            "discount_pct": [0.1, 0.2, 0.0, 0.05],
+        }
+    )
+    jan_path = tmp_path / "jan.parquet"
+    feb_path = tmp_path / "feb.parquet"
+    jan_df.write_parquet(jan_path)
+    feb_df.write_parquet(feb_path)
+
+    # 1. CLI: pytae jan.parquet -diff "feb.parquet,schema"
+    rc = main([str(jan_path), "-diff", f"{feb_path},schema"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Rows: 3 vs 4 (-1)" in out
+    assert "+ Added in left (1):   legacy_code" in out
+    assert "- Removed in left (1): discount_pct" in out
+    assert "* id: Int64 (right) -> Int32 (left)" in out
+    assert "* amount: 0 vs 1 nulls (-1)" in out
+    assert "Skipped (schema-only diff)" in out
+    assert "cell(s) differ" not in out
+
+    # 2. Competing flag -diff_schema is rejected with canonical guidance
+    with pytest.raises(SystemExit):
+        main([str(jan_path), "-diff_schema", str(feb_path)])
+    err = capsys.readouterr().err
+    assert "use '-diff \"<target>,schema\"' instead" in err
+
+    # 3. Python API: pt.diff(..., schema=True)
+    api_out = pt.diff(jan_path, feb_path, schema=True)
+    assert "* id: Int64 (right) -> Int32 (left)" in api_out
+    assert "Skipped (schema-only diff)" in api_out
+
+    # 4. REPL: -diff "feb,schema" and -diff jan "feb,schema"
+    sess = InteractiveSession()
+    repl_out: list[str] = []
+    sess.execute_line(f"jan = {jan_path}", output_fn=repl_out.append)
+    sess.execute_line(f"feb = {feb_path}", output_fn=repl_out.append)
+    sess.execute_line("switch jan", output_fn=repl_out.append)
+    repl_out.clear()
+
+    sess.execute_line('-diff "feb,schema"', output_fn=repl_out.append)
+    combined = "\n".join(repl_out)
+    assert "* id: Int64 (right) -> Int32 (left)" in combined
+    assert "Skipped (schema-only diff)" in combined
+
+    repl_out.clear()
+    sess.execute_line('-diff jan "feb,schema"', output_fn=repl_out.append)
+    combined2 = "\n".join(repl_out)
+    assert "Comparing 'jan' vs 'feb':" in combined2
+    assert "Skipped (schema-only diff)" in combined2
+
+
+def test_schema_ddl_and_code_generation(tmp_path, capsys, monkeypatch):
+    import json
+
+    from pytae.cli import main
+
+    df = pl.DataFrame(
+        {
+            "id": pl.Series([1, 2], dtype=pl.Int64),
+            "customer_name": ["Alice", None],
+            "amount": pl.Series([10.5, 20.0], dtype=pl.Float64),
+            "is_active": [True, False],
+        }
+    )
+    pq_path = tmp_path / "orders.parquet"
+    df.write_parquet(pq_path)
+
+    # 1. Default -schema summary table
+    rc = main([str(pq_path), "-schema"])
+    assert rc == 0
+    out_table = capsys.readouterr().out
+    assert "Columns: 4 | Rows: 2" in out_table
+    assert "customer_name" in out_table
+
+    # 2. -schema sql
+    rc = main([str(pq_path), "-schema", "sql"])
+    assert rc == 0
+    out_sql = capsys.readouterr().out
+    assert "CREATE TABLE orders (" in out_sql
+    assert "id BIGINT NOT NULL" in out_sql
+    assert "customer_name VARCHAR," in out_sql
+    assert "amount DOUBLE PRECISION NOT NULL" in out_sql
+    assert "is_active BOOLEAN NOT NULL" in out_sql
+
+    # 3. -schema bq
+    rc = main([str(pq_path), "-schema", "bq"])
+    assert rc == 0
+    out_bq = capsys.readouterr().out
+    bq_fields = json.loads(out_bq)
+    assert bq_fields == [
+        {"name": "id", "type": "INT64", "mode": "REQUIRED"},
+        {"name": "customer_name", "type": "STRING", "mode": "NULLABLE"},
+        {"name": "amount", "type": "FLOAT64", "mode": "REQUIRED"},
+        {"name": "is_active", "type": "BOOL", "mode": "REQUIRED"},
+    ]
+
+    # 4. -schema pydantic
+    rc = main([str(pq_path), "-schema", "pydantic"])
+    assert rc == 0
+    out_pyd = capsys.readouterr().out
+    assert "from pydantic import BaseModel" in out_pyd
+    assert "class OrdersRecord(BaseModel):" in out_pyd
+    assert "id: int" in out_pyd
+    assert "customer_name: Optional[str] = None" in out_pyd
+    assert "amount: float" in out_pyd
+    assert "is_active: bool" in out_pyd
+
+    # 5. -schema json
+    rc = main([str(pq_path), "-schema", "json"])
+    assert rc == 0
+    out_json = capsys.readouterr().out
+    js_obj = json.loads(out_json)
+    assert js_obj["type"] == "object"
+    assert js_obj["properties"]["id"]["type"] == "integer"
+    assert js_obj["properties"]["customer_name"]["type"] == ["string", "null"]
+    assert set(js_obj["required"]) == {"id", "amount", "is_active"}
+
+    # 6. -schema sql -o clip
+    copied: list[str] = []
+    monkeypatch.setattr("pytae.cli_run._copy_to_clipboard", lambda text: copied.append(text))
+    rc = main([str(pq_path), "-schema", "sql", "-o", "clip"])
+    assert rc == 0
+    capsys.readouterr()
+    assert len(copied) == 1
+    assert "CREATE TABLE orders (" in copied[0]
+
+    # 7. REPL -schema sql / bq / pydantic / json
+    sess = InteractiveSession(df=df, path=pq_path)
+    repl_out: list[str] = []
+    sess.execute_line("-schema sql", output_fn=repl_out.append)
+    assert "CREATE TABLE orders (" in "\n".join(repl_out)
+
+    # 8. Python API pt.schema(df, "sql")
+    assert "CREATE TABLE data (" in pt.schema(df, "sql")
