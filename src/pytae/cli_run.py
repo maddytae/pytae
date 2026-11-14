@@ -214,6 +214,7 @@ def _compute_corr(source_df: Any, corr_arg: str | None) -> Any:
 
 def _copy_to_clipboard(text: str) -> None:
     """Copy text to the system clipboard via pbcopy/clip/xclip; warns on stderr if none is available."""
+    text = text.rstrip("\r\n")
     if sys.platform == "darwin":
         cmd = ["pbcopy"]
     elif sys.platform == "win32":
@@ -223,7 +224,38 @@ def _copy_to_clipboard(text: str) -> None:
     try:
         subprocess.run(cmd, input=text.encode(), check=True)
     except (OSError, subprocess.CalledProcessError):
-        print("pytae: unable to copy to clipboard (no clipboard utility found)", file=sys.stderr)
+        try:
+            import pandas.io.clipboard as cb
+
+            cb.copy(text)
+        except Exception:
+            print("pytae: unable to copy to clipboard (no clipboard utility found)", file=sys.stderr)
+
+
+def _copy_df_to_clipboard(df: Any, index: bool = False, header: bool = True) -> None:
+    """Copy a DataFrame or Series to the system clipboard as TSV without a trailing newline."""
+    if hasattr(df, "to_pandas"):
+        pdf = df.to_pandas()
+    else:
+        pdf = df
+    if hasattr(pdf, "to_clipboard"):
+        try:
+            if isinstance(pdf, pd.Series):
+                pdf.to_clipboard(index=index, header=header)
+            else:
+                pdf.to_clipboard(index=index)
+        except Exception:
+            pass
+    if isinstance(pdf, (pd.DataFrame, pd.Series)):
+        tsv = pdf.to_csv(sep="\t", index=index, header=header)
+    else:
+        import polars as pl
+
+        if isinstance(df, pl.DataFrame):
+            tsv = df.to_pandas().to_csv(sep="\t", index=index, header=header)
+        else:
+            tsv = str(df)
+    _copy_to_clipboard(tsv.rstrip("\r\n"))
 
 
 def _output_text(text: str, args: argparse.Namespace) -> None:
@@ -890,7 +922,7 @@ def _process_path(
             _output_text(_format_table(rounded, pretty=args.pretty), args)
         if is_clip:
             df = rounded.to_pandas() if hasattr(rounded, "to_pandas") else rounded
-            clip_action = lambda d=df: d.to_clipboard(index=False)
+            clip_action = lambda d=df: _copy_df_to_clipboard(d, index=False)
 
     op_order = getattr(args, "op_order", [])
     last_idx = max((i for i, op in enumerate(op_order) if op != "by"), default=-1)
@@ -933,7 +965,7 @@ def _process_path(
             _output_text(_format_table(rounded, pretty=args.pretty), args)
         if is_clip:
             df = rounded.to_pandas() if hasattr(rounded, "to_pandas") else rounded
-            clip_action = lambda d=df: d.to_clipboard(index=False)
+            clip_action = lambda d=df: _copy_df_to_clipboard(d, index=False)
 
     for idx, op in enumerate(op_order):
         if op == "by":
@@ -1066,7 +1098,7 @@ def _process_path(
                 print(_format_table(_apply_round(res_pl, args.round_ndigits), pretty=args.pretty))
             if is_clip:
                 df = res_pl.to_pandas()
-                clip_action = lambda d=df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+                clip_action = lambda d=df: _copy_df_to_clipboard(_apply_round(d, args.round_ndigits), index=False)
         elif op == "concat":
             spec = next(concat_iter)
             if frames is None:
@@ -1091,7 +1123,7 @@ def _process_path(
                 _output_text(_format_table(_apply_round(res_pl, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
                 df = res_pl.to_pandas()
-                clip_action = lambda d=df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+                clip_action = lambda d=df: _copy_df_to_clipboard(_apply_round(d, args.round_ndigits), index=False)
         elif op == "shape":
             shape_str = str(pipeline.shape())
             if should_print(idx):
@@ -1103,14 +1135,14 @@ def _process_path(
             if should_print(idx):
                 _output_text("\n".join(names), args)
             if is_clip:
-                clip_action = lambda n=names: pd.Series(n).to_clipboard(index=False, header=False)
+                clip_action = lambda n=names: _copy_df_to_clipboard(pd.Series(n), index=False, header=False)
         elif op == "dtype":
             dtypes = _list_order_index(pipeline.dtypes(), args.dtype)
             if should_print(idx):
                 _output_text(dtypes.to_string(), args)
             if is_clip:
                 dtype_df = pd.DataFrame({"Column": dtypes.index, "Type": dtypes.values})
-                clip_action = lambda d=dtype_df: d.to_clipboard(index=False)
+                clip_action = lambda d=dtype_df: _copy_df_to_clipboard(d, index=False)
         elif op == "nulls":
             nulls_s = pipeline.polars_frame().null_count().to_pandas().iloc[0]
             nulls = _list_order_index(nulls_s, args.nulls)
@@ -1118,7 +1150,7 @@ def _process_path(
                 _output_text(nulls.to_string(), args)
             if is_clip:
                 nulls_df = pd.DataFrame({"Column": nulls.index, "Nulls": nulls.values})
-                clip_action = lambda d=nulls_df: d.to_clipboard(index=False)
+                clip_action = lambda d=nulls_df: _copy_df_to_clipboard(d, index=False)
         elif op == "schema":
             from pytae.other_utilities import format_schema, schema_dataframe
 
@@ -1127,7 +1159,7 @@ def _process_path(
             if should_print(idx):
                 _output_text(schema_str, args)
             if is_clip:
-                clip_action = lambda d=schema_df: d.to_pandas().to_clipboard(index=False)
+                clip_action = lambda d=schema_df: _copy_df_to_clipboard(d, index=False)
             elif is_file and out_target is not None and Path(out_target).suffix.lower() in (".txt", ".md", ".log"):
                 dest = Path(out_target)
                 out_dir = getattr(args, "out_dir", None)
@@ -1150,7 +1182,7 @@ def _process_path(
                     _format_table(_apply_round(described, args.round_ndigits), index=True, pretty=args.pretty), args
                 )
             if is_clip:
-                clip_action = lambda d=described: _apply_round(d, args.round_ndigits).to_clipboard(index=True)
+                clip_action = lambda d=described: _copy_df_to_clipboard(_apply_round(d, args.round_ndigits), index=True)
         elif op == "browse":
             from pytae.tui_browser import browse_dataframe
 
@@ -1198,7 +1230,7 @@ def _process_path(
             if should_print(idx):
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+                clip_action = lambda d=result: _copy_df_to_clipboard(_apply_round(d, args.round_ndigits), index=False)
         elif op == "hist":
             hist_arg = _next_op_val("hist", getattr(args, "hist", None))
             source_df = pipeline.current_frame()
@@ -1210,7 +1242,7 @@ def _process_path(
                     _format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty, tbl_rows=250), args
                 )
             if is_clip:
-                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+                clip_action = lambda d=result: _copy_df_to_clipboard(_apply_round(d, args.round_ndigits), index=False)
         elif op == "bar":
             bar_arg = _next_op_val("bar", getattr(args, "bar", None))
             source_df = pipeline.current_frame()
@@ -1222,7 +1254,7 @@ def _process_path(
                     _format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty, tbl_rows=250), args
                 )
             if is_clip:
-                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+                clip_action = lambda d=result: _copy_df_to_clipboard(_apply_round(d, args.round_ndigits), index=False)
         elif op == "scatter":
             scatter_arg = _next_op_val("scatter", getattr(args, "scatter", None))
             source_df = pipeline.current_frame()
@@ -1240,7 +1272,7 @@ def _process_path(
             if should_print(idx):
                 _output_text(_format_table(_apply_round(result, args.round_ndigits), pretty=args.pretty), args)
             if is_clip:
-                clip_action = lambda d=result: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+                clip_action = lambda d=result: _copy_df_to_clipboard(_apply_round(d, args.round_ndigits), index=False)
         elif op == "distinct":
             distinct_val = _next_op_val("distinct", getattr(args, "distinct", None))
             err = pipeline.apply_distinct(distinct_val)
@@ -1287,7 +1319,7 @@ def _process_path(
             if is_clip:
                 df = frame.to_pandas() if hasattr(frame, "to_pandas") else frame
                 clip_idx = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
-                clip_action = lambda d=df, ci=clip_idx: _apply_round(d, args.round_ndigits).to_clipboard(index=ci)
+                clip_action = lambda d=df, ci=clip_idx: _copy_df_to_clipboard(_apply_round(d, args.round_ndigits), index=ci)
         elif op == "tail":
             by_cols = (
                 current_by
@@ -1316,7 +1348,7 @@ def _process_path(
             if is_clip:
                 df = frame.to_pandas() if hasattr(frame, "to_pandas") else frame
                 clip_idx = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
-                clip_action = lambda d=df, ci=clip_idx: _apply_round(d, args.round_ndigits).to_clipboard(index=ci)
+                clip_action = lambda d=df, ci=clip_idx: _copy_df_to_clipboard(_apply_round(d, args.round_ndigits), index=ci)
         elif op == "sample":
             sample_val = _next_op_val("sample", args.sample)
             if isinstance(sample_val, tuple) and len(sample_val) == 2:
@@ -1336,7 +1368,7 @@ def _process_path(
                 )
             if is_clip and n:
                 df = sampled.to_pandas() if hasattr(sampled, "to_pandas") else sampled
-                clip_action = lambda d=df: _apply_round(d, args.round_ndigits).to_clipboard(index=False)
+                clip_action = lambda d=df: _copy_df_to_clipboard(_apply_round(d, args.round_ndigits), index=False)
         elif op == "arrange":
             arrange_val = _next_op_val("arrange", getattr(args, "arrange", None))
             err = pipeline.apply_arrange(arrange_val)

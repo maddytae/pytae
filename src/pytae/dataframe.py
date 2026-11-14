@@ -1420,22 +1420,11 @@ class DataFrame:
         return self._to_polars_internal()
 
     def _to_clip_internal(self) -> None:
-        """Internal un-deprecated copy DataFrame to system clipboard via TSV."""
+        """Internal un-deprecated copy DataFrame to system clipboard via TSV without trailing newline."""
         eager_df = self._df.collect() if self.is_lazy else self._df
-        tsv_str = eager_df.write_csv(separator="\t")
-        system = platform.system()
-        try:
-            if system == "Darwin":
-                p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
-                p.communicate(tsv_str.encode("utf-8"))
-            elif system == "Windows":
-                p = subprocess.Popen(["clip"], stdin=subprocess.PIPE)
-                p.communicate(tsv_str.encode("utf-8"))
-            else:
-                p = subprocess.Popen(["xclip", "-selection", "clipboard"], stdin=subprocess.PIPE)
-                p.communicate(tsv_str.encode("utf-8"))
-        except Exception:
-            self._to_pandas_internal().to_clipboard(index=False)
+        from pytae.cli_run import _copy_df_to_clipboard
+
+        _copy_df_to_clipboard(eager_df, index=False)
 
     def to_clip(self) -> None:
         """Copy DataFrame to system clipboard via TSV without index (Deprecated: use df.to('clip') instead)."""

@@ -6610,7 +6610,9 @@ class PytaeRepl:
         if target.lower() in ("clip", "clipboard"):
             try:
                 df_to_copy = self.current_df.collect() if is_lazy else self.current_df
-                df_to_copy.to_pandas().to_clipboard(index=False)
+                from pytae.cli_run import _copy_df_to_clipboard
+
+                _copy_df_to_clipboard(df_to_copy, index=False)
             except Exception as exc:
                 output_fn(f"pytae: failed to copy to clipboard: {exc}")
                 return False

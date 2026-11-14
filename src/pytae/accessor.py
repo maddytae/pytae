@@ -305,7 +305,9 @@ class PandasPtAccessor(_BasePtAccessor):
     """Pandas DataFrame accessor providing a seamless zero-friction bridge into Pytae's Polars engine."""
 
     def to_clip(self) -> None:
-        return self._obj.to_clipboard(index=False)
+        from pytae.cli_run import _copy_df_to_clipboard
+
+        _copy_df_to_clipboard(self._obj, index=False)
 
     def safe_reset_index(self) -> pd.DataFrame:
         from pytae.other_utilities import safe_reset_index

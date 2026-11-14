@@ -12,8 +12,10 @@ from pytae._text import unquote_name as _unquote_name
 
 
 def to_clip(df: pd.DataFrame | pd.Series) -> None:
-    """Copy the DataFrame or Series to the system clipboard (tab-separated, no index)."""
-    return df.to_clipboard(index=False)
+    """Copy the DataFrame or Series to the system clipboard (tab-separated, no index, no trailing newline)."""
+    from pytae.cli_run import _copy_df_to_clipboard
+
+    _copy_df_to_clipboard(df, index=False)
 
 
 pd.DataFrame.to_clip = to_clip
