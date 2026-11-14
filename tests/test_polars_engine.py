@@ -48,21 +48,28 @@ def test_filter_polars_operators():
     assert res_not_in["b"].to_list() == ["banana", "elderberry"]
 
     # String operations
-    res_sw = filter_polars(df, [("b", ("startswith", "ba"))])
+    res_sw = filter_polars(df, [("b", ("starts_with", "ba"))])
     assert res_sw["b"].to_list() == ["banana"]
 
-    res_ew = filter_polars(df, [("b", ("endswith", "ry"))])
+    res_ew = filter_polars(df, [("b", ("ends_with", "ry"))])
     assert res_ew["b"].to_list() == ["cherry", "elderberry"]
 
     res_cont = filter_polars(df, [("b", ("contains", "an"))])
     assert res_cont["b"].to_list() == ["banana"]
 
     # Multiple prefixes / suffixes (list and tuple)
-    res_multi_sw = filter_polars(df, [("b", ("startswith", ["ba", "ch"]))])
+    res_multi_sw = filter_polars(df, [("b", ("starts_with", ["ba", "ch"]))])
     assert res_multi_sw["b"].to_list() == ["banana", "cherry"]
 
-    res_multi_ew = filter_polars(df, [("b", ("endswith", ("na", "te")))])
+    res_multi_ew = filter_polars(df, [("b", ("ends_with", ("na", "te")))])
     assert res_multi_ew["b"].to_list() == ["banana", "date"]
+
+    # Retired startswith / endswith raise ValueError
+    import pytest
+    with pytest.raises(ValueError, match="'startswith' is retired in favor of canonical 'starts_with'"):
+        filter_polars(df, [("b", ("startswith", "ba"))])
+    with pytest.raises(ValueError, match="'endswith' is retired in favor of canonical 'ends_with'"):
+        filter_polars(df, [("b", ("endswith", "ry"))])
 
     # Null checks: 1-tuples raise ValueError, string predicates succeed
     import pytest
@@ -649,10 +656,14 @@ def test_filter_polars_dt_and_str_methods():
             "sku": ["PROD-A-01", "TEST-B-02", "PROD-C-03"],
         }
     )
-    # str.startswith
-    res_str = df.filter("sku.str.startswith('PROD')")
+    # str.starts_with
+    res_str = df.filter("sku.str.starts_with('PROD')")
     assert len(res_str) == 2
     assert list(res_str["sku"]) == ["PROD-A-01", "PROD-C-03"]
+
+    # Retired startswith raises ValueError
+    with pytest.raises(ValueError, match="'startswith\\(\\)' is retired in favor of canonical 'starts_with\\(\\)'"):
+        df.filter("sku.str.startswith('PROD')")
 
     # dt.month
     res_dt = df.filter("date(order_date).dt.month() > 6")

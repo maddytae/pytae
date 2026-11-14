@@ -230,7 +230,7 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 | **Mathematical Range** | `WHERE 10 <= x <= 20;` | `df.filter(x=("between", 10, 20))` | `-filter "{'x': ('between', 10, 20)}"` |
 | **Set Membership** | `WHERE cat IN ('A', 'B');` | `df.filter(cat=['A', 'B'])` | `-filter "cat in ['A', 'B']"` |
 | **Spaced Column Name** | `WHERE 'gross sales'n > 50;` | `df.filter("[gross sales] > 50")` | `-filter "[gross sales] > 50"` |
-| **String Prefix Match**| `WHERE name LIKE 'A%';` | `df.filter(name=('startswith', 'A'))` | `-filter "name.startswith('A')"` |
+| **String Prefix Match**| `WHERE name LIKE 'A%';` | `df.filter(name=('starts_with', 'A'))` | `-filter "name.starts_with('A')"` |
 | **Non-Missing Check** | `WHERE col IS NOT MISSING;` | `df.filter("col.is_not_null()")` | `-filter "col.is_not_null()"` |
 
 ### 3. Column Derivations & Feature Engineering (`mutate`)

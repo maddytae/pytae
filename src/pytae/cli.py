@@ -796,7 +796,7 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         help="create/overwrite columns at this point in the pipeline using pytae mutate(); "
         '"new_col = expression" or multi-column "(col1, col2) = _ * 2" entries, comma-separated; '
         "column names in the expression stay unquoted (or bracketed [col name] for spaces), e.g. "
-        '"bmi = body_mass_g / bill_length_mm ** 2" or "(startswith=bill_) = _ / 10"',
+        '"bmi = body_mass_g / bill_length_mm ** 2" or "(starts_with=bill_) = _ / 10"',
     )
     parser.add_argument(
         "-sql",

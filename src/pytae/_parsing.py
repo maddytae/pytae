@@ -131,6 +131,19 @@ class BinaryOp(FilterNode):
         return f"BinaryOp({self.op!r}, {self.left!r}, {self.right!r})"
 
 
+class NotOp(FilterNode):
+    """Logical negation ('not' or '~') of a filter node."""
+
+    def __init__(self, operand: FilterNode):
+        self.operand = operand
+
+    def columns(self) -> list[str]:
+        return self.operand.columns()
+
+    def __repr__(self) -> str:
+        return f"NotOp({self.operand!r})"
+
+
 class Predicate(FilterNode):
     """Atomic column predicate (e.g. col == val, col in [...], col.notna())."""
 
@@ -245,6 +258,14 @@ def _parse_predicate(raw_entry: str) -> Predicate:
         if not val_str:
             raise SystemExit(f"invalid filter condition '{raw}': '{col}' has no value")
 
+        # Chained comparison detection: e.g. 0 < y < 5
+        if not ((val_str.startswith("'") and val_str.endswith("'")) or (val_str.startswith('"') and val_str.endswith('"'))):
+            m_second_cmp = re.match(rf"^{_LHS_COL_PATTERN}\s*(>=|<=|!=|==|>|<)\s*(.+)$", val_str)
+            if m_second_cmp:
+                part1 = f"{col} {op} {m_second_cmp.group(1).strip()}"
+                part2 = val_str
+                return BinaryOp("and", _parse_predicate(part1), _parse_predicate(part2))
+
         # Disallow interval notation: e.g. [3000, 3200]
         m_int = re.match(r"^([\[(])\s*([^,()\[\]]+)\s*,\s*([^,()\[\]]+)\s*([\])])$", val_str)
         if m_int:
@@ -312,14 +333,20 @@ def _parse_predicate(raw_entry: str) -> Predicate:
         return Predicate(col, (op, None))
 
     # 5. String method calls
-    m_str = re.match(r"^(.+?)\.str\.(contains|startswith|starts_with|endswith|ends_with)\((.+)\)$", raw)
+    m_str = re.match(r"^(.+?)(?:\.str)?\.(contains|startswith|starts_with|endswith|ends_with)\((.+)\)$", raw)
     if m_str:
         col = _unquote_name(m_str.group(1).strip())
         method = m_str.group(2).strip()
         val = m_str.group(3).strip()
+        if method in ("startswith", "endswith"):
+            canonical = "starts_with" if method == "startswith" else "ends_with"
+            raise ValueError(
+                f"filter(): '{method}()' is retired in favor of canonical '{canonical}()'. "
+                f"Use .{canonical}({val}) instead."
+            )
         if (val.startswith("'") and val.endswith("'")) or (val.startswith('"') and val.endswith('"')):
             val = val[1:-1]
-        op = "startswith" if "start" in method else ("endswith" if "end" in method else "contains")
+        op = "starts_with" if "start" in method else ("ends_with" if "end" in method else "contains")
         return Predicate(col, (op, val))
 
     # 6. Null and NaN check method calls
@@ -349,6 +376,12 @@ def _parse_predicate(raw_entry: str) -> Predicate:
         raise SystemExit(
             f"invalid filter condition '{raw}': use '==' (e.g. species == 'Adelie'). Colon ':' is not supported."
         )
+
+    # 9. Bare identifier or bracketed column name (boolean column)
+    m_bare_col = re.match(r"^([a-zA-Z_]\w*|\[[^\]]+\]|`[^`]+`)$", raw)
+    if m_bare_col:
+        col = _unquote_name(m_bare_col.group(1).strip())
+        return Predicate(col, ("==", True))
 
     raise SystemExit(f"invalid filter condition: missing comparison operator in '{raw}'")
 
@@ -413,6 +446,22 @@ def _parse_filter_node(raw_expr: str) -> FilterNode:
         for part in and_parts[1:]:
             node = BinaryOp("and", node, _parse_filter_node(part))
         return node
+
+    # Unary NOT (strictly 'not')
+    if s.lower().startswith("not ") and len(s) > 4:
+        return NotOp(_parse_filter_node(s[4:]))
+    if s.lower().startswith("not(") and len(s) > 4:
+        return NotOp(_parse_filter_node(s[3:]))
+    if s.startswith("~") and len(s) > 1:
+        raise ValueError(
+            f"invalid filter condition '{s}': '~' is not supported in filter. "
+            f"In line with 'one obvious way', use 'not' (e.g. not {s[1:].strip()})."
+        )
+    if s.startswith("!") and len(s) > 1 and not s.startswith("!="):
+        raise ValueError(
+            f"invalid filter condition '{s}': '!' is not supported in filter. "
+            f"In line with 'one obvious way', use 'not' (e.g. not {s[1:].strip()})."
+        )
 
     return _parse_predicate(s)
 
@@ -846,13 +895,27 @@ def _resolve_multi_target_cols(df: Any, inner_spec: str, by_cols: list[str] | No
     if not tokens:
         raise ValueError("invalid mutate multi-column target: empty '()' specification")
 
-    _select_keys = {"dtype", "exclude", "contains", "startswith", "endswith", "regex", "exclude_dtype"}
+    _select_keys = {
+        "dtype",
+        "exclude",
+        "contains",
+        "starts_with",
+        "ends_with",
+        "regex",
+        "exclude_dtype",
+    }
     names: list[str] = []
     kwargs: dict[str, Any] = {}
     for token in tokens:
         if "=" in token:
             k, _, v = token.partition("=")
             k, v = k.strip(), _unquote_name(v.strip())
+            if k in ("startswith", "endswith"):
+                canonical = "starts_with" if k == "startswith" else "ends_with"
+                raise ValueError(
+                    f"mutate: multi-column selector '{k}=' is retired in favor of canonical '{canonical}='. "
+                    f"Use '({canonical}={v})' instead."
+                )
             if k in _select_keys:
                 if not v:
                     raise ValueError(f"mutate multi-column selector '{k}=' requires a value")

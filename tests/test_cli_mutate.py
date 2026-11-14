@@ -131,7 +131,7 @@ def test_mutate_grouped_cli(tmp_path, capsys):
             "-by",
             "grp",
             "-mutate",
-            "avg = mean(val), diff = val - avg, cnt = n",
+            "avg = mean(val), diff = val - avg, cnt = count()",
             "-select",
             "grp,val,avg,diff,cnt",
             "-head",

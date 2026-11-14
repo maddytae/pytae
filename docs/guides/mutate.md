@@ -129,12 +129,12 @@ pytae penguins.parquet \
 
 ### Using `select()` Predicates Inside `(...)`
 
-Any [`select`](select.md) criteria (`startswith=`, `endswith=`, `contains=`, `regex=`, `dtype=numeric`, or slices `start:end`) can be used inside `(...)`:
+Any [`select`](select.md) criteria (`starts_with=`, `ends_with=`, `contains=`, `regex=`, `dtype=numeric`, or slices `start:end`) can be used inside `(...)`:
 
 ```bash
 # Scale all columns starting with 'bill_'
 pytae penguins.parquet \
-  -mutate "(startswith=bill_) = _ / 10" \
+  -mutate "(starts_with=bill_) = _ / 10" \
   -select "species,bill_length_mm,bill_depth_mm" \
   -head 3
 ```

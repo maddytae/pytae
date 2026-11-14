@@ -168,10 +168,10 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 |:---|:---|:---|:---|
 | **Boolean Mask** | `df[df['sales'] > 100]` | `df.filter("sales > 100")` | `-filter "sales > 100"` |
 | **Multiple Conditions** | `df[(df['a'] > 1) & (df['b'] == 'E')]` | `df.filter("a > 1 and b == 'E'")` | `-filter "a > 1 and b == 'E'"` |
-| **Interval / Range** | `df[df['x'].between(10, 20)]` | `df.filter(x=("between", 10, 20))` | `-filter "{'x': ('between', 10, 20)}"` |
-| **Set Membership** | `df[df['cat'].isin(['A', 'B'])]` | `df.filter(cat=['A', 'B'])` | `-filter "cat in ['A', 'B']"` |
+| **Interval / Range** | `df[df['x'].between(10, 20)]` | `df.filter({'x': ('between', 10, 20)})` | `-filter "{'x': ('between', 10, 20)}"` |
+| **Set Membership** | `df[df['cat'].isin(['A', 'B'])]` | `df.filter("cat in ['A', 'B']")` | `-filter "cat in ['A', 'B']"` |
 | **Spaced Columns** | `df[df['gross sales'] > 50]` | `df.filter("[gross sales] > 50")` | `-filter "[gross sales] > 50"` |
-| **String Prefix** | `df[df['name'].str.startswith('A')]` | `df.filter(name=('startswith', 'A'))` | `-filter "name.startswith('A')"` |
+| **String Prefix** | `df[df['name'].str.startswith('A')]` | `df.filter("name.starts_with('A')")` | `-filter "name.starts_with('A')"` |
 | **Null Row Check** | `df[df['col'].notna()]` | `df.filter("col.is_not_null()")` | `-filter "col.is_not_null()"` |
 | **Callable / Lambda** | `df[lambda d: d['x'] > 5]` | `df.filter(lambda d: d['x'] > 5)` | N/A |
 
@@ -195,7 +195,7 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 | **Drop Columns** | `df.drop(columns=['c', 'd'])` | `df.select("!c", "!d")` | `-select "!c,!d"` |
 | **Pattern Match** | `df.filter(like='bill')` | `df.select(contains="bill")` | `-select "contains=bill"` |
 | **Prefix Match** | `df[[c for c in df if c.startswith('b')]]`| `df.select(starts_with="b")` | `-select "starts_with=b"` |
-| **Inline Rename** | `df[['a']].rename(columns={'a': 'b'})` | `df.select("a:b")` | `-select "a:b"` |
+| **Column Slicing** | `df.loc[:, 'a':'b']` | `df.select("a:b")` | `-select "a:b"` |
 | **Dedicated Rename** | `df.rename(columns={'a': 'b'})` | `df.rename("a:b")` | `-rename "a:b"` |
 | **Reorder with Rest** | `df[['lead'] + [c for c in df if c != 'lead']]` | `df.select("lead", pt.everything)` | N/A |
 
@@ -335,7 +335,7 @@ import pytae as pt
 
 (
     pt.read("penguins.parquet")
-    .filter("body_mass_g > 3500 & sex.is_not_null()")
+    .filter("body_mass_g > 3500 and sex.is_not_null()")
     .mutate(body_mass_kg="body_mass_g / 1000", bill_ratio="bill_length_mm / bill_depth_mm")
     .by("species", "island")
     .agg(n="count", avg_mass_kg="body_mass_kg:mean", max_ratio="bill_ratio:max")

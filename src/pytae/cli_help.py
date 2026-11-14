@@ -79,7 +79,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         description=(
             "Restricts and reorders columns at this point in the pipeline.\n"
             "Supports explicit column lists, contiguous slice ranges (start:end), negative drops (!col),\n"
-            "and criteria matchers (contains=, startswith=, endswith=, regex=, dtype=)."
+            "and criteria matchers (contains=, starts_with=, ends_with=, regex=, dtype=)."
         ),
         options=[
             "col1,col2 : Keep specific columns in the exact order requested.",
@@ -87,8 +87,8 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "!col : Exclude specified columns from output.",
             "!start:end : Drop a contiguous range of columns.",
             "contains=substr : Match columns containing substring.",
-            "startswith=prefix : Match columns starting with prefix.",
-            "endswith=suffix : Match columns ending with suffix.",
+            "starts_with=prefix : Match columns starting with prefix.",
+            "ends_with=suffix : Match columns ending with suffix.",
             "regex=pattern : Match columns using regular expressions.",
             "dtype=numeric|datetime|category|bool : Filter columns by datatype.",
             "exclude_dtype=numeric : Exclude columns matching a datatype.",
@@ -110,21 +110,21 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         description=(
             "Evaluates column assignments sequentially from left to right.\n"
             "Expressions support standard arithmetic, boolean logic, pandas Series methods,\n"
-            "multi-column transforms via '(col1, col2) = expr' or '(startswith=prefix) = expr' using '_' as the column placeholder,\n"
+            "multi-column transforms via '(col1, col2) = expr' or '(starts_with=prefix) = expr' using '_' as the column placeholder,\n"
             'and vectorized window aggregations when combined with -by (e.g. -by species -mutate "avg = mean(mass)").'
         ),
         options=[
             "new_col = expr : Define or overwrite a column calculated from existing columns.",
             "(col1, col2) = expr : Transform multiple columns in-place using '_' as the column placeholder.",
             "(col1, col2)_suffix = expr : Create new columns with a suffix (or prefix_(col1, col2)) without overwriting originals.",
-            "(startswith=..., dtype=numeric) = expr : Apply an expression across columns matched by select() predicates.",
+            "(starts_with=..., dtype=numeric) = expr : Apply an expression across columns matched by select() predicates.",
             "[col with spaces] : Target or reference column headers that contain spaces.",
             "-by <col> : Evaluate window aggregations (mean, sum, min, max, std, var, n) per group without collapsing rows.",
         ],
         examples=[
             'pytae penguins.parquet -mutate "mass_kg = body_mass_g / 1000" -head 3',
             'pytae penguins.parquet -mutate "(bill_length_mm, bill_depth_mm) = _ / 10"',
-            'pytae penguins.parquet -mutate "(startswith=bill_)_cm = _ / 10"',
+            'pytae penguins.parquet -mutate "(starts_with=bill_)_cm = _ / 10"',
             'pytae penguins.parquet -by species -mutate "(dtype=numeric) = (_ - mean(_)) / std(_)"',
             'pytae penguins.parquet -by species -mutate "avg_mass = mean(body_mass_g), diff = body_mass_g - avg_mass"',
             "pytae penguins.parquet -mutate \"source = '2024_survey'\"",

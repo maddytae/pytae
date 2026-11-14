@@ -85,13 +85,25 @@ def resolve_select_columns(
     dtype: str | type | Sequence[str | type] | None = None,
     exclude_dtype: str | type | Sequence[str | type] | None = None,
     contains: str | Sequence[str] | None = None,
-    startswith: str | Sequence[str] | None = None,
-    endswith: str | Sequence[str] | None = None,
+    starts_with: str | Sequence[str] | None = None,
+    ends_with: str | Sequence[str] | None = None,
     regex: str | Sequence[str] | None = None,
     df_for_pandas: Any = None,
+    startswith: str | Sequence[str] | None = None,
+    endswith: str | Sequence[str] | None = None,
 ) -> list[Any]:
     """Resolve column names matching selection criteria without requiring a Pandas DataFrame."""
-    if exclude_dtype is not None and (args or exclude or dtype or contains or startswith or endswith or regex):
+    if startswith is not None:
+        raise ValueError(
+            "select(): 'startswith' is retired in favor of canonical 'starts_with'. "
+            "Use select(starts_with=...) instead."
+        )
+    if endswith is not None:
+        raise ValueError(
+            "select(): 'endswith' is retired in favor of canonical 'ends_with'. "
+            "Use select(ends_with=...) instead."
+        )
+    if exclude_dtype is not None and (args or exclude or dtype or contains or starts_with or ends_with or regex):
         raise ValueError("exclude_dtype cannot be combined with other selection criteria.")
 
     if exclude_dtype is not None:
@@ -206,6 +218,16 @@ def resolve_select_columns(
                         selected_cols.add(clean_sub)
                         if clean_sub not in ordered_cols:
                             ordered_cols.append(clean_sub)
+                    elif clean_sub.startswith("startswith="):
+                        raise ValueError(
+                            "select(): 'startswith=' is retired in favor of canonical 'starts_with='. "
+                            f"Use 'starts_with={clean_sub[11:]}' instead."
+                        )
+                    elif clean_sub.startswith("endswith="):
+                        raise ValueError(
+                            "select(): 'endswith=' is retired in favor of canonical 'ends_with='. "
+                            f"Use 'ends_with={clean_sub[9:]}' instead."
+                        )
                     elif sub_token.startswith(("-", "~")):
                         raise ValueError(
                             f"select(): '{sub_token[0]}col' negation is retired in favor of '!col'. "
@@ -230,6 +252,16 @@ def resolve_select_columns(
                         close = difflib.get_close_matches(clean_sub, [str(c) for c in all_cols], n=1)
                         hint = f" (did you mean '{close[0]}'?)" if close else ""
                         raise KeyError(f"Column not found: '{sub_token}'{hint}")
+            elif clean_arg.startswith("startswith="):
+                raise ValueError(
+                    "select(): 'startswith=' is retired in favor of canonical 'starts_with='. "
+                    f"Use 'starts_with={clean_arg[11:]}' instead."
+                )
+            elif clean_arg.startswith("endswith="):
+                raise ValueError(
+                    "select(): 'endswith=' is retired in favor of canonical 'ends_with='. "
+                    f"Use 'ends_with={clean_arg[9:]}' instead."
+                )
             elif arg.startswith("!"):
                 excluded_cols.update(_resolve_negation(arg[1:]))
             elif ":" in arg:
@@ -299,25 +331,25 @@ def resolve_select_columns(
         selected_cols.update(contains_cols)
         ordered_cols.extend([col for col in contains_cols if col not in ordered_cols])
 
-    if startswith is not None:
-        if isinstance(startswith, str):
-            startswith_cols = [col for col in all_cols if str(col).startswith(startswith)]
-        elif isinstance(startswith, (list, tuple, Sequence)):
-            startswith_cols = [col for col in all_cols if any(str(col).startswith(sub) for sub in startswith)]
+    if starts_with is not None:
+        if isinstance(starts_with, str):
+            starts_with_cols = [col for col in all_cols if str(col).startswith(starts_with)]
+        elif isinstance(starts_with, (list, tuple, Sequence)):
+            starts_with_cols = [col for col in all_cols if any(str(col).startswith(sub) for sub in starts_with)]
         else:
-            raise TypeError(f"startswith must be a string or sequence of strings, got {type(startswith)}")
-        selected_cols.update(startswith_cols)
-        ordered_cols.extend([col for col in startswith_cols if col not in ordered_cols])
+            raise TypeError(f"starts_with must be a string or sequence of strings, got {type(starts_with)}")
+        selected_cols.update(starts_with_cols)
+        ordered_cols.extend([col for col in starts_with_cols if col not in ordered_cols])
 
-    if endswith is not None:
-        if isinstance(endswith, str):
-            endswith_cols = [col for col in all_cols if str(col).endswith(endswith)]
-        elif isinstance(endswith, (list, tuple, Sequence)):
-            endswith_cols = [col for col in all_cols if any(str(col).endswith(sub) for sub in endswith)]
+    if ends_with is not None:
+        if isinstance(ends_with, str):
+            ends_with_cols = [col for col in all_cols if str(col).endswith(ends_with)]
+        elif isinstance(ends_with, (list, tuple, Sequence)):
+            ends_with_cols = [col for col in all_cols if any(str(col).endswith(sub) for sub in ends_with)]
         else:
-            raise TypeError(f"endswith must be a string or sequence of strings, got {type(endswith)}")
-        selected_cols.update(endswith_cols)
-        ordered_cols.extend([col for col in endswith_cols if col not in ordered_cols])
+            raise TypeError(f"ends_with must be a string or sequence of strings, got {type(ends_with)}")
+        selected_cols.update(ends_with_cols)
+        ordered_cols.extend([col for col in ends_with_cols if col not in ordered_cols])
 
     if regex is not None:
         patterns = [regex] if isinstance(regex, str) else list(regex)
@@ -349,9 +381,11 @@ def select(
     dtype: str | type | Sequence[str | type] | None = None,
     exclude_dtype: str | type | Sequence[str | type] | None = None,
     contains: str | Sequence[str] | None = None,
+    starts_with: str | Sequence[str] | None = None,
+    ends_with: str | Sequence[str] | None = None,
+    regex: str | Sequence[str] | None = None,
     startswith: str | Sequence[str] | None = None,
     endswith: str | Sequence[str] | None = None,
-    regex: str | Sequence[str] | None = None,
 ) -> Any:
     """Select columns from a DataFrame based on names, regex patterns, slices, data types,
     string matching, or exclusions.
@@ -369,6 +403,8 @@ def select(
             contains=contains,
             startswith=startswith,
             endswith=endswith,
+            starts_with=starts_with,
+            ends_with=ends_with,
             regex=regex,
         )
         return df.select(*target_cols)
@@ -387,6 +423,8 @@ def select(
             contains=contains,
             startswith=startswith,
             endswith=endswith,
+            starts_with=starts_with,
+            ends_with=ends_with,
             regex=regex,
         )
         return df.select(target_cols)
@@ -405,6 +443,8 @@ def select(
                 contains=contains,
                 startswith=startswith,
                 endswith=endswith,
+                starts_with=starts_with,
+                ends_with=ends_with,
                 regex=regex,
                 df_for_pandas=df,
             )
@@ -422,6 +462,8 @@ def select(
         contains=contains,
         startswith=startswith,
         endswith=endswith,
+        starts_with=starts_with,
+        ends_with=ends_with,
         regex=regex,
     )
     return df[target_cols]

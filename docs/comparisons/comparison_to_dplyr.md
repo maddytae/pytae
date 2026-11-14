@@ -151,7 +151,7 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 | **Interval / Range** | `filter(df, between(x, 10, 20))` | `df.filter(x=("between", 10, 20))` | `-filter "{'x': ('between', 10, 20)}"` |
 | **Set Membership** | `filter(df, cat %in% c("A", "B"))` | `df.filter(cat=['A', 'B'])` | `-filter "cat in ['A', 'B']"` |
 | **Spaced Columns** | `filter(df, \`gross sales\` > 50)` | `df.filter("[gross sales] > 50")` | `-filter "[gross sales] > 50"` |
-| **Prefix Match** | `filter(df, str_starts(name, "A"))`| `df.filter(name=('startswith', 'A'))`| `-filter "name.startswith('A')"` |
+| **Prefix Match** | `filter(df, str_starts(name, "A"))`| `df.filter(name=('starts_with', 'A'))`| `-filter "name.starts_with('A')"` |
 | **Null Row Check** | `filter(df, !is.na(col))` | `df.filter("col.is_not_null()")` | `-filter "col.is_not_null()"` |
 
 ### 2. Feature Engineering & Column Derivations (`mutate`)

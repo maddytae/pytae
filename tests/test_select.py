@@ -70,7 +70,7 @@ def test_select_colon_column_name_exact_match_wins():
 def test_select_integer_column_names_with_contains_startswith():
     df = pd.DataFrame({0: [1, 2], "b": [3, 4]})
     assert pt.select(df, contains="0").columns.tolist() == [0]
-    assert pt.select(df, startswith="0").columns.tolist() == [0]
+    assert pt.select(df, starts_with="0").columns.tolist() == [0]
 
 
 def _wide():
@@ -88,8 +88,8 @@ def _wide():
 def test_select_contains_startswith_endswith():
     df = _wide()
     assert list(pt.select(df, contains="bill").columns) == ["bill_length_mm", "bill_depth_mm"]
-    assert list(pt.select(df, startswith="bill").columns) == ["bill_length_mm", "bill_depth_mm"]
-    assert list(pt.select(df, endswith="_mm").columns) == ["bill_length_mm", "bill_depth_mm"]
+    assert list(pt.select(df, starts_with="bill").columns) == ["bill_length_mm", "bill_depth_mm"]
+    assert list(pt.select(df, ends_with="_mm").columns) == ["bill_length_mm", "bill_depth_mm"]
 
 
 def test_select_dtype_numeric_and_non_numeric():
@@ -238,15 +238,15 @@ def test_select_bracketed_names_and_slices():
 
 
 def test_select_contains_startswith_endswith_tuples():
-    # Lib Issue 14: contains, startswith, endswith accept tuples
+    # Lib Issue 14: contains, starts_with, ends_with accept tuples
     df = pd.DataFrame({"bill_length_mm": [1], "bill_depth_mm": [2], "body_mass_g": [3]})
     res_c = pt.select(df, contains=("bill", "body"))
     assert list(res_c.columns) == ["bill_length_mm", "bill_depth_mm", "body_mass_g"]
 
-    res_sw = pt.select(df, startswith=("bill", "body"))
+    res_sw = pt.select(df, starts_with=("bill", "body"))
     assert list(res_sw.columns) == ["bill_length_mm", "bill_depth_mm", "body_mass_g"]
 
-    res_ew = pt.select(df, endswith=("mm", "g"))
+    res_ew = pt.select(df, ends_with=("mm", "g"))
     assert list(res_ew.columns) == ["bill_length_mm", "bill_depth_mm", "body_mass_g"]
 
 
@@ -361,8 +361,20 @@ def test_select_error_paths_and_pandas_exclude_dtypes():
         select(pl.DataFrame({"a": [1]}), exclude_dtype=123)
     with pytest.raises(TypeError, match="contains must be"):
         select(df, contains=123)
-    with pytest.raises(TypeError, match="startswith must be"):
-        select(df, startswith=123)
-    with pytest.raises(TypeError, match="endswith must be"):
-        select(df, endswith=123)
+    with pytest.raises(TypeError, match="starts_with must be"):
+        select(df, starts_with=123)
+    with pytest.raises(TypeError, match="ends_with must be"):
+        select(df, ends_with=123)
+
+
+def test_select_startswith_endswith_retired():
+    df = pd.DataFrame({"bill_length_mm": [1], "bill_depth_mm": [2]})
+    with pytest.raises(ValueError, match="select\\(\\): 'startswith' is retired in favor of canonical 'starts_with'"):
+        pt.select(df, startswith="bill")
+    with pytest.raises(ValueError, match="select\\(\\): 'endswith' is retired in favor of canonical 'ends_with'"):
+        pt.select(df, endswith="_mm")
+    with pytest.raises(ValueError, match="select\\(\\): 'startswith=' is retired in favor of canonical 'starts_with='"):
+        pt.select(df, "startswith=bill")
+    with pytest.raises(ValueError, match="select\\(\\): 'endswith=' is retired in favor of canonical 'ends_with='"):
+        pt.select(df, "endswith=_mm")
 

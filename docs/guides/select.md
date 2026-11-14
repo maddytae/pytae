@@ -12,7 +12,7 @@ Select, filter, reorder, and exclude columns using names, negative prefixes, ran
 - [Selecting Explicit Columns](#selecting-explicit-columns)
 - [Negative Selection & Exclusion (`!col`, `!start:end`)](#negative-selection--exclusion)
 - [Slice Notation (`start:end`)](#slice-notation-startend)
-- [Pattern Matching (`contains=`, `startswith=`, `endswith=`, `regex=`)](#pattern-matching)
+- [Pattern Matching (`contains=`, `starts_with=`, `ends_with=`, `regex=`)](#pattern-matching)
 - [Data Type Filtering (`dtype=`, `exclude_dtype=`)](#data-type-filtering)
 - [Chaining `-select` in Pipelines](#chaining--select-in-pipelines)
 
@@ -28,7 +28,7 @@ Select, filter, reorder, and exclude columns using names, negative prefixes, ran
 | Negative selection | `!col` | `-select "!species"` or `-select "!sex,!year"` |
 | Negative slices | `!start:end` | `-select "!bill_length_mm:flipper_length_mm"` |
 | Column slice | `start:end` | `-select "bill_length_mm:body_mass_g"` |
-| Substring / prefix / suffix | `contains=`, `startswith=`, `endswith=` | `-select "contains=bill"` |
+| Substring / prefix / suffix | `contains=`, `starts_with=`, `ends_with=` | `-select "contains=bill"` |
 | Regular expression | `regex=PATTERN` | `-select "regex=^bill_.*mm$"` |
 | Data type filter | `dtype=numeric` / `exclude_dtype=category` | `-select "dtype=numeric"` |
 
@@ -141,8 +141,8 @@ Match column names dynamically without typing every name:
 | Token | Description | Example |
 |---|---|---|
 | `contains=TEXT` | Column names containing `TEXT` | `contains=bill` |
-| `startswith=PREFIX` | Column names starting with `PREFIX` | `startswith=bill_` |
-| `endswith=SUFFIX` | Column names ending with `SUFFIX` | `endswith=_mm` |
+| `starts_with=PREFIX` | Column names starting with `PREFIX` | `starts_with=bill_` |
+| `ends_with=SUFFIX` | Column names ending with `SUFFIX` | `ends_with=_mm` |
 | `regex=PATTERN` | Column names matching regular expression | `regex=^bill_.*mm$` |
 
 ### Example: Contains

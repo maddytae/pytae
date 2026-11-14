@@ -530,12 +530,12 @@ Comprehensive Feature Set (The 12 Mutate Capabilities):
      df.pt.mutate(ratio="[body mass g] / [bill length mm]")
   9. Grouped Window Transforms (Inherited from `pt.by()`, `dropna=False`, `observed=True`):
      Evaluates aggregations per group via fast vectorized `GroupBy.transform()` and broadcasts back to each row without collapsing rows (N -> N):
-     - Injected Aggregations: mean(x), sum(x), median(x), min(x), max(x), std(x), var(x), n (or n())
+     - Injected Aggregations: mean(x), sum(x), median(x), min(x), max(x), std(x), var(x), count() (or count(x))
      - Example:
        (
            df
            .pt.by("species")
-           .pt.mutate("avg_mass = mean(body_mass_g), diff = body_mass_g - avg_mass, group_size = n")
+           .pt.mutate("avg_mass = mean(body_mass_g), diff = body_mass_g - avg_mass, group_size = count()")
        )
      - `dropna=False` (default across pytae): Missing group categories form their own distinct group.
      - `dropna=True`: Rows with NA in grouping columns receive NaN in new columns while preserving index alignment.

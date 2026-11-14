@@ -114,7 +114,8 @@ Pytae carefully chooses concise, intention-revealing names that eliminate ambigu
 - **Why not `df.query()`?** Pandas' native `df.query()` is string-only and passes expressions to `numexpr`, which chokes on Python functions and spaced columns. In contrast, `df.filter()` supports:
   - **Bare Callables & Lambdas**: `df.filter(lambda d: d['mass'] > 4000)` with full Python expressions and functions.
   - **Mathematical Intervals**: `df.filter(mass="[3000, 4500]")` or `df.filter(pct="(0, 100)")`.
-  - **Set Membership & Operators**: lists `cat=['A', 'B']`, tuples `species=('startswith', ['Ad', 'Ge'])`.
+  - **Set Membership & Operators**: lists `cat=['A', 'B']`, tuples `species=('starts_with', ['Ad', 'Ge'])`.
+  - **Pure Python Boolean Logic**: Uses clean English words `and`, `or`, and `not` (e.g. `df.filter("not is_active and mass > 3000")`), retiring confusing bitwise Pandas operators (`&`, `|`, `~`) and C-style `!` with actionable guidance.
   - **Bracketed Spaced Columns**: `df.filter("[bill length mm] > 40")` without ugly backtick escaping.
   - **Keyword & Dictionary Syntax**: `df.filter(status="active")` or `{"col": "> 5"}`.
 - **CLI Alignment**: The CLI uses `-filter "expr"`. The legacy `-qry` has been deprecated in favor of canonical `-filter`.

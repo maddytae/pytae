@@ -147,8 +147,8 @@ pytae data.parquet -select "species,island,body_mass_g"
 pytae data.parquet -select "!sex,!year"
 
 # Pattern and prefix matching
-pytae data.parquet -select "startswith=bill_"
-pytae data.parquet -select "endswith=_mm"
+pytae data.parquet -select "starts_with=bill_"
+pytae data.parquet -select "ends_with=_mm"
 pytae data.parquet -select "contains=length"
 
 # Select by data type

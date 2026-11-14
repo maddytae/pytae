@@ -247,7 +247,7 @@ def check_dsl_string(verb: str, spec: str) -> list[str]:
                 safe_t = _sanitize_for_ast(raw)
                 if not any(
                     safe_t.startswith(kw + "=")
-                    for kw in ("contains", "startswith", "endswith", "regex", "dtype")
+                    for kw in ("contains", "starts_with", "ends_with", "regex", "dtype")
                 ):
                     try:
                         ast.parse(safe_t, mode="eval")

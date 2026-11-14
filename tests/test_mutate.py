@@ -329,13 +329,12 @@ def test_mutate_bracketed_columns():
 def test_mutate_grouped_single_col():
     df = pd.DataFrame({"grp": ["a", "a", "b"], "val": [10.0, 20.0, 60.0]})
     res = df.pt.by("grp").pt.mutate(
-        "avg = mean(val), diff = val - avg, total = sum(val), cnt = n, cnt2 = n()",
+        "avg = mean(val), diff = val - avg, total = sum(val), cnt = count()",
     )
     assert list(res["avg"]) == [15.0, 15.0, 60.0]
     assert list(res["diff"]) == [-5.0, 5.0, 0.0]
     assert list(res["total"]) == [30.0, 30.0, 60.0]
     assert list(res["cnt"]) == [2, 2, 1]
-    assert list(res["cnt2"]) == [2, 2, 1]
 
 
 def test_mutate_grouped_multi_col():
@@ -346,7 +345,7 @@ def test_mutate_grouped_multi_col():
             "val": [10.0, 30.0, 5.0, 100.0],
         }
     )
-    res1 = df.pt.by("g1", "g2").pt.mutate("m = mean(val), cnt = n")
+    res1 = df.pt.by("g1", "g2").pt.mutate("m = mean(val), cnt = count()")
     assert list(res1["m"]) == [20.0, 20.0, 5.0, 100.0]
     assert list(res1["cnt"]) == [2, 2, 1, 1]
 
@@ -441,10 +440,10 @@ def test_mutate_if_else_and_case_when_nullable_boolean():
 
 
 def test_mutate_n_row_count_vs_col_and_helper():
-    # Lib Issue 16: caller local 'n' does not shadow row count 'n' unless referenced as '@n'
+    # Caller local 'n' does not shadow row count, referenced as '@n'
     n = 999  # noqa: F841
     df = pd.DataFrame({"val": [10, 20, 30]})
-    res = df.pt.mutate("cnt = n, caller_n = @n")
+    res = df.pt.mutate("cnt = count(), caller_n = @n")
     assert list(res["cnt"]) == [3, 3, 3]
     assert list(res["caller_n"]) == [999, 999, 999]
 
@@ -461,14 +460,14 @@ def test_mutate_grouped_callable_sees_original_index():
 def test_mutate_scalar_if_else_and_case_when():
     # Lib Issue 1 (Review 2ec5bbba): scalar condition in if_else and case_when broadcasts across rows and groups
     df = pd.DataFrame({"val": [10, 20, 30]})
-    assert df.pt.mutate(y="if_else(n > 1, 1, 0)")["y"].tolist() == [1, 1, 1]
-    assert df.pt.mutate(y="case_when((n > 1, 'big'), 'small')")["y"].tolist() == ["big", "big", "big"]
+    assert df.pt.mutate(y="if_else(count() > 1, 1, 0)")["y"].tolist() == [1, 1, 1]
+    assert df.pt.mutate(y="case_when((count() > 1, 'big'), 'small')")["y"].tolist() == ["big", "big", "big"]
 
     df2 = pd.DataFrame({"val": [10, 20, 30]}, index=[5, 6, 7])
-    assert df2.pt.mutate(y="if_else(n > 1, 1, 0)")["y"].tolist() == [1, 1, 1]
+    assert df2.pt.mutate(y="if_else(count() > 1, 1, 0)")["y"].tolist() == [1, 1, 1]
 
     df3 = pd.DataFrame({"g": ["a", "a", "b"], "val": [10, 20, 30]})
-    assert df3.pt.by("g").pt.mutate(y="if_else(n > 1, 1, 0)")["y"].tolist() == [1, 1, 0]
+    assert df3.pt.by("g").pt.mutate(y="if_else(count() > 1, 1, 0)")["y"].tolist() == [1, 1, 0]
 
 
 def test_mutate_lit_constant_when_column_exists():
@@ -513,7 +512,7 @@ def test_mutate_grouped_vectorized_all_stats():
     res = df.pt.by("grp").pt.mutate(
         "avg = mean(val), tot = sum(val), med = median(val), "
         "lo = min(val), hi = max(val), sd = std(val), vr = var(val), "
-        "cnt = n, cnt_fn = n(), upper_name = name.str.upper()"
+        "cnt = count(), upper_name = name.str.upper()"
     )
     assert list(res["avg"]) == [20.0, 20.0, 20.0, 150.0, 150.0]
     assert list(res["tot"]) == [60.0, 60.0, 60.0, 300.0, 300.0]
@@ -521,7 +520,6 @@ def test_mutate_grouped_vectorized_all_stats():
     assert list(res["lo"]) == [10.0, 10.0, 10.0, 100.0, 100.0]
     assert list(res["hi"]) == [30.0, 30.0, 30.0, 200.0, 200.0]
     assert list(res["cnt"]) == [3, 3, 3, 2, 2]
-    assert list(res["cnt_fn"]) == [3, 3, 3, 2, 2]
     assert list(res["upper_name"]) == ["ALICE", "BOB", "CHARLIE", "DAVE", "EVE"]
 
 
@@ -561,7 +559,7 @@ def test_mutate_multi_col_selectors_and_grouped():
             "bill_depth_mm": [10.0, 20.0, 15.0, 25.0],
         }
     )
-    res_sw = df.pt.mutate("(startswith=bill_) = _ / 10")
+    res_sw = df.pt.mutate("(starts_with=bill_) = _ / 10")
     assert list(res_sw["bill_length_mm"]) == [3.0, 5.0, 4.0, 6.0]
     assert list(res_sw["bill_depth_mm"]) == [1.0, 2.0, 1.5, 2.5]
 
@@ -751,8 +749,8 @@ def test_mutate_str_methods_and_null_checks_case_when():
     res2 = df.mutate(
         is_exp=lambda d: d["dest_code"].str.contains("-EXP-"),
         has_hazmat=df.mutate("has_hazmat = is_not_null(hazmat_class)")["has_hazmat"],
-        prefix="dest_code.str.startswith('MIA')",
-        suffix="dest_code.str.endswith('9')",
+        prefix="dest_code.str.starts_with('MIA')",
+        suffix="dest_code.str.ends_with('9')",
     )
     assert list(res2["prefix"]) == [False, True, False, False]
     assert list(res2["suffix"]) == [False, True, False, False]

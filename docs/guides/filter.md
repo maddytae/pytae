@@ -87,9 +87,9 @@ pytae penguins.parquet -filter "body_mass_g > 5500" -select "species,island,body
 | Gentoo    | Biscoe   |          5550 |
 
 <a id="boolean-logic"></a>
-### Boolean Logic (`and`, `or`, and `(...)`)
+### Boolean Logic (`and`, `or`, `not`, and `(...)`)
 
-Filter expressions support full boolean logic with `and`, `or`, and parentheses `(...)` for nested grouping:
+Filter expressions support full boolean logic with `and`, `or`, `not`, and parentheses `(...)` for nested grouping:
 
 ```bash
 # Conjunction with 'and'
@@ -98,12 +98,30 @@ pytae penguins.parquet -filter "species == 'Gentoo' and body_mass_g > 5500" -sel
 # Disjunction with 'or'
 pytae penguins.parquet -filter "island == 'Dream' or island == 'Torgersen'" -select "species,island" -head 3
 
+# Negation with 'not'
+pytae penguins.parquet -filter "not (body_mass_g > 4000)" -head 3
+
+# Bare boolean columns
+pytae loans.parquet -filter "is_active and not is_delinquent"
+
 # Grouping and precedence with nested parentheses:
 pytae penguins.parquet -filter "(species == 'Adelie' or species == 'Chinstrap') and body_mass_g > 4000" -head 3
 ```
 
 > [!NOTE]
-> Following Python's *"one and only one obvious way"*, `pytae` strictly uses `and` and `or`. Bitwise `&` and `|` are disallowed, and commas `,` are strictly punctuation for function arguments and lists, not boolean operators.
+> Following Python's *"one and only one obvious way"*, `pytae` strictly uses `and`, `or`, and `not`. Bitwise `&`, `|`, `~`, and C-style `!` are disallowed, and commas `,` are strictly punctuation for function arguments and lists, not boolean operators. Using `&`, `|`, `~`, or `!` raises clear, actionable errors guiding you to the canonical English keywords.
+
+### Chained Comparisons & LHS Arithmetic Expressions
+
+Filter expressions support chained comparisons and arithmetic operations:
+
+```bash
+# Chained mathematical intervals
+pytae penguins.parquet -filter "3000 <= body_mass_g <= 4500"
+
+# Arithmetic expressions
+pytae penguins.parquet -filter "bill_length_mm * 2 > 80"
+```
 
 <a id="column-to-column-comparisons-col_a--col_b"></a>
 ### Column-to-Column Comparisons (`col_a == col_b`)

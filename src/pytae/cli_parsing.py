@@ -17,7 +17,14 @@ from pytae._text import _is_enclosed_pair
 from pytae._text import tokenize as _tokenize
 from pytae._text import unquote_name as _unquote_name
 
-SELECT_KEYS = ("dtype", "exclude_dtype", "contains", "startswith", "endswith", "regex")
+SELECT_KEYS = (
+    "dtype",
+    "exclude_dtype",
+    "contains",
+    "starts_with",
+    "ends_with",
+    "regex",
+)
 
 
 def parse_columns(raw: str) -> list[str]:
@@ -327,6 +334,12 @@ def parse_select_spec(raw: str) -> tuple[list[str], dict]:
                 raise SystemExit(
                     "-select: 'exclude=' is retired in favor of '!' negation. "
                     "Use -select '!col' or -select '!col1,!col2' instead."
+                )
+            if key in ("startswith", "endswith"):
+                canonical = "starts_with" if key == "startswith" else "ends_with"
+                raise SystemExit(
+                    f"-select: '{key}=' is retired in favor of canonical '{canonical}='. "
+                    f"Use -select '{canonical}={value}' instead."
                 )
             if key in SELECT_KEYS:
                 if not value:

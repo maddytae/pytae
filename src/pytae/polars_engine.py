@@ -18,6 +18,7 @@ import polars as pl
 from pytae._parsing import (
     BinaryOp,
     FilterNode,
+    NotOp,
     Predicate,
     _extract_arrange_specs,
     _replace_underscore_placeholder,
@@ -43,15 +44,23 @@ def _df_schema(df: Any) -> pl.Schema:
 
 def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -> pl.Expr:
     """Convert a pytae filter condition tuple/value into a Polars Expression."""
-    if schema is not None and col not in schema and ("." in col or "(" in col):
+    is_expr_or_lit = any(sym in col for sym in (".", "(", "+", "-", "*", "/", "%", " ")) or col.replace("-", "").isdigit()
+    if schema is not None and col not in schema and is_expr_or_lit:
         cur_cols = set(schema.names())
-        safe_expr, col_map = _rewrite_col_refs(col, cur_cols)
-        parsed = ast.parse(safe_expr, mode="eval")
-        col_expr = _ast_to_polars_expr(parsed, cur_cols, col_map, schema=schema)
-        is_numeric = False
-        is_string = False
-        is_date = False
-        is_datetime = False
+        try:
+            safe_expr, col_map = _rewrite_col_refs(col, cur_cols)
+            parsed = ast.parse(safe_expr, mode="eval")
+            col_expr = _ast_to_polars_expr(parsed, cur_cols, col_map, schema=schema)
+            is_numeric = False
+            is_string = False
+            is_date = False
+            is_datetime = False
+        except Exception:
+            col_expr = pl.col(col)
+            is_numeric = False
+            is_string = False
+            is_date = False
+            is_datetime = False
     else:
         col_expr = pl.col(col)
         is_numeric = schema is not None and col in schema and schema[col].is_numeric()
@@ -145,6 +154,8 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
             "not in",
             "startswith",
             "endswith",
+            "starts_with",
+            "ends_with",
             "contains",
             "regex",
             "==",
@@ -178,7 +189,13 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
             if op == "not in":
                 vals = [_coerce_val(v) for v in val] if isinstance(val, (list, tuple)) else val
                 return ~col_expr.is_in(vals)
-            if op == "startswith":
+            if op in ("startswith", "endswith"):
+                canonical = "starts_with" if op == "startswith" else "ends_with"
+                raise ValueError(
+                    f"filter(): '{op}' is retired in favor of canonical '{canonical}'. "
+                    f"Use ('{canonical}', ...) instead."
+                )
+            if op == "starts_with":
                 if isinstance(val, (list, tuple)):
                     for v in val:
                         _coerce_val(v)
@@ -187,7 +204,7 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
                     return pl.any_horizontal([col_expr.cast(pl.String).str.starts_with(str(v)) for v in val])
                 _coerce_val(val)
                 return col_expr.cast(pl.String).str.starts_with(str(val))
-            if op == "endswith":
+            if op == "ends_with":
                 if isinstance(val, (list, tuple)):
                     for v in val:
                         _coerce_val(v)
@@ -395,6 +412,8 @@ def _eval_filter_node(node: FilterNode, schema: pl.Schema | None = None) -> pl.E
         elif node.op == "or":
             return left_expr | right_expr
         raise ValueError(f"Unknown logical operator: {node.op}")
+    elif isinstance(node, NotOp):
+        return ~_eval_filter_node(node.operand, schema)
     elif isinstance(node, Predicate):
         col_expr = pl.col(node.col)
         cond = node.cond
@@ -1192,13 +1211,12 @@ def _ast_to_polars_expr(
             return pl.col(col_map[node.id])
         if node.id in col_names:
             return pl.col(node.id)
-        if node.id == "n":
-            expr = pl.len()
-            return expr.over(by) if by else expr
         import difflib
 
         close = difflib.get_close_matches(str(node.id), [str(c) for c in col_names], n=1)
         hint = f" (did you mean '{close[0]}'?)" if close else ""
+        if node.id == "n":
+            hint += ". If you intended to count rows, use canonical 'count()'"
         raise KeyError(
             f"column '{node.id}' not found in DataFrame{hint}. "
             f"if you intended a string literal, quote it like '{node.id}'"
@@ -1219,6 +1237,14 @@ def _ast_to_polars_expr(
         if isinstance(node.op, ast.Mod):
             return left % right
         if isinstance(node.op, ast.Pow):
+            is_neg_lit = (
+                isinstance(node.right, ast.Constant)
+                and isinstance(node.right.value, (int, float))
+                and node.right.value < 0
+            ) or (isinstance(node.right, ast.UnaryOp) and isinstance(node.right.op, ast.USub))
+            is_int_base_col_exp = isinstance(node.left, ast.Constant) and isinstance(node.left.value, int)
+            if is_neg_lit or is_int_base_col_exp:
+                return left.cast(pl.Float64) ** right
             return left**right
         if isinstance(node.op, ast.BitOr):
             return left | right
@@ -1237,24 +1263,29 @@ def _ast_to_polars_expr(
             return ~oprnd
         raise ValueError(f"Unsupported unary operator: {type(node.op)}")
     if isinstance(node, ast.Compare):
-        left = _ast_to_polars_expr(node.left, col_names, col_map, by, schema, params)
+        curr_left = _ast_to_polars_expr(node.left, col_names, col_map, by, schema, params)
+        cond_exprs = []
         for op, comp in zip(node.ops, node.comparators):
             right = _ast_to_polars_expr(comp, col_names, col_map, by, schema, params)
             if isinstance(op, ast.Eq):
-                left = left == right
+                cond_exprs.append(curr_left == right)
             elif isinstance(op, ast.NotEq):
-                left = left != right
+                cond_exprs.append(curr_left != right)
             elif isinstance(op, ast.Lt):
-                left = left < right
+                cond_exprs.append(curr_left < right)
             elif isinstance(op, ast.LtE):
-                left = left <= right
+                cond_exprs.append(curr_left <= right)
             elif isinstance(op, ast.Gt):
-                left = left > right
+                cond_exprs.append(curr_left > right)
             elif isinstance(op, ast.GtE):
-                left = left >= right
+                cond_exprs.append(curr_left >= right)
             else:
                 raise ValueError(f"Unsupported comparison operator: {type(op)}")
-        return left
+            curr_left = right
+        result = cond_exprs[0]
+        for c_exp in cond_exprs[1:]:
+            result = result & c_exp
+        return result
     if isinstance(node, ast.BoolOp):
         vals = [_ast_to_polars_expr(v, col_names, col_map, by, schema, params) for v in node.values]
         res = vals[0]
@@ -1396,12 +1427,18 @@ def _ast_to_polars_expr(
                         return obj_expr.str.contains(pat_val, literal=literal)
                     pat_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema, params)
                     return obj_expr.str.contains(pat_expr, literal=literal)
-                elif attr_name in ("startswith", "starts_with") and len(node.args) >= 1:
+                elif attr_name in ("startswith", "endswith"):
+                    canonical = "starts_with" if attr_name == "startswith" else "ends_with"
+                    raise ValueError(
+                        f"'{attr_name}()' is retired in favor of canonical '{canonical}()'. "
+                        f"Use .{canonical}(...) instead."
+                    )
+                elif attr_name == "starts_with" and len(node.args) >= 1:
                     if isinstance(node.args[0], ast.Constant):
                         return obj_expr.str.starts_with(str(node.args[0].value))
                     pat_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema, params)
                     return obj_expr.str.starts_with(pat_expr)
-                elif attr_name in ("endswith", "ends_with") and len(node.args) >= 1:
+                elif attr_name == "ends_with" and len(node.args) >= 1:
                     if isinstance(node.args[0], ast.Constant):
                         return obj_expr.str.ends_with(str(node.args[0].value))
                     pat_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema, params)
@@ -1651,11 +1688,22 @@ def _ast_to_polars_expr(
             "rank": lambda e: e.rank(),
             "first": lambda e: e.first(),
             "last": lambda e: e.last(),
+            "cumsum": lambda e: e.cum_sum(),
+            "cum_sum": lambda e: e.cum_sum(),
+            "cummax": lambda e: e.cum_max(),
+            "cum_max": lambda e: e.cum_max(),
+            "cummin": lambda e: e.cum_min(),
+            "cum_min": lambda e: e.cum_min(),
+            "cumprod": lambda e: e.cum_prod(),
+            "cum_prod": lambda e: e.cum_prod(),
         }
         if func_name in agg_map and len(args) == 1:
             expr = agg_map[func_name](args[0])
             return expr.over(by) if by else expr
-        if func_name in ("len", "count") and len(args) <= 1:
+        if func_name == "count" and len(args) == 1:
+            expr = args[0].count()
+            return expr.over(by) if by else expr
+        if func_name in ("len", "count") and len(args) == 0:
             expr = pl.len()
             return expr.over(by) if by else expr
         if func_name == "shift" and len(args) >= 1:
@@ -1715,9 +1763,10 @@ def _ast_to_polars_expr(
             else:
                 expr = target_expr.fill_null(val_expr)
             return expr.over(by) if by else expr
-        if func_name == "n" and len(args) == 0:
-            expr = pl.len()
-            return expr.over(by) if by else expr
+        if func_name == "n":
+            raise ValueError(
+                "n() is not supported in expressions; in line with 'one and only one obvious way', use canonical 'count()'."
+            )
         if func_name == "date" and len(args) >= 1:
             arg_type = schema.get(node.args[0].id) if schema and isinstance(node.args[0], ast.Name) else None
             if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant):

@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.14.7] - 2026-11-14
+
+### Added & Standardized
+- **Naming Standardizations Across All Interfaces**:
+  - Standardized on snake_case `starts_with` and `ends_with` across `select`, `filter`, `mutate`, and the CLI. Retired legacy `startswith` and `endswith` with actionable `ValueError` and `SystemExit` messages pointing to canonical syntax.
+  - Standardized on `not` as the single unary boolean negation operator in `filter()` expressions (matching `and` and `or`). Retired `~` and `!` in filter predicates with helpful errors guiding users to `not`.
+  - Enforced `count()` as the canonical row counting function and `count(col)` as non-null column counting in expressions. Retired legacy `n()` and bare `n` identifier row counting in expressions (`mutate`), eliminating column collision and shadowing bugs.
+- **Filter Expression Enhancements (`src/pytae/_parsing.py`, `src/pytae/polars_engine.py`)**:
+  - Added support for bare boolean columns in `filter()` (e.g. `df.filter("is_active")`, `df.filter("not is_active and in_stock")`).
+  - Added support for chained comparisons in filter AST (e.g. `df.filter("0 < y < 10")`, `df.filter("0 <= y <= 5")`).
+  - Added evaluation of left-hand side arithmetic expressions in filter predicates (e.g. `df.filter("x * 2 > 4")`, `df.filter("x % 2 == 0")`).
+  - Supported unprefixed string methods on column references (e.g. `s.starts_with('ap')`, `s.contains('an')`) alongside `.str` accessors.
+- **Math and Cumulative Mutations (`src/pytae/polars_engine.py`)**:
+  - Fixed integer base exponentiation with negative powers (e.g. `y ** -1`, `2 ** y`) by automatically casting base and exponent to `pl.Float64`, preventing Polars unsigned integer conversion panics.
+  - Added native vectorized Polars execution for cumulative transforms in `mutate()`: `cumsum`, `cum_sum`, `cummax`, `cum_max`, `cummin`, `cum_min`, `cumprod`, and `cum_prod`.
+
 ## [3.14.6] - 2026-11-13
 
 ### Fixed
