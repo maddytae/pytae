@@ -2823,8 +2823,8 @@ def test_normalize_unquoted_windows_paths() -> None:
     )
 
 
-def test_repl_inspection_commands_reject_bare_output(tmp_path) -> None:
-    """Verify that exploratory inspection commands reject -o with educational guidance to assign a table first."""
+def test_repl_inspection_commands_support_output(tmp_path) -> None:
+    """Verify that exploratory inspection commands support -o directly in REPL."""
     import polars as pl
 
     from pytae.repl import PytaeRepl
@@ -2837,25 +2837,35 @@ def test_repl_inspection_commands_reject_bare_output(tmp_path) -> None:
     out_file = tmp_path / "test.csv"
     outputs: list[str] = []
 
-    # 1. Bare active table -head -o
+    # 1. Bare active table -head -o saves directly
     r.execute_line(f"-head -o {out_file}", output_fn=outputs.append)
-    assert not out_file.exists()
-    assert any("interactive screen preview and does not save with '-o' directly" in o for o in outputs)
-    assert any("k = df -head" in o for o in outputs)
-    assert not r.history  # Not recorded in history
+    assert out_file.exists()
+    assert any("Wrote 5 rows to" in o for o in outputs)
+    out_file.unlink()
 
-    # 2. Targeted table df -head -o
+    # 2. Targeted table df -head 10 -o saves 10 rows directly
     outputs.clear()
     r.execute_line(f"df -head 10 -o {out_file}", output_fn=outputs.append)
-    assert not out_file.exists()
-    assert any("interactive screen preview and does not save with '-o' directly" in o for o in outputs)
+    assert out_file.exists()
+    assert any("Wrote 10 rows to" in o for o in outputs)
+    out_file.unlink()
 
-    # 3. Other inspection commands reject -o as well
+    # 3. Other inspection commands support -o as well
     outputs.clear()
-    r.execute_line(f"-tail -o {out_file}", output_fn=outputs.append)
-    assert any("interactive screen preview and does not save with '-o' directly" in o for o in outputs)
+    r.execute_line(f"-tail 8 -o {out_file}", output_fn=outputs.append)
+    assert out_file.exists()
+    assert any("Wrote 8 rows to" in o for o in outputs)
+    out_file.unlink()
 
-    # 4. Correct workflow: k = df -head then k -o <path>
+    # 4. Schema output to text file
+    outputs.clear()
+    schema_file = tmp_path / "schema.txt"
+    r.execute_line(f"-schema -o {schema_file}", output_fn=outputs.append)
+    assert schema_file.exists()
+    assert any("Wrote schema to" in o for o in outputs)
+    assert "Columns:" in schema_file.read_text(encoding="utf-8")
+
+    # 5. Assignment workflow: k = df -head then k -o <path>
     outputs.clear()
     r.execute_line("k = df -head", output_fn=outputs.append)
     assert "k" in r.tables
@@ -4169,21 +4179,23 @@ def test_repl_clipboard_ingestion_and_strict_clean_export(tmp_path, monkeypatch)
     assert any("Loaded <clipboard> as 'sample_clip' (3 rows x 2 cols)" in o for o in outputs)
     assert r.tables["sample_clip"].shape == (3, 2)
 
-    # 3. Test Strict & Clean: Preview commands reject -o clip directly
+    # 3. Preview commands save directly to clip
     outputs.clear()
     r.execute_line("df -head 5 -o clip", output_fn=outputs.append)
-    assert any("interactive screen preview and does not save with '-o' directly" in o for o in outputs)
-    assert any("k = df -head 5" in o for o in outputs)
-    assert any("k -o clip" in o for o in outputs)
-    assert len(copied_payloads) == 0
+    assert any("Copied 5 rows to system clipboard" in o for o in outputs)
+    assert len(copied_payloads) == 1
+    assert len(copied_payloads[0]) == 5
 
     outputs.clear()
+    r.execute_line("switch df", output_fn=outputs.append)
     r.execute_line("-head 5 -o clip", output_fn=outputs.append)
-    assert any("interactive screen preview and does not save with '-o' directly" in o for o in outputs)
-    assert len(copied_payloads) == 0
+    assert any("Copied 5 rows to system clipboard" in o for o in outputs)
+    assert len(copied_payloads) == 2
+    assert len(copied_payloads[1]) == 5
 
     # 4. Strictly follow guided steps: Assign slice first, then export to clip
     outputs.clear()
+    copied_payloads.clear()
     r.execute_line("k = df -head 5", output_fn=outputs.append)
     assert any("Created 'k' (5 rows x 2 cols)" in o for o in outputs)
     assert r.tables["k"].shape == (5, 2)

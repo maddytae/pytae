@@ -4334,26 +4334,7 @@ class PytaeRepl:
             for t in tokens
         )
         if has_output:
-            tbl = getattr(self, "path_str", None) or "df"
-            target_out = "<path>"
-            for idx_t, tok_t in enumerate(tokens):
-                if tok_t in ("-o", "-output", "--output") and idx_t + 1 < len(tokens):
-                    target_out = tokens[idx_t + 1]
-                    break
-                elif tok_t.startswith(("-o=", "-output=", "--output=")):
-                    target_out = tok_t.split("=", 1)[1].strip("\"'")
-                    break
-            example_args = [tokens[0]]
-            if len(tokens) > 1 and tokens[1].isdigit():
-                example_args.append(tokens[1])
-            cmd_example = f"{tbl} {' '.join(example_args)}"
-            output_fn(
-                f"pytae: '{first_lower}' is an interactive screen preview and does not save with '-o' directly.\n"
-                f"To save this subset, assign it to a table first:\n"
-                f"  k = {cmd_example}\n"
-                f"  k -o {target_out}"
-            )
-            return True
+            return False
         if first_lower == "-frac":
             output_fn("pytae: -frac is deprecated and removed; use '-sample <val>' (e.g. -sample 0.05 or -sample 5%).")
             return True
@@ -6969,8 +6950,6 @@ class PytaeRepl:
             ]
         )
         show_all = not has_action
-
-        has_output = getattr(args, "output", None) is not None
         if isinstance(source_df, pl.LazyFrame) and any(
             [
                 getattr(args, "plot", None) is not None,
@@ -6986,45 +6965,6 @@ class PytaeRepl:
             )
             return None, None, True
 
-        if has_output and (
-            args.head is not None
-            or args.tail is not None
-            or args.describe
-            or args.glimpse
-            or getattr(args, "schema", False)
-            or args.cols
-            or args.dtype
-            or args.nulls
-            or args.sample is not None
-        ):
-            inspect_cmd = (
-                f"-head {args.head}"
-                if args.head is not None
-                else f"-tail {args.tail}"
-                if args.tail is not None
-                else "-describe"
-                if args.describe
-                else "-glimpse"
-                if args.glimpse
-                else "-schema"
-                if getattr(args, "schema", False)
-                else "-cols"
-                if args.cols
-                else "-dtype"
-                if args.dtype
-                else "-nulls"
-                if args.nulls
-                else "-sample"
-            )
-            out_target = getattr(args, "output", "<path>")
-            tbl = getattr(self, "path_str", None) or "df"
-            output_fn(
-                f"pytae: '{inspect_cmd.split()[0]}' is an interactive screen preview and does not save with '-o' directly.\n"
-                f"To save this subset, assign it to a table first:\n"
-                f"  k = {tbl} {inspect_cmd}\n"
-                f"  k -o {out_target}"
-            )
-            return None, None, True
 
         runs = getattr(args, "time", None)
         durations: list[float] | None = None

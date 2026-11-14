@@ -7,7 +7,7 @@ import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
 
@@ -609,6 +609,7 @@ def cmd_convert(
     announce: bool = True,
     chunk_size: int = 200_000,
     index: bool | None = None,
+    output_fn: Callable[[str], None] | None = None,
 ) -> None:
     if rename:
         if isinstance(df, pd.DataFrame):
@@ -653,7 +654,11 @@ def cmd_convert(
                 num_rows = df.select(pl.len()).collect().item()
         else:
             num_rows = len(df)
-        print(f"Wrote {num_rows} rows to {dest}")
+        msg = f"Wrote {num_rows} rows to {dest}"
+        if output_fn is not None:
+            output_fn(msg)
+        else:
+            print(msg)
 
 
 def _fail(parser: argparse.ArgumentParser, batch: bool, msg: str) -> bool:
@@ -1120,6 +1125,18 @@ def _process_path(
                 _output_text(schema_str, args)
             if is_clip:
                 clip_action = lambda s=schema_str: _copy_to_clipboard(s)
+            elif is_file and out_target is not None and Path(out_target).suffix.lower() in (".txt", ".md", ".log"):
+                dest = Path(out_target)
+                out_dir = getattr(args, "out_dir", None)
+                if out_dir is not None and not dest.is_absolute():
+                    dest = out_dir / dest
+                dest.write_text(schema_str + "\n", encoding="utf-8")
+                output_fn = getattr(args, "output_fn", None)
+                if output_fn is not None:
+                    output_fn(f"Wrote schema to {dest}")
+                else:
+                    print(f"Wrote schema to {dest}")
+                return False
         elif op == "describe":
             described = pipeline.dataframe().describe()
             pipeline._df = described
@@ -1507,6 +1524,27 @@ def _process_path(
 
     if is_clip and clip_action is not None:
         clip_action()
+        if getattr(args, "in_repl", False):
+            output_fn = getattr(args, "output_fn", None)
+            if output_fn is not None:
+                if getattr(args, "schema", False):
+                    output_fn("Copied schema to system clipboard.")
+                elif getattr(args, "shape", False):
+                    output_fn("Copied shape to system clipboard.")
+                elif getattr(args, "cols", False):
+                    output_fn("Copied column names to system clipboard.")
+                elif getattr(args, "dtype", False):
+                    output_fn("Copied dtypes to system clipboard.")
+                elif getattr(args, "nulls", False):
+                    output_fn("Copied null counts to system clipboard.")
+                elif getattr(args, "describe", False):
+                    output_fn("Copied summary statistics to system clipboard.")
+                elif getattr(args, "glimpse", False):
+                    output_fn("Copied glimpse to system clipboard.")
+                else:
+                    curr_f = pipeline.current_frame()
+                    n = curr_f.shape[0] if hasattr(curr_f, "shape") else len(curr_f)
+                    output_fn(f"Copied {n:,} rows to system clipboard.")
     elif is_file:
         assert out_target is not None
         fmt = out_target.lower()
@@ -1566,6 +1604,7 @@ def _process_path(
                 progress=args.progress,
                 announce=True,
                 chunk_size=getattr(args, "chunk_size", None) or 200_000,
+                output_fn=getattr(args, "output_fn", None),
             )
         except SystemExit as exc:
             return _fail(parser, batch, str(exc))
