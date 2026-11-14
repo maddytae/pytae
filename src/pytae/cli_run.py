@@ -399,6 +399,12 @@ def _compute_diff(
     if isinstance(right_target, pd.DataFrame):
         right_df = right_target
         right_name = getattr(right_target, "_name", "<right>")
+    elif hasattr(right_target, "_to_pandas_internal"):
+        right_df = right_target._to_pandas_internal()
+        right_name = getattr(right_target, "_name", "<right>")
+    elif hasattr(right_target, "to") and callable(getattr(right_target, "to")):
+        right_df = right_target.to("pandas")
+        right_name = getattr(right_target, "_name", "<right>")
     elif hasattr(right_target, "to_pandas"):
         right_df = right_target.to_pandas()
         right_name = getattr(right_target, "_name", "<right>")
@@ -1478,8 +1484,6 @@ def _process_path(
         elif op == "pivot":
             pivot_val = _next_op_val("pivot", getattr(args, "pivot", None))
             pivot_kwargs = parse_pivot_arg(pivot_val)
-            if "dropna" not in pivot_kwargs:
-                pivot_kwargs["dropna"] = False if args.dropna is None else args.dropna
             to_check = []
             for k in ("r", "c"):
                 val = pivot_kwargs.get(k)
@@ -1528,8 +1532,6 @@ def _process_path(
             plotter_keys = {"mosaic", "figsize", "sharex", "sharey", "nrows", "ncols"}
             init_kwargs = {k: v for k, v in plot_kwargs.items() if k in plotter_keys}
             chart_kwargs = {k: v for k, v in plot_kwargs.items() if k not in plotter_keys}
-            if "dropna" not in chart_kwargs and getattr(args, "dropna", None) is not None:
-                chart_kwargs["dropna"] = args.dropna
 
             try:
                 p = Plotter(source_df, **init_kwargs)

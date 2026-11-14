@@ -333,7 +333,7 @@ def test_long_and_wide_polars():
     assert wide_res["q1"].to_list() == [10, 20]
     assert wide_res["q2"].to_list() == [30, 40]
 
-    with pytest.raises(TypeError, match="wide\\(\\) parameter 'index' has been removed; use 'r' instead"):
+    with pytest.raises(TypeError):
         wide_polars(long_res, c="variable", v="value", index="id")
 
 

@@ -42,6 +42,7 @@ To keep the REPL mental model clean and unambiguous:
 > [!TIP]
 > Bare scalar definitions (e.g. `threshold = 5000`) continue to work as a silent fallback, but the recommended convention is to always use `@` on the left-hand side (`@threshold = 5000`).
 
+<a id="defining-variables-name--literal"></a>
 ### Defining Variables
 
 Assign any literal directly at the prompt using the `@name = ...` syntax:
@@ -139,6 +140,7 @@ pytae> @tiers[2]
 'gold'
 ```
 
+<a id="using-variables-in-pipeline-verbs--filter--mutate-sql----"></a>
 ### Using Variables in Pipeline Verbs (`-filter`, `-mutate`, `sql { ... }`)
 
 Inject session variables directly into pipeline filter expressions, column derivations, and SQL queries:
@@ -206,6 +208,7 @@ Registered active table 'comb_df' (250,000 rows x 2 cols).
 
 Once the block exits, `comb_df` is fully registered in your Pytae session and ready for normal REPL operations (`-filter`, `-mutate`, `save`, `diff`, etc.).
 
+<a id="inspecting-variables-status-var-status-var-name"></a>
 ### Inspecting Variables (`status var`, `status var <name>`)
 
 ```text
@@ -223,6 +226,7 @@ Type    : int
 Value   : 5000
 ```
 
+<a id="deleting-variables-rm-var-name-rm-var-"></a>
 ### Deleting Variables (`rm var <name>`, `rm var *`)
 
 ```text

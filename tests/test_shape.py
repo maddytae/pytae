@@ -138,7 +138,7 @@ def test_wide_with_explicit_r():
     assert "Q2" in res.columns
 
     # index parameter must raise TypeError
-    with pytest.raises(TypeError, match="wide\\(\\) parameter 'index' has been removed; use 'r' instead"):
+    with pytest.raises(TypeError):
         df.pt.wide(index="region", c="quarter", v="sales")
 
 

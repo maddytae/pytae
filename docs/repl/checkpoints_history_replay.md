@@ -36,6 +36,7 @@ This guide covers saving in-memory snapshots (`checkpoint`), instant rollback (`
 
 The Pytae REPL features a zero-overhead snapshotting system. When exploring hypotheses, you can freeze your workbench state at any time without consuming valuable RAM.
 
+<a id="saving--updating-checkpoints-checkpoint-name"></a>
 ### Saving & Updating Checkpoints (`checkpoint <name>`)
 
 Take an ephemeral snapshot of all active tables, original file references, session `@variables`, and pipeline state:
@@ -143,6 +144,7 @@ pytae> rm checkpoint *
 Cleared all saved checkpoints.
 ```
 
+<a id="reverting-to-source-reset-reset-tbl-reset-initial"></a>
 ### Reverting to Source (`reset`, `reset <tbl>`, `reset initial`)
 
 Reset commands allow you to step back to baseline states:
@@ -156,6 +158,7 @@ Reset commands allow you to step back to baseline states:
 
 ## Session History & Audit Logging
 
+<a id="in-repl-history-audit-log-history-history-n"></a>
 ### In-REPL History Audit Log (`history`, `history <n>`)
 
 Inspect commands executed during your session as a clean numbered list:
@@ -292,7 +295,7 @@ Native Pytae pipeline scripts contain zero-boilerplate assignments and flags (`o
 
 ### Python Scripts (`.py`)
 
-Python scripts exported via `export pipeline.py` or `exit -s py` contain standard Python code using `pytae` and `polars`. State-mutating `py { ... }` blocks (including direct assignments like `k = df.head(10)`, `.to_pytae()` conversions, and persistent helper definitions) are emitted with redundant top-level imports (`pd`, `pl`, `pt`, or repeated imports across blocks) automatically deduplicated, while pure inspection blocks (`py { print(df.shape) }`) are omitted.
+Python scripts exported via `export pipeline.py` or `exit -s py` contain standard Python code using `pytae` and `polars`. State-mutating `py { ... }` blocks (including direct assignments like `k = df.head(10)`, table assignments, and persistent helper definitions) are emitted with redundant top-level imports (`pd`, `pl`, `pt`, or repeated imports across blocks) automatically deduplicated, while pure inspection blocks (`py { print(df.shape) }`) are omitted.
 
 - **Headless Execution**:
   ```bash

@@ -122,7 +122,7 @@ def test_count_list_arg_error(df):
 
 
 def test_lazy_count():
-    lazy = pt.scan_parquet("src/pytae/datasets/penguins.parquet")
+    lazy = pt.scan("src/pytae/datasets/penguins.parquet")
     res = lazy.count("species").collect()
     assert list(res.columns) == ["species", "n"]
     assert len(res) == 3

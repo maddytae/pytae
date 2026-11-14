@@ -82,7 +82,7 @@ def test_python_dataframe_diff():
     assert "Identical: all cell values match within tolerance" in res3
 
     # Pandas accessor .pt.diff
-    pd1 = df1.to_pandas()
-    pd2 = df2.to_pandas()
+    pd1 = df1.to("pandas")
+    pd2 = df2.to("pandas")
     res4 = pd1.pt.diff(pd2, tol=0.1)
     assert "Identical: all cell values match within tolerance" in res4

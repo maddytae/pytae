@@ -22,7 +22,7 @@ The Pytae REPL is a high-performance in-memory exploratory workbench. Unlike tra
 │                            │ Arrow IPC. Instant rollback (restore) with 0 MB RAM cost.  │
 ├────────────────────────────┼────────────────────────────────────────────────────────────┤
 │ 4. EPHEMERAL SANDBOXING    │ Embedded Python (py) runs in an ephemeral scope with zero   │
-│                            │ residual RAM footprint. Explicit .to_pytae() handoff.      │
+│                            │ residual RAM footprint. Explicit table handoff.             │
 ├────────────────────────────┼────────────────────────────────────────────────────────────┤
 │ 5. REPRODUCIBLE SCRIPTS    │ Automatic flight recorder logs every step. Prunes undo paths│
 │                            │ and exports clean .pt (Pytae) or .py (Python) pipelines.   │
@@ -95,7 +95,7 @@ pytae> exit -s
 | **Advanced Query** | ANSI SQL | `sql { SELECT ... }` | Non-destructive SQL preview (or `res = sql { ... }` to assign table). |
 | | Python Eval | `py { <expr> }` | Python expression evaluation in `{ ... }`. |
 | | Python Block | `py { ... }` | Multi-line Python block with ephemeral RAM sandboxing. |
-| | Register Table | `py { df.to_pytae('tbl') }` | Register Python DataFrame back to Pytae workbench. |
+| | Register Table | `py { tbl = pt.DataFrame(...) }` | Register Python DataFrame back to Pytae workbench. |
 | **Variables & Config** | Session Variable | `threshold = 1000` | Define typed session parameter referenced as `@threshold`. |
 | | Variable Status | `status var` | List defined variables and values. |
 | | Remove Variable | `rm var <name>`, `rm var *` | Purge session variable definitions. |
@@ -126,7 +126,7 @@ Dive deeper into specific subsystems:
 2. **[In-Memory Pipelines & Data Inspection](pipelines_inspection.md)**:
    Exploration vs. mutation semantics, chaining CLI verbs at RAM speed, relational joins, and non-destructive inspection tools (`-head`, `-cols`, `-schema`, `-diff`).
 3. **[SQL & Python Interop (Ephemeral Python Sandboxing)](sql_python_interop.md)**:
-   Cross-table ANSI SQL queries, embedded Python evaluation, multi-line blocks, the ephemeral memory sandboxing architecture, and explicit `.to_pytae()` table conversion.
+   Cross-table ANSI SQL queries, embedded Python evaluation, multi-line blocks, the ephemeral memory sandboxing architecture, and explicit table assignment.
 4. **[Session Variables & Configuration](variables_config.md)**:
    Defining session `@parameters`, nested configuration traversal, using variables in pipelines, display preferences (`set`), and persisting settings (`set save`).
 5. **[Checkpoints, History Audit, Pipeline Export & Replay](checkpoints_history_replay.md)**:

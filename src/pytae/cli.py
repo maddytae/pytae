@@ -22,7 +22,6 @@ from pytae.cli_parsing import (
     normalize_git_bash_path,
     parse_concat_arg,
     parse_filter,
-    parse_fraction,
     parse_head_limit,
     parse_input_target,
     parse_join_arg,
@@ -138,7 +137,6 @@ _CLI_FLAGS = {
     "-count",
     "-sample",
     "-seed",
-    "-frac",
     "-arrange",
     "-by",
     "-nrows",
@@ -535,14 +533,6 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         help="random seed for -sample, for reproducible rows (default: random each run)",
     )
     parser.add_argument(
-        "-frac",
-        dest="frac",
-        type=parse_fraction,
-        default=None,
-        metavar="P",
-        help=argparse.SUPPRESS,
-    )
-    parser.add_argument(
         "-arrange",
         dest="arrange",
         default=None,
@@ -861,7 +851,7 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
     parser.add_argument(
         "-pretty",
         action="store_true",
-        help="[deprecated] table formatting is now automatically detected (boxed table for terminal, bare unbordered for pipes)",
+        help="table formatting is now automatically detected (boxed table for terminal, bare unbordered for pipes)",
     )
     parser.add_argument(
         "-pager",
@@ -1094,6 +1084,7 @@ def main(argv: list[str] | None = None) -> int:
         ),
         (("-s",), "'-s' is not recognized; start REPL with 'pytae -i' and use 'set load_session = <name>' inside"),
         (("-opt",), "'-opt' is not recognized; use '-opts' instead"),
+        (("-frac",), "-frac is deprecated and removed; use '-sample <val>' (e.g. -sample 0.05 or -sample 5%)"),
     ]
     for aliases, msg in retired_redirects:
         if any(arg in aliases for arg in raw_argv):
@@ -1311,8 +1302,6 @@ def main(argv: list[str] | None = None) -> int:
         and args.count is None
     ):
         parser.error("-by requires -agg, -mutate, -head, -tail, or -count")
-    if args.frac is not None:
-        parser.error("-frac is deprecated and removed; use '-sample <val>' (e.g. -sample 0.05 or -sample 5%)")
     if args.tol is not None and args.diff is None:
         parser.error("-tol requires -diff")
     if args.unmask is not None and not args.key and not args.vault:

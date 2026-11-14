@@ -169,8 +169,13 @@ class Plotter:
         has_facet_trigger = kwargs.get("ncols") is not None or kwargs.get("facet") is True or "col" in kwargs
         is_plot_call = bool({"kind", "x", "y", "column"}.intersection(kwargs.keys()))
 
-        if df is not None and hasattr(df, "to_pandas") and not isinstance(df, (str, list, tuple)):
-            df = df.to_pandas()
+        if df is not None and not isinstance(df, (str, list, tuple)):
+            if hasattr(df, "_to_pandas_internal"):
+                df = df._to_pandas_internal()
+            elif hasattr(df, "to") and callable(getattr(df, "to")):
+                df = df.to("pandas")
+            elif hasattr(df, "to_pandas"):
+                df = df.to_pandas()
 
         if (
             not kwargs.get("_is_facet_grid")
@@ -205,8 +210,13 @@ class Plotter:
             return
         self._initialized = True
         Plotter._last_active = self
-        if df is not None and hasattr(df, "to_pandas") and not isinstance(df, (str, list, tuple)):
-            df = df.to_pandas()
+        if df is not None and not isinstance(df, (str, list, tuple)):
+            if hasattr(df, "_to_pandas_internal"):
+                df = df._to_pandas_internal()
+            elif hasattr(df, "to") and callable(getattr(df, "to")):
+                df = df.to("pandas")
+            elif hasattr(df, "to_pandas"):
+                df = df.to_pandas()
         if df is not None and not isinstance(df, pd.DataFrame):
             # df was passed as mosaic string or grid list e.g. Plotter("AB")
             if mosaic is None:
@@ -266,8 +276,13 @@ class Plotter:
 
     def data(self, df):
         Plotter._last_active = self
-        if df is not None and hasattr(df, "to_pandas") and not isinstance(df, (str, list, tuple)):
-            df = df.to_pandas()
+        if df is not None and not isinstance(df, (str, list, tuple)):
+            if hasattr(df, "_to_pandas_internal"):
+                df = df._to_pandas_internal()
+            elif hasattr(df, "to") and callable(getattr(df, "to")):
+                df = df.to("pandas")
+            elif hasattr(df, "to_pandas"):
+                df = df.to_pandas()
         self.df = df
         self.last_kwargs = {}  # Reset kwargs when new data is chained!
         return self

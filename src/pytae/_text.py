@@ -22,17 +22,23 @@ def tokenize(raw: str, seps: str, *, keep_quotes: bool = False, track_brackets: 
     buf: list[str] = []
     quote: str | None = None
     depth = 0
+    escape_count = 0
     for ch in raw:
         if quote:
-            if ch == quote:
+            if ch == quote and escape_count % 2 == 0:
                 quote = None
                 if keep_quotes:
                     buf.append(ch)
             else:
                 buf.append(ch)
+            if ch == "\\":
+                escape_count += 1
+            else:
+                escape_count = 0
             continue
         if ch in "'\"":
             quote = ch
+            escape_count = 0
             if keep_quotes:
                 buf.append(ch)
         elif track_brackets and ch in "([{":

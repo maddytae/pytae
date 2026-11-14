@@ -76,10 +76,6 @@ class _BasePtAccessor:
     ) -> DataFrame:
         return DataFrame(self._obj).tail(n=n, prop=prop, with_ties=with_ties)
 
-    def pick(self, *args: Any, **kwargs: Any) -> Any:
-        raise AttributeError(
-            "df.pt.pick() has been removed; use df.pt.arrange(...).head(n) instead (or df.pt.by(...).arrange(...).head(n) for grouped slicing)."
-        )
 
     def sample(
         self,
@@ -258,26 +254,6 @@ class _BasePtAccessor:
     ) -> DataFrame:
         return DataFrame(self._obj).concat(*others, how=how, axis=axis, **kwargs)
 
-    def to_clip(self) -> None:
-        import warnings
-        warnings.warn("df.pt.to_clip() is deprecated; use df.pt.to('clip') instead.", DeprecationWarning, stacklevel=2)
-        return DataFrame(self._obj).to("clip")
-
-    def to_pandas(self) -> Any:
-        import warnings
-        warnings.warn("df.pt.to_pandas() is deprecated; use df.pt.to('pandas') instead.", DeprecationWarning, stacklevel=2)
-        return DataFrame(self._obj).to("pandas")
-
-    def to_polars(self) -> Any:
-        import warnings
-        warnings.warn("df.pt.to_polars() is deprecated; use df.pt.to('polars') instead.", DeprecationWarning, stacklevel=2)
-        return DataFrame(self._obj).to("polars")
-
-    def to_pytae(self) -> DataFrame:
-        import warnings
-        warnings.warn("df.pt.to_pytae() is deprecated; use df.pt.to('pytae') instead.", DeprecationWarning, stacklevel=2)
-        return DataFrame(self._obj).to("pytae")
-
     def to(self, target: Any, **kwargs: Any) -> Any:
         return DataFrame(self._obj).to(target, **kwargs)
 
@@ -296,35 +272,14 @@ class _BasePtAccessor:
 class PolarsPtAccessor(_BasePtAccessor):
     """Polars DataFrame and LazyFrame accessor entering Pytae's fluent data manipulation pipeline."""
 
-    def to_polars(self) -> pl.DataFrame | pl.LazyFrame:
-        return self._obj
+    pass
 
 
 @pd.api.extensions.register_dataframe_accessor("pt")
 class PandasPtAccessor(_BasePtAccessor):
     """Pandas DataFrame accessor providing a seamless zero-friction bridge into Pytae's Polars engine."""
 
-    def to_clip(self) -> None:
-        from pytae.cli_run import _copy_df_to_clipboard
-
-        _copy_df_to_clipboard(self._obj, index=False)
-
     def safe_reset_index(self) -> pd.DataFrame:
         from pytae.other_utilities import safe_reset_index
 
         return safe_reset_index(self._obj)
-
-    def to_pandas(self) -> pd.DataFrame:
-        return self._obj
-
-
-def _to_pytae(self: Any) -> DataFrame:
-    return DataFrame(self)
-
-
-if not hasattr(pd.DataFrame, "to_pytae"):
-    pd.DataFrame.to_pytae = _to_pytae
-if not hasattr(pl.DataFrame, "to_pytae"):
-    pl.DataFrame.to_pytae = _to_pytae
-if not hasattr(pl.LazyFrame, "to_pytae"):
-    pl.LazyFrame.to_pytae = _to_pytae

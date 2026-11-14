@@ -11,17 +11,6 @@ import pandas as pd
 from pytae._text import unquote_name as _unquote_name
 
 
-def to_clip(df: pd.DataFrame | pd.Series) -> None:
-    """Copy the DataFrame or Series to the system clipboard (tab-separated, no index, no trailing newline)."""
-    from pytae.cli_run import _copy_df_to_clipboard
-
-    _copy_df_to_clipboard(df, index=False)
-
-
-pd.DataFrame.to_clip = to_clip
-pd.Series.to_clip = to_clip
-
-
 def safe_reset_index(df: pd.DataFrame) -> pd.DataFrame:
     """Reset index, ensuring no index level name collides with existing columns."""
     if isinstance(df.index, pd.RangeIndex) and df.index.name is None:

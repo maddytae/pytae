@@ -30,9 +30,8 @@ Inspection flags let you understand a dataset's layout and content instantly fro
 |---|---|---|
 | `-head [N]` | Print the first N rows (default: 5) | No (returns DataFrame) |
 | `-tail [N]` | Print the last N rows (default: 5) | No (returns DataFrame) |
-| `-sample [N]` | Print N randomly sampled rows (default: 5) | No (returns DataFrame) |
+| `-sample [SPEC]` | Print N rows (default: 5), fraction (`0.05`), or percentage (`5%`) | No (returns DataFrame) |
 | `-seed N` | Random seed for `-sample` reproducibility | Modifier for `-sample` |
-| `-frac P` | Sample a fraction of rows (e.g. `0.1` for 10%) | Modifier for `-sample` |
 | `-freq COL` | Terminal ASCII frequency distribution bar chart | **Yes** (terminal) |
 | `-hist COL[:BINS]` | Terminal ASCII numeric histogram with bin intervals | **Yes** (terminal) |
 | `-shape` | Print `(rows, cols)` tuple | **Yes** (terminal) |
@@ -133,11 +132,12 @@ pytae penguins.parquet -sample 3 -seed 42
 | Chinstrap | Dream    |             45.2 |            17.8 |                 198 |          3950 | Female |
 | Gentoo    | Biscoe   |             46.5 |            13.5 |                 210 |          4550 | Female |
 
-### Sample a percentage (`-frac`)
+### Sample a percentage or fraction (`-sample 1%`, `-sample 0.01`)
 
 ```bash
 # Sample 1% of the dataset and check row count
-pytae penguins.parquet -sample -frac 0.01 -shape
+pytae penguins.parquet -sample 1% -shape
+# or via decimal fraction: pytae penguins.parquet -sample 0.01 -shape
 ```
 
 **Output:**

@@ -22,7 +22,7 @@ Standardize messy column headers (`-clean` / `-clean_columns`), impute missing v
 | Flag | Scope | Delimiter / Syntax | Description |
 |---|---|---|---|
 | `-clean` / `-clean_columns` | Column headers | `,` / `=` | Standardizes headers (strip, squeeze, fill, case, dedupe) |
-| `-fillna` | Cell contents | Scalar or `val=..., cols=...` | Replaces null / NaN with replacement values |
+| `-fillna` | Cell contents | Scalar, `col:val`, or `val, cols` | Replaces null / NaN with replacement values |
 | `-dropna` | Rows | Bare or `col1, col2` | Drops null / NaN rows (Zero Data Loss default) |
 | `-rename` | Column headers | `old:new` | Explicitly renames column names |
 | `-mutate "col = map(...)"` | Cell contents | Dictionary mapping | Vectorized value recoding via Polars engine |
@@ -74,11 +74,12 @@ Replace missing values (`null` and `NaN`) across the dataset or within specific 
 # Impute all numeric missing values with 0
 pytae dataset.parquet -fillna 0 -head 5
 
-# Impute specific columns
-pytae dataset.parquet -fillna "val='Unknown', cols='status, category'" -head 5
+# Impute specific columns using column mappings or value + column list
+pytae dataset.parquet -fillna "status:Unknown, category:Unknown" -head 5
+pytae dataset.parquet -fillna "Unknown, status, category" -head 5
 
 # Only replace Arrow nulls (leave float NaNs intact)
-pytae dataset.parquet -fillna "val=0, nans=false" -head 5
+pytae dataset.parquet -fillna "0, nans=false" -head 5
 ```
 
 ---

@@ -1435,6 +1435,9 @@ _WRITABLE_SUFFIXES = (
     ".dat",
     ".jsonl",
     ".ndjson",
+    ".json",
+    ".xlsx",
+    ".xls",
     ".csv.gz",
     ".txt.gz",
     ".dat.gz",
@@ -1524,6 +1527,12 @@ def write_dataframe(
                     return
                 else:
                     df = df.to_pandas()
+            elif suffix == ".json":
+                df.write_json(dest)
+                return
+            elif suffix in (".xlsx", ".xls"):
+                df.to_pandas().to_excel(dest, index=index if index is not None else False)
+                return
             else:
                 supported = ", ".join(_WRITABLE_SUFFIXES)
                 raise ValueError(f"unsupported output type '{suffix or dest.name}'; supported: {supported}")
@@ -1562,6 +1571,10 @@ def write_dataframe(
         )
     elif suffix in (".jsonl", ".ndjson"):
         _write_jsonl(df, dest, progress=progress, chunk_size=chunk_size, compression=compression)
+    elif suffix == ".json":
+        pl.from_pandas(df).write_json(dest)
+    elif suffix in (".xlsx", ".xls"):
+        df.to_excel(dest, index=index if index is not None else False)
     else:
         supported = ", ".join(_WRITABLE_SUFFIXES)
         raise ValueError(f"unsupported output type '{suffix or dest.name}'; supported: {supported}")
@@ -1946,49 +1959,6 @@ def _read_excel_impl(source: Any, *args: Any, **kwargs: Any) -> Any:
     return DataFrame(pd.read_excel(source, *args, **kwargs))
 
 
-# Deprecated legacy readers / scanners
-def read_csv(source: Any, *args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use universal pt.read() instead."""
-    import warnings
-    warnings.warn("pt.read_csv() is deprecated; use universal pt.read() instead.", DeprecationWarning, stacklevel=2)
-    return _read_csv_impl(_normalize_source(source), *args, **kwargs)
-
-
-def read_parquet(source: Any, *args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use universal pt.read() instead."""
-    import warnings
-    warnings.warn("pt.read_parquet() is deprecated; use universal pt.read() instead.", DeprecationWarning, stacklevel=2)
-    return _read_parquet_impl(_normalize_source(source), *args, **kwargs)
-
-
-def read_ndjson(source: Any, *args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use universal pt.read() instead."""
-    import warnings
-    warnings.warn("pt.read_ndjson() is deprecated; use universal pt.read() instead.", DeprecationWarning, stacklevel=2)
-    return _read_ndjson_impl(_normalize_source(source), *args, **kwargs)
-
-
-def read_json(source: Any, *args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use universal pt.read() instead."""
-    import warnings
-    warnings.warn("pt.read_json() is deprecated; use universal pt.read() instead.", DeprecationWarning, stacklevel=2)
-    return _read_json_impl(_normalize_source(source), *args, **kwargs)
-
-
-def read_ipc(source: Any, *args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use universal pt.read() instead."""
-    import warnings
-    warnings.warn("pt.read_ipc() is deprecated; use universal pt.read() instead.", DeprecationWarning, stacklevel=2)
-    return _read_ipc_impl(_normalize_source(source), *args, **kwargs)
-
-
-def read_excel(source: Any, *args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use universal pt.read() instead."""
-    import warnings
-    warnings.warn("pt.read_excel() is deprecated; use universal pt.read() instead.", DeprecationWarning, stacklevel=2)
-    return _read_excel_impl(_normalize_source(source), *args, **kwargs)
-
-
 def read_database(query: Any, connection: Any = None, *args: Any, **kwargs: Any) -> Any:
     """Read SQL query results or database URI into a pytae.DataFrame (wraps polars.read_database)."""
     from pytae.dataframe import DataFrame
@@ -2000,30 +1970,3 @@ def read_database(query: Any, connection: Any = None, *args: Any, **kwargs: Any)
 
     return DataFrame(pl.read_database(query, connection, *args, **kwargs))
 
-
-def scan_csv(source: Any, *args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use universal pt.scan() instead."""
-    import warnings
-    warnings.warn("pt.scan_csv() is deprecated; use universal pt.scan() instead.", DeprecationWarning, stacklevel=2)
-    return scan(source, *args, format="csv", **kwargs)
-
-
-def scan_parquet(source: Any, *args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use universal pt.scan() instead."""
-    import warnings
-    warnings.warn("pt.scan_parquet() is deprecated; use universal pt.scan() instead.", DeprecationWarning, stacklevel=2)
-    return scan(source, *args, format="parquet", **kwargs)
-
-
-def scan_ndjson(source: Any, *args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use universal pt.scan() instead."""
-    import warnings
-    warnings.warn("pt.scan_ndjson() is deprecated; use universal pt.scan() instead.", DeprecationWarning, stacklevel=2)
-    return scan(source, *args, format="ndjson", **kwargs)
-
-
-def scan_ipc(source: Any, *args: Any, **kwargs: Any) -> Any:
-    """Deprecated: Use universal pt.scan() instead."""
-    import warnings
-    warnings.warn("pt.scan_ipc() is deprecated; use universal pt.scan() instead.", DeprecationWarning, stacklevel=2)
-    return scan(source, *args, format="ipc", **kwargs)

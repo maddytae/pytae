@@ -202,7 +202,7 @@ def test_repl_load_new_file(sample_parquet, tmp_path):
     r = PytaeRepl(path=sample_parquet)
     assert r.current_df.shape == (5, 3)
 
-    r.execute_line(f"load {second_path}", output_fn=outputs.append)
+    r.execute_line(f"second = {second_path}", output_fn=outputs.append)
     assert r.current_df.shape == (2, 2)
     assert "x" in r.current_df.columns
 
@@ -286,10 +286,10 @@ def test_repl_join_tables_and_sql(tmp_path):
     outputs = []
     r = PytaeRepl()
 
-    r.execute_line(f"load {f1} as ord", output_fn=outputs.append)
+    r.execute_line(f"ord = {f1}", output_fn=outputs.append)
     assert "ord" in r.tables
 
-    r.execute_line(f"load {f2} as cust", output_fn=outputs.append)
+    r.execute_line(f"cust = {f2}", output_fn=outputs.append)
     assert "cust" in r.tables
 
     # Direct join between tables: bare join rejected, -join succeeds
@@ -627,11 +627,15 @@ def test_repl_help_and_exit_strictly_enforced():
     assert any("PYTAE CLI KEYWORD HELP: -checkpoint" in o for o in outputs)
     assert any("checkpoint <name>" in o for o in outputs)
 
-    # 1c. '-quick_start' and 'quick_start'
+    # 1c. '-cheatsheet' works, legacy '-quick_start' guides to it
     outputs.clear()
-    cont = r.execute_line("-quick_start", output_fn=outputs.append)
+    cont = r.execute_line("-cheatsheet", output_fn=outputs.append)
     assert cont is True
-    assert any("PYTAE CLI CHEAT SHEET & COOKBOOK" in o for o in outputs)
+    assert any("PYTAE CLI CHEAT SHEET" in o for o in outputs)
+
+    outputs.clear()
+    r.execute_line("-quick_start", output_fn=outputs.append)
+    assert "use '-cheatsheet'" in outputs[-1]
 
     # 2. '?' is rejected and guides to 'help'
     outputs.clear()
@@ -856,9 +860,9 @@ def test_repl_reader_options_on_assignment_and_load(tmp_path):
     assert "df2" in r.tables
     assert r.tables["df2"].shape == (2, 2)
 
-    # 3. load command with options
+    # 3. assignment with options
     outputs.clear()
-    r.execute_line(f'load {csv_file} as df3 -dlim ";" -nrows 1', output_fn=outputs.append)
+    r.execute_line(f'df3 = {csv_file} -dlim ";" -nrows 1', output_fn=outputs.append)
     assert "df3" in r.tables
     assert r.tables["df3"].shape == (1, 2)
 
@@ -956,11 +960,12 @@ def test_repl_rm_checkpoint(sample_df):
     assert "cp2" in r.checkpoints
     assert "Removed checkpoint 'cp1'." in outputs[-1]
 
-    # checkpoint rm cp2
+    # checkpoint rm cp2 is rejected with guidance
     outputs.clear()
     r.execute_line("checkpoint rm cp2", output_fn=outputs.append)
+    assert "use 'rm checkpoint <name>'" in outputs[-1]
+    r.execute_line("rm checkpoint cp2", output_fn=outputs.append)
     assert "cp2" not in r.checkpoints
-    assert "Removed checkpoint 'cp2'." in outputs[-1]
 
     # rm checkpoint * and rejection of rm checkpoints / -all / all
     r.execute_line("checkpoint a", output_fn=outputs.append)
@@ -987,16 +992,10 @@ def test_repl_rm_checkpoint(sample_df):
 
     outputs.clear()
     r.execute_line("checkpoint rm -all", output_fn=outputs.append)
-    assert "use 'rm checkpoint *'" in outputs[-1]
+    assert "use 'rm checkpoint <name>'" in outputs[-1]
     assert len(r.checkpoints) == 2
 
     r.execute_line("rm checkpoint *", output_fn=outputs.append)
-    assert len(r.checkpoints) == 0
-
-    # Also verify checkpoint rm * works
-    r.execute_line("checkpoint c", output_fn=outputs.append)
-    assert len(r.checkpoints) == 1
-    r.execute_line("checkpoint rm *", output_fn=outputs.append)
     assert len(r.checkpoints) == 0
 
 
@@ -1795,7 +1794,7 @@ def test_repl_rm_clears_all_internal_references_and_gc_command():
     r.execute_line("status session", output_fn=outputs.append)
     sess_text = "\n".join(outputs)
     assert "=== REPL Session Status ===" in sess_text
-    assert "'status session' is deprecated" in sess_text
+    assert "deprecated" not in sess_text
 
     r.close()
 
@@ -2002,11 +2001,11 @@ def test_repl_time_bare_table_switch(sample_df):
     assert r.path_str == "df1"
     assert "Switched active dataset to 'df1'" in outputs[0]
 
-    # Deprecated 'use df2' is rejected and points to 'switch <name>'
+    # 'use df2' is not recognized and points to 'switch'
     outputs.clear()
     r.execute_line("use df2", output_fn=outputs.append)
     assert r.path_str == "df1"
-    assert "'use' is deprecated and has been removed; use 'switch <name>' instead." in outputs[0]
+    assert "use 'switch" in outputs[0]
 
     r.close()
 
@@ -2106,7 +2105,7 @@ def test_repl_load_error_prints_once(tmp_path):
 
     r = PytaeRepl()
     outputs = []
-    r.execute_line(f"load {bad_file}", output_fn=outputs.append)
+    r.execute_line(f"df = {bad_file}", output_fn=outputs.append)
     assert len(outputs) == 1
     assert "failed to load" in outputs[0]
     r.close()
@@ -3327,13 +3326,12 @@ def test_repl_status_subcommands_and_verbose():
     assert "Active Table  : (none)" in st_none
     assert "Loaded Tables : 0 tables loaded" in st_none
 
-    # 1b. status session works as deprecated alias
+    # 1b. status session shows session status
     outputs.clear()
     r.execute_line("status session", output_fn=outputs.append)
     st_sess_none = "\n".join(outputs)
     assert "=== REPL Session Status ===" in st_sess_none
     assert "Active Table  : (none)" in st_sess_none
-    assert "'status session' is deprecated" in st_sess_none
 
     # 2. Load two tables
     r.execute_line("df1 = sample:penguins", output_fn=outputs.append)
@@ -3362,12 +3360,11 @@ def test_repl_status_subcommands_and_verbose():
     assert "cp1" in st_v
     assert "Settings      :" in st_v
 
-    # 3b. status session works as deprecated alias
+    # 3b. status session displays status
     outputs.clear()
     r.execute_line("status session", output_fn=outputs.append)
     st_sess_alias = "\n".join(outputs)
     assert "=== REPL Session Status ===" in st_sess_alias
-    assert "'status session' is deprecated" in st_sess_alias
     assert "=== REPL Session Status ===" in st_v
     assert "Loaded Tables : 2 tables" in st_v
     assert "df1" in st_v
@@ -3947,9 +3944,9 @@ def test_export_script_pt_and_py_e2e(tmp_path, monkeypatch):
     # Mutating Python block
     py_block = (
         "py {\n"
-        "df = peng.to_pandas()\n"
+        "df = peng.to('pandas')\n"
         "df['mass_kg'] = df['body_mass_g'] / 1000.0\n"
-        "peng = df.to_pytae()\n"
+        "peng = pt(df)\n"
         "}"
     )
     r.execute_line(py_block, output_fn=outputs.append)

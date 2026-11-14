@@ -208,7 +208,7 @@ pytae penguins.parquet -select "dtype=numeric" -head 3
 
 ```bash
 # Select numeric columns, then subtract bill_depth_mm
-pytae penguins.parquet -select "dtype=numeric" -select "-bill_depth_mm" -head 3
+pytae penguins.parquet -select "dtype=numeric" -select "!bill_depth_mm" -head 3
 ```
 
 **Output:**

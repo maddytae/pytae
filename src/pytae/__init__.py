@@ -22,18 +22,8 @@ from pytae.dataframe import DataFrame, GroupedDataFrame
 from pytae.other_utilities import format_glimpse
 from pytae.readers import (
     read,
-    read_csv,
     read_database,
-    read_excel,
-    read_ipc,
-    read_json,
-    read_ndjson,
-    read_parquet,
     scan,
-    scan_csv,
-    scan_ipc,
-    scan_ndjson,
-    scan_parquet,
     to,
     write,
 )
@@ -195,12 +185,6 @@ def tail(df: Any, n: int | str | None = None, *, prop: float | None = None, with
     if isinstance(df, GroupedDataFrame):
         return df.tail(n=n, prop=prop, with_ties=with_ties)
     return DataFrame(df).tail(n=n, prop=prop, with_ties=with_ties)
-
-
-def pick(*args: Any, **kwargs: Any) -> Any:
-    raise AttributeError(
-        "pt.pick() has been removed; use df.arrange(...).head(n) instead (or df.by(...).arrange(...).head(n) for grouped slicing)."
-    )
 
 
 def distinct(df: Any, *cols: Any, keep: str = "first") -> DataFrame:
@@ -422,7 +406,23 @@ def diff(
     on: str | Sequence[str] | None = None,
 ) -> str:
     """Compare schema and contents between two datasets with optional key alignment and numeric tolerance."""
-    return DataFrame(left).diff(right, on=on, tol=tol, rtol=rtol)
+    from pathlib import Path
+
+    left_name = "<left>"
+    if isinstance(left, (str, Path)):
+        from pytae.readers import read
+
+        left_path = Path(left)
+        left_name = left_path.name
+        left_df = read(left_path)
+    elif isinstance(left, DataFrame):
+        left_df = left
+    else:
+        left_df = DataFrame(left)
+
+    from pytae.cli_run import _compute_diff
+
+    return _compute_diff(left_df._to_pandas_internal(), right, left_name, on=on, tol=tol, rtol=rtol)
 
 
 def concat(
@@ -435,26 +435,6 @@ def concat(
 
     res = concat_polars(items, how=how, axis=axis, **kwargs)
     return DataFrame(res)
-
-
-def slice_max(*args: Any, **kwargs: Any) -> None:
-    raise AttributeError(
-        "pt.slice_max() has been removed; use df.arrange(...).head(n) instead "
-        "(or df.by(...).arrange(...).head(n) for grouped slicing)."
-    )
-
-
-def slice_min(*args: Any, **kwargs: Any) -> None:
-    raise AttributeError(
-        "pt.slice_min() has been removed; use df.arrange(...).tail(n) instead "
-        "(or df.by(...).arrange(...).tail(n) for grouped slicing)."
-    )
-
-
-def lit(*args: Any, **kwargs: Any) -> None:
-    raise AttributeError(
-        "pt.lit() has been removed; pass quoted string literals directly (e.g. status=\"'active'\") instead"
-    )
 
 
 def doc(query: str = "", limit: int = 3) -> None:
@@ -520,17 +500,7 @@ __all__ = [
     "scan",
     "to",
     "write",
-    "read_parquet",
-    "read_csv",
-    "read_ndjson",
-    "read_json",
-    "read_ipc",
-    "read_excel",
     "read_database",
-    "scan_parquet",
-    "scan_csv",
-    "scan_ndjson",
-    "scan_ipc",
     "sample_data",
     "sample",
     "select",

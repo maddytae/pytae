@@ -138,6 +138,7 @@ pytae> orders_lazy = scan sqlite://app.db:orders
 Scanned app.db:orders as 'orders_lazy' (lazy, 5 cols).
 ```
 
+<a id="windows--git-bash-path-formats-cusers-c"></a>
 ### Windows, UNC & Git Bash Path Formats (`/c/Users/...`, `//c/...`, `\\server\share\...`)
 
 On Windows, Git Bash (MSYS2), and WSL environments, path conventions often vary. Pytae seamlessly normalizes Git Bash drive mounts (`/c/path/file.parquet` and `//c/path/file.parquet`), WSL mounts (`/mnt/c/...`), Cygwin mounts (`/cygdrive/c/...`), and UNC network shares directly into valid Windows filesystem paths (`C:/path/file.parquet`), whether passed bare or quoted:
@@ -177,6 +178,7 @@ Loaded deals.parquet as 'network_deals' (85,000 rows x 12 cols).
 
 If a path does not exist on disk, Pytae reports a clean diagnostic rather than inadvertently declaring a string session variable.
 
+<a id="bundled-sample-datasets-samplename"></a>
 ### Bundled Sample Datasets (`sample:<name>`)
 
 Instantly load bundled demo datasets using the explicit `sample:` prefix:
@@ -234,6 +236,7 @@ pytae [orders, cust]> cust
 cust: 15,000 rows x 5 cols (tip: 'switch cust' to switch active dataset)
 ```
 
+<a id="switching-the-active-table-cursor-switch-name"></a>
 ### Switching the Active Table Cursor (`switch <name>`)
 
 Switch the active cursor to another table using `switch <name>`:
@@ -247,6 +250,7 @@ pytae [cust: 15,000x5]>
 > [!NOTE]
 > The legacy command `use <name>` has been deprecated and removed in favor of `switch <name>`.
 
+<a id="zero-copy-table-renaming-rename-old-new"></a>
 ### Zero-Copy Table Renaming (`rename <old> <new>`)
 
 Rename an in-memory dataset via instant $O(1)$ zero-copy pointer reassignment:
@@ -259,6 +263,7 @@ pytae [customers, orders]>
 
 All references in the workbench and cursor tracking update instantaneously without copying underlying Arrow memory buffers.
 
+<a id="subject-first-execution-tbl--verb"></a>
 ### Subject-First Execution (`<tbl> -<verb>`)
 
 Execute commands directly on non-active tables without switching cursors:
@@ -274,6 +279,7 @@ pytae [orders, cust]> cust -filter "country == 'US'"
 -> cust: 9,200 rows x 5 cols
 ```
 
+<a id="removing-tables--os-memory-trimming-rm-table-name"></a>
 ### Removing Tables & OS Memory Trimming (`rm table <name>`)
 
 Purge tables from memory when they are no longer needed:

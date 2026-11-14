@@ -41,7 +41,7 @@ def sample_parquet(tmp_path: Path) -> Path:
 
 
 def test_scan_csv(sample_csv: Path):
-    df = pt.scan_csv(sample_csv)
+    df = pt.scan(sample_csv)
     assert df.is_lazy
     assert "id" in df.columns
     assert "score" in df.columns
@@ -69,7 +69,7 @@ def test_scan_csv(sample_csv: Path):
 
 
 def test_scan_parquet(sample_parquet: Path):
-    df = pt.scan_parquet(sample_parquet)
+    df = pt.scan(sample_parquet)
     assert df.is_lazy
     assert df.columns == ["id", "category", "val1", "val2"]
     assert df.shape == (5, 4)
@@ -88,7 +88,7 @@ def test_scan_parquet(sample_parquet: Path):
 
 
 def test_lazy_explain(sample_parquet: Path):
-    df = pt.scan_parquet(sample_parquet).filter("val1 > 20").select("id", "category")
+    df = pt.scan(sample_parquet).filter("val1 > 20").select("id", "category")
     assert df.is_lazy
     explanation = df.explain()
     assert isinstance(explanation, str)
@@ -109,7 +109,7 @@ def test_lazy_conversion():
 
 
 def test_lazy_verbs(sample_parquet: Path):
-    df = pt.scan_parquet(sample_parquet)
+    df = pt.scan(sample_parquet)
 
     # distinct
     d = df.distinct("category")
@@ -142,7 +142,7 @@ def test_lazy_verbs(sample_parquet: Path):
 
 
 def test_lazy_grouped_operations(sample_parquet: Path):
-    df = pt.scan_parquet(sample_parquet)
+    df = pt.scan(sample_parquet)
 
     # Grouped mutate on LazyFrame
     g_mut = df.by("category").mutate(mean_val1="mean(val1)")
@@ -160,16 +160,16 @@ def test_lazy_grouped_operations(sample_parquet: Path):
 
 
 def test_lazy_sinking(tmp_path: Path, sample_parquet: Path):
-    df = pt.scan_parquet(sample_parquet).filter("val1 >= 30")
+    df = pt.scan(sample_parquet).filter("val1 >= 30")
     assert df.is_lazy
 
     out_pq = tmp_path / "output.parquet"
-    df.to_parquet(out_pq)
+    df.to(out_pq)
     assert out_pq.exists()
     assert len(pl.read_parquet(out_pq)) == 3
 
     out_csv = tmp_path / "output.csv"
-    df.to_csv(out_csv)
+    df.to(out_csv)
     assert out_csv.exists()
     assert len(pl.read_csv(out_csv)) == 3
 
@@ -212,14 +212,12 @@ def test_read_and_scan_universal_and_legacy_deprecation(tmp_path):
     lazy = pt.scan(p)
     assert lazy.collect()["x"].to_list() == [1, 2, 3]
 
-    # Legacy readers emit deprecation warnings
-    with pytest.deprecated_call():
-        df_leg = pt.read_parquet(p)
-    assert df_leg["x"].to_list() == [1, 2, 3]
+    # Legacy readers have been hard-removed
+    with pytest.raises(AttributeError):
+        pt.read_parquet(p)
 
-    with pytest.deprecated_call():
-        lazy_leg = pt.scan_parquet(p)
-    assert lazy_leg.collect()["x"].to_list() == [1, 2, 3]
+    with pytest.raises(AttributeError):
+        pt.scan_parquet(p)
 
 
 def test_lazy_fillna():

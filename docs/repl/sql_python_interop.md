@@ -2,7 +2,7 @@
 
 [← Back to REPL Hub](README.md) | [Master Reference](../pytae.md)
 
-This guide covers ANSI SQL querying across loaded tables, embedded Python execution (`py <expr>`), the **Ephemeral Python Sandboxing architecture**, and explicit `.to_pytae()` table registration in the Pytae interactive REPL (`pytae -i`).
+This guide covers ANSI SQL querying across loaded tables, embedded Python execution (`py <expr>`), the **Ephemeral Python Sandboxing architecture**, and explicit table registration in the Pytae interactive REPL (`pytae -i`).
 
 ---
 
@@ -22,13 +22,14 @@ This guide covers ANSI SQL querying across loaded tables, embedded Python execut
 - [Ephemeral Python Sandboxing & RAM Isolation](#ephemeral-python-sandboxing--ram-isolation)
   - [The Design Philosophy: Ephemeral Data vs. Persistent Logic](#the-design-philosophy-ephemeral-data-vs-persistent-logic)
   - [Immediate Garbage Collection & Memory Zeroing](#immediate-garbage-collection--memory-zeroing)
-  - [Explicit `.to_pytae()` Table Registration](#explicit-to_pytae-table-registration)
+  - [Explicit Table Registration](#explicit-table-registration)
   - [Rejection of Bare `.pt` Accessor Proxies](#rejection-of-bare-pt-accessor-proxies)
   - [In-Place Active Table Mutation](#in-place-active-table-mutation)
 - [Comprehensive Real-World Walkthrough](#comprehensive-real-world-walkthrough)
 
 ---
 
+<a id="ansi-sql-across-tables-sql----"></a>
 ## ANSI SQL across Tables (`sql { ... }`)
 
 Pytae embeds a native Polars `SQLContext` directly into the REPL, allowing you to run standard ANSI SQL queries across all loaded tables without copying data into an external database engine like SQLite or DuckDB.
@@ -52,6 +53,7 @@ shape: (4, 3)
 └───────────┴───────┴────────────┘
 ```
 
+<a id="non-destructive-preview-vs-assignment-res--sql----"></a>
 ### Non-Destructive Preview vs. Assignment (`res = sql { ... }`)
 
 - **Bare `sql { ... }`**: Executes the query non-destructively and prints a formatted table preview (like `-head`). Your active table in RAM remains untouched.
@@ -93,6 +95,7 @@ Created 'summary' from SQL query (18 rows x 3 cols).
 
 ---
 
+<a id="python-execution-py----"></a>
 ## Python Execution (`py { ... }`)
 
 The REPL allows direct execution of arbitrary Python code when complex procedural logic, regex algorithms, or scientific libraries (`scipy`, `sklearn`, `numpy`) are required. All Python execution is enclosed in `{ ... }`.
@@ -111,6 +114,7 @@ pytae> py { import math; [math.factorial(x) for x in range(1, 6)] }
 [1, 2, 6, 24, 120]
 ```
 
+<a id="multi-line-py-----block-mode"></a>
 ### Multi-Line `py { ... }` Block Mode
 
 Open multi-line block mode with `py {`. The prompt changes to `... `, providing automatic indentation (+4 spaces on `:`). Arbitrary blank lines are permitted within the block without triggering early execution. Type `}` on a newline to complete and run:
@@ -278,7 +282,7 @@ Pytae balances **interactive convenience** with **strict memory hygiene** throug
    - `gc.collect()` is explicitly executed.
    - Kernel page trimming (`libc.malloc_trim(0)` on Linux, `mach_task` on macOS, `K32EmptyWorkingSet` on Windows) is triggered after every block to return resident heap pages back to the operating system.
 3. **Explicit Workbench Tables**:
-   - Only tables explicitly registered via `.to_pytae()`, assigned directly from a Pytae `DataFrame` (e.g. `k = df.head(10)`), or assigned back to active `df` are promoted into the Pytae table registry and preserved in exported `.pt`/`.py` scripts.
+   - Only tables assigned directly from a Pytae `DataFrame` (e.g. `orders_log = pt.DataFrame(df)` or `k = df.head(10)`), or assigned back to active `df` are promoted into the Pytae table registry and preserved in exported `.pt`/`.py` scripts.
 
 ### Immediate Garbage Collection & Memory Zeroing
 
@@ -292,21 +296,21 @@ Pytae balances **interactive convenience** with **strict memory hygiene** throug
 │ 4. PRESERVE LOGIC │ Modules, custom functions, and classes saved into session env.     │
 │ 5. RAM FLUSH      │ Scratch data & arrays destroyed. gc.collect() invoked.             │
 │ 6. OS PAGE TRIM   │ OS kernel frees virtual memory pages. Process RSS resets to 0 MB.  │
-│ 7. EXPLICIT HANDOFF│ ONLY tables explicitly registered via .to_pytae() persist in REPL.│
+│ 7. EXPLICIT HANDOFF│ ONLY tables assigned as Pytae DataFrames persist in REPL.          │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Explicit `.to_pytae()` Table Registration
+### Explicit Table Registration
 
-To promote a Python DataFrame into the active Pytae workbench, you **must explicitly call `.to_pytae('<table_name>')`**:
+To promote a Python DataFrame into the active Pytae workbench, assign it directly as a `pt.DataFrame`:
 
 ```text
 pytae [orders]> py {
 ... # Heavy computation inside Python
-... df = orders.to_polars()
-... df = df.with_columns(log_amount = pl.col("amount").log())
+... pldf = orders.to("polars")
+... pldf = pldf.with_columns(log_amount = pl.col("amount").log())
 ... # Register back to Pytae:
-... pt.DataFrame(df).to_pytae("orders_log")
+... orders_log = pt.DataFrame(pldf)
 ... }
 Registered table 'orders_log' in Pytae workbench.
 
@@ -316,7 +320,7 @@ pytae [orders, orders_log]>
 ### Rejection of Bare `.pt` Accessor Proxies
 
 To prevent memory leaks and ambiguous pointer references across the C-Python boundary:
-- Tables inside the `py` block must be explicitly converted using `.to_pytae()`.
+- Tables inside the `py` block must be explicitly converted using `pt.DataFrame(...)` or `df.to("pytae")`.
 - Unassigned or bare Python variables (`x = 100`) do not persist in Pytae's `@variable` registry.
 - Tables cannot be accidentally overwritten without an explicit assignment or registration.
 
@@ -326,8 +330,7 @@ If you wish to mutate the currently active table using Python logic:
 
 ```text
 pytae [orders: 100,000x6]> py {
-... clean_orders = orders.filter("amount > 0").arrange("amount desc")
-... clean_orders.to_pytae("orders")
+... df = orders.filter("amount > 0").arrange("amount desc")
 ... }
 Updated active table 'orders' (98,420 rows x 6 cols).
 ```

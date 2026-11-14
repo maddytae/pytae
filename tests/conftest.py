@@ -34,7 +34,7 @@ def sample_parquet(tmp_path):
 
     def _write(name: str) -> str:
         path = tmp_path / f"{name}.parquet"
-        pytae.sample_data[name].to_parquet(path)
+        pytae.sample_data[name].to(path)
         return str(path)
 
     return _write

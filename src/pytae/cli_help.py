@@ -359,22 +359,6 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         see_also=["-dlim", "-encoding", "-fmt"],
     ),
-    "file": KeywordHelp(
-        name="file",
-        flag="-file (Deprecated)",
-        syntax="pytae alias1=path1 alias2=path2 [operation]",
-        summary="[Deprecated] Multi-file inputs are now declared purely positionally as alias=source.",
-        description=(
-            "The -file flag has been retired and removed. Multi-dataset pipelines are now declared "
-            "directly using natural positional inputs: pytae o=orders.parquet c=customers.csv -join \"on=cust_id\"."
-        ),
-        options=[],
-        examples=[
-            'pytae o=orders.parquet c=cust.csv -join "on=cust_id"',
-            "pytae q1=jan.parquet q2=feb.parquet -concat",
-        ],
-        see_also=["-join", "-concat", "-sql", "-opts"],
-    ),
     "join": KeywordHelp(
         name="join",
         flag="-join KEY=VALUE,...",
@@ -776,14 +760,20 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         flag="-dropna [COLS]",
         syntax='pytae <path> -dropna ["col1,col2"]',
         summary="Drop rows containing missing (NaN) values.",
-        description="Bare -dropna drops rows with any missing value; -dropna 'col1,col2' checks only specified columns.",
+        description=(
+            "Zero-Data-Loss safety default: Bare -dropna defaults to how='all' (drops only 100% blank rows);\n"
+            "-dropna 'col1,col2' drops rows missing any specified column; -dropna how=any drops rows with any missing value."
+        ),
         options=[
-            "Bare flag : Drop row if ANY column contains NaN.",
-            '"col1,col2" : Drop row if specified columns contain NaN.',
+            "Bare flag : Drop row only if ALL columns contain NaN/null (how='all', Zero Data Loss default).",
+            '"col1,col2" : Drop row if specified columns contain NaN/null (how=\'any\').',
+            "how=any : Drop row if ANY column contains NaN/null.",
+            "drop_nans=false : Drop only Arrow nulls, preserving float IEEE-754 NaNs.",
         ],
         examples=[
             "pytae penguins.parquet -dropna",
             'pytae penguins.parquet -dropna "sex, body_mass_g"',
+            "pytae penguins.parquet -dropna how=any",
         ],
         see_also=["-fillna", "-nulls"],
     ),
@@ -864,8 +854,8 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         name="pretty",
         flag="-pretty",
         syntax="pytae <path> [operations] -pretty",
-        summary="[Deprecated] Table formatting is automatically detected.",
-        description="Deprecated. Table formatting is now automatically detected: boxed UTF-8 tables for interactive terminals and clean unbordered bare tables when piped or redirected.",
+        summary="Force boxed UTF-8 table rendering regardless of output target.",
+        description="Renders output using boxed UTF-8 borders, even when piped or redirected.",
         options=[],
         examples=[
             "pytae penguins.parquet -head 5",
@@ -1039,7 +1029,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "status : Show active table shape, columns, and memory usage.",
             "checkpoint <name> : Freeze and save current state with a name.",
             "restore <name> : Restore table to a saved checkpoint.",
-            "<var> = <path> : Load a new dataset (or glob pattern) into named table (replaces deprecated 'load').",
+            "<var> = <path> : Load a new dataset (or glob pattern) into named table.",
             "-o <path> : Save active table to Parquet/CSV/Feather or clipboard (-o clip).",
             "sql { <query> } : Non-destructive ANSI SQL preview across loaded tables (or `<var> = sql { ... }`).",
             "py { <expr> } : Evaluate arbitrary Python expressions on `df` / `pldf`.",
@@ -1327,15 +1317,13 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "- Bare 'status' or 'status -v': Displays unified session overview (active table, loaded tables, vars, checkpoints, RAM).\n"
             "- 'status table [name] [-v]': Displays active table schema or inventory of all in-memory tables and memory footprint.\n"
             "- 'status checkpoint [name] [-v]': Displays snapshot metadata, storage formats, disk bytes, or list of all saved checkpoints.\n"
-            "- 'status var [name] [-v]': Displays session variables, parameters, constants, and JSON breakdown.\n"
-            "- (Note: 'status session' is deprecated in favor of bare 'status')."
+            "- 'status var [name] [-v]': Displays session variables, parameters, constants, and JSON breakdown."
         ),
         options=[
             "status [-v] : Unified workbench overview: active dataset, loaded tables, checkpoints, and RAM footprint.",
             "status table [name] [-v] : Diagnostics, schema, and inventory of loaded tables.",
             "status checkpoint [name] [-v] : Checkpoint history, format breakdown, and snapshot details.",
             "status var [name] [-v] : Session variables inventory and value inspection.",
-            "status session [-v] : Deprecated; use bare 'status'.",
         ],
         examples=[
             "pytae -i  # Inside REPL: status",
@@ -1447,8 +1435,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         summary="Switch the active in-memory table cursor.",
         description=(
             "Switches the active default table without reloading files.\n"
-            "All subsequent verb commands (-filter, -head, -select, etc.) execute on this table.\n"
-            "(Note: Legacy 'use <table_name>' is deprecated in favor of 'switch <table_name>')."
+            "All subsequent verb commands (-filter, -head, -select, etc.) execute on this table."
         ),
         options=[
             "<table_name> : Name of an existing loaded table.",
@@ -1459,31 +1446,14 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         see_also=["status", "load", "tables"],
     ),
-    "use": KeywordHelp(
-        name="use",
-        flag="use <table_name>",
-        syntax="use <table_name>",
-        summary="Switch the active in-memory table cursor (Deprecated and removed; use 'switch').",
-        description=(
-            "Deprecated and removed command for switching active dataset cursor.\n"
-            "Use 'switch <table_name>' instead."
-        ),
-        options=[
-            "<table_name> : Name of an existing loaded table.",
-        ],
-        examples=[
-            "pytae -i  # Inside REPL: switch df2",
-        ],
-        see_also=["switch", "status", "load"],
-    ),
     "load": KeywordHelp(
         name="load",
-        flag="<var> = <path> [options] | load <path> [as <alias>] [options]",
+        flag="<var> = <path> [options]",
         syntax="<var> = <path> [-encoding <enc>] [-dlim <char>] [-nrows <N>]",
-        summary="Load a dataset file into memory as a named table (replaces deprecated 'load').",
+        summary="Load a dataset file into memory as a named table.",
         description=(
             "Loads a Parquet, CSV, IPC/Feather, or Excel dataset into the workbench.\n"
-            "Use direct variable assignment: `<alias> = <path>` ('load' syntax is deprecated)."
+            "Use direct variable assignment: `<alias> = <path>`."
         ),
         options=[
             "-encoding <enc> : File text encoding (e.g. latin1, utf-8).",

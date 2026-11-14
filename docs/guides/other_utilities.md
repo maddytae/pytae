@@ -21,7 +21,7 @@ Essential utilities, convenience flags, inspection shortcuts, cleaning helpers, 
   - [Dropping Missing Values (`-dropna`)](#dropping-missing-values--dropna)
   - [Renaming Columns (`-rename`)](#renaming-columns--rename)
 - [Multi-File Pipelines & Operations](#multi-file-pipelines--operations)
-  - [Named Inputs (`-file`)](#named-inputs--file)
+  - [Named Positional Inputs (`alias=path`)](#named-positional-inputs-aliaspath)
   - [Multi-File Joins (`-join`)](#multi-file-joins--join)
   - [Row Stacking (`-concat`)](#row-stacking--concat)
 - [Input / Output & Pipeline Modifiers](#input--output--pipeline-modifiers)
@@ -43,9 +43,8 @@ Essential utilities, convenience flags, inspection shortcuts, cleaning helpers, 
 |---|---|---|---|
 | `-head [N]` | Inspection | Integer (default: `5`) | Displays first N rows |
 | `-tail [N]` | Inspection | Integer (default: `5`) | Displays last N rows |
-| `-sample [N]` | Inspection | Integer (default: `5`) | Displays N randomly sampled rows |
+| `-sample [SPEC]` | Inspection | Integer, fraction, or percentage | Displays randomly sampled rows (`10`, `0.05`, or `5%`) |
 | `-seed N` | Inspection | Integer | Random seed for `-sample` reproducibility |
-| `-frac P` | Inspection | Float `0 < P <= 1` | Sample fraction of rows instead of count |
 | `-shape` | Inspection | Terminal flag | Prints dataset dimensions `(rows, cols)` |
 | `-cols [ORDER]` | Inspection | Optional `asc` or `desc` | Prints column names (file order, or sorted) |
 | `-dtype [ORDER]` | Inspection | Optional `asc` or `desc` | Prints column data types |
@@ -92,9 +91,9 @@ pytae transactions.parquet -meta
 pytae penguins.parquet -head 3
 pytae penguins.parquet -tail 3
 
-# Reproducible random sampling
+# Reproducible random sampling (counts, fractions, or percentages)
 pytae penguins.parquet -sample 5 -seed 42
-pytae penguins.parquet -sample -frac 0.05 -seed 42
+pytae penguins.parquet -sample 5% -seed 42
 
 # Dimensions, schema, and statistical summaries
 pytae penguins.parquet -shape
@@ -147,17 +146,21 @@ Imputes missing values (`null` and `NaN`) across all columns or specific targets
 # Impute all numeric missing values with 0
 pytae penguins.parquet -fillna 0 -head 5
 
-# Impute specific columns with replacement value
-pytae penguins.parquet -fillna "val='Unknown', cols='sex'" -head 5
+# Impute specific columns with replacement value ("col:val" or "val, col")
+pytae penguins.parquet -fillna "Unknown, sex" -head 5
+pytae penguins.parquet -fillna "sex:Unknown" -head 5
 ```
 
 ### Dropping Missing Values (`-dropna`)
 ```bash
-# Drop rows with ANY missing value across all columns
-pytae penguins.parquet -dropna
+# Bare flag defaults to how='all' (Zero Data Loss: keeps partially populated rows)
+pytae penguins.parquet -dropna -shape
 
 # Drop rows missing specific column values
-pytae penguins.parquet -dropna "sex,body_mass_g"
+pytae penguins.parquet -dropna "sex,body_mass_g" -shape
+
+# Explicit how=any drops rows with any missing value
+pytae penguins.parquet -dropna how=any -shape
 ```
 
 ### Renaming Columns (`-rename`)

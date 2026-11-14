@@ -138,7 +138,7 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 | **Multithreading** | Single-threaded; blocked by Python GIL | Automatically parallelized across all CPU cores |
 | **Vectorization** | Limited NumPy SIMD | Full AVX-512 / AVX2 / NEON vector pipelines |
 | **Memory Model** | High overhead (object pointers, frequent copies) | Minimal overhead (Arrow chunked memory, string cache) |
-| **Lazy Execution** | No native query optimizer | `pt.scan_parquet()` query planning & pushdowns |
+| **Lazy Execution** | No native query optimizer | `pt.scan()` query planning & pushdowns |
 
 ### Reproducible Speed Benchmarks (5,000,000 Rows)
 *Environment: Apple Silicon M-series (macOS), Python 3.13, 5,000,000 rows across 5 columns (categorical strings, float measurements, integer weights).*
@@ -153,7 +153,7 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 
 ### Why Pytae Outperforms Pandas
 1. **True Multithreading without GIL**: While Pandas processes row loops and `apply()` sequentially on a single core, Pytae chunks operations across all hardware threads without locking.
-2. **Predicate & Projection Pushdown**: In `pt.scan_parquet()`, Pytae reads only the requested columns and filters rows directly inside the Parquet storage reader before materializing buffers into memory.
+2. **Predicate & Projection Pushdown**: In `pt.scan()`, Pytae reads only the requested columns and filters rows directly inside the Parquet storage reader before materializing buffers into memory.
 3. **Zero Intermediate Memory Duplication**: Pandas frequently requires `.copy()` to avoid `SettingWithCopyWarning`, multiplying memory footprint. Pytae utilizes copy-on-write and Arrow buffer slicing.
 
 > [!TIP]
@@ -256,7 +256,7 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 | **Categorical Frequency**| `df['col'].value_counts(dropna=False)` | `df.freq("col")` *(With ASCII bars)* | `-freq col` |
 | **Histogram Bins** | `pd.cut(df['x'], 10).value_counts()` | `df.hist("x", bins=10)` *(With ASCII bars)*| `-hist x:10` |
 | **Dataset Comparison** | `df1.compare(df2)` *(Fails on misaligned index)*| `df1.diff(df2, tol=0.01)` | `pytae f1.parquet -diff f2.parquet,tol=0.01` |
-| **Clipboard Export** | `df.to_clipboard(index=False)` | `df.to_clip()` | `-o clip` |
+| **Clipboard Export** | `df.to_clipboard(index=False)` | `df.to("clip")` | `-o clip` |
 
 ### 11. Missing Data Architecture & Cleaning (`dropna`, `fillna`, `clean_columns`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |

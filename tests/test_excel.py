@@ -51,14 +51,14 @@ def multi_sheet_excel(tmp_path):
 
 
 def test_python_api_read_excel(multi_sheet_excel):
-    # Test pytae.read_excel wrapper
-    df = pt.read_excel(multi_sheet_excel, sheet_name="Jan")
+    # Test pytae.read with Excel files
+    df = pt.read(multi_sheet_excel, sheet_name="Jan")
     assert isinstance(df, pt.DataFrame)
     assert df.shape == (3, 3)
     assert list(df.columns) == ["id", "product", "sales"]
 
     # Test kwargs forwarding: skiprows
-    df_custom = pt.read_excel(multi_sheet_excel, sheet_name="CustomNotes", skiprows=2, header=0)
+    df_custom = pt.read(multi_sheet_excel, sheet_name="CustomNotes", skiprows=2, header=0)
     assert df_custom.shape == (2, 3)
     assert list(df_custom.columns) == ["id", "code", "amount"]
 
@@ -114,7 +114,7 @@ def test_cli_opt_singular_rejected(multi_sheet_excel, capsys):
         cli.main([target, "-opt", "skiprows=1"])
     assert exc_info.value.code == 2
     err = capsys.readouterr().err
-    assert "'-opt' is not recognized; use '-opts' instead" in err
+    assert "unrecognized arguments" in err or "not recognized" in err
 
 
 def test_cli_excel_concat_multiple_sheets(multi_sheet_excel, capsys):

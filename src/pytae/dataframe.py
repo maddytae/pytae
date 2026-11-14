@@ -129,7 +129,7 @@ class _LocIndexer:
             item = (rows, *item[1:])
         elif isinstance(item, pl.Series):
             item = item.to_pandas()
-        return self._df.to_pandas().loc[item]
+        return self._df._to_pandas_internal().loc[item]
 
 
 if not hasattr(pl.Series, "iloc"):
@@ -155,6 +155,21 @@ def _compat_datatype_eq(self: pl.DataType, other: Any) -> bool:
 
 
 pl.DataType.__eq__ = _compat_datatype_eq
+
+
+_PURGED_DATAFRAME_METHODS = frozenset({
+    "to_pandas",
+    "to_polars",
+    "to_clip",
+    "to_pytae",
+    "to_parquet",
+    "to_csv",
+    "pick",
+    "slice_max",
+    "slice_min",
+    "query",
+    "agg_df",
+})
 
 
 class DataFrame:
@@ -399,23 +414,6 @@ class DataFrame:
         by_cols = [by] if isinstance(by, str) else list(by)
         return DataFrame(self._df.sort(by_cols, descending=descending, nulls_last=nulls_last))
 
-    def query(self, *conditions: Any, **kwargs: Any) -> None:
-        raise AttributeError("df.query() has been removed; use df.filter() instead")
-
-    def slice_max(self, *args: Any, **kwargs: Any) -> None:
-        raise AttributeError(
-            "df.pt.slice_max() has been removed; use df.arrange(...).head(n) instead "
-            "(or df.by(...).arrange(...).head(n) for grouped slicing)."
-        )
-
-    def slice_min(self, *args: Any, **kwargs: Any) -> None:
-        raise AttributeError(
-            "df.pt.slice_min() has been removed; use df.arrange(...).tail(n) instead "
-            "(or df.by(...).arrange(...).tail(n) for grouped slicing)."
-        )
-
-    def agg_df(self, *args: Any, **kwargs: Any) -> None:
-        raise AttributeError("df.pt.agg_df() has been removed; use df.pt.agg() instead")
 
     def __len__(self) -> int:
         if self.is_lazy:
@@ -594,8 +592,8 @@ class DataFrame:
         return DataFrame(sampled, orig_col_map=self._orig_col_map)
 
     def __getattr__(self, name: str) -> Any:
-        # Do not intercept private/dunder attributes or if _df is not yet initialized
-        if name.startswith("_") or not hasattr(self, "_df"):
+        # Do not intercept private/dunder attributes, uninitialized _df, or purged methods
+        if name.startswith("_") or not hasattr(self, "_df") or name in _PURGED_DATAFRAME_METHODS:
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
         try:
             attr = getattr(self._df, name)
@@ -916,7 +914,23 @@ class DataFrame:
         - Pass how='any' or how='all' to explicitly override.
         - drop_nans=True (default) drops float NaNs in addition to Arrow nulls.
         """
-        resolved = list(subset) if subset is not None else (list(cols) if cols else None)
+        raw_target = (
+            [subset]
+            if isinstance(subset, str)
+            else (list(subset) if subset is not None else (list(cols) if cols else None))
+        )
+        resolved: list[str] | None = None
+        if raw_target is not None:
+            resolved = []
+            for c in raw_target:
+                if isinstance(c, str) and "," in c:
+                    resolved.extend([part.strip() for part in c.split(",") if part.strip()])
+                else:
+                    resolved.append(str(c).strip())
+            avail = set(self.columns)
+            missing = [c for c in resolved if c not in avail]
+            if missing:
+                raise KeyError(f"dropna: column(s) {missing} not found in DataFrame")
         return DataFrame(dropna_polars(self._df, cols=resolved, how=how, drop_nans=drop_nans))
 
     def fillna(
@@ -944,13 +958,24 @@ class DataFrame:
         **kwargs : Any
             Per-column fill values as keyword arguments (e.g. ``df.fillna(a=0, b="N/A")``).
         """
-        if cols or subset is not None:
-            target = list(subset) if subset is not None else list(cols)
+        raw_target = (
+            [subset]
+            if isinstance(subset, str)
+            else (list(subset) if subset is not None else (list(cols) if cols else None))
+        )
+        resolved: list[str] | None = None
+        if raw_target is not None:
+            resolved = []
+            for c in raw_target:
+                if isinstance(c, str) and "," in c:
+                    resolved.extend([part.strip() for part in c.split(",") if part.strip()])
+                else:
+                    resolved.append(str(c).strip())
             avail = set(self.columns)
-            missing = [str(c) for c in target if str(c) not in avail]
+            missing = [c for c in resolved if c not in avail]
             if missing:
                 raise KeyError(f"fillna: column(s) {missing} not found in DataFrame")
-        return DataFrame(fillna_polars(self._df, value, *cols, subset=subset, nans=nans, **kwargs))
+        return DataFrame(fillna_polars(self._df, value, *(resolved or ()), subset=None, nans=nans, **kwargs))
 
     def diff(
         self,
@@ -983,11 +1008,6 @@ class DataFrame:
         left_df = self._to_pandas_internal()
         return _compute_diff(left_df, other, "<left>", on=on, tol=tol, rtol=rtol)
 
-    def pick(self, *args: Any, **kwargs: Any) -> Any:
-        """Deprecated: pick() has been removed in favor of arrange().head(n) / arrange().tail(n)."""
-        raise AttributeError(
-            "df.pick() has been removed; use df.arrange(...).head(n) instead (or df.by(...).arrange(...).head(n) for grouped slicing)."
-        )
 
     def by(self, *cols: Any) -> GroupedDataFrame:
         """Establish a grouping context for subsequent .mutate(), .agg(), or .head()/.tail() operations."""
@@ -1390,7 +1410,7 @@ class DataFrame:
     # -------------------------------------------------------------------------
 
     def _to_pandas_internal(self, *args: Any, **kwargs: Any) -> Any:
-        """Internal un-deprecated conversion to pandas DataFrame."""
+        """Internal conversion to pandas DataFrame."""
         import pandas as pd
 
         eager_df = self._df.collect() if self.is_lazy else self._df
@@ -1401,42 +1421,20 @@ class DataFrame:
             pdf.columns = [self._orig_col_map.get(c, c) for c in pdf.columns]
         return pdf
 
-    def to_pandas(self, *args: Any, **kwargs: Any) -> Any:
-        """Convert to pandas DataFrame (Deprecated: use df.to('pandas') instead)."""
-        import warnings
-        warnings.warn("df.to_pandas() is deprecated; use df.to('pandas') instead.", DeprecationWarning, stacklevel=2)
-        return self._to_pandas_internal(*args, **kwargs)
+
 
     def _to_polars_internal(self) -> pl.DataFrame:
-        """Internal un-deprecated conversion to polars DataFrame."""
+        """Internal conversion to polars DataFrame."""
         if self.is_lazy:
             return self._df.collect()
         return self._df
 
-    def to_polars(self) -> pl.DataFrame:
-        """Extract the underlying Polars DataFrame (Deprecated: use df.to('polars') instead)."""
-        import warnings
-        warnings.warn("df.to_polars() is deprecated; use df.to('polars') instead.", DeprecationWarning, stacklevel=2)
-        return self._to_polars_internal()
-
     def _to_clip_internal(self) -> None:
-        """Internal un-deprecated copy DataFrame to system clipboard via TSV without trailing newline."""
+        """Internal copy DataFrame to system clipboard via TSV without trailing newline."""
         eager_df = self._df.collect() if self.is_lazy else self._df
         from pytae.cli_run import _copy_df_to_clipboard
 
         _copy_df_to_clipboard(eager_df, index=False)
-
-    def to_clip(self) -> None:
-        """Copy DataFrame to system clipboard via TSV without index (Deprecated: use df.to('clip') instead)."""
-        import warnings
-        warnings.warn("df.to_clip() is deprecated; use df.to('clip') instead.", DeprecationWarning, stacklevel=2)
-        self._to_clip_internal()
-
-    def to_pytae(self) -> DataFrame:
-        """Return self (Deprecated: use df.to('pytae') instead)."""
-        import warnings
-        warnings.warn("df.to_pytae() is deprecated; use df.to('pytae') instead.", DeprecationWarning, stacklevel=2)
-        return self
 
     def to(self, target: Any, **kwargs: Any) -> Any:
         """Universal destination method for exporting data or converting formats.
@@ -1580,17 +1578,6 @@ class DataFrame:
         """Alias for universal .to(target, **kwargs)."""
         return self.to(target, **kwargs)
 
-    def to_parquet(self, path: str | Path, **kwargs: Any) -> None:
-        """Deprecated: Use .to(path) instead."""
-        import warnings
-        warnings.warn("df.to_parquet() is deprecated; use df.to(path) instead.", DeprecationWarning, stacklevel=2)
-        self.to(path, **kwargs)
-
-    def to_csv(self, path: str | Path, **kwargs: Any) -> None:
-        """Deprecated: Use .to(path) instead."""
-        import warnings
-        warnings.warn("df.to_csv() is deprecated; use df.to(path) instead.", DeprecationWarning, stacklevel=2)
-        self.to(path, **kwargs)
 
     def plot(self, *args: Any, **kwargs: Any) -> Any:
         """Create visualizations using Pytae Plotter."""
@@ -1634,29 +1621,37 @@ class GroupedDataFrame:
             _last_sort_desc=self._last_sort_desc,
         ).by(*cols)
 
-    def to_pandas(self) -> Any:
-        import warnings
-        warnings.warn("df.to_pandas() is deprecated; use df.to('pandas') instead.", DeprecationWarning, stacklevel=2)
-        import pandas as pd
-
-        pdf = self._df.to_pandas()
-        if self._orig_index is not None and len(self._orig_index) == len(pdf):
-            pdf.index = pd.Index(self._orig_index)
-        return pdf
-
-    def to_polars(self) -> pl.DataFrame | pl.LazyFrame:
-        """Return the underlying Polars DataFrame or LazyFrame."""
-        import warnings
-        warnings.warn("df.to_polars() is deprecated; use df.to('polars') instead.", DeprecationWarning, stacklevel=2)
-        return self._df
 
     def __len__(self) -> int:
         if isinstance(self._df, pl.LazyFrame):
             return self._df.select(pl.len()).collect().item()
         return len(self._df)
 
+    def __getitem__(self, item: Any) -> Any:
+        df = DataFrame(
+            self._df,
+            orig_col_map=self._orig_col_map,
+            _last_sort_cols=self._last_sort_cols,
+            _last_sort_desc=self._last_sort_desc,
+        )
+        df._orig_index = self._orig_index
+        res = df[item]
+        if isinstance(res, DataFrame):
+            res_cols = set(res.columns)
+            valid_by = [c for c in self._by if c in res_cols]
+            if valid_by:
+                return GroupedDataFrame(
+                    res._df,
+                    by_cols=valid_by,
+                    orig_col_map=res._orig_col_map,
+                    orig_index=res._orig_index,
+                    _last_sort_cols=res._last_sort_cols,
+                    _last_sort_desc=res._last_sort_desc,
+                )
+        return res
+
     def __getattr__(self, name: str) -> Any:
-        if name.startswith("_"):
+        if name.startswith("_") or name in _PURGED_DATAFRAME_METHODS:
             raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
         df = DataFrame(
             self._df,
@@ -1791,7 +1786,7 @@ class GroupedDataFrame:
                 res._orig_index = self._orig_index
             elif step_type == "callable":
                 col_name, fn = step_data
-                pdf = res.to_pandas()
+                pdf = res._to_pandas_internal()
                 pieces = []
                 for _, group in pdf.groupby(self._by, sort=False, dropna=dropna):
                     import pandas as pd
@@ -1835,18 +1830,63 @@ class GroupedDataFrame:
         resolved_cols = self._by + [str(c) for c in cols if str(c) not in self._by]
         return DataFrame(count_polars(self._df, cols=resolved_cols, sort=sort, name=name))
 
-    def rename(self, *args: Any, columns: dict[str, str] | None = None, **kwargs: Any) -> DataFrame:
-        """Rename columns using string mapping, dict, or keyword arguments."""
-        return DataFrame(self._df, orig_col_map=self._orig_col_map).rename(*args, columns=columns, **kwargs)
+    def rename(self, *args: Any, columns: dict[str, str] | None = None, **kwargs: Any) -> GroupedDataFrame:
+        """Rename columns using string mapping, dict, or keyword arguments, preserving grouping keys."""
+        renamed = DataFrame(self._df, orig_col_map=self._orig_col_map).rename(*args, columns=columns, **kwargs)
+        mapping: dict[str, str] = {}
+        if args:
+            if isinstance(args[0], dict):
+                mapping.update({str(k): str(v) for k, v in args[0].items()})
+            elif isinstance(args[0], str):
+                from pytae._parsing import parse_rename_spec
+
+                mapping.update(parse_rename_spec(args[0]))
+        if columns:
+            mapping.update({str(k): str(v) for k, v in columns.items()})
+        if kwargs:
+            mapping.update({str(k): str(v) for k, v in kwargs.items()})
+        updated_by = [mapping.get(c, c) for c in self._by]
+        return GroupedDataFrame(
+            renamed._df,
+            by_cols=updated_by,
+            orig_col_map=renamed._orig_col_map,
+            orig_index=renamed._orig_index,
+            _last_sort_cols=renamed._last_sort_cols,
+            _last_sort_desc=renamed._last_sort_desc,
+        )
 
     def sql(self, query: str) -> DataFrame:
         """Execute a SQL query against this DataFrame."""
         return DataFrame(sql_polars(self._df, query))
 
-    def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> DataFrame:
-        """Drop rows containing missing values (Arrow null and/or float NaN)."""
-        resolved = list(subset) if subset is not None else (list(cols) if cols else None)
-        return DataFrame(dropna_polars(self._df, cols=resolved, how=how, drop_nans=drop_nans))
+    def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, drop_nans: bool = True) -> GroupedDataFrame:
+        """Drop rows containing missing values (Arrow null and/or float NaN), preserving grouping."""
+        raw_target = (
+            [subset]
+            if isinstance(subset, str)
+            else (list(subset) if subset is not None else (list(cols) if cols else None))
+        )
+        resolved: list[str] | None = None
+        if raw_target is not None:
+            resolved = []
+            for c in raw_target:
+                if isinstance(c, str) and "," in c:
+                    resolved.extend([part.strip() for part in c.split(",") if part.strip()])
+                else:
+                    resolved.append(str(c).strip())
+            avail = set(self.columns)
+            missing = [c for c in resolved if c not in avail]
+            if missing:
+                raise KeyError(f"dropna: column(s) {missing} not found in DataFrame")
+        res_df = dropna_polars(self._df, cols=resolved, how=how, drop_nans=drop_nans)
+        return GroupedDataFrame(
+            res_df,
+            by_cols=self._by,
+            orig_col_map=self._orig_col_map,
+            orig_index=self._orig_index,
+            _last_sort_cols=self._last_sort_cols,
+            _last_sort_desc=self._last_sort_desc,
+        )
 
     def fillna(
         self,
@@ -1855,10 +1895,33 @@ class GroupedDataFrame:
         subset: Any = None,
         nans: bool = True,
         **kwargs: Any,
-    ) -> DataFrame:
-        """Fill missing values (Arrow null and/or float NaN)."""
-        return DataFrame(self._df, orig_col_map=self._orig_col_map).fillna(
-            value, *cols, subset=subset, nans=nans, **kwargs
+    ) -> GroupedDataFrame:
+        """Fill missing values (Arrow null and/or float NaN), preserving grouping."""
+        raw_target = (
+            [subset]
+            if isinstance(subset, str)
+            else (list(subset) if subset is not None else (list(cols) if cols else None))
+        )
+        resolved: list[str] | None = None
+        if raw_target is not None:
+            resolved = []
+            for c in raw_target:
+                if isinstance(c, str) and "," in c:
+                    resolved.extend([part.strip() for part in c.split(",") if part.strip()])
+                else:
+                    resolved.append(str(c).strip())
+            avail = set(self.columns)
+            missing = [c for c in resolved if c not in avail]
+            if missing:
+                raise KeyError(f"fillna: column(s) {missing} not found in DataFrame")
+        res_df = fillna_polars(self._df, value, *(resolved or ()), subset=None, nans=nans, **kwargs)
+        return GroupedDataFrame(
+            res_df,
+            by_cols=self._by,
+            orig_col_map=self._orig_col_map,
+            orig_index=self._orig_index,
+            _last_sort_cols=self._last_sort_cols,
+            _last_sort_desc=self._last_sort_desc,
         )
 
     def head(
@@ -1941,8 +2004,6 @@ class GroupedDataFrame:
             orig_col_map=self._orig_col_map,
         )
 
-    def pick(self, *args: Any, **kwargs: Any) -> Any:
-        raise AttributeError("GroupedDataFrame.pick() has been removed; use df.by(...).arrange(...).head(n) instead.")
 
     def sample(
         self,
@@ -2006,7 +2067,11 @@ def _plot_impl(pdf: Any, *args: Any, **kwargs: Any) -> Any:
     import pandas as pd
 
     if not isinstance(pdf, pd.DataFrame):
-        if hasattr(pdf, "to_pandas"):
+        if hasattr(pdf, "_to_pandas_internal"):
+            pdf = pdf._to_pandas_internal()
+        elif hasattr(pdf, "to") and callable(getattr(pdf, "to")):
+            pdf = pdf.to("pandas")
+        elif hasattr(pdf, "to_pandas"):
             pdf = pdf.to_pandas()
         else:
             pdf = pd.DataFrame(pdf)

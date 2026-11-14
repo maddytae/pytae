@@ -21,23 +21,14 @@ def test_to_clip_copies_as_method_and_does_not_shadow_pandas_clip(monkeypatch):
 
     monkeypatch.setattr(pd.DataFrame, "to_clipboard", _fake_to_clipboard)
 
-    # hasattr does not trigger clipboard copy
-    assert hasattr(df, "to_clip") is True
-    assert copied.get("called") is None
-
-    df.to_clip()
+    # Universal .to("clip") via accessor works
+    df.pt.to("clip")
     assert copied["called"] is True
     assert copied["index"] is False
 
+    # Deprecated to_clip is not present on pt or df
     assert not hasattr(pt, "to_clip")
-    assert hasattr(df.pt, "to_clip")
-
-    copied_series: dict[str, Any] = {}
-    monkeypatch.setattr(
-        pd.Series, "to_clipboard", lambda self, *args, **kwargs: copied_series.setdefault("called", True)
-    )
-    df["a"].to_clip()
-    assert copied_series.get("called") is True
+    assert not hasattr(df, "to_clip")
 
     clipped = df.clip(lower=0)
     pd.testing.assert_series_equal(clipped["a"], pd.Series([0, 2], name="a"))
@@ -191,23 +182,23 @@ def test_distinct_all_columns():
     res_func = pt.distinct(df)
     res_acc = df.pt.distinct()
     expected = pd.DataFrame({"a": [1, 2], "b": ["x", "y"]})
-    pd.testing.assert_frame_equal(res_func.to_pandas(), expected)
-    pd.testing.assert_frame_equal(res_acc.to_pandas(), expected)
+    pd.testing.assert_frame_equal(res_func.to("pandas"), expected)
+    pd.testing.assert_frame_equal(res_acc.to("pandas"), expected)
 
 
 def test_distinct_subset_columns():
     df = pd.DataFrame({"id": [1, 1, 2], "val": [10, 20, 30]})
     res = df.pt.distinct("id")
     expected = pd.DataFrame({"id": [1, 2], "val": [10, 30]})
-    pd.testing.assert_frame_equal(res.to_pandas(), expected)
+    pd.testing.assert_frame_equal(res.to("pandas"), expected)
 
     res_last = df.pt.distinct("id", keep="last")
     expected_last = pd.DataFrame({"id": [1, 2], "val": [20, 30]})
-    pd.testing.assert_frame_equal(res_last.to_pandas(), expected_last)
+    pd.testing.assert_frame_equal(res_last.to("pandas"), expected_last)
 
     res_false = df.pt.distinct("id", keep=False)
     expected_false = pd.DataFrame({"id": [2], "val": [30]})
-    pd.testing.assert_frame_equal(res_false.to_pandas(), expected_false)
+    pd.testing.assert_frame_equal(res_false.to("pandas"), expected_false)
 
 
 def test_distinct_unknown_column_raises():

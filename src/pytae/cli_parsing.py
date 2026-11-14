@@ -644,13 +644,6 @@ def parse_sample_arg(raw: Any) -> tuple[int | None, float | None]:
     return (n, None)
 
 
-def parse_fraction(raw: Any) -> float:
-    """Parse -frac (deprecated)."""
-    raise argparse.ArgumentTypeError(
-        "-frac is deprecated and removed; use '-sample <val>' (e.g. -sample 0.05 or -sample 5%)"
-    )
-
-
 def parse_list_order(raw: str) -> str:
     """Parse optional listing order for -cols/-dtype/-nulls: asc or desc.
 

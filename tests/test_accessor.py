@@ -21,11 +21,11 @@ def test_pandas_rename_then_pt_agg():
     assert out.loc[out["grp"] == "a", "val"].iloc[0] == 3
 
 
-def test_pt_accessor_agg_df_deprecated():
+def test_pt_accessor_agg_df_removed():
     import pytest
 
     df = pd.DataFrame({"g": ["a", "b"], "v": [1, 2]})
-    with pytest.raises(AttributeError, match="df.pt.agg_df.*removed; use df.pt.agg"):
+    with pytest.raises(AttributeError):
         df.pt.agg_df("g")
 
 
@@ -51,7 +51,7 @@ def test_pt_accessor_to_clip(monkeypatch):
         clip_called.append((args, kwargs))
 
     monkeypatch.setattr(pd.DataFrame, "to_clipboard", mock_to_clipboard)
-    df.pt.to_clip()
+    df.pt.to("clip")
     assert len(clip_called) == 1
     assert clip_called[0][1].get("index") is False
 
@@ -154,7 +154,7 @@ def test_pt_accessor_by_auto_ungroups(tmp_path):
     df_raw.to_parquet(parquet_path)
 
     # 1. Loading from parquet
-    k = pt.read_parquet(parquet_path)
+    k = pt.read(parquet_path)
     assert isinstance(k, pt.DataFrame)
 
     # 2. k.by() with no arguments raises ValueError
@@ -207,7 +207,7 @@ def test_pt_accessor_comprehensive_shared_verbs(capsys):
         assert "grp" in piv.columns
         melted = obj.pt.long(cols=["val", "other"], id_vars="id")
         assert set(melted.columns) == {"id", "variable", "value"}
-        unmelted = melted.to_polars().pt.wide(r="id", c="variable", v="value")
+        unmelted = melted.pt.to("polars").pt.wide(r="id", c="variable", v="value")
         assert "other" in unmelted.columns
 
         # clean_columns, mask, unmask
@@ -219,7 +219,7 @@ def test_pt_accessor_comprehensive_shared_verbs(capsys):
         assert messy.pt.clean_columns(case="lower", fill="_").columns == ["bad_col"]
         masked = obj.pt.mask("grp=encrypt", key="secret_key")
         assert masked["grp"].to_list() != ["A", "A", "B", "B"]
-        unmasked = masked.to_polars().pt.unmask("grp", key="secret_key")
+        unmasked = masked.pt.to("polars").pt.unmask("grp", key="secret_key")
         assert unmasked["grp"].to_list() == ["A", "A", "B", "B"]
 
         # cols, diff, glimpse
@@ -243,8 +243,8 @@ def test_pt_accessor_comprehensive_shared_verbs(capsys):
         assert len(stacked) == 8
 
         # conversions and fallback getattr
-        assert isinstance(obj.pt.to_polars(), pl.DataFrame)
-        assert isinstance(obj.pt.to_pandas(), pd.DataFrame)
+        assert isinstance(obj.pt.to("polars"), pl.DataFrame)
+        assert isinstance(obj.pt.to("pandas"), pd.DataFrame)
         assert obj.pt.shape == (4, 4)
 
         # schema_df
@@ -254,7 +254,7 @@ def test_pt_accessor_comprehensive_shared_verbs(capsys):
         assert pt.schema(obj).shape == (4, 4)
 
         # retired pick() and invalid agg(by=...) error paths
-        with pytest.raises(AttributeError, match="pick\\(\\) has been removed"):
+        with pytest.raises(AttributeError):
             obj.pt.pick("id")
         with pytest.raises(TypeError, match="does not accept 'by'"):
             obj.pt.agg("count", by="grp")

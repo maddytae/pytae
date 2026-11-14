@@ -27,7 +27,7 @@ def sample_dataset_dir(tmp_path_factory):
 
     directory = tmp_path_factory.mktemp("sample_datasets")
     for name in _SAMPLE_DATASET_NAMES:
-        pytae.sample_data[name].to_parquet(directory / f"{name}.parquet")
+        pytae.sample_data[name].to(directory / f"{name}.parquet")
     return directory
 
 

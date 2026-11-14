@@ -87,14 +87,14 @@ def test_repl_path_variable_assignment_and_load(tmp_path: Path):
     assert "lazy_df" in r.tables
     assert isinstance(r.tables["lazy_df"], pl.LazyFrame)
 
-    # 6. load @target and scan @target
+    # 6. Direct assignment with variables: df2 = @target and df3 = scan @target
     outputs.clear()
-    r.execute_line("load @target as df2", output_fn=outputs.append)
+    r.execute_line("df2 = @target", output_fn=outputs.append)
     assert any("Loaded" in o and "as 'df2'" in o for o in outputs)
     assert "df2" in r.tables
 
     outputs.clear()
-    r.execute_line("scan @target as df3", output_fn=outputs.append)
+    r.execute_line("df3 = scan @target", output_fn=outputs.append)
     assert any("Scanned" in o and "as 'df3'" in o for o in outputs)
     assert "df3" in r.tables
 

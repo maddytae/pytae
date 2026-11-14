@@ -130,36 +130,35 @@ def test_accessor_to_bridge():
     assert pt_df2["y"].to_list() == ["a", "b"]
 
 
-def test_deprecated_readers_and_writers_warn(tmp_path, monkeypatch):
+def test_deprecated_readers_and_writers_purged(tmp_path):
     p_pq = tmp_path / "legacy.parquet"
     pl.DataFrame({"num": [1]}).write_parquet(p_pq)
 
-    with pytest.deprecated_call():
-        df = pt.read_parquet(p_pq)
-    assert df["num"].to_list() == [1]
+    # Purged readers raise AttributeError
+    with pytest.raises(AttributeError):
+        pt.read_parquet(p_pq)
 
-    with pytest.deprecated_call():
-        lazy = pt.scan_parquet(p_pq)
-    assert lazy.collect()["num"].to_list() == [1]
+    with pytest.raises(AttributeError):
+        pt.scan_parquet(p_pq)
 
+    df = pt.read(p_pq)
+
+    # Purged writers and format converters raise AttributeError
     out_p = tmp_path / "legacy_out.parquet"
-    with pytest.deprecated_call():
+    with pytest.raises(AttributeError):
         df.to_parquet(out_p)
-    assert out_p.exists()
 
-    # Deprecated to_pandas(), to_polars(), to_clip(), to_pytae()
-    with pytest.deprecated_call():
-        assert isinstance(df.to_pandas(), pd.DataFrame)
+    with pytest.raises(AttributeError):
+        df.to_pandas()
 
-    with pytest.deprecated_call():
-        assert isinstance(df.to_polars(), pl.DataFrame)
+    with pytest.raises(AttributeError):
+        df.to_polars()
 
-    monkeypatch.setattr(df, "_to_clip_internal", lambda: None)
-    with pytest.deprecated_call():
+    with pytest.raises(AttributeError):
         df.to_clip()
 
-    with pytest.deprecated_call():
-        assert df.to_pytae() is df
+    with pytest.raises(AttributeError):
+        df.to_pytae()
 
 
 def test_multi_file_and_glob_read_and_scan(tmp_path):

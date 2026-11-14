@@ -598,7 +598,21 @@ def dropna_polars(
     import polars as pl
 
     schema = _df_schema(df)
-    target_cols = [c for c in cols if c in schema] if cols else list(schema.names())
+    if cols is not None:
+        raw_cols = [cols] if isinstance(cols, str) else list(cols)
+        norm_cols: list[str] = []
+        for c in raw_cols:
+            if isinstance(c, str) and "," in c:
+                norm_cols.extend([part.strip() for part in c.split(",") if part.strip()])
+            else:
+                norm_cols.append(str(c).strip())
+        missing = [c for c in norm_cols if c not in schema]
+        if missing:
+            raise KeyError(f"dropna: column(s) {missing} not found in DataFrame")
+        target_cols = norm_cols
+    else:
+        target_cols = list(schema.names())
+
     if not target_cols:
         return df
 
@@ -642,7 +656,23 @@ def fillna_polars(
         raise TypeError("fillna() missing required argument: 'value'")
 
     schema = _df_schema(df)
-    target_cols = list(subset) if subset is not None else (list(cols) if cols else None)
+    raw_target = (
+        [subset]
+        if isinstance(subset, str)
+        else (list(subset) if subset is not None else (list(cols) if cols else None))
+    )
+    if raw_target is not None:
+        target_cols = []
+        for c in raw_target:
+            if isinstance(c, str) and "," in c:
+                target_cols.extend([part.strip() for part in c.split(",") if part.strip()])
+            else:
+                target_cols.append(str(c).strip())
+        missing = [c for c in target_cols if c not in schema]
+        if missing:
+            raise KeyError(f"fillna: column(s) {missing} not found in DataFrame")
+    else:
+        target_cols = None
 
     def _fill_col_expr(c: str, dt: pl.DataType, fill_val: Any) -> pl.Expr:
         if dt.is_float() and nans and isinstance(fill_val, (int, float)) and not isinstance(fill_val, bool):
@@ -2045,8 +2075,6 @@ def wide_polars(
                 "without aggregation. Use pt.pivot() / -pivot for multi-dimensional aggregation."
             )
 
-    if "index" in kwargs:
-        raise TypeError("wide() parameter 'index' has been removed; use 'r' instead")
     if kwargs:
         raise TypeError(f"wide() got unexpected keyword argument(s): {list(kwargs.keys())}; only r, c, v are accepted")
 
@@ -2359,6 +2387,8 @@ def _to_polars_frame(obj: Any) -> pl.DataFrame | pl.LazyFrame:
     """Convert any tabular input (Pytae DataFrame, Pandas DataFrame, Polars DataFrame/LazyFrame, dict) to Polars."""
     if isinstance(obj, (pl.DataFrame, pl.LazyFrame)):
         return obj
+    if hasattr(obj, "_to_polars_internal"):
+        return obj._to_polars_internal()
     if hasattr(obj, "_df") and isinstance(obj._df, (pl.DataFrame, pl.LazyFrame)):
         return obj._df
     if hasattr(obj, "to_polars"):

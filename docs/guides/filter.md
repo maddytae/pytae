@@ -315,7 +315,7 @@ pytae raw_events.parquet \
   -assert "user_id.is_not_null() and amount >= 0" \
   -mutate "tax = amount * 0.08" \
   -assert "tax >= 0" \
-  -save processed_events.parquet
+  -o processed_events.parquet
 ```
 
 ### Python API (`df.assert_()` / `pt.assert_()`)

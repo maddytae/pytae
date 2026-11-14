@@ -497,8 +497,8 @@ def test_mutate_lit_constant_when_column_exists():
     assert list(res_num["source"]) == [42, 42]
     assert list(res_num["flag"]) == [True, True]
 
-    # Calling pt.lit() raises AttributeError pointing to quoted syntax
-    with pytest.raises(AttributeError, match="pt.lit\\(\\) has been removed"):
+    # Calling pt.lit() raises AttributeError
+    with pytest.raises(AttributeError):
         pt.lit("original")
 
 

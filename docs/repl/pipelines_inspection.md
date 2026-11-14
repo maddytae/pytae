@@ -19,7 +19,7 @@ This guide covers in-memory pipeline transformations, assignment vs. exploration
   - [Relational Joins (`-join`)](#relational-joins--join)
   - [Table Concatenation (`-concat`)](#table-concatenation--concat)
 - [Non-Destructive Data Inspection](#non-destructive-data-inspection)
-  - [Previews (`-head`, `-tail`, `-sample`)](#previews--head--tail--sample)
+  - [Previews (`-head`, `-tail`, `-sample`, `-browse`)](#previews--head--tail--sample--browse)
   - [Structural Inspection (`-schema`, `-cols`, `-dtype`, `-shape`, `-nulls`)](#structural-inspection--schema--cols--dtype--shape--nulls)
   - [Statistical Summaries (`-glimpse`, `-describe`, `-freq`)](#statistical-summaries--glimpse--describe--freq)
   - [Terminal Visualizations (`-bar`, `-scatter`, `-hist`, `-corr`)](#terminal-visualizations--bar--scatter--hist--corr)
@@ -150,8 +150,11 @@ Supported join types: `how=left`, `how=inner`, `how=outer`, `how=semi`, `how=ant
 Concatenate tables vertically (row-bind) or horizontally (column-bind):
 
 ```text
-# Vertical union
-pytae [q1, q2]> all_sales = -concat "tables=q1,q2, how=vertical"
+# Vertical stack of specified tables
+pytae [q1, q2]> all_sales = -concat "frames=q1,q2"
+
+# Or stack all loaded tables directly:
+pytae [q1, q2]> all_sales = -concat
 ```
 
 ---

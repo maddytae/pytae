@@ -2,7 +2,7 @@
 """Reproducible Speed Benchmarks: Pytae vs. Pandas & Ecosystem Baseline.
 
 Usage:
-    python docs/benchmarks/run_benchmarks.py [--rows 5000000] [--runs 3] [--output-md]
+    python docs/benchmarks/run_benchmarks.py [--rows 5000000] [--runs 3] [--markdown]
 
 This script generates synthetic tabular datasets and benchmarks:
     1. End-to-End Pipeline (Parquet Read -> Filter -> Mutate -> GroupBy Agg -> Arrange)
@@ -96,7 +96,7 @@ def run_benchmarks(num_rows: int = 5_000_000, runs: int = 3, output_md: bool = F
         for _ in range(runs):
             t_start = time.perf_counter()
             pt_agg = (
-                pt.read_parquet(parquet_path)
+                pt.read(parquet_path)
                 .filter("body_mass > 4000 & bill_length > 40.0")
                 .mutate(bill_ratio="bill_length / bill_depth")
                 .by("species", "island")
@@ -111,7 +111,7 @@ def run_benchmarks(num_rows: int = 5_000_000, runs: int = 3, output_md: bool = F
         for _ in range(runs):
             t_start = time.perf_counter()
             pt_lazy = (
-                pt.scan_parquet(parquet_path)
+                pt.scan(parquet_path)
                 .filter("body_mass > 4000 & bill_length > 40.0")
                 .mutate(bill_ratio="bill_length / bill_depth")
                 .by("species", "island")

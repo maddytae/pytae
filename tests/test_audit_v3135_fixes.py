@@ -28,7 +28,9 @@ def test_grouped_arrange_descending_group_column():
         }
     )
     g = df.by("species").arrange("species desc")
-    res = g.to_pandas()
+    with pytest.raises(AttributeError):
+        g.to_pandas()
+    res = g.to("pandas")
     unique_species = list(res["species"].unique())
     assert unique_species == ["Gentoo", "Chinstrap", "Adelie"]
 
@@ -150,7 +152,7 @@ def test_repl_py_model_a_explicit_registration_and_cleanup():
     outs: list[str] = []
 
     # 1. Unconverted pandas dataframe: not registered, gone from RAM
-    r.execute_line("py { temp_pd = df.to_pandas() }", output_fn=outs.append)
+    r.execute_line("py { temp_pd = df.to('pandas') }", output_fn=outs.append)
     assert "temp_pd" not in r.tables
     outs.clear()
     r.execute_line("py { temp_pd }", output_fn=outs.append)
@@ -158,22 +160,22 @@ def test_repl_py_model_a_explicit_registration_and_cleanup():
 
     # 2. Converted using pt(k): registered into self.tables and accessible at REPL prompt
     outs.clear()
-    r.execute_line("py { k = pt(df.to_pandas()) }", output_fn=outs.append)
+    r.execute_line("py { k = pt(df.to('pandas')) }", output_fn=outs.append)
     assert "k" in r.tables
     assert any("Registered table 'k'" in o for o in outs)
     outs.clear()
     r.execute_line("k -cols", output_fn=outs.append)
     assert "x\ny" in outs[-1]
 
-    # 3. Accessor proxy .pt is rejected from table registration with tip to use .to_pytae()
+    # 3. Accessor proxy .pt is rejected from table registration with tip to use .to("pytae")
     outs.clear()
-    r.execute_line("py { m = df.to_pandas().pt }", output_fn=outs.append)
+    r.execute_line("py { m = df.to('pandas').pt }", output_fn=outs.append)
     assert "m" not in r.tables
-    assert any("accessor proxy" in o and "to_pytae()" in o for o in outs)
+    assert any("accessor proxy" in o and 'to("pytae")' in o for o in outs)
 
-    # 4. Converted using .to_pytae() method: registered into self.tables
+    # 4. Converted using .to('pytae') method: registered into self.tables
     outs.clear()
-    r.execute_line("py { p = df.to_pandas().to_pytae() }", output_fn=outs.append)
+    r.execute_line("py { p = df.to('pandas').pt.to('pytae') }", output_fn=outs.append)
     assert "p" in r.tables
     assert any("Registered table 'p'" in o for o in outs)
 
@@ -234,11 +236,11 @@ def test_repl_ephemeral_ipc_checkpoint_and_switch():
     assert "Switched active dataset to 't2'" in outs[0]
     assert "deprecated" not in outs[0]
 
-    # 2. Legacy 'use' is deprecated and removed, redirecting to 'switch'
+    # 2. Legacy 'use' is not recognized, redirecting to 'switch'
     outs.clear()
     r.execute_line("use t1", output_fn=outs.append)
     assert r.path_str == "t2"
-    assert "'use' is deprecated and has been removed; use 'switch <name>' instead." in outs[0]
+    assert "use 'switch'" in outs[0]
 
     # 3. Save ephemeral IPC checkpoint
     outs.clear()
@@ -299,13 +301,10 @@ def test_repl_ephemeral_ipc_checkpoint_and_switch():
     assert "Restored checkpoint 'v1'" in outs[0]
     assert "extra_col" not in r.tables["t1"].columns
 
-    # 7. Rollback works as deprecated alias
+    # 7. Rollback is not recognized (redirects to restore)
     outs.clear()
-    r.execute_line('t1 = -mutate "temp_col = 999"', output_fn=outs.append)
     r.execute_line("rollback v1", output_fn=outs.append)
-    assert any("'rollback' is deprecated" in o for o in outs)
-    assert "extra_col" not in r.tables["t1"].columns
-    assert "temp_col" not in r.tables["t1"].columns
+    assert any("not recognized" in o and "restore" in o for o in outs)
 
     # 8. Bare restore restores latest checkpoint
     outs.clear()
@@ -360,12 +359,12 @@ def test_repl_audit_ux_polish_improvements():
     assert "=== REPL Session Status ===" in st
     assert "Active Table  : (none)" in st
 
-    # 'status session' emits deprecation note
+    # 'status session' displays status without deprecation note
     outputs.clear()
     r.execute_line("status session", output_fn=outputs.append)
     st_sess = "\n".join(outputs)
     assert "=== REPL Session Status ===" in st_sess
-    assert "'status session' is deprecated" in st_sess
+    assert "deprecated" not in st_sess
 
     # 3. Multi-table prompt marks active table with asterisk
     r.execute_line("t1 = sample:tips", output_fn=outputs.append)
@@ -389,36 +388,35 @@ def test_repl_audit_ux_polish_improvements():
 
 
 def test_load_and_scan_deprecation(tmp_path):
-    """Test deprecation notes for 'load' and 'scan' in favor of direct variable assignment."""
+    """Test that legacy 'load' and 'scan' are rejected in favor of direct variable assignment."""
     csv_file = tmp_path / "customers.csv"
     csv_file.write_text("id,name\n1,Alice\n2,Bob\n", encoding="utf-8")
 
     r = PytaeRepl()
     outputs = []
 
-    # 1. 'load <path> as <alias>' emits deprecation note
+    # 1. 'load <path> as <alias>' is not recognized
     r.execute_line(f"load {csv_file} as cust", output_fn=outputs.append)
     load_out = "\n".join(outputs)
-    assert "Loaded customers.csv as 'cust'" in load_out
-    assert "(Note: 'load' is deprecated; use '<alias> = <path>' instead.)" in load_out
+    assert "'load' is not recognized; use '<var> = <path>'" in load_out
 
-    # 2. 'load <path>' emits deprecation note
+    # 2. 'load <path>' is not recognized
     outputs.clear()
     r.execute_line(f"load {csv_file}", output_fn=outputs.append)
     load_bare = "\n".join(outputs)
-    assert "(Note: 'load' is deprecated; use '<var> = <path>' instead.)" in load_bare
+    assert "'load' is not recognized; use '<var> = <path>'" in load_bare
 
-    # 3. Bare 'load' usage emits deprecation note
+    # 3. Bare 'load' is not recognized
     outputs.clear()
     r.execute_line("load", output_fn=outputs.append)
     usage_out = "\n".join(outputs)
-    assert "deprecated; use '<var> = <path>'" in usage_out
+    assert "'load' is not recognized; use '<var> = <path>'" in usage_out
 
-    # 4. 'scan <path> as <alias>' emits deprecation note
+    # 4. 'scan <path> as <alias>' is not recognized
     outputs.clear()
     r.execute_line(f"scan {csv_file} as cust_lazy", output_fn=outputs.append)
     scan_out = "\n".join(outputs)
-    assert "(Note: 'scan <path> as <alias>' is deprecated; use '<alias> = scan <path>' instead.)" in scan_out
+    assert "'scan' is not recognized; use '<var> = scan <path>'" in scan_out
 
     # 5. Preferred direct assignment '<alias> = <path> [options]' loads cleanly without deprecation note
     outputs.clear()
@@ -431,20 +429,20 @@ def test_load_and_scan_deprecation(tmp_path):
 
 
 def test_syntax_deduplication_audit(tmp_path):
-    """Test deprecations and deduplications for export, save, checkpoint rm, revert, cheatsheet, and colon removal."""
+    """Test deduplications for export, save, checkpoint rm, revert, cheatsheet, and colon removal."""
     csv_file = tmp_path / "test.csv"
     csv_file.write_text("a,b\n1,2\n3,4\n", encoding="utf-8")
 
     r = PytaeRepl()
     outputs = []
 
-    # 1. export for data file emits deprecation note; -o is preferred
+    # 1. export for data file is rejected; -o is preferred
     r.execute_line(f"df = {csv_file}", output_fn=outputs.append)
     outputs.clear()
     out_pq = tmp_path / "out.parquet"
     r.execute_line(f"export {out_pq}", output_fn=outputs.append)
     export_out = "\n".join(outputs)
-    assert "(Note: 'export <path>' for data is deprecated; use '-o " in export_out
+    assert "'export' is for saving scripts (.py or .pt); use '-o " in export_out
 
     # 1b. export script works cleanly
     outputs.clear()
@@ -452,35 +450,34 @@ def test_syntax_deduplication_audit(tmp_path):
     r.execute_line(f"export script {script_out}", output_fn=outputs.append)
     assert any("Exported Pytae script" in o for o in outputs)
 
-    # 2. save script <path> emits deprecation note pointing to export script
+    # 2. save script <path> is not recognized pointing to export script
     outputs.clear()
     script_py = tmp_path / "pipeline.py"
     r.execute_line(f"save script {script_py}", output_fn=outputs.append)
     save_script_out = "\n".join(outputs)
-    assert "(Note: 'save script' is deprecated; use 'export script <path>' instead.)" in save_script_out
+    assert "'save script' is not recognized; use 'export script" in save_script_out
 
-    # 2b. history -s emits deprecation note
+    # 2b. history -s is not supported
     outputs.clear()
     r.execute_line("history -s", output_fn=outputs.append)
     hist_out = "\n".join(outputs)
-    assert "'history -s' is not supported (deprecated)" in hist_out
+    assert "'history -s' is not supported" in hist_out
 
-    # 3. checkpoint rm emits deprecation note pointing to rm checkpoint
+    # 3. checkpoint rm is not recognized pointing to rm checkpoint
     r.execute_line("checkpoint cp1", output_fn=outputs.append)
     assert "cp1" in r.checkpoints
     outputs.clear()
     r.execute_line("checkpoint rm cp1", output_fn=outputs.append)
     cp_rm_out = "\n".join(outputs)
-    assert "(Note: 'checkpoint rm' is deprecated; use 'rm checkpoint <name>' or 'rm checkpoint *' instead.)" in cp_rm_out
-    assert "cp1" not in r.checkpoints
+    assert "'checkpoint rm' is not recognized; use 'rm checkpoint <name>'" in cp_rm_out
 
-    # 4. revert emits deprecation note pointing to restore
+    # 4. revert is not recognized pointing to restore
     r.execute_line("checkpoint cp2", output_fn=outputs.append)
     r.execute_line('df = -mutate "c = a + 10"', output_fn=outputs.append)
     outputs.clear()
     r.execute_line("revert cp2", output_fn=outputs.append)
     revert_out = "\n".join(outputs)
-    assert "(Note: 'revert' is deprecated; use 'restore [name]' instead.)" in revert_out
+    assert "'revert' is not recognized; use 'restore'" in revert_out
 
     # 4b. restore works cleanly without deprecation note
     outputs.clear()
@@ -488,7 +485,7 @@ def test_syntax_deduplication_audit(tmp_path):
     restore_out = "\n".join(outputs)
     assert "deprecated" not in restore_out
 
-    # 5. -cheatsheet works cleanly, while legacy quick_start / cheatsheet emit deprecation notes
+    # 5. -cheatsheet works cleanly, while legacy quick_start / cheatsheet are rejected
     outputs.clear()
     r.execute_line("-cheatsheet", output_fn=outputs.append)
     cs_out = "\n".join(outputs)
@@ -498,12 +495,12 @@ def test_syntax_deduplication_audit(tmp_path):
     outputs.clear()
     r.execute_line("cheatsheet", output_fn=outputs.append)
     cs_bare_out = "\n".join(outputs)
-    assert "(Note: 'cheatsheet' is deprecated; use '-cheatsheet' instead.)" in cs_bare_out
+    assert "'cheatsheet' is not recognized; use '-cheatsheet'" in cs_bare_out
 
     outputs.clear()
     r.execute_line("quick_start", output_fn=outputs.append)
     qs_out = "\n".join(outputs)
-    assert "(Note: 'quick_start' is deprecated; use '-cheatsheet' instead.)" in qs_out
+    assert "'quick_start' is not recognized; use '-cheatsheet'" in qs_out
 
 
 def test_cli_rejects_save_flag():

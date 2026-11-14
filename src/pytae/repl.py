@@ -1334,8 +1334,6 @@ REPL_HELP = """\
 DATASET INGEST & MANAGEMENT:
   <var> = <path> [options]: Load dataset into named table (e.g. df = data.parquet, df = clip)
   <var> = scan <path>...  : Lazily scan dataset (Parquet, CSV, IPC, NDJSON) without RAM overhead
-  scan <path> [as <alias>]: Scan dataset into lazy table (deprecated; use '<var> = scan <path>')
-  load <path> [as <var>]  : Load dataset into memory (deprecated; use '<var> = <path>')
   status table [name] [-v] : Inspect active table or loaded table inventory with RAM
   switch <name>          : Switch active dataset (e.g. switch df, switch orders)
   rename <old> <new>     : Rename in-memory table (zero-copy alias reassignment)
@@ -1435,10 +1433,33 @@ _DISALLOWED_ALIASES: dict[str, str] = {
     "--sessions": "sessions",
     "-switch": "switch",
     "--switch": "switch",
+    "use": "switch",
     "-use": "switch",
     "--use": "switch",
-    "-load": "load",
-    "--load": "load",
+    "load": "<var> = <path>",
+    "-load": "<var> = <path>",
+    "--load": "<var> = <path>",
+    "scan": "<var> = scan <path>",
+    "-scan": "<var> = scan <path>",
+    "--scan": "<var> = scan <path>",
+    "revert": "restore",
+    "-revert": "restore",
+    "--revert": "restore",
+    "rollback": "restore",
+    "-rollback": "restore",
+    "--rollback": "restore",
+    "save": "export script <path>",
+    "-save": "export script <path>",
+    "cheatsheet": "-cheatsheet",
+    "--cheatsheet": "-cheatsheet",
+    "quick_start": "-cheatsheet",
+    "-quick_start": "-cheatsheet",
+    "--quick_start": "-cheatsheet",
+    "quickstart": "-cheatsheet",
+    "-quickstart": "-cheatsheet",
+    "--quickstart": "-cheatsheet",
+    "-frac": "-sample <val>",
+    "--frac": "-sample <val>",
     # Double-hyphen data inspection forms
     "--shape": "-shape",
     "--schema": "-schema",
@@ -1462,7 +1483,6 @@ _DISALLOWED_ALIASES: dict[str, str] = {
     "--count": "-count",
     "--sample": "-sample",
     "--seed": "-seed",
-    "--frac": "-frac",
     "--fillna": "-fillna",
     "--dropna": "-dropna",
     "--clean_columns": "-clean_columns",
@@ -1512,9 +1532,8 @@ _DISALLOWED_ALIASES: dict[str, str] = {
     "-examples": "-cheatsheet",
     "--examples": "-cheatsheet",
     "checkout": "restore",
-    "read": "load",
-    "open": "load",
-    "save": "-o <path>",
+    "read": "<var> = <path>",
+    "open": "<var> = <path>",
     "quit": "exit",
     "q": "exit",
     ":q": "exit",
@@ -1936,14 +1955,54 @@ def _transpile_pipeline_tokens_to_python(tokens: list[str]) -> str:
             i += 2
             continue
 
+        # -by <cols>
+        if low in ("-by", "--by") and i + 1 < n:
+            cols_val = tokens[i + 1]
+            col_parts = [c.strip() for c in cols_val.split(",") if c.strip()]
+            formatted_cols = ", ".join(repr(c) for c in col_parts)
+            calls.append(f".by({formatted_cols})")
+            i += 2
+            continue
+
+        # -agg <specs>
+        if low in ("-agg", "--agg") and i + 1 < n:
+            calls.append(f".agg({repr(tokens[i + 1])})")
+            i += 2
+            continue
+
+        # -clean_columns
+        if low in ("-clean_columns", "--clean_columns"):
+            calls.append(".clean_columns()")
+            i += 1
+            continue
+
+        # -rename <spec>
+        if low in ("-rename", "--rename") and i + 1 < n:
+            calls.append(f".rename({repr(tokens[i + 1])})")
+            i += 2
+            continue
+
+        # -count [cols]
+        if low in ("-count", "--count"):
+            if i + 1 < n and not tokens[i + 1].startswith("-"):
+                cols_val = tokens[i + 1]
+                col_parts = [c.strip() for c in cols_val.split(",") if c.strip()]
+                formatted_cols = ", ".join(repr(c) for c in col_parts)
+                calls.append(f".count({formatted_cols})")
+                i += 2
+            else:
+                calls.append(".count()")
+                i += 1
+            continue
+
         # -sort / -arrange <col> [desc]
         if low in ("-sort", "--sort", "-arrange", "--arrange") and i + 1 < n:
             col_val = tokens[i + 1]
             if i + 2 < n and tokens[i + 2].lower() in ("desc", "descending"):
-                calls.append(f".sort({repr(col_val)}, descending=True)")
+                calls.append(f".arrange({repr(col_val + ' desc')})")
                 i += 3
             else:
-                calls.append(f".sort({repr(col_val)})")
+                calls.append(f".arrange({repr(col_val)})")
                 i += 2
             continue
 
@@ -2022,7 +2081,7 @@ def _transpile_pipeline_tokens_to_python(tokens: list[str]) -> str:
         # -o <dest>
         if low == "-o" and i + 1 < n:
             dest = tokens[i + 1].strip("\"'")
-            calls.append(f".save({repr(dest)})")
+            calls.append(f".to({repr(dest)})")
             i += 2
             continue
 
@@ -2660,11 +2719,9 @@ def _is_replayable_entry_static(entry: str) -> bool:
     if clean.startswith(("export script", "export code", "save script", "save code", "-export script", "-save script")):
         return False
 
-    # Python snippets: replayable when mutating via .to_pytae(), assigning state,
+    # Python snippets: replayable when mutating state (assignments, definitions)
     # or defining reusable imports/functions/classes (while skipping pure inspections).
     if re.match(r"^py(?:\s|\{|$)", clean):
-        if ".to_pytae(" in clean:
-            return True
         py_body = clean[2:].strip()
         if py_body.endswith("\npy"):
             py_body = py_body[:-3].strip()
@@ -3680,22 +3737,6 @@ class PytaeRepl:
 
             output_fn(CHEATSHEET_TEXT)
             return True
-        if first_lower in (
-            "quick_start",
-            "-quick_start",
-            "--quick_start",
-            "quickstart",
-            "-quickstart",
-            "--quickstart",
-            "cheatsheet",
-            "--cheatsheet",
-        ):
-            from pytae.cheatsheet import CHEATSHEET_TEXT
-
-            output_fn(CHEATSHEET_TEXT)
-            output_fn(f"(Note: '{first_lower}' is deprecated; use '-cheatsheet' instead.)")
-            return True
-
         # Help commands: 'help', '-help', '--help', 'help <topic>', '-help <topic>'
         if first_lower in ("help", "-help", "--help"):
             topic_tokens = tokens[1:]
@@ -3718,11 +3759,15 @@ class PytaeRepl:
             self._cmd_history(output_fn, args=tokens[1:])
             return True
 
-        # Export / Save Script: export <path> [-relative] [-no-prune], export script <path> [-relative] [-no-prune]
-        is_save_cmd = first_lower in ("save", "-save")
-        if first_lower in ("export", "-export") or (is_save_cmd and len(tokens) >= 2 and tokens[1].lower() in ("script", "code")):
-            if is_save_cmd:
-                output_fn("(Note: 'save script' is deprecated; use 'export script <path>' instead.)")
+        if first_lower in ("save", "-save"):
+            if len(tokens) >= 2 and tokens[1].lower() in ("script", "code"):
+                output_fn("pytae: 'save script' is not recognized; use 'export script <path>'.")
+                return True
+            output_fn("pytae: 'save' is not recognized; use '-o <path>'.")
+            return True
+
+        # Export Script: export <path.py|path.pt> [-relative] [-no-prune], export script <path.py|path.pt>
+        if first_lower in ("export", "-export"):
             if len(tokens) >= 2 and tokens[1].lower() in ("script", "code"):
                 if len(tokens) < 3:
                     output_fn("Usage: export <path.py|path.pt> [-relative] [-no-prune]")
@@ -3745,9 +3790,7 @@ class PytaeRepl:
                     no_prune = any(t in ("-no-prune", "--no-prune") for t in tokens[2:])
                     self._cmd_export_script(target, output_fn, relative=relative, prune_dead=not no_prune)
                     return True
-                output_fn(f"(Note: 'export <path>' for data is deprecated; use '-o {target}' instead.)")
-                if self._cmd_save(target, output_fn):
-                    self._record_history(f"-o {target}")
+                output_fn(f"pytae: 'export' is for saving scripts (.py or .pt); use '-o {target}' to export data.")
                 return True
             output_fn("Usage: export <path.py|path.pt> [-relative] [-no-prune]")
             return True
@@ -3802,10 +3845,7 @@ class PytaeRepl:
             output_fn("pytae: bare 'vars' is not recognized; use 'status var' (or 'status var -v').")
             return True
 
-        # Switch active dataset (`switch <name>`); legacy `use` is deprecated and removed
-        if first_lower == "use":
-            output_fn("pytae: 'use' is deprecated and has been removed; use 'switch <name>' instead.")
-            return True
+        # Switch active dataset (`switch <name>`)
         if first_lower == "switch":
             if len(tokens) >= 2:
                 self._cmd_switch(tokens[1], output_fn)
@@ -4139,31 +4179,12 @@ class PytaeRepl:
                 output_fn("Usage: checkpoint <name> (e.g. checkpoint baseline)")
                 return True
             if tokens[1].lower() == "rm":
-                output_fn("(Note: 'checkpoint rm' is deprecated; use 'rm checkpoint <name>' or 'rm checkpoint *' instead.)")
-                if len(tokens) < 3:
-                    output_fn("Usage: rm checkpoint <name> or rm checkpoint *")
-                    return True
-                cp_name = tokens[2]
-                if cp_name == "*":
-                    count = self._clear_all_checkpoints()
-                    output_fn(f"Cleared all {count} saved checkpoints.")
-                    return True
-                if cp_name in ("-all", "--all", "all", "-*"):
-                    output_fn(f"pytae: 'checkpoint rm {cp_name}' is not recognized; use 'rm checkpoint *'.")
-                    return True
-                if cp_name in self.checkpoints:
-                    self._delete_checkpoint(cp_name)
-                    output_fn(f"Removed checkpoint '{cp_name}'.")
-                    return True
-                avail = ", ".join(self.checkpoints.keys()) if self.checkpoints else "none"
-                output_fn(f"pytae: checkpoint '{cp_name}' not found. Available: {avail}")
+                output_fn("pytae: 'checkpoint rm' is not recognized; use 'rm checkpoint <name>' or 'rm checkpoint *'.")
                 return True
             self._cmd_checkpoint(tokens[1], output_fn)
             return True
 
-        if first_lower in ("restore", "revert"):
-            if first_lower == "revert":
-                output_fn("(Note: 'revert' is deprecated; use 'restore [name]' instead.)")
+        if first_lower == "restore":
             if len(tokens) < 2:
                 if self.checkpoints:
                     latest_cp = list(self.checkpoints.keys())[-1]
@@ -4174,33 +4195,8 @@ class PytaeRepl:
             self._cmd_restore(tokens[1], output_fn)
             return True
 
-        if first_lower == "rollback":
-            target_cp = tokens[1] if len(tokens) >= 2 else (list(self.checkpoints.keys())[-1] if self.checkpoints else None)
-            if target_cp is None:
-                output_fn("pytae: no saved checkpoints to restore. (Note: 'rollback' is deprecated; use 'restore [name]' instead.)")
-                return True
-            output_fn("(Note: 'rollback' is deprecated; use 'restore [name]' instead.)")
-            self._cmd_restore(target_cp, output_fn)
-            return True
-
         if first_lower == "checkpoints":
             output_fn("pytae: bare 'checkpoints' is not recognized; use 'status checkpoint' (or 'status checkpoint -v').")
-            return True
-
-        # Load file as table
-        if first_lower == "load":
-            if len(tokens) < 2:
-                output_fn("Usage: load <path> [as <alias>] (deprecated; use '<var> = <path>')")
-                return True
-            self._cmd_load(tokens, output_fn)
-            return True
-
-        # Scan file as lazy table
-        if first_lower == "scan":
-            if len(tokens) < 2:
-                output_fn("Usage: scan <path> [as <alias>] (deprecated; use '<var> = scan <path>')")
-                return True
-            self._cmd_scan(tokens, output_fn)
             return True
 
         # Join: -join (bare join is caught by _BARE_PIPELINE_VERBS above)
@@ -4336,7 +4332,7 @@ class PytaeRepl:
         if has_output:
             return False
         if first_lower == "-frac":
-            output_fn("pytae: -frac is deprecated and removed; use '-sample <val>' (e.g. -sample 0.05 or -sample 5%).")
+            output_fn("pytae: -frac is not recognized; use '-sample <val>' (e.g. -sample 0.05 or -sample 5%).")
             return True
         if df is None:
             output_fn("No dataset loaded.")
@@ -4753,9 +4749,6 @@ class PytaeRepl:
                 self._show_external_session_status(target_args[1], output_fn, verbose=verbose)
             else:
                 self._show_session_status(output_fn, verbose=verbose)
-                output_fn(
-                    "(Note: 'status session' is deprecated and will be removed in a future release; use bare 'status' instead.)"
-                )
             return
 
         if cat == "table":
@@ -4976,7 +4969,7 @@ class PytaeRepl:
             clean_arg0 = arg0.lower().lstrip("-")
             if clean_arg0 in ("s", "save") or arg0.startswith("-s=") or arg0.startswith("-s:"):
                 output_fn(
-                    "pytae: 'history -s' is not supported (deprecated). Use 'export <path>' or 'exit -s [path]' on exit."
+                    "pytae: 'history -s' is not supported. Use 'export <path>' or 'exit -s [path]' on exit."
                 )
                 return
             if clean_arg0 in ("cli", "sh", "bash", "py", "python"):
@@ -5816,10 +5809,6 @@ class PytaeRepl:
         msg = f"Switched active dataset to '{resolved}'. Active shape: ({self.current_df.shape[0]:,}, {self.current_df.shape[1]})"
         output_fn(msg)
 
-    def _cmd_use(self, name: str, output_fn: Callable[[str], None]) -> None:
-        """Deprecated and removed: use switch <table_name> instead."""
-        output_fn("pytae: 'use' is deprecated and has been removed; use 'switch <name>' instead.")
-
     def _cmd_assign(
         self,
         var_name: str,
@@ -6310,151 +6299,6 @@ class PytaeRepl:
         self.current_df = old_active
         self.path_str = old_path
 
-    def _cmd_load(self, tokens: list[str], output_fn: Callable[[str], None]) -> None:
-        cleaned_tokens, reader_kwargs, nrows_val = _parse_reader_options(tokens)
-        if len(cleaned_tokens) < 2:
-            output_fn("Usage: load <path> [as <alias>] [-encoding <enc>] [-dlim <char>] [-nrows <N>]")
-            output_fn("(Note: 'load' is deprecated; use '<var> = <path>' instead.)")
-            return
-        path_str = cleaned_tokens[1].strip("\"' ")
-        if path_str.startswith("@"):
-            v_key = path_str.lstrip("@")
-            if v_key in self.variables and isinstance(self.variables[v_key], str):
-                path_str = str(self.variables[v_key])
-        from pytae.cli_parsing import normalize_git_bash_path
-
-        path_str = normalize_git_bash_path(path_str)
-        alias: str | None = None
-        if len(cleaned_tokens) >= 4 and cleaned_tokens[2].lower() == "as":
-            alias = cleaned_tokens[3]
-
-        if alias and alias.lower() in _RESERVED_VARIABLE_NAMES:
-            output_fn(f"pytae: '{alias}' is a reserved command or verb; choose a different alias.")
-            return
-        if alias and alias in self.variables:
-            output_fn(
-                f"pytae: '{alias}' is already a session variable; cannot assign as a table. Use 'rm var {alias}' first."
-            )
-            return
-
-        is_clip = path_str.strip().lower() in ("clip", "clipboard")
-        from pytae.readers import is_db_or_cloud_uri
-
-        is_uri = is_db_or_cloud_uri(path_str)
-        if not is_clip and not is_uri:
-            p = Path(path_str).expanduser()
-            if not path_str.startswith("sample:") and not p.exists() and not any(ch in path_str for ch in "*?["):
-                from pytae import DATA_PATH
-
-                candidate = DATA_PATH / p.name
-                if not candidate.exists():
-                    candidate = DATA_PATH / f"{p.stem}.parquet"
-                if candidate.exists():
-                    p = candidate
-                else:
-                    output_fn(f"pytae: file not found: {p}")
-                    return
-        try:
-            load_opts = dict(reader_kwargs)
-            if nrows_val is not None:
-                load_opts["nrows"] = nrows_val
-            p, loaded_df = self._read_file_to_df(path_str, **load_opts)
-            target_alias = alias or self.path_str or ("df" if is_clip else p.stem or p.name)
-            self.tables[target_alias] = loaded_df
-            self.orig_tables[target_alias] = loaded_df
-            self.initial_tables[target_alias] = loaded_df
-            self.initial_df = loaded_df
-            self.table_sources[target_alias] = p.name
-            self.current_df = loaded_df
-            self.orig_df = loaded_df
-            self.path_str = target_alias
-            opts_desc = ""
-            if reader_kwargs or nrows_val is not None:
-                opts_items = [f"{k}={v}" for k, v in reader_kwargs.items()]
-                if nrows_val is not None:
-                    opts_items.append(f"nrows={nrows_val}")
-                opts_desc = f" [{', '.join(opts_items)}]"
-            canonical_target = _resolve_to_canonical_path(path_str)
-            unquoted_canon = canonical_target.strip("\"'")
-            quoted_canon = f'"{unquoted_canon}"' if " " in unquoted_canon else unquoted_canon
-            if alias:
-                hist_line = f"load {quoted_canon} as {alias}"
-                self._record_history(hist_line)
-                self._update_last_history_log_line(hist_line)
-                output_fn(
-                    f"Loaded {p.name} as '{alias}' ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols){opts_desc}."
-                )
-                output_fn("(Note: 'load' is deprecated; use '<alias> = <path>' instead.)")
-            else:
-                hist_line = f"load {quoted_canon}"
-                self._record_history(hist_line)
-                self._update_last_history_log_line(hist_line)
-                output_fn(
-                    f"Loaded {p.name} ({self.current_df.shape[0]:,} rows x {self.current_df.shape[1]} cols){opts_desc}."
-                )
-                output_fn("(Note: 'load' is deprecated; use '<var> = <path>' instead.)")
-        except Exception as exc:
-            output_fn(f"pytae: {exc}" if is_clip else f"pytae: failed to load {path_str}: {exc}")
-
-    def _cmd_scan(self, tokens: list[str], output_fn: Callable[[str], None]) -> None:
-        cleaned_tokens, reader_kwargs, _ = _parse_reader_options(tokens)
-        if len(cleaned_tokens) < 2:
-            output_fn("Usage: scan <path> [as <alias>] [-dlim <char>]")
-            output_fn("(Note: 'scan' is deprecated; use '<var> = scan <path>' instead.)")
-            return
-        path_str = cleaned_tokens[1].strip("\"' ")
-        if path_str.startswith("@"):
-            v_key = path_str.lstrip("@")
-            if v_key in self.variables and isinstance(self.variables[v_key], str):
-                path_str = str(self.variables[v_key])
-        from pytae.cli_parsing import normalize_git_bash_path
-
-        path_str = normalize_git_bash_path(path_str)
-        alias: str | None = None
-        if len(cleaned_tokens) >= 4 and cleaned_tokens[2].lower() == "as":
-            alias = cleaned_tokens[3]
-
-        if alias and alias.lower() in _RESERVED_VARIABLE_NAMES:
-            output_fn(f"pytae: '{alias}' is a reserved command or verb; choose a different alias.")
-            return
-        if alias and alias in self.variables:
-            output_fn(
-                f"pytae: '{alias}' is already a session variable; cannot assign as a table. Use 'rm var {alias}' first."
-            )
-            return
-
-        try:
-            p, lf = self._scan_file_to_df(path_str, **reader_kwargs)
-            target_alias = alias or self.path_str or (p.stem or p.name)
-            self.tables[target_alias] = lf
-            self.orig_tables[target_alias] = lf
-            self.initial_tables[target_alias] = lf
-            self.initial_df = lf
-            self.table_sources[target_alias] = p.name
-            self.current_df = lf
-            self.orig_df = lf
-            self.path_str = target_alias
-            canonical_target = _resolve_to_canonical_path(path_str)
-            unquoted_canon = canonical_target.strip("\"'")
-            quoted_canon = f'"{unquoted_canon}"' if " " in unquoted_canon else unquoted_canon
-            opts_str = ""
-            if reader_kwargs:
-                opts_items = [f"-{k} {v}" for k, v in reader_kwargs.items()]
-                opts_str = f" {' '.join(opts_items)}"
-            lazy_cols = _get_frame_columns(lf)
-            if alias:
-                hist_line = f"scan {quoted_canon} as {alias}{opts_str}"
-                output_fn(f"Scanned {p.name} as '{alias}' (lazy, {len(lazy_cols)} cols).")
-                output_fn("(Note: 'scan <path> as <alias>' is deprecated; use '<alias> = scan <path>' instead.)")
-            else:
-                hist_line = f"scan {quoted_canon}{opts_str}"
-                output_fn(f"Scanned {p.name} (lazy, {len(lazy_cols)} cols).")
-                output_fn("(Note: 'scan' is deprecated; use '<var> = scan <path>' instead.)")
-            self._record_history(hist_line)
-            self._update_last_history_log_line(hist_line)
-        except Exception as exc:
-            output_fn(f"pytae: failed to scan {path_str}: {exc}")
-
     def _cmd_join(self, args: list[str], output_fn: Callable[[str], None]) -> None:
         if not args:
             output_fn("Usage: -join [left=<tbl>,]right=<tbl>,on=<key> [how=left|inner|outer|semi|anti|cross] [-o <file>]")
@@ -6778,13 +6622,13 @@ class PytaeRepl:
                 elif res is not None:
                     output_fn(repr(res))
 
-            # Ephemeral Python Sandboxing: Only keep dataframes explicitly converted via .to_pytae()
+            # Ephemeral Python Sandboxing: Only keep dataframes explicitly assigned as Pytae DataFrames
             mutated = False
             persisted_env_changed = False
             # 1. Active table update: check if 'df' was modified or reassigned to a PytaeDataFrame
             current_df_val = self._py_env.get("df")
             if isinstance(current_df_val, _BasePtAccessor):
-                output_fn("pytae: active 'df' cannot be an accessor proxy. Use 'df = df.to_pytae()' to update active table.")
+                output_fn("pytae: active 'df' cannot be an accessor proxy. Use 'df = df.to(\"pytae\")' to update active table.")
             elif (
                 isinstance(current_df_val, (PytaeDataFrame, PytaeGroupedDataFrame))
                 and current_df_val is not orig_df_obj
@@ -6808,7 +6652,7 @@ class PytaeRepl:
                     continue
                 val = self._py_env[k]
                 if isinstance(val, _BasePtAccessor):
-                    output_fn(f"pytae: '{k}' is an accessor proxy, not a Pytae table. Use '{k} = {k}.to_pytae()' to register as a table.")
+                    output_fn(f"pytae: '{k}' is an accessor proxy, not a Pytae table. Use '{k} = {k}.to(\"pytae\")' to register as a table.")
                     del self._py_env[k]
                 elif isinstance(val, (PytaeDataFrame, PytaeGroupedDataFrame)):
                     if k in orig_table_instances and val is orig_table_instances[k]:
@@ -7285,7 +7129,6 @@ class PytaeRepl:
                 return [t for t in self.tables if t.startswith(text)]
             return []
 
-        # Deprecated/removed 'use' has no completions
         if first_token == "use":
             return []
 
@@ -7774,7 +7617,6 @@ def repl(
     nrows: int | None = None,
     chunk_size: int | None = None,
     reader_kwargs: dict[str, Any] | None = None,
-    session: str | None = None,
     script: Path | str | None = None,
     **kwargs: Any,
 ) -> Any:
@@ -7800,8 +7642,6 @@ def repl(
         Chunk size in rows for streaming ingestion.
     reader_kwargs : dict, optional
         Additional keyword arguments to pass to dataset reader.
-    session : str, optional
-        Deprecated parameter retained for backwards compatibility.
     script : str | Path, optional
         Path to a .pt script file to execute and populate memory before prompt.
 
@@ -7821,7 +7661,6 @@ def repl(
         nrows=nrows,
         chunk_size=chunk_size,
         reader_kwargs=reader_kwargs,
-        session=session,
         script=script,
         **kwargs,
     )

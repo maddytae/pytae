@@ -297,55 +297,65 @@ def test_dedicated_readers_and_scanners(tmp_path):
     # 1. Parquet
     pq_path = tmp_path / "test.parquet"
     raw.write_parquet(pq_path)
-    df_pq = pt.read_parquet(pq_path)
+    df_pq = pt.read(pq_path)
     assert isinstance(df_pq, pt.DataFrame)
     assert not df_pq.is_lazy
     assert df_pq["x"].to_list() == [1, 2, 3]
 
-    lazy_pq = pt.scan_parquet(pq_path)
+    lazy_pq = pt.scan(pq_path)
     assert lazy_pq.is_lazy
     assert lazy_pq.collect()["x"].to_list() == [1, 2, 3]
 
     # 2. CSV
     csv_path = tmp_path / "test.csv"
     raw.write_csv(csv_path)
-    df_csv = pt.read_csv(csv_path)
+    df_csv = pt.read(csv_path)
     assert isinstance(df_csv, pt.DataFrame)
     assert not df_csv.is_lazy
     assert df_csv["y"].to_list() == ["a", "b", "c"]
 
-    lazy_csv = pt.scan_csv(csv_path)
+    lazy_csv = pt.scan(csv_path)
     assert lazy_csv.is_lazy
     assert lazy_csv.collect()["y"].to_list() == ["a", "b", "c"]
 
     # 3. NDJSON
     ndjson_path = tmp_path / "test.ndjson"
     raw.write_ndjson(ndjson_path)
-    df_nd = pt.read_ndjson(ndjson_path)
+    df_nd = pt.read(ndjson_path)
     assert isinstance(df_nd, pt.DataFrame)
     assert df_nd["x"].to_list() == [1, 2, 3]
 
-    lazy_nd = pt.scan_ndjson(ndjson_path)
+    lazy_nd = pt.scan(ndjson_path)
     assert lazy_nd.is_lazy
     assert lazy_nd.collect()["x"].to_list() == [1, 2, 3]
 
     # 4. JSON
     json_path = tmp_path / "test.json"
     raw.write_json(json_path)
-    df_json = pt.read_json(json_path)
+    df_json = pt.read(json_path)
     assert isinstance(df_json, pt.DataFrame)
     assert df_json["x"].to_list() == [1, 2, 3]
 
     # 5. IPC
     ipc_path = tmp_path / "test.arrow"
     raw.write_ipc(ipc_path)
-    df_ipc = pt.read_ipc(ipc_path)
+    df_ipc = pt.read(ipc_path)
     assert isinstance(df_ipc, pt.DataFrame)
     assert df_ipc["x"].to_list() == [1, 2, 3]
 
-    lazy_ipc = pt.scan_ipc(ipc_path)
+    lazy_ipc = pt.scan(ipc_path)
     assert lazy_ipc.is_lazy
     assert lazy_ipc.collect()["x"].to_list() == [1, 2, 3]
+
+    # Purged functions raise AttributeError
+    with pytest.raises(AttributeError):
+        pt.read_parquet(pq_path)
+    with pytest.raises(AttributeError):
+        pt.scan_parquet(pq_path)
+    with pytest.raises(AttributeError):
+        pt.read_csv(csv_path)
+    with pytest.raises(AttributeError):
+        pt.scan_csv(csv_path)
 
 
 def test_csv_reader_late_decimals_infer_schema(tmp_path):
@@ -371,9 +381,9 @@ def test_csv_reader_late_decimals_infer_schema(tmp_path):
     assert lazy_df["Adjusted_Collateral_Value (Es)"].dtype == pl.Float64
     assert len(lazy_df) == 151
 
-    # pt.read_csv and pt.scan_csv
-    assert pt.read_csv(path)["Adjusted_Collateral_Value (Es)"].dtype == pl.Float64
-    assert pt.scan_csv(path).collect()["Adjusted_Collateral_Value (Es)"].dtype == pl.Float64
+    # pt.read and pt.scan
+    assert pt.read(path)["Adjusted_Collateral_Value (Es)"].dtype == pl.Float64
+    assert pt.scan(path).collect()["Adjusted_Collateral_Value (Es)"].dtype == pl.Float64
 
 
 def test_ipc_reader_writer_and_cli_roundtrip(tmp_path):
@@ -421,8 +431,8 @@ def test_lazy_dataframe_methods_and_accessors(tmp_path):
     raw_pl = pl.DataFrame({"id": [1, 2], "a": [10, 20], "b": [30.0, 40.0]})
     raw_pl.write_parquet(pq_path)
 
-    ldf = pt.scan_parquet(pq_path)
-    edf = pt.read_parquet(pq_path)
+    ldf = pt.scan(pq_path)
+    edf = pt.read(pq_path)
 
     # .equals(), .to_numpy(), .values, .iloc on Lazy DataFrame
     assert ldf.equals(edf)
@@ -566,7 +576,7 @@ def test_key_aware_diff_and_cli(tmp_path, capsys):
     assert "* val: 1 cell(s) differ (max diff: 5)" in report_key
 
     assert pt.diff(df1, df2, on="id", tol=0.01) == report_key
-    assert df1.to_polars().pt.diff(df2, on="id", tol=0.01) == report_key
+    assert df1.to("polars").pt.diff(df2, on="id", tol=0.01) == report_key
 
     # CLI -diff with inline on= and tol=
     p1 = tmp_path / "left.parquet"
@@ -596,7 +606,7 @@ def test_explode_python_accessor_and_cli(tmp_path, capsys):
 
     # Top-level pt.explode and .pt.explode
     assert pt.explode(df, "tags").shape == (3, 2)
-    assert df.to_polars().pt.explode("tags").shape == (3, 2)
+    assert df.to("polars").pt.explode("tags").shape == (3, 2)
 
     # LazyFrame explode
     lf = pt.DataFrame(pl.DataFrame({"id": [1, 2], "tags": [["a", "b"], ["c"]]}).lazy())
@@ -625,7 +635,7 @@ def test_assert_verb_python_accessor_and_cli(tmp_path, capsys):
     res = df.assert_("amount > 0 and id.is_not_null()").mutate("doubled = amount * 2")
     assert res.shape == (3, 3)
     assert pt.assert_(df, "amount >= 10").shape == (3, 2)
-    assert df.to_polars().pt.assert_("amount <= 100").shape == (3, 2)
+    assert df.to("polars").pt.assert_("amount <= 100").shape == (3, 2)
 
     # Failing assertion raises ValueError with sample rows
     with pytest.raises(ValueError, match="assert failed.*1 of 3 row\\(s\\) violated condition"):
@@ -680,7 +690,7 @@ def test_glob_reader_and_repl_glob_and_history_export(tmp_path):
         ]
     )
     assert rc == 0
-    assert pt.read_parquet(out_file).shape == (3, 3)
+    assert pt.read(out_file).shape == (3, 3)
 
     # 3. REPL glob loading + -explode / -assert + history -cli / history -py
     outputs: list[str] = []

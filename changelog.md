@@ -2,6 +2,36 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.14.6] - 2026-11-13
+
+### Fixed
+- **`DataFrame.dropna()` & `DataFrame.fillna()` String Splitting and KeyError Validation (`src/pytae/dataframe.py`, `src/pytae/polars_engine.py`)**:
+  - Fixed bug where passing a string column name to `subset` (e.g. `df.dropna(subset="sex")` or `df.fillna(0, subset="sex")`) unpacked the string character-by-character into `['s', 'e', 'x']`.
+  - Added support for comma-separated string specifications (e.g. `df.dropna("sex, island")` and `df.dropna(subset="sex, island")`).
+  - `dropna_polars()` and `DataFrame.dropna()` now validate column existence against the DataFrame schema and raise a clean `KeyError` with missing column names rather than silently ignoring unknown columns.
+- **`GroupedDataFrame` Grouping Preservation on Data Cleaning & Renaming (`src/pytae/dataframe.py`)**:
+  - `GroupedDataFrame.dropna()` and `fillna()` now return a `GroupedDataFrame` preserving active grouping keys, preventing chained aggregations (`.agg(...)`) from collapsing into an ungrouped grand total.
+  - `GroupedDataFrame.rename()` now updates active grouping keys and returns a `GroupedDataFrame`.
+  - Implemented `GroupedDataFrame.__getitem__` to support column slicing and indexing.
+- **Hard Removal of `GroupedDataFrame.to_pandas()` (`src/pytae/dataframe.py`, `src/pytae/accessor.py`)**:
+  - Calling `.to_pandas()` on `GroupedDataFrame` now raises an explicit `AttributeError` redirecting to `df.to('pandas')`, eliminating the `AttributeError: 'LazyFrame' object has no attribute 'to_pandas'` crash on lazy frames.
+  - Standardized `.to('pandas')` conversion across eager and lazy `GroupedDataFrame` objects.
+- **`pt.diff()` Path & String Support (`src/pytae/__init__.py`, `src/pytae/cli_run.py`)**:
+  - Fixed `pt.diff(left, right)` when `left` is a `str` or `pathlib.Path` file path so datasets are loaded via `read()` rather than constructing a 1-column single-character DataFrame or crashing with `TypeError`.
+- **REPL Python Pipeline Transpilation (`src/pytae/repl.py`)**:
+  - Updated `_transpile_pipeline_tokens_to_python()` to generate `.to(...)` instead of the non-existent `.save(...)` method.
+  - Transpiles `-sort` and `-arrange` to Pytae's `.arrange(...)`.
+  - Added support for transpiling `-by`, `-agg`, `-clean_columns`, `-rename`, and `-count` into fluent Python method calls.
+- **JSON & Excel Output in `write_dataframe()` & CLI `-o` (`src/pytae/readers.py`)**:
+  - Added `.json`, `.xlsx`, and `.xls` to `_WRITABLE_SUFFIXES` and implemented serialization branches in `write_dataframe()`.
+  - Enables exporting to `.json` and `.xlsx` directly via CLI (e.g. `pytae data.parquet -o out.json` and `pytae data.parquet -o out.xlsx`).
+- **CLI `-dropna` Scoping (`src/pytae/cli_run.py`)**:
+  - Decoupled `args.dropna` from `-pivot` and `-plot` so top-level row filtering flags do not accidentally inject column string arguments into pivot or plot keyword options.
+- **Escaped Quotes in Tokenizer (`src/pytae/_text.py`)**:
+  - Handled backslash-escaped quotes (`\'` and `\"`) so escaped quotes inside string literals do not prematurely terminate quoted string tokens.
+- **Accessor Deprecation Warnings (`src/pytae/accessor.py`)**:
+  - Removed override in `PandasPtAccessor.to_clip()` so it inherits `_BasePtAccessor.to_clip()` and emits a consistent `DeprecationWarning`.
+
 ## [3.14.5] - 2026-11-13
 
 ### Added
@@ -782,7 +812,7 @@ All notable changes to this project are documented in this file.
   - First and last window functions in grouped expressions: `df.by("id").mutate(first_val="first(val)", last_val="last(val)")`.
   - Multi-column transformations with `_` placeholder: `(col1, col2) = _ / 10`.
 - **Reproducible Performance Benchmarks & Ecosystem Migration Guides**:
-  - Dedicated comprehensive guides for migrating from [Pandas](docs/comparison_to_pandas.md), [dplyr](docs/comparison_to_dplyr.md), and [SAS](docs/comparison_to_sas.md).
+  - Dedicated comprehensive guides for migrating from [Pandas](docs/comparisons/comparison_to_pandas.md), [dplyr](docs/comparisons/comparison_to_dplyr.md), and [SAS](docs/comparisons/comparison_to_sas.md).
   - Self-contained, reproducible 5,000,000-row benchmark suite in [`docs/benchmarks/`](docs/benchmarks/README.md) (`run_benchmarks.py`, `benchmarks.ipynb`, and speedup visualizations).
 
 ### Removed & Breaking Changes ("One and Only One Obvious Way")

@@ -133,7 +133,7 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 
 ### Key Architectural Advantages over dplyr
 1. **Parallel Execution Across Cores**: `dplyr` requires third-party packages like `multidplyr` or `furrr` to parallelize work across worker processes (incurring substantial inter-process serialization overhead). Pytae parallelizes natively inside Rust SIMD threads with shared memory.
-2. **Lazy Execution Pipeline**: R's pipe `%>%` evaluates eagerly at every step. Pytae's `pt.scan_parquet()` builds a unified query plan that executes optimizations (predicate pushdown, branch pruning) in a single multithreaded pass.
+2. **Lazy Execution Pipeline**: R's pipe `%>%` evaluates eagerly at every step. Pytae's `pt.scan()` builds a unified query plan that executes optimizations (predicate pushdown, branch pruning) in a single multithreaded pass.
 3. **No Non-Standard Evaluation (NSE) Overhead**: Eliminates `rlang` expression parsing and NSE unquoting cycles, providing direct execution on Apache Arrow buffers.
 
 > [!TIP]
@@ -231,7 +231,7 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 | **Transposed Overview**| `glimpse(df)` | `df.glimpse()` *(Non-destructive)* | `-glimpse` |
 | **Frequency Counts** | `count(df, col, sort = TRUE)` | `df.freq("col")` *(With ASCII bars)* | `-freq col` |
 | **Dataset Comparison** | `waldo::compare(df1, df2)` | `df1.diff(df2, tol=0.01)` | `pytae f1.parquet -diff f2.parquet,tol=0.01` |
-| **Clipboard Export** | `clipr::write_clip(df)` | `df.to_clip()` | `-o clip` |
+| **Clipboard Export** | `clipr::write_clip(df)` | `df.to("clip")` | `-o clip` |
 
 ### 11. Missing Data Architecture & Cleaning (`dropna`, `fillna`, `clean_columns`)
 | Task | dplyr / tidyr (R) | Pytae (Python) | Pytae CLI |
