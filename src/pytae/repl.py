@@ -1415,22 +1415,22 @@ _DISALLOWED_ALIASES: dict[str, str] = {
     "--reset": "reset",
     "-history": "history",
     "--history": "history",
-    "-tables": "tables",
-    "--tables": "tables",
+    "-tables": "status table",
+    "--tables": "status table",
     "-rm": "rm",
     "--rm": "rm",
     "-checkpoint": "checkpoint",
     "--checkpoint": "checkpoint",
-    "-checkpoints": "checkpoints",
-    "--checkpoints": "checkpoints",
+    "-checkpoints": "status checkpoint",
+    "--checkpoints": "status checkpoint",
     "-set": "set",
     "--set": "set",
     "-restore": "restore",
     "--restore": "restore",
-    "-session": "session",
-    "--session": "session",
-    "-sessions": "sessions",
-    "--sessions": "sessions",
+    "-session": "status session",
+    "--session": "status session",
+    "-sessions": "status session",
+    "--sessions": "status session",
     "-switch": "switch",
     "--switch": "switch",
     "use": "switch",
@@ -1448,8 +1448,8 @@ _DISALLOWED_ALIASES: dict[str, str] = {
     "rollback": "restore",
     "-rollback": "restore",
     "--rollback": "restore",
-    "save": "export script <path>",
-    "-save": "export script <path>",
+    "save": "-o <path>",
+    "-save": "-o <path>",
     "cheatsheet": "-cheatsheet",
     "--cheatsheet": "-cheatsheet",
     "quick_start": "-cheatsheet",
@@ -1515,16 +1515,21 @@ _DISALLOWED_ALIASES: dict[str, str] = {
     "dtypes": "-dtype",
     "-dtypes": "-dtype",
     "--dtypes": "-dtype",
-    "vars": "tables",
-    "datasets": "tables",
+    "-vars": "status var",
+    "--vars": "status var",
+    "-variables": "status var",
+    "--variables": "status var",
+    "datasets": "status table",
+    "-datasets": "status table",
+    "--datasets": "status table",
     "cp": "checkpoint",
     "-cp": "checkpoint",
     "--cp": "checkpoint",
-    "cps": "checkpoints",
-    "-cps": "checkpoints",
-    "--cps": "checkpoints",
+    "cps": "status checkpoint",
+    "-cps": "status checkpoint",
+    "--cps": "status checkpoint",
     "tag": "checkpoint",
-    "tags": "checkpoints",
+    "tags": "status checkpoint",
     "-interactive": "-i",
     "--interactive": "-i",
     "-repl": "-i",
@@ -3879,6 +3884,9 @@ class PytaeRepl:
                     output_fn("Usage: rm var <name> or rm var *")
                     return True
                 target = tokens[2].lstrip("@")
+                if target in ("-all", "--all", "all", "-*"):
+                    output_fn(f"pytae: 'rm var {target}' is not recognized; use 'rm var *'.")
+                    return True
                 if target == "*":
                     if not self.variables:
                         output_fn("No variables defined to remove.")
@@ -3989,7 +3997,7 @@ class PytaeRepl:
                 elif len(tokens) > 2:
                     output_fn(f"pytae: 'rm checkpoints' is not recognized; use 'rm checkpoint {tokens[2]}'.")
                 else:
-                    output_fn("pytae: 'rm checkpoints' is not recognized; use 'rm checkpoint'.")
+                    output_fn("pytae: 'rm checkpoints' is not recognized; use 'rm checkpoint <name>' or 'rm checkpoint *'.")
                 return True
 
             if category == "checkpoint":
@@ -4170,7 +4178,7 @@ class PytaeRepl:
         # Bare checkpoint name hint
         if first_lower in self.checkpoints and len(tokens) == 1:
             output_fn(
-                f"pytae: '{first_lower}' is a saved checkpoint. Use 'restore {first_lower}' to activate it, or 'checkpoints' to list all."
+                f"pytae: '{first_lower}' is a saved checkpoint. Use 'restore {first_lower}' to activate it, or 'status checkpoint' to list all."
             )
             return True
 

@@ -80,8 +80,14 @@ def test_repl_checkpoint_and_restore(sample_df):
     assert "mass_kg" in r.current_df.columns
     assert r.current_df.shape == (5, 4)
 
+    # Bare checkpoint hint
+    outputs.clear()
+    r.execute_line("v1", output_fn=outputs.append)
+    assert "pytae: 'v1' is a saved checkpoint. Use 'restore v1' to activate it, or 'status checkpoint' to list all." in outputs[-1]
+
     # List checkpoints
-    r.execute_line("checkpoints", output_fn=outputs.append)
+    outputs.clear()
+    r.execute_line("status checkpoint", output_fn=outputs.append)
     assert any("v1" in o for o in outputs)
 
     # Restore checkpoint
@@ -715,11 +721,11 @@ def test_repl_disallowed_aliases_and_hyphenated_commands():
         ("cp", "checkpoint"),
         ("-cp", "checkpoint"),
         ("--cp", "checkpoint"),
-        ("cps", "checkpoints"),
-        ("-cps", "checkpoints"),
-        ("--cps", "checkpoints"),
-        ("vars", "tables"),
-        ("datasets", "tables"),
+        ("cps", "status checkpoint"),
+        ("-cps", "status checkpoint"),
+        ("--cps", "status checkpoint"),
+        ("-vars", "status var"),
+        ("datasets", "status table"),
         ("-switch", "switch"),
         ("--switch", "switch"),
         ("-use", "switch"),
@@ -729,14 +735,14 @@ def test_repl_disallowed_aliases_and_hyphenated_commands():
         ("--restore", "restore"),
         ("-checkpoint", "checkpoint"),
         ("--checkpoint", "checkpoint"),
-        ("-checkpoints", "checkpoints"),
-        ("--checkpoints", "checkpoints"),
+        ("-checkpoints", "status checkpoint"),
+        ("--checkpoints", "status checkpoint"),
         ("-reset", "reset"),
         ("--reset", "reset"),
         ("-history", "history"),
         ("--history", "history"),
-        ("-tables", "tables"),
-        ("--tables", "tables"),
+        ("-tables", "status table"),
+        ("--tables", "status table"),
         ("-status", "status"),
         ("--status", "status"),
         ("columns", "-cols"),
@@ -975,7 +981,7 @@ def test_repl_rm_checkpoint(sample_df):
     # Verify rm checkpoints variants are rejected and redirect to rm checkpoint
     outputs.clear()
     r.execute_line("rm checkpoints", output_fn=outputs.append)
-    assert "pytae: 'rm checkpoints' is not recognized; use 'rm checkpoint'." in outputs[-1]
+    assert "pytae: 'rm checkpoints' is not recognized; use 'rm checkpoint <name>' or 'rm checkpoint *'." in outputs[-1]
 
     outputs.clear()
     r.execute_line("rm checkpoints *", output_fn=outputs.append)
