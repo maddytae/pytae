@@ -95,12 +95,12 @@ CHEATSHEET_TEXT = """\
   pytae events.parquet -explode tags                              # Unnest list/array column
   pytae orders.parquet -explode "items,quantities"
 
-8. 🔗 MULTI-FILE RELATIONAL OPERATIONS (-file, -join, -concat, -sql)
+8. 🔗 MULTI-FILE RELATIONAL OPERATIONS (-join, -concat, -sql, -opts)
 --------------------------------------------------------------------------------
-  pytae -file "orders.parquet=ord; customers.csv=cust" \\
+  pytae ord=orders.parquet cust=customers.csv \\
     -join "left=ord, right=cust, on=customer_id, how=left" -head 10
-  pytae -file "q1.parquet=a; q2.parquet=b" -concat "frames=a,b" -shape
-  pytae -file "sales.parquet=s; stores.csv=st" \\
+  pytae a=q1.parquet b=q2.parquet -concat "frames=a,b" -shape
+  pytae s=sales.parquet st=stores.csv \\
     -sql "SELECT st.region, SUM(s.amount) FROM s JOIN st ON s.store_id = st.id GROUP BY 1"
 
 9. 💾 FORMAT CONVERSIONS & SINKS (-o)

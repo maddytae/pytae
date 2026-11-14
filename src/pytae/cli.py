@@ -344,7 +344,7 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         "'clip' to read from system clipboard, "
         "a .yaml/.yml connection config (Databricks table or remote SSH file), "
         "or glob patterns/multiple files for batch operations; "
-        "omit when piping from stdin or using -file with -join/-concat/-sql",
+        "omit when piping from stdin or using named inputs (alias=source) with -join/-concat/-sql",
     )
     parser.add_argument("-h", "-help", action="help", help="show this help message and exit")
     parser.add_argument("-version", action="version", version=f"%(prog)s {__version__}")

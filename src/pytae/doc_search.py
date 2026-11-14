@@ -267,17 +267,16 @@ def _extract_doc_chunks() -> list[dict[str, str]]:
             "title": "Interactive REPL Shell: pytae -i / pt.repl()",
             "category": "repl",
             "syntax": "pytae -i / pytae -i sample.pt / pt.repl(df)",
-            "keywords": "repl interactive shell checkpoint session history cli py export",
+            "keywords": "repl interactive shell checkpoint session history export script switch",
             "content": (
                 "Stateful in-memory exploratory data analysis without reloading files from disk.\n\n"
                 "### Core Commands\n"
                 "- reset / reset initial: Revert to latest checkpoint or initial file read.\n"
-                "- checkpoint <name> / restore <name>: Freeze and restore memory snapshots.\n"
-                "- session save <name> / session load <name>: Disk-persisted multi-table workbenches.\n"
-                "- history: View numbered audit log.\n"
-                "- history -cli: Export reproducible one-shot CLI command reconstructing the session.\n"
-                "- history -py: Export runnable Python script with pt/DataFrame calls.\n"
-                "- load 'parts/*.parquet' as df4: Multi-file globbing and directory scanning.\n"
+                "- checkpoint <name> / restore [name]: Freeze and restore memory snapshots.\n"
+                "- export <path.pt|path.py> [-relative]: Export reproducible script from executed session.\n"
+                "- history [N]: View numbered session audit log.\n"
+                "- switch <name>: Switch active dataset cursor.\n"
+                "- df = 'parts/*.parquet': Multi-file globbing and directory scanning.\n"
             ),
         },
     ]

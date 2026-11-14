@@ -26,7 +26,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         description=(
             "Executes zero-copy, vectorized SQL queries via embedded Polars SQLContext.\n"
             "- In single-file pipelines, the current dataset view is queryable as table `data`.\n"
-            "- In multi-file mode (-file), each file alias (e.g. df1, df2) is queryable directly by name.\n"
+            "- In multi-table pipelines (e.g. s=sales.parquet st=stores.parquet), each file alias is queryable directly by name.\n"
             '- Standard SQL identifier quoting applies: double quotes for names with spaces ("col a"),\n'
             "  and single quotes for string literals ('Gentoo').\n"
             "- To run queries from a file, prefix the filename with '@' (e.g. -sql @query.sql)."
@@ -40,10 +40,10 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             'pytae penguins.parquet -sql "select species, island, body_mass_g from data where body_mass_g > 5000" -head 5',
             'pytae penguins.parquet -sql "select species, count(*) as n, round(avg(body_mass_g), 1) as avg_mass from data group by species"',
             'pytae penguins.parquet -sql "select [bill length mm], body_mass_g from data" -head 3',
-            'pytae -file "sales.parquet=s; stores.parquet=st" -sql "select s.*, st.city from s join st using (store_id)"',
+            'pytae s=sales.parquet st=stores.parquet -sql "select s.*, st.city from s join st using (store_id)"',
             "pytae sales.parquet -sql @queries/quarterly_report.sql -o report.csv",
         ],
-        see_also=["-filter", "-agg", "-pivot", "-file"],
+        see_also=["-filter", "-agg", "-pivot", "-join"],
     ),
     "filter": KeywordHelp(
         name="filter",
@@ -726,7 +726,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         options=[],
         examples=[
             "pytae penguins.parquet -schema",
-            'pytae -file "a.parquet=a; b.parquet=b" -join "left=a,right=b,on=id" -schema',
+            'pytae a=a.parquet b=b.parquet -join "left=a,right=b,on=id" -schema',
         ],
         see_also=["-cols", "-dtype", "-nulls", "-glimpse", "-describe"],
     ),
@@ -1386,27 +1386,24 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "history": KeywordHelp(
         name="history",
-        flag="history [N] [-cli | -py | -s [path]]",
-        syntax="history [N] [-cli | -py | -s [path]]",
-        summary="Audit and export executed REPL commands.",
+        flag="history [N]",
+        syntax="history [N]",
+        summary="Audit executed REPL commands in the current session.",
         description=(
             "Audits commands executed in the current session:\n"
-            "- Bare 'history': Displays numbered session command log.\n"
-            "- 'history -cli': Reconstructs session as a reproducible single-line CLI pipeline.\n"
-            "- 'history -py': Generates an executable Python script using pt/DataFrame verbs.\n"
-            "- 'history -s [path]': Exports clean replayable commands script to disk."
+            "- Bare 'history': Displays numbered session audit log.\n"
+            "- 'history <N>': Limit display to the last N commands.\n"
+            "- All session commands are automatically recorded in ~/.pytae/history/.\n"
+            "- Use 'export <path.pt|path.py>' or 'exit -s [path]' to export runnable scripts."
         ),
         options=[
-            "[N] : Limit display to last N commands.",
-            "-cli : Generate reproducible one-shot CLI command.",
-            "-py : Generate executable Python script.",
-            "-s [path] : Export replayable script (default: ~/.pytae/commands/<timestamp>.txt).",
+            "[N] : Optional integer to limit output to the last N commands.",
         ],
         examples=[
             "pytae -i  # Inside REPL: history",
-            "pytae -i  # Inside REPL: history -cli",
+            "pytae -i  # Inside REPL: history 10",
         ],
-        see_also=["status", "session", "exit"],
+        see_also=["status", "session", "exit", "checkpoint"],
     ),
     "rm": KeywordHelp(
         name="rm",

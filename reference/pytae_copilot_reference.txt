@@ -2118,7 +2118,7 @@ Standardize messy column headers (`-clean` / `-clean_columns`), impute missing v
 | Flag | Scope | Delimiter / Syntax | Description |
 |---|---|---|---|
 | `-clean` / `-clean_columns` | Column headers | `,` / `=` | Standardizes headers (strip, squeeze, fill, case, dedupe) |
-| `-fillna` | Cell contents | Scalar or `val=..., cols=...` | Replaces null / NaN with replacement values |
+| `-fillna` | Cell contents | Scalar, `col:val`, or `val, cols` | Replaces null / NaN with replacement values |
 | `-dropna` | Rows | Bare or `col1, col2` | Drops null / NaN rows (Zero Data Loss default) |
 | `-rename` | Column headers | `old:new` | Explicitly renames column names |
 | `-mutate "col = map(...)"` | Cell contents | Dictionary mapping | Vectorized value recoding via Polars engine |
@@ -2170,11 +2170,12 @@ Replace missing values (`null` and `NaN`) across the dataset or within specific 
 # Impute all numeric missing values with 0
 pytae dataset.parquet -fillna 0 -head 5
 
-# Impute specific columns
-pytae dataset.parquet -fillna "val='Unknown', cols='status, category'" -head 5
+# Impute specific columns using column mappings or value + column list
+pytae dataset.parquet -fillna "status:Unknown, category:Unknown" -head 5
+pytae dataset.parquet -fillna "Unknown, status, category" -head 5
 
 # Only replace Arrow nulls (leave float NaNs intact)
-pytae dataset.parquet -fillna "val=0, nans=false" -head 5
+pytae dataset.parquet -fillna "0, nans=false" -head 5
 ```
 
 ---
@@ -3185,7 +3186,7 @@ pytae raw_events.parquet \
   -assert "user_id.is_not_null() and amount >= 0" \
   -mutate "tax = amount * 0.08" \
   -assert "tax >= 0" \
-  -save processed_events.parquet
+  -o processed_events.parquet
 ```
 
 ### Python API (`df.assert_()` / `pt.assert_()`)
@@ -3492,9 +3493,8 @@ Inspection flags let you understand a dataset's layout and content instantly fro
 |---|---|---|
 | `-head [N]` | Print the first N rows (default: 5) | No (returns DataFrame) |
 | `-tail [N]` | Print the last N rows (default: 5) | No (returns DataFrame) |
-| `-sample [N]` | Print N randomly sampled rows (default: 5) | No (returns DataFrame) |
+| `-sample [SPEC]` | Print N rows (default: 5), fraction (`0.05`), or percentage (`5%`) | No (returns DataFrame) |
 | `-seed N` | Random seed for `-sample` reproducibility | Modifier for `-sample` |
-| `-frac P` | Sample a fraction of rows (e.g. `0.1` for 10%) | Modifier for `-sample` |
 | `-freq COL` | Terminal ASCII frequency distribution bar chart | **Yes** (terminal) |
 | `-hist COL[:BINS]` | Terminal ASCII numeric histogram with bin intervals | **Yes** (terminal) |
 | `-shape` | Print `(rows, cols)` tuple | **Yes** (terminal) |
@@ -3595,11 +3595,12 @@ pytae penguins.parquet -sample 3 -seed 42
 | Chinstrap | Dream    |             45.2 |            17.8 |                 198 |          3950 | Female |
 | Gentoo    | Biscoe   |             46.5 |            13.5 |                 210 |          4550 | Female |
 
-### Sample a percentage (`-frac`)
+### Sample a percentage or fraction (`-sample 1%`, `-sample 0.01`)
 
 ```bash
 # Sample 1% of the dataset and check row count
-pytae penguins.parquet -sample -frac 0.01 -shape
+pytae penguins.parquet -sample 1% -shape
+# or via decimal fraction: pytae penguins.parquet -sample 0.01 -shape
 ```
 
 **Output:**
@@ -4930,7 +4931,7 @@ Essential utilities, convenience flags, inspection shortcuts, cleaning helpers, 
   - [Dropping Missing Values (`-dropna`)](#dropping-missing-values--dropna)
   - [Renaming Columns (`-rename`)](#renaming-columns--rename)
 - [Multi-File Pipelines & Operations](#multi-file-pipelines--operations)
-  - [Named Inputs (`-file`)](#named-inputs--file)
+  - [Named Positional Inputs (`alias=path`)](#named-positional-inputs-aliaspath)
   - [Multi-File Joins (`-join`)](#multi-file-joins--join)
   - [Row Stacking (`-concat`)](#row-stacking--concat)
 - [Input / Output & Pipeline Modifiers](#input--output--pipeline-modifiers)
@@ -4952,9 +4953,8 @@ Essential utilities, convenience flags, inspection shortcuts, cleaning helpers, 
 |---|---|---|---|
 | `-head [N]` | Inspection | Integer (default: `5`) | Displays first N rows |
 | `-tail [N]` | Inspection | Integer (default: `5`) | Displays last N rows |
-| `-sample [N]` | Inspection | Integer (default: `5`) | Displays N randomly sampled rows |
+| `-sample [SPEC]` | Inspection | Integer, fraction, or percentage | Displays randomly sampled rows (`10`, `0.05`, or `5%`) |
 | `-seed N` | Inspection | Integer | Random seed for `-sample` reproducibility |
-| `-frac P` | Inspection | Float `0 < P <= 1` | Sample fraction of rows instead of count |
 | `-shape` | Inspection | Terminal flag | Prints dataset dimensions `(rows, cols)` |
 | `-cols [ORDER]` | Inspection | Optional `asc` or `desc` | Prints column names (file order, or sorted) |
 | `-dtype [ORDER]` | Inspection | Optional `asc` or `desc` | Prints column data types |
@@ -5001,9 +5001,9 @@ pytae transactions.parquet -meta
 pytae penguins.parquet -head 3
 pytae penguins.parquet -tail 3
 
-# Reproducible random sampling
+# Reproducible random sampling (counts, fractions, or percentages)
 pytae penguins.parquet -sample 5 -seed 42
-pytae penguins.parquet -sample -frac 0.05 -seed 42
+pytae penguins.parquet -sample 5% -seed 42
 
 # Dimensions, schema, and statistical summaries
 pytae penguins.parquet -shape
@@ -5056,17 +5056,21 @@ Imputes missing values (`null` and `NaN`) across all columns or specific targets
 # Impute all numeric missing values with 0
 pytae penguins.parquet -fillna 0 -head 5
 
-# Impute specific columns with replacement value
-pytae penguins.parquet -fillna "val='Unknown', cols='sex'" -head 5
+# Impute specific columns with replacement value ("col:val" or "val, col")
+pytae penguins.parquet -fillna "Unknown, sex" -head 5
+pytae penguins.parquet -fillna "sex:Unknown" -head 5
 ```
 
 ### Dropping Missing Values (`-dropna`)
 ```bash
-# Drop rows with ANY missing value across all columns
-pytae penguins.parquet -dropna
+# Bare flag defaults to how='all' (Zero Data Loss: keeps partially populated rows)
+pytae penguins.parquet -dropna -shape
 
 # Drop rows missing specific column values
-pytae penguins.parquet -dropna "sex,body_mass_g"
+pytae penguins.parquet -dropna "sex,body_mass_g" -shape
+
+# Explicit how=any drops rows with any missing value
+pytae penguins.parquet -dropna how=any -shape
 ```
 
 ### Renaming Columns (`-rename`)
@@ -6141,7 +6145,7 @@ pytae penguins.parquet -select "dtype=numeric" -head 3
 
 ```bash
 # Select numeric columns, then subtract bill_depth_mm
-pytae penguins.parquet -select "dtype=numeric" -select "-bill_depth_mm" -head 3
+pytae penguins.parquet -select "dtype=numeric" -select "!bill_depth_mm" -head 3
 ```
 
 **Output:**
@@ -8731,7 +8735,7 @@ shape: (1, 3)
 - **Colon Key Shorthand**: `on='client_id:id'` directly maps differing column keys without typing separate `left_on` / `right_on`
 - **Cardinality Validation**: `validate='1:1'`, `'1:m'`, `'m:1'` verifies key uniqueness to prevent silent row explosion
 - **Row Stacking**: `pt.concat([df1, df2])` and `df1.concat(df2)` for appending matching datasets
-- **Lazy Execution Pushdown**: Preserves query pushdowns when joining lazy scans (`pt.scan_parquet`)
+- **Lazy Execution Pushdown**: Preserves query pushdowns when joining lazy scans (`pt.scan`)
 
 ```python
 import sys, os
@@ -9851,7 +9855,7 @@ master_df = (
         
         # 2. lambda: custom callable inspecting the accumulated DataFrame
         is_large=lambda df: (df["mass_kg"] > 4.0) & (df["bill_ratio"] > 2.5),
-        # analysis='species', #if we don't use pt.lit, it will just assign value of speciec column
+        # analysis='species', # if unquoted, it assigns the value of the species column
         # analysis='species2', #it will throw error because there is not 'species2 column'
         analysis="'species'", 
         
@@ -9891,7 +9895,7 @@ In `mutate()`, all string arguments are evaluated as **formulas and column expre
 - Worse, if a column named `original` happens to exist, writing `source="original"` will silently copy that column instead of assigning the word `"original"`.
 
 To assign a standalone literal constant value directly as a keyword argument without awkward nested quotes (`status="'active'"`), wrap it in `quoted string literals (e.g. status="'active'")`:
-- `.mutate(status=pt.lit("active"), source=pt.lit("original"))`
+- `.mutate(status="'active'", source="'original'")`
 
 > **When is `quoted string literals (e.g. status="'active'")` NOT needed?**
 > 1. **Inside conditional helpers (`if_else`, `case_when`, `coalesce`)**: `quoted string literals (e.g. status="'active'")` is **completely irrelevant here**. Inside formula expressions, standard inner single quotes `'...'` already distinguish string literals from column references:
@@ -9913,8 +9917,8 @@ df = pt.DataFrame({'original': [100, 200], 'val': [1, 2]})
 # 1. Unquoted string matching an existing column -> copies that column!
 print("Copied column 'original':\n", df.mutate(source='original'))
 
-# 2. With pt.lit(): assigns literal string constants cleanly and safely
-print("\nWith pt.lit():\n", df.mutate(source="'original'", status="'active'"))
+# 2. With quoted string literals: assigns literal string constants cleanly and safely
+print("\nWith quoted string literals:\n", df.mutate(source="'original'", status="'active'"))
 ```
 Output:
 ```text
@@ -9929,7 +9933,7 @@ Copied column 'original':
 │ 200      ┆ 2   ┆ 200    │
 └──────────┴─────┴────────┘
 
-With pt.lit():
+With quoted string literals:
  shape: (2, 4)
 ┌──────────┬─────┬──────────┬────────┐
 │ original ┆ val ┆ source   ┆ status │
@@ -10254,7 +10258,7 @@ Pytae provides a cohesive suite of data cleaning, profiling, inspection, and exp
 | `.freq()` | `col`, `dropna=False` | In-terminal / notebook ASCII categorical frequency bars |
 | `.hist()` | `col`, `bins=10` | In-terminal / notebook ASCII numeric distribution histogram |
 | `.diff()` | `other`, `tol=0.0`, `rtol=0.0` | Detailed schema, shape, drift, and cell comparison report |
-| `.to_clip()` | *(none)* | Copies clean TSV table directly to the system clipboard |
+| `.to('clip')` | *(none)* | Copies clean TSV table directly to the system clipboard |
 
 ---
 
@@ -10835,9 +10839,9 @@ Values:
   Identical: all cell values match within tolerance.
 ```
 
-## 9. `to_clip()` — Zero-Friction Clipboard Export
+## 9. `to('clip')` — Zero-Friction Clipboard Export
 
-`df.to_clip()` copies the DataFrame to the system clipboard as tab-separated values (TSV) without index. You can immediately paste it (`Cmd+V` / `Ctrl+V`) into Excel, Google Sheets, or any spreadsheet editor.
+`df.to('clip')` copies the DataFrame to the system clipboard as tab-separated values (TSV) without index. You can immediately paste it (`Cmd+V` / `Ctrl+V`) into Excel, Google Sheets, or any spreadsheet editor.
 
 ```python
 # Copy aggregated summary table to clipboard
@@ -10849,7 +10853,7 @@ Values:
         avg_mass="body_mass_g:mean",
         max_mass="body_mass_g:max",
     )
-).to_clip()
+).to('clip')
 
 print("Summary table copied to clipboard! Paste directly into Excel or Google Sheets.")
 ```
@@ -11114,13 +11118,13 @@ shape: (3, 4)
 ################################################################################
 # Notebook: read_write.ipynb
 
-# Data Ingestion, Streaming & Sinks (`read_*`, `scan_*`, `write_*`)
+# Data Ingestion, Streaming & Sinks (`pt.read`, `pt.scan`, `write_*`, `to`)
 
-`pytae` provides fast, dedicated readers and writers powered by Polars' multithreaded I/O core, complete with automatic compression handling, schema inference, and lazy query optimization.
+`pytae` provides fast, universal readers and writers powered by Polars' multithreaded I/O core, complete with automatic compression handling, schema inference, and lazy query optimization.
 
-- **Eager Readers**: `pt.read_parquet()`, `pt.read_csv()`, `pt.read_txt()`, `pt.read_jsonl()`, `pt.read_sas()`
-- **Lazy Scanners**: `pt.scan_parquet()`, `pt.scan_csv()` for out-of-core streaming and query pushdowns
-- **Writers**: `df.write_parquet()`, `df.write_csv()`, `df.write_jsonl()`
+- **Universal Reader**: `pt.read()` automatically detects parquet, csv, tsv, json, ndjson, ipc, excel, sas
+- **Lazy Scanner**: `pt.scan()` for out-of-core streaming and query pushdowns
+- **Writers**: `df.write_parquet()`, `df.write_csv()`, `df.write_jsonl()`, and universal `df.to()`
 - **Sample Datasets**: Instant access to `penguins`, `diamonds`, `tips`, `flights`, `titanic` via `pt.sample()`
 
 ```python
@@ -11175,8 +11179,8 @@ with tempfile.TemporaryDirectory() as tmp_dir:
     penguins.write_csv(csv_file)
     
     # Read back eagerly
-    df_pq = pt.read_parquet(pq_file)
-    df_csv = pt.read_csv(csv_file)
+    df_pq = pt.read(pq_file)
+    df_csv = pt.read(csv_file)
     
     print(f"Parquet shape: {df_pq.shape}, CSV shape: {df_csv.shape}")
     display(df_pq.head(3))
@@ -11199,8 +11203,8 @@ shape: (3, 7)
 └─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
 ```
 
-## 3. Lazy Scanning & Query Pushdowns (`pt.scan_parquet`)
-`pt.scan_parquet()` returns a lazy DataFrame (`pl.LazyFrame`). Filters and column selections push down directly into the Parquet reader:
+## 3. Lazy Scanning & Query Pushdowns (`pt.scan`)
+`pt.scan()` returns a lazy DataFrame (`pl.LazyFrame`). Filters and column selections push down directly into the Parquet reader:
 Rows that do not match the filter are skipped in row groups before ever touching RAM!
 
 ```python
@@ -11209,7 +11213,7 @@ with tempfile.TemporaryDirectory() as tmp_dir:
     penguins.write_parquet(pq_file)
     
     # Scan lazily
-    lazy_df = pt.scan_parquet(pq_file)
+    lazy_df = pt.scan(pq_file)
     print("Is lazy frame:", lazy_df.is_lazy)
     
     # Build query plan: filter & select
@@ -11249,9 +11253,9 @@ shape: (5, 2)
 Quickly copy and paste data directly between Python and spreadsheets:
 
 ```python
-# df.to_clipboard() copies tab-delimited records to the OS clipboard
+# df.to('clip') copies tab-delimited records to the OS clipboard
 small_df = penguins.select("species", "body_mass_g").head(3)
-# small_df.to_clipboard()  # Copies to OS clipboard
+# small_df.to('clip')  # Copies to OS clipboard
 display(small_df)
 ```
 Output:
@@ -12935,7 +12939,7 @@ The Pytae REPL is a high-performance in-memory exploratory workbench. Unlike tra
 │                            │ Arrow IPC. Instant rollback (restore) with 0 MB RAM cost.  │
 ├────────────────────────────┼────────────────────────────────────────────────────────────┤
 │ 4. EPHEMERAL SANDBOXING    │ Embedded Python (py) runs in an ephemeral scope with zero   │
-│                            │ residual RAM footprint. Explicit .to_pytae() handoff.      │
+│                            │ residual RAM footprint. Explicit table handoff.             │
 ├────────────────────────────┼────────────────────────────────────────────────────────────┤
 │ 5. REPRODUCIBLE SCRIPTS    │ Automatic flight recorder logs every step. Prunes undo paths│
 │                            │ and exports clean .pt (Pytae) or .py (Python) pipelines.   │
@@ -13008,7 +13012,7 @@ pytae> exit -s
 | **Advanced Query** | ANSI SQL | `sql { SELECT ... }` | Non-destructive SQL preview (or `res = sql { ... }` to assign table). |
 | | Python Eval | `py { <expr> }` | Python expression evaluation in `{ ... }`. |
 | | Python Block | `py { ... }` | Multi-line Python block with ephemeral RAM sandboxing. |
-| | Register Table | `py { df.to_pytae('tbl') }` | Register Python DataFrame back to Pytae workbench. |
+| | Register Table | `py { tbl = pt.DataFrame(...) }` | Register Python DataFrame back to Pytae workbench. |
 | **Variables & Config** | Session Variable | `threshold = 1000` | Define typed session parameter referenced as `@threshold`. |
 | | Variable Status | `status var` | List defined variables and values. |
 | | Remove Variable | `rm var <name>`, `rm var *` | Purge session variable definitions. |
@@ -13039,7 +13043,7 @@ Dive deeper into specific subsystems:
 2. **[In-Memory Pipelines & Data Inspection](pipelines_inspection.md)**:
    Exploration vs. mutation semantics, chaining CLI verbs at RAM speed, relational joins, and non-destructive inspection tools (`-head`, `-cols`, `-schema`, `-diff`).
 3. **[SQL & Python Interop (Ephemeral Python Sandboxing)](sql_python_interop.md)**:
-   Cross-table ANSI SQL queries, embedded Python evaluation, multi-line blocks, the ephemeral memory sandboxing architecture, and explicit `.to_pytae()` table conversion.
+   Cross-table ANSI SQL queries, embedded Python evaluation, multi-line blocks, the ephemeral memory sandboxing architecture, and explicit table assignment.
 4. **[Session Variables & Configuration](variables_config.md)**:
    Defining session `@parameters`, nested configuration traversal, using variables in pipelines, display preferences (`set`), and persisting settings (`set save`).
 5. **[Checkpoints, History Audit, Pipeline Export & Replay](checkpoints_history_replay.md)**:
@@ -13086,6 +13090,7 @@ This guide covers saving in-memory snapshots (`checkpoint`), instant rollback (`
 
 The Pytae REPL features a zero-overhead snapshotting system. When exploring hypotheses, you can freeze your workbench state at any time without consuming valuable RAM.
 
+<a id="saving--updating-checkpoints-checkpoint-name"></a>
 ### Saving & Updating Checkpoints (`checkpoint <name>`)
 
 Take an ephemeral snapshot of all active tables, original file references, session `@variables`, and pipeline state:
@@ -13193,6 +13198,7 @@ pytae> rm checkpoint *
 Cleared all saved checkpoints.
 ```
 
+<a id="reverting-to-source-reset-reset-tbl-reset-initial"></a>
 ### Reverting to Source (`reset`, `reset <tbl>`, `reset initial`)
 
 Reset commands allow you to step back to baseline states:
@@ -13206,6 +13212,7 @@ Reset commands allow you to step back to baseline states:
 
 ## Session History & Audit Logging
 
+<a id="in-repl-history-audit-log-history-history-n"></a>
 ### In-REPL History Audit Log (`history`, `history <n>`)
 
 Inspect commands executed during your session as a clean numbered list:
@@ -13342,7 +13349,7 @@ Native Pytae pipeline scripts contain zero-boilerplate assignments and flags (`o
 
 ### Python Scripts (`.py`)
 
-Python scripts exported via `export pipeline.py` or `exit -s py` contain standard Python code using `pytae` and `polars`. State-mutating `py { ... }` blocks (including direct assignments like `k = df.head(10)`, `.to_pytae()` conversions, and persistent helper definitions) are emitted with redundant top-level imports (`pd`, `pl`, `pt`, or repeated imports across blocks) automatically deduplicated, while pure inspection blocks (`py { print(df.shape) }`) are omitted.
+Python scripts exported via `export pipeline.py` or `exit -s py` contain standard Python code using `pytae` and `polars`. State-mutating `py { ... }` blocks (including direct assignments like `k = df.head(10)`, table assignments, and persistent helper definitions) are emitted with redundant top-level imports (`pd`, `pl`, `pt`, or repeated imports across blocks) automatically deduplicated, while pure inspection blocks (`py { print(df.shape) }`) are omitted.
 
 - **Headless Execution**:
   ```bash
@@ -13485,7 +13492,7 @@ This guide covers in-memory pipeline transformations, assignment vs. exploration
   - [Relational Joins (`-join`)](#relational-joins--join)
   - [Table Concatenation (`-concat`)](#table-concatenation--concat)
 - [Non-Destructive Data Inspection](#non-destructive-data-inspection)
-  - [Previews (`-head`, `-tail`, `-sample`)](#previews--head--tail--sample)
+  - [Previews (`-head`, `-tail`, `-sample`, `-browse`)](#previews--head--tail--sample--browse)
   - [Structural Inspection (`-schema`, `-cols`, `-dtype`, `-shape`, `-nulls`)](#structural-inspection--schema--cols--dtype--shape--nulls)
   - [Statistical Summaries (`-glimpse`, `-describe`, `-freq`)](#statistical-summaries--glimpse--describe--freq)
   - [Terminal Visualizations (`-bar`, `-scatter`, `-hist`, `-corr`)](#terminal-visualizations--bar--scatter--hist--corr)
@@ -13616,8 +13623,11 @@ Supported join types: `how=left`, `how=inner`, `how=outer`, `how=semi`, `how=ant
 Concatenate tables vertically (row-bind) or horizontally (column-bind):
 
 ```text
-# Vertical union
-pytae [q1, q2]> all_sales = -concat "tables=q1,q2, how=vertical"
+# Vertical stack of specified tables
+pytae [q1, q2]> all_sales = -concat "frames=q1,q2"
+
+# Or stack all loaded tables directly:
+pytae [q1, q2]> all_sales = -concat
 ```
 
 ---
@@ -13723,7 +13733,7 @@ pytae [df*]> -diff baseline
 
 [← Back to REPL Hub](README.md) | [Master Reference](../pytae.md)
 
-This guide covers ANSI SQL querying across loaded tables, embedded Python execution (`py <expr>`), the **Ephemeral Python Sandboxing architecture**, and explicit `.to_pytae()` table registration in the Pytae interactive REPL (`pytae -i`).
+This guide covers ANSI SQL querying across loaded tables, embedded Python execution (`py <expr>`), the **Ephemeral Python Sandboxing architecture**, and explicit table registration in the Pytae interactive REPL (`pytae -i`).
 
 ---
 
@@ -13743,13 +13753,14 @@ This guide covers ANSI SQL querying across loaded tables, embedded Python execut
 - [Ephemeral Python Sandboxing & RAM Isolation](#ephemeral-python-sandboxing--ram-isolation)
   - [The Design Philosophy: Ephemeral Data vs. Persistent Logic](#the-design-philosophy-ephemeral-data-vs-persistent-logic)
   - [Immediate Garbage Collection & Memory Zeroing](#immediate-garbage-collection--memory-zeroing)
-  - [Explicit `.to_pytae()` Table Registration](#explicit-to_pytae-table-registration)
+  - [Explicit Table Registration](#explicit-table-registration)
   - [Rejection of Bare `.pt` Accessor Proxies](#rejection-of-bare-pt-accessor-proxies)
   - [In-Place Active Table Mutation](#in-place-active-table-mutation)
 - [Comprehensive Real-World Walkthrough](#comprehensive-real-world-walkthrough)
 
 ---
 
+<a id="ansi-sql-across-tables-sql----"></a>
 ## ANSI SQL across Tables (`sql { ... }`)
 
 Pytae embeds a native Polars `SQLContext` directly into the REPL, allowing you to run standard ANSI SQL queries across all loaded tables without copying data into an external database engine like SQLite or DuckDB.
@@ -13773,6 +13784,7 @@ shape: (4, 3)
 └───────────┴───────┴────────────┘
 ```
 
+<a id="non-destructive-preview-vs-assignment-res--sql----"></a>
 ### Non-Destructive Preview vs. Assignment (`res = sql { ... }`)
 
 - **Bare `sql { ... }`**: Executes the query non-destructively and prints a formatted table preview (like `-head`). Your active table in RAM remains untouched.
@@ -13814,6 +13826,7 @@ Created 'summary' from SQL query (18 rows x 3 cols).
 
 ---
 
+<a id="python-execution-py----"></a>
 ## Python Execution (`py { ... }`)
 
 The REPL allows direct execution of arbitrary Python code when complex procedural logic, regex algorithms, or scientific libraries (`scipy`, `sklearn`, `numpy`) are required. All Python execution is enclosed in `{ ... }`.
@@ -13832,6 +13845,7 @@ pytae> py { import math; [math.factorial(x) for x in range(1, 6)] }
 [1, 2, 6, 24, 120]
 ```
 
+<a id="multi-line-py-----block-mode"></a>
 ### Multi-Line `py { ... }` Block Mode
 
 Open multi-line block mode with `py {`. The prompt changes to `... `, providing automatic indentation (+4 spaces on `:`). Arbitrary blank lines are permitted within the block without triggering early execution. Type `}` on a newline to complete and run:
@@ -13999,7 +14013,7 @@ Pytae balances **interactive convenience** with **strict memory hygiene** throug
    - `gc.collect()` is explicitly executed.
    - Kernel page trimming (`libc.malloc_trim(0)` on Linux, `mach_task` on macOS, `K32EmptyWorkingSet` on Windows) is triggered after every block to return resident heap pages back to the operating system.
 3. **Explicit Workbench Tables**:
-   - Only tables explicitly registered via `.to_pytae()`, assigned directly from a Pytae `DataFrame` (e.g. `k = df.head(10)`), or assigned back to active `df` are promoted into the Pytae table registry and preserved in exported `.pt`/`.py` scripts.
+   - Only tables assigned directly from a Pytae `DataFrame` (e.g. `orders_log = pt.DataFrame(df)` or `k = df.head(10)`), or assigned back to active `df` are promoted into the Pytae table registry and preserved in exported `.pt`/`.py` scripts.
 
 ### Immediate Garbage Collection & Memory Zeroing
 
@@ -14013,21 +14027,21 @@ Pytae balances **interactive convenience** with **strict memory hygiene** throug
 │ 4. PRESERVE LOGIC │ Modules, custom functions, and classes saved into session env.     │
 │ 5. RAM FLUSH      │ Scratch data & arrays destroyed. gc.collect() invoked.             │
 │ 6. OS PAGE TRIM   │ OS kernel frees virtual memory pages. Process RSS resets to 0 MB.  │
-│ 7. EXPLICIT HANDOFF│ ONLY tables explicitly registered via .to_pytae() persist in REPL.│
+│ 7. EXPLICIT HANDOFF│ ONLY tables assigned as Pytae DataFrames persist in REPL.          │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Explicit `.to_pytae()` Table Registration
+### Explicit Table Registration
 
-To promote a Python DataFrame into the active Pytae workbench, you **must explicitly call `.to_pytae('<table_name>')`**:
+To promote a Python DataFrame into the active Pytae workbench, assign it directly as a `pt.DataFrame`:
 
 ```text
 pytae [orders]> py {
 ... # Heavy computation inside Python
-... df = orders.to_polars()
-... df = df.with_columns(log_amount = pl.col("amount").log())
+... pldf = orders.to("polars")
+... pldf = pldf.with_columns(log_amount = pl.col("amount").log())
 ... # Register back to Pytae:
-... pt.DataFrame(df).to_pytae("orders_log")
+... orders_log = pt.DataFrame(pldf)
 ... }
 Registered table 'orders_log' in Pytae workbench.
 
@@ -14037,7 +14051,7 @@ pytae [orders, orders_log]>
 ### Rejection of Bare `.pt` Accessor Proxies
 
 To prevent memory leaks and ambiguous pointer references across the C-Python boundary:
-- Tables inside the `py` block must be explicitly converted using `.to_pytae()`.
+- Tables inside the `py` block must be explicitly converted using `pt.DataFrame(...)` or `df.to("pytae")`.
 - Unassigned or bare Python variables (`x = 100`) do not persist in Pytae's `@variable` registry.
 - Tables cannot be accidentally overwritten without an explicit assignment or registration.
 
@@ -14047,8 +14061,7 @@ If you wish to mutate the currently active table using Python logic:
 
 ```text
 pytae [orders: 100,000x6]> py {
-... clean_orders = orders.filter("amount > 0").arrange("amount desc")
-... clean_orders.to_pytae("orders")
+... df = orders.filter("amount > 0").arrange("amount desc")
 ... }
 Updated active table 'orders' (98,420 rows x 6 cols).
 ```
@@ -14141,6 +14154,7 @@ To keep the REPL mental model clean and unambiguous:
 > [!TIP]
 > Bare scalar definitions (e.g. `threshold = 5000`) continue to work as a silent fallback, but the recommended convention is to always use `@` on the left-hand side (`@threshold = 5000`).
 
+<a id="defining-variables-name--literal"></a>
 ### Defining Variables
 
 Assign any literal directly at the prompt using the `@name = ...` syntax:
@@ -14238,6 +14252,7 @@ pytae> @tiers[2]
 'gold'
 ```
 
+<a id="using-variables-in-pipeline-verbs--filter--mutate-sql----"></a>
 ### Using Variables in Pipeline Verbs (`-filter`, `-mutate`, `sql { ... }`)
 
 Inject session variables directly into pipeline filter expressions, column derivations, and SQL queries:
@@ -14305,6 +14320,7 @@ Registered active table 'comb_df' (250,000 rows x 2 cols).
 
 Once the block exits, `comb_df` is fully registered in your Pytae session and ready for normal REPL operations (`-filter`, `-mutate`, `save`, `diff`, etc.).
 
+<a id="inspecting-variables-status-var-status-var-name"></a>
 ### Inspecting Variables (`status var`, `status var <name>`)
 
 ```text
@@ -14322,6 +14338,7 @@ Type    : int
 Value   : 5000
 ```
 
+<a id="deleting-variables-rm-var-name-rm-var-"></a>
 ### Deleting Variables (`rm var <name>`, `rm var *`)
 
 ```text
@@ -14588,6 +14605,7 @@ pytae> orders_lazy = scan sqlite://app.db:orders
 Scanned app.db:orders as 'orders_lazy' (lazy, 5 cols).
 ```
 
+<a id="windows--git-bash-path-formats-cusers-c"></a>
 ### Windows, UNC & Git Bash Path Formats (`/c/Users/...`, `//c/...`, `\\server\share\...`)
 
 On Windows, Git Bash (MSYS2), and WSL environments, path conventions often vary. Pytae seamlessly normalizes Git Bash drive mounts (`/c/path/file.parquet` and `//c/path/file.parquet`), WSL mounts (`/mnt/c/...`), Cygwin mounts (`/cygdrive/c/...`), and UNC network shares directly into valid Windows filesystem paths (`C:/path/file.parquet`), whether passed bare or quoted:
@@ -14627,6 +14645,7 @@ Loaded deals.parquet as 'network_deals' (85,000 rows x 12 cols).
 
 If a path does not exist on disk, Pytae reports a clean diagnostic rather than inadvertently declaring a string session variable.
 
+<a id="bundled-sample-datasets-samplename"></a>
 ### Bundled Sample Datasets (`sample:<name>`)
 
 Instantly load bundled demo datasets using the explicit `sample:` prefix:
@@ -14684,6 +14703,7 @@ pytae [orders, cust]> cust
 cust: 15,000 rows x 5 cols (tip: 'switch cust' to switch active dataset)
 ```
 
+<a id="switching-the-active-table-cursor-switch-name"></a>
 ### Switching the Active Table Cursor (`switch <name>`)
 
 Switch the active cursor to another table using `switch <name>`:
@@ -14697,6 +14717,7 @@ pytae [cust: 15,000x5]>
 > [!NOTE]
 > The legacy command `use <name>` has been deprecated and removed in favor of `switch <name>`.
 
+<a id="zero-copy-table-renaming-rename-old-new"></a>
 ### Zero-Copy Table Renaming (`rename <old> <new>`)
 
 Rename an in-memory dataset via instant $O(1)$ zero-copy pointer reassignment:
@@ -14709,6 +14730,7 @@ pytae [customers, orders]>
 
 All references in the workbench and cursor tracking update instantaneously without copying underlying Arrow memory buffers.
 
+<a id="subject-first-execution-tbl--verb"></a>
 ### Subject-First Execution (`<tbl> -<verb>`)
 
 Execute commands directly on non-active tables without switching cursors:
@@ -14724,6 +14746,7 @@ pytae [orders, cust]> cust -filter "country == 'US'"
 -> cust: 9,200 rows x 5 cols
 ```
 
+<a id="removing-tables--os-memory-trimming-rm-table-name"></a>
 ### Removing Tables & OS Memory Trimming (`rm table <name>`)
 
 Purge tables from memory when they are no longer needed:
@@ -15200,7 +15223,7 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 
 | Category | Python Library (Notebook) | CLI & Engine Guide (Markdown) | Key Capabilities & Verbs |
 |:---|:---|:---|:---|
-| **Data I/O** | **[read_write.ipynb](notebooks/library/read_write.ipynb)** | **[read_write.md](guides/read_write.md)** | `pt.read_*`, `pt.scan_*`, `write_*`, `-o`, `-out_dir`, `-fmt`, `-progress`, STDIN, clipboard |
+| **Data I/O** | **[read_write.ipynb](notebooks/library/read_write.ipynb)** | **[read_write.md](guides/read_write.md)** | `pt.read`, `pt.scan`, `df.to`, `write_*`, `-o`, `-out_dir`, `-fmt`, `-progress`, STDIN, clipboard |
 | **Derivations** | **[mutate.ipynb](notebooks/library/mutate.ipynb)** | **[mutate.md](guides/mutate.md)** | `mutate`, formulas, sequential assignments, `if_else`, `case_when`, `map`, `shift`, `@var` |
 | **Row Filtering** | **[filter.ipynb](notebooks/library/filter.ipynb)** | **[filter.md](guides/filter.md)** | `filter`, `assert_` (data assertions), intervals `[10, 20]`, set membership `in`, `or`/`and`, string methods, callables |
 | **Columns** | **[select.ipynb](notebooks/library/select.ipynb)** | **[select.md](guides/select.md)** | `select`, drop with `!`, regex/patterns, inline rename, `pt.everything` |
@@ -15212,15 +15235,14 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 | **Reshaping** | **[reshape.ipynb](notebooks/library/reshape.ipynb)** | **[reshape.md](guides/reshape.md)** | `long` (unpivoting), `wide` (1:1 pivoting), and `explode` (unnesting list/array columns) |
 | **Relational Joins**| **[join.ipynb](notebooks/library/join.ipynb)** | **[join.md](guides/join.md)** | `df.join`, `pt.join`, `pt.concat`, inner/left/right/full/semi/anti/cross, colon keys, `validate` |
 | **Masking & Privacy**| **[other_utilities.ipynb](notebooks/library/other_utilities.ipynb)** | **[mask.md](guides/mask.md)** | `mask`, `unmask`, `-mask`, `-unmask`, SHA-256 hash, salt, redact, key encryption, vault tokenization |
-| **Interactive REPL**| — | **[repl/](repl/README.md)** | `pytae -i`, in-memory workbench, ephemeral Python sandboxing, `.to_pytae()`, `checkpoint`, `restore`, `rm table`, `exit -s` |
-| **Utilities** | **[other_utilities.ipynb](notebooks/library/other_utilities.ipynb)** | **[clean_replace.md](guides/clean_replace.md)**<br>**[diff.md](guides/diff.md)** | `fillna`, `dropna`, `clean_columns`, `diff` (key-aware with `on=`, `tol=`), `glimpse`, `cols`, `to_clip` |
+| **Interactive REPL**| — | **[repl/](repl/README.md)** | `pytae -i`, in-memory workbench, ephemeral Python sandboxing, table assignment, `checkpoint`, `restore`, `rm table`, `exit -s` |
+| **Utilities** | **[other_utilities.ipynb](notebooks/library/other_utilities.ipynb)** | **[clean_replace.md](guides/clean_replace.md)**<br>**[diff.md](guides/diff.md)** | `fillna`, `dropna`, `clean_columns`, `diff` (key-aware with `on=`, `tol=`), `glimpse`, `cols`, `df.to("clip")` |
 | **Inspection** | **[other_utilities.ipynb](notebooks/library/other_utilities.ipynb)** | **[inspect.md](guides/inspect.md)** | `-cols`, `-dtype`, `-shape`, `-nulls`, `-head`, `-tail`, `-glimpse`, `-summary`, `-freq`, `-hist`, `-bar`, `-scatter`, `-corr` |
 | **Multi-File** | **[join.ipynb](notebooks/library/join.ipynb)** | **[multi_file.md](guides/multi_file.md)** | Multi-table pipelines (`alias=source`), multi-file globbing (`*.parquet`), multi-table joining, batch inputs, pipes, Unix redirection |
 | **SQL Engine** | **[sql.ipynb](notebooks/library/sql.ipynb)** | **[sql.md](guides/sql.md)** | `df.sql()`, `pt.sql()`, `-sql` native Polars SQL engine (SQLContext) on data and files |
 | **Plotting** | **[plotting.ipynb](notebooks/plotting/plotting.ipynb)** | **[cli_plots.md](guides/cli_plots.md)** | `df.plot()`, `-plot`, `-finalize`, terminal `-bar`, `-scatter`, `-corr`, headless figures |
 | **Doc Search & MCP** | — | — | `pytae -doc <query>`, `pt.doc()`, `pytae -mcp` stdio JSON-RPC 2.0 server for Copilot/Cursor |
 | **Comparisons** | **[vs. Pandas](comparisons/comparison_to_pandas.md)**<br>**[vs. dplyr](comparisons/comparison_to_dplyr.md)**<br>**[vs. SAS](comparisons/comparison_to_sas.md)** | — | Pytae vs. Pandas vs. dplyr vs. SAS, naming rationale, "one and only one obvious way" |
-| **Benchmarks** | **[benchmarks.ipynb](benchmarks/benchmarks.ipynb)** | **[run_benchmarks.py](benchmarks/run_benchmarks.py)**<br>**[README](benchmarks/README.md)** | Reproducible 5M-row speed benchmarks: Pytae vs. Pandas/dplyr/SAS, timings & plots |
 | **Benchmarks** | **[benchmarks.ipynb](benchmarks/benchmarks.ipynb)** | **[run_benchmarks.py](benchmarks/run_benchmarks.py)**<br>**[README](benchmarks/README.md)** | Reproducible 5M-row speed benchmarks: Pytae vs. Pandas/dplyr/SAS, timings & plots |
 
 ---
@@ -15234,7 +15256,7 @@ The **Pytae REPL** provides stateful, iterative in-memory data manipulation and 
 1. **Dedicated Entrypoint (`pytae -i`)**: Interactive sessions launch cleanly with `pytae -i`. Datasets are loaded explicitly with `df = file.parquet`, guaranteeing that session logs and exported replay scripts are 100% reproducible and self-contained.
 2. **Subject-First Multi-Table Workbench**: Load multiple datasets simultaneously (`df1`, `df2`, `orders`, `cust`). Run commands with clear prefixes (`df1 -head 5`, `orders -join cust on=id`), or switch active tables with `switch <name>`.
 3. **Non-Destructive by Default**: Bare exploratory queries (`-pivot`, `-filter`, `-head`) format and display previews in the terminal without altering underlying tables in memory. State changes require explicit assignment (`df = df -filter ...`).
-4. **Ephemeral Python Sandboxing & Persistent Logic**: Embedded Python execution (`py { ... }`) provides an extensibility escape hatch. Pre-loads `pd`, `pl`, `pt`, and `DataFrame`. Imported modules, custom functions, and classes persist throughout the REPL session, while transient scratch variables, arrays, and intermediate data objects are immediately purged from RAM upon block exit via `gc.collect()`. Tables converted via `.to_pytae()`, directly assigned from a Pytae `DataFrame` (e.g. `k = df.head(10)`), or assigned to `df` are registered in the workbench and exported cleanly by `exit -s` / `export script`.
+4. **Ephemeral Python Sandboxing & Persistent Logic**: Embedded Python execution (`py { ... }`) provides an extensibility escape hatch. Pre-loads `pd`, `pl`, `pt`, and `DataFrame`. Imported modules, custom functions, and classes persist throughout the REPL session, while transient scratch variables, arrays, and intermediate data objects are immediately purged from RAM upon block exit via `gc.collect()`. Tables assigned to a Pytae `DataFrame` (e.g. `k = pt.DataFrame(...)` or `k = df.head(10)`), or assigned to `df` are registered in the workbench and exported cleanly by `exit -s` / `export script`.
 5. **Ephemeral IPC Checkpoints (0 MB RAM Overhead)**: Checkpoints serialize frozen table states to ephemeral Arrow IPC format on disk. They consume **0 MB of RAM** and are automatically purged upon session exit, allowing safe instant restoration via `restore [name]` or `reset`.
 
 ### Quick Reference of REPL Commands
@@ -15252,7 +15274,7 @@ The **Pytae REPL** provides stateful, iterative in-memory data manipulation and 
 | **Inspection** | Metadata | `-shape`, `-cols [asc\|desc\|pattern]`, `-schema`, `-nulls` | Non-destructive structural inspection |
 | | Previews | `-head 10`, `-tail 5`, `-sample 10`, `-diff [target]` | Non-destructive formatted row previews & milestone diffs |
 | **SQL & Python**| `sql` | `sql { SELECT * FROM orders JOIN cust ... }` | Non-destructive SQL preview (or `res = sql { ... }`) |
-| | `py` | `py { k = df.to("pandas"); pt.DataFrame(k).to_pytae("k") }` | Embedded Python with persistent imports, ephemeral sandboxing & `.to_pytae()` |
+| | `py` | `py { k = df.to("pandas"); orders = pt.DataFrame(k) }` | Embedded Python with persistent imports, ephemeral sandboxing & table assignment |
 | **Checkpoints** | `checkpoint` | `checkpoint baseline` | Save ephemeral IPC snapshot (0 MB RAM overhead) |
 | | `restore` / `reset` | `restore baseline`, `reset` | Instantly revert workbench state to checkpoint |
 | **Parameters** | `@var` | `min_val = 3500`, `@cfg.threshold` | Session variables substituted in `-filter`, `-mutate`, `sql { ... }` |
@@ -15266,7 +15288,7 @@ For complete guides, configuration flags, edge cases, and cookbooks, see the ded
 - [**Master REPL Architecture & Command Hub**](repl/README.md) — Architectural pillars, 30-second quickstart, and master command reference table.
 - [**Workbench, Ingestion & Multi-Table Management**](repl/workbench_tables.md) — Reader options (`-encoding`, `-dlim`, `-nrows`, `-opts`), glob loading, sample datasets, zero-copy `rename`, and table deallocation.
 - [**In-Memory Pipelines & Data Inspection**](repl/pipelines_inspection.md) — 1:1 CLI verbs in RAM, assignment vs bare exploration semantics, multi-table joins, and non-destructive inspection.
-- [**SQL & Python Interop (Ephemeral Python Sandboxing)**](repl/sql_python_interop.md) — ANSI SQL across tables, single-line & multi-line `py { ... }` blocks, pre-loaded `pd`/`pl`/`pt`, session-wide persistent imports, ephemeral RAM zeroing, and explicit `.to_pytae()` conversion.
+- [**SQL & Python Interop (Ephemeral Python Sandboxing)**](repl/sql_python_interop.md) — ANSI SQL across tables, single-line & multi-line `py { ... }` blocks, pre-loaded `pd`/`pl`/`pt`, session-wide persistent imports, ephemeral RAM zeroing, and explicit table assignment.
 - [**Session Variables (`@var`), Settings & Preferences**](repl/variables_config.md) — Session `@parameters`, nested configuration traversal, display preferences (`set`), and permanent configuration (`set save`).
 - [**Checkpoints, History Audit, Pipeline Export & Replay**](repl/checkpoints_history_replay.md) — Ephemeral IPC snapshots, instant `restore`, milestone `-diff`, flight recorder `history`, script export (`exit -s`, `export`), and post-hoc conversion (`pytae -export`).
 
@@ -15945,7 +15967,7 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 | **Multithreading** | Single-threaded; blocked by Python GIL | Automatically parallelized across all CPU cores |
 | **Vectorization** | Limited NumPy SIMD | Full AVX-512 / AVX2 / NEON vector pipelines |
 | **Memory Model** | High overhead (object pointers, frequent copies) | Minimal overhead (Arrow chunked memory, string cache) |
-| **Lazy Execution** | No native query optimizer | `pt.scan_parquet()` query planning & pushdowns |
+| **Lazy Execution** | No native query optimizer | `pt.scan()` query planning & pushdowns |
 
 ### Reproducible Speed Benchmarks (5,000,000 Rows)
 *Environment: Apple Silicon M-series (macOS), Python 3.13, 5,000,000 rows across 5 columns (categorical strings, float measurements, integer weights).*
@@ -15960,7 +15982,7 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 
 ### Why Pytae Outperforms Pandas
 1. **True Multithreading without GIL**: While Pandas processes row loops and `apply()` sequentially on a single core, Pytae chunks operations across all hardware threads without locking.
-2. **Predicate & Projection Pushdown**: In `pt.scan_parquet()`, Pytae reads only the requested columns and filters rows directly inside the Parquet storage reader before materializing buffers into memory.
+2. **Predicate & Projection Pushdown**: In `pt.scan()`, Pytae reads only the requested columns and filters rows directly inside the Parquet storage reader before materializing buffers into memory.
 3. **Zero Intermediate Memory Duplication**: Pandas frequently requires `.copy()` to avoid `SettingWithCopyWarning`, multiplying memory footprint. Pytae utilizes copy-on-write and Arrow buffer slicing.
 
 > [!TIP]
@@ -16063,7 +16085,7 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 | **Categorical Frequency**| `df['col'].value_counts(dropna=False)` | `df.freq("col")` *(With ASCII bars)* | `-freq col` |
 | **Histogram Bins** | `pd.cut(df['x'], 10).value_counts()` | `df.hist("x", bins=10)` *(With ASCII bars)*| `-hist x:10` |
 | **Dataset Comparison** | `df1.compare(df2)` *(Fails on misaligned index)*| `df1.diff(df2, tol=0.01)` | `pytae f1.parquet -diff f2.parquet,tol=0.01` |
-| **Clipboard Export** | `df.to_clipboard(index=False)` | `df.to_clip()` | `-o clip` |
+| **Clipboard Export** | `df.to_clipboard(index=False)` | `df.to("clip")` | `-o clip` |
 
 ### 11. Missing Data Architecture & Cleaning (`dropna`, `fillna`, `clean_columns`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
@@ -16303,7 +16325,7 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 
 ### Key Architectural Advantages over dplyr
 1. **Parallel Execution Across Cores**: `dplyr` requires third-party packages like `multidplyr` or `furrr` to parallelize work across worker processes (incurring substantial inter-process serialization overhead). Pytae parallelizes natively inside Rust SIMD threads with shared memory.
-2. **Lazy Execution Pipeline**: R's pipe `%>%` evaluates eagerly at every step. Pytae's `pt.scan_parquet()` builds a unified query plan that executes optimizations (predicate pushdown, branch pruning) in a single multithreaded pass.
+2. **Lazy Execution Pipeline**: R's pipe `%>%` evaluates eagerly at every step. Pytae's `pt.scan()` builds a unified query plan that executes optimizations (predicate pushdown, branch pruning) in a single multithreaded pass.
 3. **No Non-Standard Evaluation (NSE) Overhead**: Eliminates `rlang` expression parsing and NSE unquoting cycles, providing direct execution on Apache Arrow buffers.
 
 > [!TIP]
@@ -16401,7 +16423,7 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 | **Transposed Overview**| `glimpse(df)` | `df.glimpse()` *(Non-destructive)* | `-glimpse` |
 | **Frequency Counts** | `count(df, col, sort = TRUE)` | `df.freq("col")` *(With ASCII bars)* | `-freq col` |
 | **Dataset Comparison** | `waldo::compare(df1, df2)` | `df1.diff(df2, tol=0.01)` | `pytae f1.parquet -diff f2.parquet,tol=0.01` |
-| **Clipboard Export** | `clipr::write_clip(df)` | `df.to_clip()` | `-o clip` |
+| **Clipboard Export** | `clipr::write_clip(df)` | `df.to("clip")` | `-o clip` |
 
 ### 11. Missing Data Architecture & Cleaning (`dropna`, `fillna`, `clean_columns`)
 | Task | dplyr / tidyr (R) | Pytae (Python) | Pytae CLI |
@@ -16936,7 +16958,7 @@ classifiers = [
 [project.optional-dependencies]
 plot = ["matplotlib", "scipy"]
 sql = []
-dev = ["pytest>=8.0.0", "matplotlib", "scipy", "ruff>=0.8", "mypy>=1.13"]
+dev = ["pytest>=8.0.0", "matplotlib", "scipy", "ruff>=0.8", "mypy>=1.13", "duckdb"]
 notebooks = ["nbclient", "nbformat", "ipykernel", "scipy"]
 
 [project.scripts]
