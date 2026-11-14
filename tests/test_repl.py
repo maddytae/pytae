@@ -4193,6 +4193,35 @@ def test_repl_clipboard_ingestion_and_strict_clean_export(tmp_path, monkeypatch)
     assert len(copied_payloads) == 2
     assert len(copied_payloads[1]) == 5
 
+    # 3b. Test -schema -o clip, -dtype -o clip, -nulls -o clip copy clean DataFrames
+    outputs.clear()
+    r.execute_line("-schema -o clip", output_fn=outputs.append)
+    assert any("Copied schema to system clipboard" in o for o in outputs)
+    schema_payload = copied_payloads[-1]
+    assert list(schema_payload.columns) == ["Column", "Type", "Nulls", "Unique"]
+    assert len(schema_payload) == 2
+
+    outputs.clear()
+    r.execute_line("-dtype -o clip", output_fn=outputs.append)
+    assert any("Copied dtypes to system clipboard" in o for o in outputs)
+    dtype_payload = copied_payloads[-1]
+    assert list(dtype_payload.columns) == ["Column", "Type"]
+    assert len(dtype_payload) == 2
+
+    outputs.clear()
+    r.execute_line("-nulls -o clip", output_fn=outputs.append)
+    assert any("Copied null counts to system clipboard" in o for o in outputs)
+    nulls_payload = copied_payloads[-1]
+    assert list(nulls_payload.columns) == ["Column", "Nulls"]
+    assert len(nulls_payload) == 2
+
+    # 3c. Test k = df -schema produces 4-column schema DataFrame
+    outputs.clear()
+    r.execute_line("k_schema = df -schema", output_fn=outputs.append)
+    assert "k_schema" in r.tables
+    assert r.tables["k_schema"].shape == (2, 4)
+    assert list(r.tables["k_schema"].columns) == ["Column", "Type", "Nulls", "Unique"]
+
     # 4. Strictly follow guided steps: Assign slice first, then export to clip
     outputs.clear()
     copied_payloads.clear()

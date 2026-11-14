@@ -232,8 +232,8 @@ def format_glimpse(df: Any, width: int | None = None) -> str:
     return "\n".join(lines)
 
 
-def format_schema(df: Any, is_tty: bool | None = None) -> str:
-    """Format DataFrame as a concise schema summary table: Column, Type, Nulls (%), Unique."""
+def schema_dataframe(df: Any) -> Any:
+    """Extract DataFrame schema summary as a 4-column Polars DataFrame: Column, Type, Nulls, Unique."""
     import polars as pl
 
     from pytae.dataframe import DataFrame as PytaeDataFrame
@@ -267,11 +267,23 @@ def format_schema(df: Any, is_tty: bool | None = None) -> str:
             "Nulls": f"{n_null:,} ({pct:.1f}%)",
             "Unique": f"{n_uniq:,}",
         })
-    schema_df = pl.DataFrame(rows)
-    from pytae.cli_run import _format_table
+    return pl.DataFrame(rows)
 
-    header = f"Columns: {len(pldf.columns)} | Rows: {total:,}\n"
-    return header + _format_table(schema_df, tbl_rows=max(len(rows), 10), is_tty=is_tty)
+
+def format_schema(df: Any, is_tty: bool | None = None) -> str:
+    """Format DataFrame as a concise schema summary table: Column, Type, Nulls (%), Unique."""
+    import polars as pl
+
+    from pytae.cli_run import _format_table
+    from pytae.dataframe import DataFrame as PytaeDataFrame
+
+    underlying = df._df if isinstance(df, PytaeDataFrame) else df
+    total = len(underlying) if not isinstance(underlying, pl.LazyFrame) else len(underlying.collect())
+    num_cols = len(underlying.columns)
+    schema_df = schema_dataframe(df)
+
+    header = f"Columns: {num_cols} | Rows: {total:,}\n"
+    return header + _format_table(schema_df, tbl_rows=max(len(schema_df), 10), is_tty=is_tty)
 
 
 def glimpse(df: Any, width: int | None = None) -> Any:

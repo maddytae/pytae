@@ -328,6 +328,11 @@ def unmask(
     return DataFrame(df).unmask(cols, *args, key=key, vault=vault, **kwargs)
 
 
+def schema(df: Any) -> DataFrame:
+    """Return the schema summary as a 4-column DataFrame: Column, Type, Nulls, Unique."""
+    return DataFrame(df).schema_df()
+
+
 def cols(df: Any, ascending: bool | None = True) -> list[str]:
     return DataFrame(df).cols(ascending=ascending)
 
@@ -551,6 +556,7 @@ __all__ = [
     "wide",
     "pivot",
     "cols",
+    "schema",
     "freq",
     "glimpse",
     "format_glimpse",

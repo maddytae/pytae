@@ -1109,22 +1109,25 @@ def _process_path(
             if should_print(idx):
                 _output_text(dtypes.to_string(), args)
             if is_clip:
-                clip_action = lambda s=dtypes: s.to_clipboard()
+                dtype_df = pd.DataFrame({"Column": dtypes.index, "Type": dtypes.values})
+                clip_action = lambda d=dtype_df: d.to_clipboard(index=False)
         elif op == "nulls":
             nulls_s = pipeline.polars_frame().null_count().to_pandas().iloc[0]
             nulls = _list_order_index(nulls_s, args.nulls)
             if should_print(idx):
                 _output_text(nulls.to_string(), args)
             if is_clip:
-                clip_action = lambda s=nulls: s.to_clipboard()
+                nulls_df = pd.DataFrame({"Column": nulls.index, "Nulls": nulls.values})
+                clip_action = lambda d=nulls_df: d.to_clipboard(index=False)
         elif op == "schema":
-            from pytae.other_utilities import format_schema
+            from pytae.other_utilities import format_schema, schema_dataframe
 
+            schema_df = schema_dataframe(pipeline.polars_frame())
             schema_str = format_schema(pipeline.polars_frame(), is_tty=getattr(args, "pretty", False) or None)
             if should_print(idx):
                 _output_text(schema_str, args)
             if is_clip:
-                clip_action = lambda s=schema_str: _copy_to_clipboard(s)
+                clip_action = lambda d=schema_df: d.to_pandas().to_clipboard(index=False)
             elif is_file and out_target is not None and Path(out_target).suffix.lower() in (".txt", ".md", ".log"):
                 dest = Path(out_target)
                 out_dir = getattr(args, "out_dir", None)
@@ -1137,6 +1140,8 @@ def _process_path(
                 else:
                     print(f"Wrote schema to {dest}")
                 return False
+            pipeline._pldf = schema_df
+            pipeline._df = None
         elif op == "describe":
             described = pipeline.dataframe().describe()
             pipeline._df = described

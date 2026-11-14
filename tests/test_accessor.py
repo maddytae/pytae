@@ -247,6 +247,12 @@ def test_pt_accessor_comprehensive_shared_verbs(capsys):
         assert isinstance(obj.pt.to_pandas(), pd.DataFrame)
         assert obj.pt.shape == (4, 4)
 
+        # schema_df
+        sdf = obj.pt.schema_df()
+        assert list(sdf.columns) == ["Column", "Type", "Nulls", "Unique"]
+        assert len(sdf) == 4
+        assert pt.schema(obj).shape == (4, 4)
+
         # retired pick() and invalid agg(by=...) error paths
         with pytest.raises(AttributeError, match="pick\\(\\) has been removed"):
             obj.pt.pick("id")

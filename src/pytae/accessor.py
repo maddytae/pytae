@@ -116,6 +116,9 @@ class _BasePtAccessor:
     def sql(self, query: str) -> DataFrame:
         return DataFrame(self._obj).sql(query)
 
+    def schema_df(self) -> DataFrame:
+        return DataFrame(self._obj).schema_df()
+
     def agg(self, *specs: Any, a: Any = None, dropna: bool = False, **kwargs: Any) -> DataFrame:
         if "by" in kwargs or "_by" in kwargs:
             raise TypeError(

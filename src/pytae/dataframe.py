@@ -1311,6 +1311,12 @@ class DataFrame:
         print(format_glimpse(self, width=width))
         return self
 
+    def schema_df(self) -> DataFrame:
+        """Return the schema summary as a 4-column DataFrame: Column, Type, Nulls, Unique."""
+        from pytae.other_utilities import schema_dataframe
+
+        return DataFrame(schema_dataframe(self))
+
     def repl(self, prompt: str = "pytae") -> Any:
         """Launch an interactive REPL shell pre-loaded with this DataFrame.
 
