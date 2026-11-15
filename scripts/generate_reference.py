@@ -1823,8 +1823,7 @@ pytae a=portfolio.xlsx b=portfolio.xlsx \
 ├── readme.md
 ├── reference
 │   ├── pytae_copilot_instructions.txt
-│   ├── pytae_copilot_reference.txt
-│   └── pytae_docs.db
+│   └── pytae_copilot_reference.txt
 ├── scripts
 │   ├── generate_reference.py
 │   ├── run_notebooks.py
@@ -2156,17 +2155,6 @@ Copy and paste the text block below directly into the **Instructions** (System P
         gh_copilot_path = github_dir / "copilot-instructions.md"
         gh_copilot_path.write_text(copilot_instructions_content, encoding="utf-8")
         print(f"Successfully generated {gh_copilot_path}")
-
-    github_dir = REPO_ROOT / ".github"
-    if github_dir.exists():
-        gh_copilot_path = github_dir / "copilot-instructions.md"
-        gh_copilot_path.write_text(copilot_instructions_content, encoding="utf-8")
-        print(f"Successfully generated {gh_copilot_path}")
-
-    from pytae.doc_search import build_search_index
-    db_path = REPO_ROOT / "reference" / "pytae_docs.db"
-    build_search_index(db_path)
-    print(f"Successfully generated {db_path}")
 
 
 if __name__ == "__main__":

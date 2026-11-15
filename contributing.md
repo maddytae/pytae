@@ -122,7 +122,6 @@ Whenever publishing a new release to PyPI or creating a new version tag:
    This automatically reads the new version from `pyproject.toml` and updates:
    - `reference/pytae_copilot_reference.txt` (Curated knowledge base manual for Copilot Studio)
    - `reference/pytae_copilot_instructions.txt` (System instructions card for Copilot Studio)
-   - `reference/pytae_docs.db` (SQLite search database for CLI doc and MCP)
 
 3. **Changelog Updates**:
    Document changes under the new version header in `changelog.md`.

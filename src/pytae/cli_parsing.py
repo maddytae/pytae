@@ -941,7 +941,7 @@ def parse_reader_opts(raw: str | None) -> tuple[dict[str, Any], dict[str, dict[s
     return global_opts, targeted_opts
 
 
-_JOIN_KEYS = ("left", "right", "on", "how", "validate")
+_JOIN_KEYS = ("left", "right", "on", "how", "validate", "fuzzy", "score")
 
 
 def parse_join_on(raw: str) -> tuple[list[str] | None, list[str] | None, list[str] | None]:
@@ -973,7 +973,8 @@ def parse_join_arg(raw: str) -> dict:
     left/right default to the first two input tables), on= (required; shared column
     name(s), or left:right pairs if they differ between sides), how= (optional,
     default 'inner', passed to Polars join()), validate= (optional, passed
-    to Polars join()).
+    to Polars join()), fuzzy= (optional float threshold, e.g. 0.85),
+    score= (optional score column name, e.g. score=match_score).
     """
     kwargs = parse_reshape_kwargs(raw, keys=_JOIN_KEYS, flag="-join")
     how = kwargs.get("how", "inner")
@@ -985,6 +986,20 @@ def parse_join_arg(raw: str) -> dict:
         on_cols, left_cols, right_cols = None, None, None
     else:
         on_cols, left_cols, right_cols = parse_join_on(kwargs["on"])
+
+    fuzzy_val = kwargs.get("fuzzy")
+    fuzzy_parsed: float | bool | None = None
+    if fuzzy_val is not None:
+        if str(fuzzy_val).lower() in ("true", "1", "yes"):
+            fuzzy_parsed = 0.85
+        elif str(fuzzy_val).lower() in ("false", "0", "no"):
+            fuzzy_parsed = None
+        else:
+            try:
+                fuzzy_parsed = float(fuzzy_val)
+            except ValueError:
+                raise SystemExit(f"-join: invalid fuzzy threshold '{fuzzy_val}', must be a float between 0.0 and 1.0")
+
     return {
         "left": kwargs.get("left"),
         "right": kwargs.get("right"),
@@ -993,6 +1008,8 @@ def parse_join_arg(raw: str) -> dict:
         "right_on": right_cols,
         "how": how,
         "validate": kwargs.get("validate"),
+        "fuzzy": fuzzy_parsed,
+        "score": kwargs.get("score"),
     }
 
 

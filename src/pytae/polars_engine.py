@@ -1205,6 +1205,73 @@ _DTYPE_MAP: dict[str, pl.DataType] = {
     "timestamp": pl.Datetime(),
 }
 
+ROLLING_METHODS: dict[str, str] = {
+    "rolling_mean": "rolling_mean",
+    "roll_mean": "rolling_mean",
+    "rolling_sum": "rolling_sum",
+    "roll_sum": "rolling_sum",
+    "rolling_std": "rolling_std",
+    "roll_std": "rolling_std",
+    "rolling_var": "rolling_var",
+    "roll_var": "rolling_var",
+    "rolling_min": "rolling_min",
+    "roll_min": "rolling_min",
+    "rolling_max": "rolling_max",
+    "roll_max": "rolling_max",
+    "rolling_median": "rolling_median",
+    "roll_median": "rolling_median",
+}
+
+
+def _parse_rolling_params(args_nodes: list[ast.AST], keywords: list[ast.keyword]) -> tuple[int, int | None, bool]:
+    window: int | None = None
+    min_periods: int | None = None
+    center: bool = False
+
+    for kw in keywords:
+        if kw.arg in ("window", "window_size", "n"):
+            if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, (int, float)):
+                window = int(kw.value.value)
+        elif kw.arg == "min_periods":
+            if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, (int, float)):
+                min_periods = int(kw.value.value)
+        elif kw.arg == "center":
+            if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, bool):
+                center = kw.value.value
+
+    if window is None and len(args_nodes) >= 1:
+        a0 = args_nodes[0]
+        if isinstance(a0, ast.Constant) and isinstance(a0.value, (int, float)):
+            window = int(a0.value)
+    if min_periods is None and len(args_nodes) >= 2:
+        a1 = args_nodes[1]
+        if isinstance(a1, ast.Constant) and isinstance(a1.value, (int, float)):
+            min_periods = int(a1.value)
+        elif isinstance(a1, ast.Constant) and isinstance(a1.value, bool):
+            center = a1.value
+    if not center and len(args_nodes) >= 3:
+        a2 = args_nodes[2]
+        if isinstance(a2, ast.Constant) and isinstance(a2.value, bool):
+            center = a2.value
+
+    if window is None or window <= 0:
+        raise ValueError("Rolling function requires a positive integer window size (e.g. rolling_mean(col, 7) or window=7).")
+
+    return window, min_periods, center
+
+
+def _call_polars_rolling(expr: pl.Expr, method_name: str, window: int, min_p: int | None, center: bool) -> pl.Expr:
+    fn = getattr(expr, method_name)
+    kwargs: dict[str, Any] = {"window_size": window}
+    if center:
+        kwargs["center"] = center
+    if min_p is not None:
+        try:
+            return fn(**kwargs, min_samples=min_p)
+        except TypeError:
+            return fn(**kwargs, min_periods=min_p)
+    return fn(**kwargs)
+
 
 def _ast_to_polars_expr(
     node: ast.AST,
@@ -1456,20 +1523,28 @@ def _ast_to_polars_expr(
                         return obj_expr.str.ends_with(str(node.args[0].value))
                     pat_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema, params)
                     return obj_expr.str.ends_with(pat_expr)
-            elif isinstance(node.func.value, (ast.Name, ast.Call, ast.BinOp, ast.Attribute)) and attr_name in (
-                "is_null",
-                "is_not_null",
-                "is_nan",
-                "is_not_nan",
-                "cumsum",
-                "cumprod",
-                "cummin",
-                "cummax",
-                "fillna",
-                "first",
-                "last",
+            elif isinstance(node.func.value, (ast.Name, ast.Call, ast.BinOp, ast.Attribute)) and (
+                attr_name in (
+                    "is_null",
+                    "is_not_null",
+                    "is_nan",
+                    "is_not_nan",
+                    "cumsum",
+                    "cumprod",
+                    "cummin",
+                    "cummax",
+                    "fillna",
+                    "first",
+                    "last",
+                )
+                or attr_name in ROLLING_METHODS
             ):
                 obj_expr = _ast_to_polars_expr(node.func.value, col_names, col_map, by, schema, params)
+                if attr_name in ROLLING_METHODS:
+                    window, min_p, center = _parse_rolling_params(node.args, node.keywords)
+                    pl_m = ROLLING_METHODS[attr_name]
+                    expr = _call_polars_rolling(obj_expr, pl_m, window, min_p, center)
+                    return expr.over(by) if by else expr
                 if attr_name == "is_null":
                     expr = obj_expr.is_null()
                     return expr.over(by) if by else expr
@@ -1715,6 +1790,12 @@ def _ast_to_polars_expr(
         }
         if func_name in agg_map and len(args) == 1:
             expr = agg_map[func_name](args[0])
+            return expr.over(by) if by else expr
+        if func_name in ROLLING_METHODS and len(node.args) >= 1:
+            target_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema, params)
+            window, min_p, center = _parse_rolling_params(node.args[1:], node.keywords)
+            pl_m = ROLLING_METHODS[func_name]
+            expr = _call_polars_rolling(target_expr, pl_m, window, min_p, center)
             return expr.over(by) if by else expr
         if func_name == "count" and len(args) == 1:
             expr = args[0].count()
@@ -2483,6 +2564,8 @@ def join_polars(
     suffixes: tuple[str, str] | None = None,
     validate: str = "m:m",
     coalesce: bool | None = None,
+    fuzzy: float | bool | None = None,
+    score: str | bool | None = None,
     **kwargs: Any,
 ) -> Any:
     """Join two tabular datasets using Polars multithreaded SIMD vectorization.
@@ -2619,6 +2702,43 @@ def join_polars(
     else:
         coalesce_val = False
 
+    if fuzzy is not None and fuzzy is not False:
+        if how_norm not in ("inner", "left"):
+            raise ValueError(f"join(): fuzzy join currently supports 'inner' and 'left' joins, got '{how_norm}'")
+        if isinstance(fuzzy, bool):
+            threshold = 0.85
+        else:
+            try:
+                threshold = float(fuzzy)
+            except (ValueError, TypeError):
+                raise ValueError(f"join(): fuzzy threshold must be a float between 0.0 and 1.0, got {fuzzy!r}")
+        if not (0.0 <= threshold <= 1.0):
+            raise ValueError(f"join(): fuzzy threshold must be between 0.0 and 1.0, got {threshold}")
+
+        score_col = None
+        if isinstance(score, str) and score.strip():
+            score_col = score.strip()
+        elif score is True:
+            score_col = "_similarity"
+
+        l_key = on_cols[0] if on_cols is not None else (l_cols_key[0] if l_cols_key else None)
+        r_key = on_cols[0] if on_cols is not None else (r_cols_key[0] if r_cols_key else None)
+        if not l_key or not r_key:
+            raise ValueError("join(): fuzzy join requires a single key column via 'on' or 'left_on'/'right_on'")
+
+        return _fuzzy_join_polars(
+            left_pl,
+            right_pl,
+            l_key=l_key,
+            r_key=r_key,
+            how=how_norm,
+            threshold=threshold,
+            score_col=score_col,
+            suffix=eff_suffix,
+            coalesce=coalesce_val,
+            **kwargs,
+        )
+
     if how_norm == "cross":
         return left_pl.join(right_pl, how="cross", suffix=eff_suffix, **kwargs)
     elif on_cols is not None:
@@ -2642,6 +2762,99 @@ def join_polars(
             coalesce=coalesce_val,
             **kwargs,
         )
+
+
+def _fuzzy_join_polars(
+    left_pl: Any,
+    right_pl: Any,
+    l_key: str,
+    r_key: str,
+    how: str,
+    threshold: float,
+    score_col: str | None,
+    suffix: str,
+    coalesce: bool,
+    **kwargs: Any,
+) -> Any:
+    import difflib
+
+    is_lazy = isinstance(left_pl, pl.LazyFrame) or isinstance(right_pl, pl.LazyFrame)
+    left_eager = left_pl.collect() if isinstance(left_pl, pl.LazyFrame) else left_pl
+    right_eager = right_pl.collect() if isinstance(right_pl, pl.LazyFrame) else right_pl
+
+    left_vals = left_eager[l_key].drop_nulls().unique().to_list()
+    right_vals = right_eager[r_key].drop_nulls().unique().to_list()
+
+    right_str_map = {str(r): r for r in right_vals}
+    right_strs = list(right_str_map.keys())
+    right_set = set(right_strs)
+
+    matched_pairs: list[dict[str, Any]] = []
+
+    for l_val in left_vals:
+        l_str = str(l_val)
+        if l_str in right_set:
+            entry: dict[str, Any] = {l_key: l_val, "_pytae_match_key": right_str_map[l_str]}
+            if score_col:
+                entry[score_col] = 1.0
+            matched_pairs.append(entry)
+            continue
+
+        best_r_str: str | None = None
+        best_ratio = 0.0
+        len_l = len(l_str)
+
+        # Pre-filter candidates by length tolerance when string length > 3
+        candidates = (
+            [r for r in right_strs if abs(len(r) - len_l) / max(len(r), len_l, 1) <= (1.0 - threshold + 0.1)]
+            if len_l > 3
+            else right_strs
+        )
+
+        for r_str in candidates:
+            ratio = difflib.SequenceMatcher(None, l_str, r_str).ratio()
+            if ratio > best_ratio:
+                best_ratio = ratio
+                best_r_str = r_str
+
+        if best_ratio >= threshold and best_r_str is not None:
+            entry = {l_key: l_val, "_pytae_match_key": right_str_map[best_r_str]}
+            if score_col:
+                entry[score_col] = round(best_ratio, 4)
+            matched_pairs.append(entry)
+        else:
+            entry = {l_key: l_val, "_pytae_match_key": None}
+            if score_col:
+                entry[score_col] = None
+            matched_pairs.append(entry)
+
+    if matched_pairs:
+        map_df = pl.DataFrame(matched_pairs)
+    else:
+        schema_dict = {l_key: left_eager[l_key].dtype, "_pytae_match_key": right_eager[r_key].dtype}
+        if score_col:
+            schema_dict[score_col] = pl.Float64
+        map_df = pl.DataFrame(schema=schema_dict)
+
+    if map_df[l_key].dtype != left_eager[l_key].dtype:
+        map_df = map_df.with_columns(pl.col(l_key).cast(left_eager[l_key].dtype))
+
+    # Join left table with match mapping
+    left_mapped = left_eager.join(map_df, on=l_key, how="left")
+    if how == "inner":
+        left_mapped = left_mapped.filter(pl.col("_pytae_match_key").is_not_null())
+
+    # Join on _pytae_match_key == r_key
+    res = left_mapped.join(
+        right_eager,
+        left_on="_pytae_match_key",
+        right_on=r_key,
+        how="inner" if how == "inner" else "left",
+        suffix=suffix,
+    )
+    res = res.drop("_pytae_match_key")
+
+    return res.lazy() if is_lazy else res
 
 
 def concat_polars(

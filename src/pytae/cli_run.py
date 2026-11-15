@@ -1258,22 +1258,20 @@ def _process_path(
                 "many_to_many": "m:m",
             }
             validate_arg: Any = val_map.get(spec["validate"], "m:m") if spec["validate"] else "m:m"
+            from pytae.polars_engine import join_polars
+
             try:
-                if how == "cross":
-                    res_pl = left_pl.join(right_pl, how="cross")
-                elif spec["on"] is not None:
-                    res_pl = left_pl.join(right_pl, on=spec["on"], how=how, validate=validate_arg, coalesce=True)
-                elif spec["left_on"] == spec["right_on"]:
-                    res_pl = left_pl.join(right_pl, on=spec["left_on"], how=how, validate=validate_arg, coalesce=True)
-                else:
-                    res_pl = left_pl.join(
-                        right_pl,
-                        left_on=spec["left_on"],
-                        right_on=spec["right_on"],
-                        how=how,
-                        validate=validate_arg,
-                        coalesce=False,
-                    )
+                res_pl = join_polars(
+                    left_pl,
+                    right_pl,
+                    on=spec["on"],
+                    left_on=spec["left_on"],
+                    right_on=spec["right_on"],
+                    how=how,
+                    validate=validate_arg,
+                    fuzzy=spec.get("fuzzy"),
+                    score=spec.get("score"),
+                )
             except Exception as exc:
                 return _fail(parser, batch, f"-join: {exc}")
             pipeline._pldf = res_pl
@@ -1584,6 +1582,15 @@ def _process_path(
                 clip_idx = not (isinstance(df.index, pd.RangeIndex) and df.index.name is None)
                 clip_action = lambda d=df, ci=clip_idx: _copy_df_to_clipboard(_apply_round(d, args.round_ndigits), index=ci)
         elif op == "sample":
+            by_cols = (
+                current_by
+                if current_by is not None
+                else (legacy_by if (args.agg is None and not args.mutate) else None)
+            )
+            if by_cols:
+                avail_cols = pipeline.columns()
+                if any(c not in avail_cols for c in by_cols):
+                    return _fail(parser, batch, unknown_columns_message("-by", by_cols, avail_cols))
             sample_val = _next_op_val("sample", args.sample)
             if isinstance(sample_val, tuple) and len(sample_val) == 2:
                 sample_n, sample_frac = sample_val
@@ -1591,7 +1598,8 @@ def _process_path(
                 sample_n, sample_frac = None, sample_val
             else:
                 sample_n, sample_frac = (int(sample_val) if sample_val is not None else 5), None
-            sampled = pipeline.sample(sample_n or 5, seed=args.seed, frac=sample_frac)
+            sampled = pipeline.sample(sample_n or 5, seed=args.seed, frac=sample_frac, by_cols=by_cols)
+            current_by = None
             n = len(sampled)
             if should_print(idx):
                 _output_text(

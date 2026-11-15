@@ -345,6 +345,29 @@ pytae sales.parquet \
   -head 5
 ```
 
+### 4. Rolling Window Functions (`rolling_mean`, `rolling_sum`, `rolling_std`, etc.)
+Compute moving statistics over fixed observation windows, with support for `min_periods`, `center`, and group partitioning via `-by`:
+- Supported functions: `rolling_mean`, `rolling_sum`, `rolling_std`, `rolling_var`, `rolling_min`, `rolling_max`, `rolling_median` (and short aliases `roll_mean`, `roll_sum`, etc.).
+- Both function syntax `rolling_mean(price, 3)` and method syntax `price.rolling_mean(3)` are supported.
+
+```bash
+# 3-period rolling average and moving sum
+pytae sales.parquet \
+  -mutate "mavg = rolling_mean(sales, 3), msum = rolling_sum(sales, 3)" \
+  -head 6
+
+# Centered window with minimum period requirement
+pytae sales.parquet \
+  -mutate "smoothed = rolling_mean(sales, 5, min_periods=1, center=True)" \
+  -head 6
+
+# Group-partitioned rolling calculation (resets per group)
+pytae sales.parquet \
+  -by region \
+  -mutate "reg_mavg = rolling_mean(sales, 3)" \
+  -head 6
+```
+
 ---
 
 <a id="string-methods--null-checks"></a>

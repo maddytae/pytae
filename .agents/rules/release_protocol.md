@@ -12,8 +12,7 @@ Whenever the user requests to publish, release, bump the version, or cut a relea
    - Verify that reference files are regenerated with the updated release version:
      - `reference/pytae_copilot_reference.txt`
      - `reference/pytae_copilot_instructions.txt`
-     - `reference/pytae_docs.db`
-   - Never finalize a release without staging and committing these three regenerated files.
+   - Never finalize a release without staging and committing these regenerated files.
 
 3. **Changelog Updates**:
    - Add release notes in `changelog.md`.

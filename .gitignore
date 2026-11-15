@@ -17,6 +17,12 @@ build/
 __pycache__/
 .venv/
 
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+reference/*.db
+
 # Log files
 *.log
 # *.vsix

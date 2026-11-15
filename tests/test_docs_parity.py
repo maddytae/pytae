@@ -11,7 +11,6 @@ Guarantees that:
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
 import pytest
@@ -157,14 +156,6 @@ def test_reference_artifacts_exist_and_non_empty() -> None:
     assert "-file" in instr_text  # Mentions deprecation of -file
     assert len(instr_text) <= 8000, f"Instructions card exceeds Copilot Studio 8000 char limit ({len(instr_text)} chars)"
 
-    # SQLite FTS5 search database
-    db_path = ref_dir / "pytae_docs.db"
-    assert db_path.exists(), "reference/pytae_docs.db must exist"
-    conn = sqlite3.connect(str(db_path))
-    try:
-        cur = conn.execute("SELECT count(*) FROM docs_fts;")
-        count = cur.fetchone()[0]
-        assert count > 30, f"Expected >30 indexed doc chunks in docs_fts, got {count}"
-    finally:
-        conn.close()
+    # Verify SQLite DB is not tracked in repository (on-demand user cache instead)
+    assert not (ref_dir / "pytae_docs.db").exists(), "reference/pytae_docs.db must not be tracked in git"
 

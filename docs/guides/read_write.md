@@ -11,6 +11,7 @@ Export pipeline results, batch-convert datasets, route outputs to dedicated dire
 - [Overview & Quick Reference](#overview--quick-reference)
 - [Supported Formats Matrix](#supported-formats-matrix)
 - [Reading from STDIN and Pipes](#reading-from-stdin-and-pipes)
+- [Remote Cloud & HTTP File Ingestion](#remote-cloud--http-file-ingestion)
 - [Export Destinations (`-o`)](#export-destinations--o)
   - [Explicit File Path](#explicit-file-path)
   - [In-Place Format Shorthands](#in-place-format-shorthands)
@@ -74,6 +75,39 @@ When reading from STDIN, `pytae` automatically inspects the first chunk to sniff
 - `-fmt jsonl` / `-fmt ndjson`
 - `-fmt txt` / `-fmt tsv`
 - `-fmt parquet`
+
+---
+
+## Remote Cloud & HTTP File Ingestion
+
+`pytae` directly ingests remote and cloud-hosted datasets across `pt.read()`, `pt.scan()`, and the command line without intermediate curl/download steps:
+
+- **Web URLs**: `http://` and `https://` (e.g. GitHub raw URLs, public HTTP endpoints)
+- **Hugging Face Hub**: `hf://` (e.g. `hf://datasets/username/repo/data.parquet`)
+- **Cloud Object Stores**: `s3://` (AWS S3), `gs://` / `gcs://` (Google Cloud Storage)
+- **Bundled Sample Datasets**: `sample:<name>` (e.g. `sample:penguins`, `sample:tips`, `sample:diamonds`)
+
+```bash
+# Ingest directly from an HTTPS URL
+pytae https://raw.githubusercontent.com/maddytae/pytae/master/src/pytae/datasets/penguins.parquet -head 3
+
+# Ingest bundled sample dataset in CLI or Python
+pytae sample:penguins -by species -count
+```
+
+In Python:
+```python
+import pytae as pt
+
+# Direct HTTP/HTTPS read
+df = pt.read("https://raw.githubusercontent.com/maddytae/pytae/master/src/pytae/datasets/penguins.parquet")
+
+# Direct bundled sample read
+df = pt.read("sample:penguins")
+
+# S3 or GCS cloud storage read
+df = pt.read("s3://my-bucket/data.parquet")
+```
 
 ---
 

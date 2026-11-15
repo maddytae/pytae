@@ -13,6 +13,7 @@ Join multiple datasets or append rows across tables directly from the command li
   - [Differing Key Names](#differing-key-names)
   - [Multi-Column Join Keys](#multi-column-join-keys)
   - [Cardinality Validation](#cardinality-validation)
+  - [Key-Aware Fuzzy Joining (`fuzzy=`, `score=`)](#key-aware-fuzzy-joining-fuzzy-score)
   - [Chaining Multiple Joins with `data`](#chaining-multiple-joins-with-data)
 - [Row-Wise Stacking (`-concat`)](#row-wise-stacking--concat)
 - [Reader Options (`-opts`)](#reader-options--opts)
@@ -125,6 +126,28 @@ pytae o=orders.parquet u=users.csv \
   -head 5
 ```
 *(If `users.csv` contains duplicate IDs, `pytae` immediately aborts with a descriptive error).*
+
+---
+
+### Key-Aware Fuzzy Joining (`fuzzy=`, `score=`)
+
+When joining datasets with typographical errors, inconsistent casing, or slight variations in textual identifiers (e.g. company names, addresses, product titles), use `fuzzy=THRESHOLD` (a float between `0.0` and `1.0`, typically `0.8`–`0.9`):
+
+- **Fast Distinct-Key Execution**: Fuzzy similarity matching is computed on distinct keys ($N_{\text{unique}} \times M_{\text{unique}}$) with length-based pre-filtering, enabling million-row tables to join in milliseconds without explosive Cartesian product costs.
+- **Match Confidence Column (`score=`)**: Optionally specify a column name to record the fuzzy similarity score (e.g. `score="match_score"`). If a match is exact, the score is `1.0`. For unmatched left rows in left joins, the score is `null`.
+
+```bash
+# Command line: fuzzy join with 80% similarity threshold and confidence score column
+pytae a=customers.parquet b=companies.csv \
+  -join "on=company, how=left, fuzzy=0.8, score=match_score" \
+  -head 5
+```
+
+In Python:
+```python
+# Exact or fuzzy match on company with confidence column
+result = df1.join(df2, on="company", how="left", fuzzy=0.85, score="confidence")
+```
 
 ---
 

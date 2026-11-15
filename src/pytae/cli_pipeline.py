@@ -630,7 +630,25 @@ class _Pipeline:
         self._df = None
         return self._pldf
 
-    def sample(self, n: int, *, seed: int | None = None, frac: float | None = None) -> Any:
+    def sample(
+        self,
+        n: int,
+        *,
+        seed: int | None = None,
+        frac: float | None = None,
+        by_cols: list[str] | None = None,
+    ) -> Any:
+        from pytae.dataframe import DataFrame
+
+        if by_cols:
+            pldf = self.polars_frame()
+            pt_df = DataFrame(pldf)
+            sampled_pt = pt_df.by(*by_cols).sample(n=n, frac=frac, seed=seed)
+            sampled_pl = sampled_pt._df
+            self._pldf = sampled_pl
+            self._df = None
+            return sampled_pl
+
         if self._progress:
             df = self.dataframe()
             if not (isinstance(df.index, pd.RangeIndex) and df.index.name is None):

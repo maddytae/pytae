@@ -1082,6 +1082,13 @@ _TXT_DEFAULT_ENCODING = {".dat": "latin-1"}
 
 def _normalize_source(source: Any, *, _force_nt: bool = False) -> Any:
     """Normalize Git Bash / MSYS paths on Windows when source is a path string, Path, or list of them."""
+    if isinstance(source, (str, Path)) and str(source).startswith("sample:"):
+        from pytae import DATA_PATH
+
+        s_name = str(source)[7:].strip().removesuffix(".parquet")
+        cand = DATA_PATH / f"{s_name}.parquet"
+        if cand.exists():
+            return cand
     if is_db_or_cloud_uri(source):
         return _normalize_uri(source)
     if isinstance(source, (str, Path)):
@@ -1113,13 +1120,16 @@ def is_db_or_cloud_uri(s: Any) -> bool:
             "gcs:/",
             "gs://",
             "gs:/",
+            "http://",
+            "https://",
+            "hf://",
         )
     )
 
 
 def _normalize_uri(s: str | Path) -> str:
     s_str = str(s).strip()
-    for pfx in ("sqlite", "duckdb", "s3", "gcs", "gs"):
+    for pfx in ("sqlite", "duckdb", "s3", "gcs", "gs", "http", "https", "hf"):
         if s_str.lower().startswith(f"{pfx}:///"):
             return s_str
         if s_str.lower().startswith(f"{pfx}://"):
@@ -1320,6 +1330,72 @@ def read_uri(uri: str | Path, **opts: Any) -> tuple[Path, Any]:
         cloud_name = clean.rstrip("/").rpartition("/")[2] or clean
         return Path(cloud_name), df
 
+    if scheme in ("http", "https"):
+        import io
+        import urllib.request
+
+        fmt = opts.pop("fmt", opts.pop("format", None))
+        url_path = clean.split("?", 1)[0].split("#", 1)[0]
+        low = url_path.lower()
+        if fmt:
+            fmt = fmt.lower().lstrip(".")
+        elif any(low.endswith(ext) for ext in (".parquet", ".pq")):
+            fmt = "parquet"
+        elif any(low.endswith(ext) for ext in (".csv", ".tsv", ".txt", ".dat")):
+            fmt = "csv"
+        elif any(low.endswith(ext) for ext in (".ipc", ".arrow", ".feather")):
+            fmt = "ipc"
+        elif any(low.endswith(ext) for ext in (".ndjson", ".jsonl")):
+            fmt = "ndjson"
+        elif any(low.endswith(ext) for ext in (".xlsx", ".xls")):
+            fmt = "excel"
+        elif any(low.endswith(ext) for ext in (".json",)):
+            fmt = "json"
+        else:
+            fmt = "csv"
+
+        req = urllib.request.Request(clean, headers={"User-Agent": "pytae"})
+        with urllib.request.urlopen(req) as resp:
+            content = resp.read()
+        buf = io.BytesIO(content)
+
+        nrows = opts.pop("nrows", None) or opts.pop("n_rows", None)
+        if fmt == "parquet":
+            if nrows is not None:
+                df = pl.read_parquet(buf, **opts).head(nrows)
+            else:
+                df = pl.read_parquet(buf, **opts)
+        elif fmt == "csv":
+            sep = opts.pop("sep", None) or opts.pop("delimiter", None)
+            if sep:
+                opts["separator"] = sep
+            if nrows is not None:
+                opts["n_rows"] = nrows
+            df = pl.read_csv(buf, **opts)
+        elif fmt == "ipc":
+            df = pl.read_ipc(buf, **opts)
+            if nrows is not None:
+                df = df.head(nrows)
+        elif fmt == "ndjson":
+            df = pl.read_ndjson(buf, **opts)
+            if nrows is not None:
+                df = df.head(nrows)
+        elif fmt == "excel":
+            import pandas as pd
+            pdf = pd.read_excel(buf, **opts)
+            if nrows is not None:
+                pdf = pdf.head(nrows)
+            df = pl.from_pandas(pdf)
+        elif fmt == "json":
+            df = pl.read_json(buf, **opts)
+            if nrows is not None:
+                df = df.head(nrows)
+        else:
+            raise ValueError(f"Unsupported HTTP file format '{fmt}' for URI: {clean}")
+
+        url_name = url_path.rstrip("/").rpartition("/")[2] or "remote_data"
+        return Path(url_name), df
+
     raise ValueError(f"Unsupported database/cloud URI scheme: '{scheme}' in '{uri}'")
 
 
@@ -1330,7 +1406,7 @@ def scan_uri(uri: str | Path, **opts: Any) -> tuple[Path, Any]:
     clean = _normalize_uri(uri)
     scheme = clean.split("://", 1)[0].lower()
 
-    if scheme in ("sqlite", "duckdb"):
+    if scheme in ("sqlite", "duckdb", "http", "https"):
         p, df = read_uri(clean, **opts)
         return p, df.lazy()
 

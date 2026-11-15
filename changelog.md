@@ -5,6 +5,25 @@ All notable changes to this project are documented in this file.
 ## [3.14.6] - 2026-11-14
 
 ### Added & Standardized
+- **Native Rolling Window Functions in `mutate()` (`src/pytae/polars_engine.py`)**:
+  - Implemented vectorized moving window calculations: `rolling_mean`, `rolling_sum`, `rolling_std`, `rolling_var`, `rolling_min`, `rolling_max`, `rolling_median` along with their short aliases (`roll_mean`, `roll_sum`, etc.).
+  - Supported both functional invocation `rolling_mean(col, window_size)` and method invocation `col.rolling_mean(window_size)`.
+  - Added support for `min_periods` (with seamless dynamic fallback to Polars 2.0 `min_samples`), `center=True`, and group partitioning via `-by` / `.over(by)`.
+- **Remote Cloud & HTTP File Ingestion (`src/pytae/readers.py`)**:
+  - Direct ingestion across `pt.read()`, `pt.scan()`, and CLI for web URLs (`http://`, `https://`), Hugging Face Hub (`hf://`), and cloud object storage (`s3://`, `gs://`, `gcs://`).
+  - Added HTTP/HTTPS streaming reader with in-memory buffer to support servers without HTTP byte-range support (such as GitHub raw endpoints).
+  - Added direct `sample:<name>` URI resolution in Python `pt.read("sample:penguins")` matching CLI conventions.
+- **Stratified & Group-Aware Sampling (`src/pytae/dataframe.py`, `src/pytae/cli_pipeline.py`, `src/pytae/cli_run.py`, `src/pytae/cli.py`)**:
+  - Added stratified sampling across groups in Python via `df.by("species").sample(2, seed=42)` and `df.by("species").sample(prop=0.1, seed=42)`.
+  - Added CLI group-aware sampling via `pytae data.parquet -by species -sample 2` and proportion sampling via `-sample 10%`.
+  - Added `prop` parameter to `DataFrame.sample` and `GroupedDataFrame.sample`.
+- **Key-Aware Fuzzy Joining (`src/pytae/polars_engine.py`, `src/pytae/dataframe.py`, `src/pytae/cli_parsing.py`, `src/pytae/cli_run.py`)**:
+  - Added fuzzy string joining with configurable threshold: `df1.join(df2, on="company", fuzzy=0.85)`.
+  - High performance via distinct-key matching ($N_{\text{unique}} \times M_{\text{unique}}$) with length pre-filtering, avoiding Cartesian row explosion.
+  - Optional confidence score column tracking: `score="col_name"` (CLI `score=col_name`) recording the similarity score (`0.0`–`1.0`) with `null` for unmatched rows.
+- **Repository Streamlining & Standalone Binary Retirement**:
+  - Retired PyInstaller binary packaging scripts (`scripts/build_binary.py`) and automated GitHub Actions workflow (`.github/workflows/build_binaries.yml`) in favor of fast, modern, zero-config distribution via `uvx pytae` and `pipx install pytae`.
+  - Removed binary `reference/pytae_docs.db` from repository tracking; the SQLite FTS5 documentation search index is now generated dynamically on demand into `~/.cache/pytae/pytae_docs.db` on first use.
 - **Unified Missing Value Architecture & Hard Deprecation of `NaN` / `nans` (`src/pytae/dataframe.py`, `src/pytae/polars_engine.py`, `src/pytae/_parsing.py`, `src/pytae/cli_parsing.py`)**:
   - Normalized all missing values and IEEE 754 floating-point `NaN`s (`np.nan`, `float('nan')`) to Arrow `null` uniformly across all ingestion paths (Parquet, CSV, Excel, Python dicts, eager and lazy frames).
   - Added pre-normalization of missing values in dictionary ingestion (`_normalize_dict_nans`), enabling mixed integer lists (e.g. `[1, np.nan, 3]`) to natively construct as `Int64` with null without throwing Polars type errors.

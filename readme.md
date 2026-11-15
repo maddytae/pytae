@@ -13,7 +13,7 @@ Fast, ergonomic tabular data manipulation, feature engineering, and visualizatio
 2. **Unix Pipeline CLI (`pytae`)**: Fast one-shot command-line data processing, format conversion, and terminal visualizations.
 3. **Interactive REPL Shell (`pytae -i`)**: Stateful in-memory workbench with disk-backed checkpoints, multi-table joins, and ANSI SQL.
 
-👉 **Quick Links**: [**CLI Cheat Sheet & Cookbook**](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md) | [**Interactive REPL Guide**](https://github.com/maddytae/pytae/blob/master/docs/pytae.md#interactive-repl-shell-pytae--i) | [**Standalone Binaries (Zero-Python)**](https://github.com/maddytae/pytae/blob/master/docs/binary_distribution.md) | [**Master Reference & Architecture Hub**](https://github.com/maddytae/pytae/blob/master/docs/pytae.md) | [**vs. Pandas**](https://github.com/maddytae/pytae/blob/master/docs/comparisons/comparison_to_pandas.md) | [**vs. dplyr**](https://github.com/maddytae/pytae/blob/master/docs/comparisons/comparison_to_dplyr.md) | [**vs. SAS**](https://github.com/maddytae/pytae/blob/master/docs/comparisons/comparison_to_sas.md) | [**Benchmarks (5M Rows)**](https://github.com/maddytae/pytae/blob/master/docs/benchmarks/README.md)
+👉 **Quick Links**: [**CLI Cheat Sheet & Cookbook**](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md) | [**Interactive REPL Guide**](https://github.com/maddytae/pytae/blob/master/docs/pytae.md#interactive-repl-shell-pytae--i) | [**Master Reference & Architecture Hub**](https://github.com/maddytae/pytae/blob/master/docs/pytae.md) | [**vs. Pandas**](https://github.com/maddytae/pytae/blob/master/docs/comparisons/comparison_to_pandas.md) | [**vs. dplyr**](https://github.com/maddytae/pytae/blob/master/docs/comparisons/comparison_to_dplyr.md) | [**vs. SAS**](https://github.com/maddytae/pytae/blob/master/docs/comparisons/comparison_to_sas.md) | [**Benchmarks (5M Rows)**](https://github.com/maddytae/pytae/blob/master/docs/benchmarks/README.md)
 
 ---
 
@@ -32,15 +32,19 @@ Fast, ergonomic tabular data manipulation, feature engineering, and visualizatio
 
 ## Installation
 
-### Option 1: Standalone Portable Binary (Zero Python Required)
-For locked-down corporate laptops, air-gapped environments, or instant setup without installing Python, download the single-file executable from [GitHub Releases](https://github.com/maddytae/pytae/releases):
-- **Windows**: `pytae-windows-x64.zip` (Fast pre-extracted folder bundle)
-- **macOS**: `pytae-macos-arm64` (Apple Silicon)
-- **Linux**: `pytae-linux-x86_64`
+### Option 1: Zero-Config Global CLI via `uvx` or `pipx` (Instant, No Virtualenv Needed)
+Run commands immediately anywhere in your terminal without setting up or activating virtual environments:
+```bash
+# Instant zero-install one-liner (executes in milliseconds via uv):
+uvx pytae sales.parquet -filter "revenue > 1000" -shape
 
-See [Standalone Binary Distribution](https://github.com/maddytae/pytae/blob/master/docs/binary_distribution.md) for details.
+# Or install permanently into an isolated CLI tool environment:
+uv tool install pytae     # via uv
+# or
+pipx install pytae        # via pipx
+```
 
-### Option 2: Via Python Package Managers
+### Option 2: Standard Python Package Installation
 ```bash
 pip install pytae              # Polars-native CLI, REPL, and Python library
 pip install "pytae[plot]"       # Includes matplotlib for plotting & dashboards
@@ -232,7 +236,6 @@ Detailed migration guides with line-by-line syntax comparisons:
 - **[Master Reference & Architecture Hub](https://github.com/maddytae/pytae/blob/master/docs/pytae.md)**: Philosophy, the 7 pillars, naming rationale, eager vs. lazy execution, and architecture guide.
 - **[Ecosystem Comparisons](https://github.com/maddytae/pytae/tree/master/docs/comparisons/)**: Detailed Rosetta Stone guides for [Pandas](https://github.com/maddytae/pytae/blob/master/docs/comparisons/comparison_to_pandas.md), [dplyr](https://github.com/maddytae/pytae/blob/master/docs/comparisons/comparison_to_dplyr.md), and [SAS](https://github.com/maddytae/pytae/blob/master/docs/comparisons/comparison_to_sas.md).
 - **[Performance Benchmarks (5M Rows)](https://github.com/maddytae/pytae/blob/master/docs/benchmarks/README.md)**: Reproducible speed benchmarks vs. Pandas across realistic analytical workloads.
-- **[Standalone Portable Binaries](https://github.com/maddytae/pytae/blob/master/docs/binary_distribution.md)**: Single-binary setup and execution guide (Zero-Python).
 
 ### Guides & Manuals
 - **[CLI Cheat Sheet & Cookbook](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md)**: 14 curated sections of one-liner recipes and Unix shell workflows.

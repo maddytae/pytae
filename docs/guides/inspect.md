@@ -145,6 +145,24 @@ pytae penguins.parquet -sample 1% -shape
 (3, 7)
 ```
 
+### Stratified & Group-Aware Sampling (`-by` + `-sample`)
+
+Combine `-by` with `-sample` to draw a balanced, stratified sample of $N$ rows (or proportion) per subgroup:
+
+```bash
+# Sample 2 penguins from each species
+pytae penguins.parquet -by species -sample 2 -select species,island,body_mass_g
+```
+
+In Python:
+```python
+# Sample 2 rows per group
+df.by("species").sample(2, seed=42)
+
+# Sample 10% per group with seed
+df.by("species").sample(prop=0.1, seed=42)
+```
+
 ---
 
 ## In-Line ASCII Visualizations (`-freq`, `-hist`)

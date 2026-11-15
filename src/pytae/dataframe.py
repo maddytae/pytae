@@ -575,6 +575,7 @@ class DataFrame:
         frac: float | None = None,
         *,
         fraction: float | None = None,
+        prop: float | None = None,
         seed: int | None = None,
         random_state: int | None = None,
         with_replacement: bool = False,
@@ -596,7 +597,7 @@ class DataFrame:
         shuffle : bool, default False
             Whether to shuffle the sampled rows.
         """
-        effective_frac = frac if frac is not None else fraction
+        effective_frac = frac if frac is not None else (fraction if fraction is not None else prop)
         effective_seed = seed if seed is not None else random_state
         effective_replace = with_replacement or replace
 
@@ -670,6 +671,8 @@ class DataFrame:
         suffixes: tuple[str, str] | None = None,
         validate: str = "m:m",
         coalesce: bool | None = None,
+        fuzzy: float | bool | None = None,
+        score: str | bool | None = None,
         **kwargs: Any,
     ) -> DataFrame:
         """Join this DataFrame with another tabular dataset using native Polars multithreading.
@@ -698,6 +701,11 @@ class DataFrame:
         coalesce : bool | None, default None
             Whether to coalesce join keys. Defaults to True when keys match, or False
             when ``left_on != right_on`` to preserve both keys.
+        fuzzy : float | bool | None, default None
+            Similarity threshold for key-aware fuzzy joining (0.0 to 1.0, e.g. 0.85).
+            Defaults to 0.85 when passed as True.
+        score : str | bool | None, default None
+            Optional column name to store match confidence score (e.g. score="match_score").
 
         Returns
         -------
@@ -715,6 +723,8 @@ class DataFrame:
             suffixes=suffixes,
             validate=validate,
             coalesce=coalesce,
+            fuzzy=fuzzy,
+            score=score,
             **kwargs,
         )
         return DataFrame(res)
@@ -2108,6 +2118,7 @@ class GroupedDataFrame:
         frac: float | None = None,
         *,
         fraction: float | None = None,
+        prop: float | None = None,
         seed: int | None = None,
         random_state: int | None = None,
         with_replacement: bool = False,
@@ -2115,7 +2126,7 @@ class GroupedDataFrame:
         shuffle: bool = False,
     ) -> DataFrame:
         """Sample rows from each group established by pt.by()."""
-        effective_frac = frac if frac is not None else fraction
+        effective_frac = frac if frac is not None else (fraction if fraction is not None else prop)
         effective_seed = seed if seed is not None else random_state
         effective_replace = with_replacement or replace
         n_val = 5 if n is None and effective_frac is None else n

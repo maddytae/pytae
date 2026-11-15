@@ -47,12 +47,6 @@ class DocResult:
 
 
 def _get_db_path() -> Path:
-    cand1 = Path(__file__).resolve().parent / "reference" / "pytae_docs.db"
-    if cand1.exists():
-        return cand1
-    cand2 = Path(__file__).resolve().parent.parent.parent / "reference" / "pytae_docs.db"
-    if cand2.exists():
-        return cand2
     cache_dir = Path.home() / ".cache" / "pytae"
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir / "pytae_docs.db"

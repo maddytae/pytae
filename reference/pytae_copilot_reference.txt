@@ -3629,6 +3629,24 @@ pytae penguins.parquet -sample 1% -shape
 (3, 7)
 ```
 
+### Stratified & Group-Aware Sampling (`-by` + `-sample`)
+
+Combine `-by` with `-sample` to draw a balanced, stratified sample of $N$ rows (or proportion) per subgroup:
+
+```bash
+# Sample 2 penguins from each species
+pytae penguins.parquet -by species -sample 2 -select species,island,body_mass_g
+```
+
+In Python:
+```python
+# Sample 2 rows per group
+df.by("species").sample(2, seed=42)
+
+# Sample 10% per group with seed
+df.by("species").sample(prop=0.1, seed=42)
+```
+
 ---
 
 ## In-Line ASCII Visualizations (`-freq`, `-hist`)
@@ -3910,6 +3928,7 @@ Join multiple datasets or append rows across tables directly from the command li
   - [Differing Key Names](#differing-key-names)
   - [Multi-Column Join Keys](#multi-column-join-keys)
   - [Cardinality Validation](#cardinality-validation)
+  - [Key-Aware Fuzzy Joining (`fuzzy=`, `score=`)](#key-aware-fuzzy-joining-fuzzy-score)
   - [Chaining Multiple Joins with `data`](#chaining-multiple-joins-with-data)
 - [Row-Wise Stacking (`-concat`)](#row-wise-stacking--concat)
 - [Reader Options (`-opts`)](#reader-options--opts)
@@ -4022,6 +4041,28 @@ pytae o=orders.parquet u=users.csv \
   -head 5
 ```
 *(If `users.csv` contains duplicate IDs, `pytae` immediately aborts with a descriptive error).*
+
+---
+
+### Key-Aware Fuzzy Joining (`fuzzy=`, `score=`)
+
+When joining datasets with typographical errors, inconsistent casing, or slight variations in textual identifiers (e.g. company names, addresses, product titles), use `fuzzy=THRESHOLD` (a float between `0.0` and `1.0`, typically `0.8`–`0.9`):
+
+- **Fast Distinct-Key Execution**: Fuzzy similarity matching is computed on distinct keys ($N_{\text{unique}} \times M_{\text{unique}}$) with length-based pre-filtering, enabling million-row tables to join in milliseconds without explosive Cartesian product costs.
+- **Match Confidence Column (`score=`)**: Optionally specify a column name to record the fuzzy similarity score (e.g. `score="match_score"`). If a match is exact, the score is `1.0`. For unmatched left rows in left joins, the score is `null`.
+
+```bash
+# Command line: fuzzy join with 80% similarity threshold and confidence score column
+pytae a=customers.parquet b=companies.csv \
+  -join "on=company, how=left, fuzzy=0.8, score=match_score" \
+  -head 5
+```
+
+In Python:
+```python
+# Exact or fuzzy match on company with confidence column
+result = df1.join(df2, on="company", how="left", fuzzy=0.85, score="confidence")
+```
 
 ---
 
@@ -4775,6 +4816,29 @@ pytae sales.parquet \
   -head 5
 ```
 
+### 4. Rolling Window Functions (`rolling_mean`, `rolling_sum`, `rolling_std`, etc.)
+Compute moving statistics over fixed observation windows, with support for `min_periods`, `center`, and group partitioning via `-by`:
+- Supported functions: `rolling_mean`, `rolling_sum`, `rolling_std`, `rolling_var`, `rolling_min`, `rolling_max`, `rolling_median` (and short aliases `roll_mean`, `roll_sum`, etc.).
+- Both function syntax `rolling_mean(price, 3)` and method syntax `price.rolling_mean(3)` are supported.
+
+```bash
+# 3-period rolling average and moving sum
+pytae sales.parquet \
+  -mutate "mavg = rolling_mean(sales, 3), msum = rolling_sum(sales, 3)" \
+  -head 6
+
+# Centered window with minimum period requirement
+pytae sales.parquet \
+  -mutate "smoothed = rolling_mean(sales, 5, min_periods=1, center=True)" \
+  -head 6
+
+# Group-partitioned rolling calculation (resets per group)
+pytae sales.parquet \
+  -by region \
+  -mutate "reg_mavg = rolling_mean(sales, 3)" \
+  -head 6
+```
+
 ---
 
 <a id="string-methods--null-checks"></a>
@@ -5519,6 +5583,7 @@ Export pipeline results, batch-convert datasets, route outputs to dedicated dire
 - [Overview & Quick Reference](#overview--quick-reference)
 - [Supported Formats Matrix](#supported-formats-matrix)
 - [Reading from STDIN and Pipes](#reading-from-stdin-and-pipes)
+- [Remote Cloud & HTTP File Ingestion](#remote-cloud--http-file-ingestion)
 - [Export Destinations (`-o`)](#export-destinations--o)
   - [Explicit File Path](#explicit-file-path)
   - [In-Place Format Shorthands](#in-place-format-shorthands)
@@ -5582,6 +5647,39 @@ When reading from STDIN, `pytae` automatically inspects the first chunk to sniff
 - `-fmt jsonl` / `-fmt ndjson`
 - `-fmt txt` / `-fmt tsv`
 - `-fmt parquet`
+
+---
+
+## Remote Cloud & HTTP File Ingestion
+
+`pytae` directly ingests remote and cloud-hosted datasets across `pt.read()`, `pt.scan()`, and the command line without intermediate curl/download steps:
+
+- **Web URLs**: `http://` and `https://` (e.g. GitHub raw URLs, public HTTP endpoints)
+- **Hugging Face Hub**: `hf://` (e.g. `hf://datasets/username/repo/data.parquet`)
+- **Cloud Object Stores**: `s3://` (AWS S3), `gs://` / `gcs://` (Google Cloud Storage)
+- **Bundled Sample Datasets**: `sample:<name>` (e.g. `sample:penguins`, `sample:tips`, `sample:diamonds`)
+
+```bash
+# Ingest directly from an HTTPS URL
+pytae https://raw.githubusercontent.com/maddytae/pytae/master/src/pytae/datasets/penguins.parquet -head 3
+
+# Ingest bundled sample dataset in CLI or Python
+pytae sample:penguins -by species -count
+```
+
+In Python:
+```python
+import pytae as pt
+
+# Direct HTTP/HTTPS read
+df = pt.read("https://raw.githubusercontent.com/maddytae/pytae/master/src/pytae/datasets/penguins.parquet")
+
+# Direct bundled sample read
+df = pt.read("sample:penguins")
+
+# S3 or GCS cloud storage read
+df = pt.read("s3://my-bucket/data.parquet")
+```
 
 ---
 

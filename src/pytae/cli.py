@@ -1324,8 +1324,9 @@ def main(argv: list[str] | None = None) -> int:
         and args.head is None
         and args.tail is None
         and args.count is None
+        and args.sample is None
     ):
-        parser.error("-by requires -agg, -mutate, -head, -tail, or -count")
+        parser.error("-by requires -agg, -mutate, -head, -tail, -count, or -sample")
     if args.tol is not None and args.diff is None:
         parser.error("-tol requires -diff")
     if args.unmask is not None and not args.key and not args.vault:
