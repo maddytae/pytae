@@ -1,6 +1,11 @@
 # Pytae — Master Reference & Architecture Guide
 
-`pytae` is a modern, high-performance tabular data manipulation framework that provides a single, unified grammar across both **Python code** (`df.<verb>()`, `pt.<verb>(df)`) and the **Command Line** (`pytae <file> -<verb>`). Backed by a 100% native multithreaded SIMD Polars core, Pytae eliminates boilerplate, index headaches, and performance bottlenecks.
+`pytae` is a tabular data manipulation framework designed around practical lessons from modern data workflows:
+- It uses the **multithreaded SIMD execution** of Polars,
+- Adopts the **readable, functional grammar** of dplyr,
+- And avoids the **index hierarchies, API redundancies, and silent data loss defaults** of legacy libraries.
+
+Pytae provides a single, unified grammar across **Python library code** (`df.<verb>()`, `pt.<verb>(df)`), the **Interactive Terminal REPL** (`pytae`), and the **Unix Command Line** (`pytae <file> -<verb>`).
 
 ---
 
@@ -105,72 +110,68 @@ pytae penguins.parquet \
 
 ---
 
-## Naming Rationale: Why `filter`, `distinct`, `by`, `arrange`, `agg`, `long`/`wide`?
+## Core Architectural & Design Principles
 
-Pytae carefully chooses concise, intention-revealing names that eliminate ambiguity, prevent keyword collisions, and adhere strictly to *"One and Only One Obvious Way"*:
+Pytae translates its core philosophy into five concrete architectural principles that govern how data is structured, scoped, transformed, and exported:
 
-### 1. `filter` instead of `query` or `qry`
-- **Why `filter`?** `filter` is the canonical, intuitive verb across modern data science (R `dplyr`, SQL `FILTER`, Polars, Apache Spark). Calling it `filter` provides immediate familiarity and zero surprise.
-- **Why not `df.query()`?** Pandas' native `df.query()` is string-only and passes expressions to `numexpr`, which chokes on Python functions and spaced columns. In contrast, `df.filter()` supports:
-  - **Bare Callables & Lambdas**: `df.filter(lambda d: d['mass'] > 4000)` with full Python expressions and functions.
-  - **Mathematical Intervals**: `df.filter(mass="[3000, 4500]")` or `df.filter(pct="(0, 100)")`.
-  - **Set Membership & Operators**: lists `cat=['A', 'B']`, tuples `species=('starts_with', ['Ad', 'Ge'])`.
-  - **Pure Python Boolean Logic**: Uses clean English words `and`, `or`, and `not` (e.g. `df.filter("not is_active and mass > 3000")`), retiring confusing bitwise Pandas operators (`&`, `|`, `~`) and C-style `!` with actionable guidance.
-  - **Bracketed Spaced Columns**: `df.filter("[bill length mm] > 40")` without ugly backtick escaping.
-  - **Keyword & Dictionary Syntax**: `df.filter(status="active")` or `{"col": "> 5"}`.
-- **CLI Alignment**: The CLI uses `-filter "expr"`. The legacy `-qry` has been deprecated in favor of canonical `-filter`.
+### 1. Single-Shot Scoped Grouping (Why `ungroup()` is Obsolete)
 
-### 2. `distinct` instead of `dedupe`, `unique`, or `drop_duplicates`
-- **Why `distinct`?** `distinct` is the universally recognized keyword in SQL (`SELECT DISTINCT`) and dplyr (`distinct()`). It clearly describes returning unique, deduplicated rows.
-- **Why not `unique`?** In Pandas, `.unique()` is a Series method returning a 1D NumPy array of scalar values, not a DataFrame. Using `unique` would conflate scalar distinct values with full-table row deduplication.
-- **CLI Alignment**: The CLI uses `-distinct "species,island"`, with optional `keep=first|last|none` control.
-
-### 3. `by` for Single-Shot Scoped Grouping (Why `ungroup` is Obsolete)
-- **Why `by` over `groupby`?** In Pandas, `.groupby()` creates a lazy `DataFrameGroupBy` object that breaks standard DataFrame method chaining and forces multi-level index outputs upon aggregation.
-- In R's `dplyr`, `group_by()` produces a sticky grouped data frame that persists across operations unless the user manually chains `%>% ungroup()`.
-- **In Pytae, grouping is strictly single-shot and auto-clearing**:
-  - `df.by(*cols)` sets an active grouping context for the *immediate next verb*.
-  - `.mutate()` executes window calculations partitioned by group, consumes the grouping, and immediately returns a clean, ungrouped `DataFrame`.
-  - `.head()` / `.tail()` slices rows (including extreme values after `.arrange()`) per group and returns an ungrouped `DataFrame`.
-  - `.agg()` collapses per group and returns an ungrouped `DataFrame`.
+Grouping in Pytae is an execution modifier, not a persistent object state:
+- In **Pandas**, `.groupby()` creates a lazy `DataFrameGroupBy` object that fractures the API, breaks standard method chaining, and forces hierarchical `MultiIndex` outputs upon aggregation.
+- In **dplyr**, `group_by()` produces a "sticky" grouped table that silently alters the behavior of all downstream verbs until manually cleared with `ungroup()`.
+- In **Pytae, grouping is strictly single-shot and auto-clearing**:
+  - `df.by(*cols)` sets an active grouping scope for the *immediate next verb*.
+  - `.mutate()` computes window and partition calculations by group, consumes the grouping context, and immediately returns a clean, ungrouped `DataFrame`.
+  - `.head()` / `.tail()` slices rows per group (including extreme values after `.arrange()`) and returns an ungrouped `DataFrame`.
+  - `.agg()` collapses rows per group and returns an ungrouped `DataFrame`.
   - Because grouping is never sticky, subsequent operations naturally evaluate at the whole-table scope without needing an `ungroup()` verb.
-- **Fluent Re-Grouping**: You can seamlessly transition between group scopes and overall table scopes in one chain:
-  ```python
-  (
-      df
-      .by("region").mutate(reg_avg="mean(sales)")
-      .mutate(overall_avg="mean(sales)")
-      .by("product").mutate(prod_avg="mean(sales)")
-  )
-  ```
-- **Strict `*args` Only**: `df.by("species", "island")` requires clean positional `*args`. Nested lists (`df.by(["species"])`) and `df.by(None)` are strictly rejected with clear error guidance.
-- **Precedence**: If a second `.by()` is called before being consumed, it cleanly overwrites the previous grouping context.
 
-### 4. `arrange` instead of `sort` or `sort_by`
-- **Why not `sort`?** Python's built-in list has `.sort()`, and Pandas previously had `.sort()` (deprecated in favor of `.sort_values()`). In CLI flags, `-sort` is ambiguous (does it sort rows, columns, or files?).
-- **Why not `sort_by`?** `arrange` is the canonical Tidyverse verb for row ordering. It cleanly conveys ordering rows without implying whether an index or values are being sorted. It supports explicit ascending/descending declarations (`col desc`), multi-column ordering, and bracketed column names `[col name] desc`. Prefixing columns with `-` is intentionally rejected to prevent ambiguity with hyphenated column names or negative numbers.
+```python
+# Multi-scope grouping in a single fluent pipeline:
+(
+    df
+    .by("region").mutate(regional_avg="mean(sales)")
+    .mutate(global_avg="mean(sales)")
+    .by("dept").mutate(dept_avg="mean(sales)")
+)
+```
 
-### 5. `agg` instead of `summarise` or `summarize`
-- **Why not `summarise`?** In Python, `summarise` vs `summarize` introduces spelling ambiguity (British vs American English). Having both violates *"One and Only One Obvious Way"*.
-- **Why `agg`?** `agg` is universally recognized in Pandas (`.agg()`). By elevating `agg` (`df.agg()` and CLI `-agg`), Pytae eliminates spelling confusion while providing declarative named aggregations (`avg_mass="body_mass_g:mean"`, `total="count"`).
+### 2. Pure Flat DataFrames (No Indexes, No MultiIndex Traps)
 
-### 6. `long` and `wide` instead of `melt`, `stack`, `unstack`, `pivot_wider`
-- Pytae uses strictly complementary, intuitive English opposites:
-  - **`long()`**: Turns wide tables into tall records using the unified `rcva` grammar (`r=` or `id_vars=`, `c=`, `v=`).
-  - **`wide()`**: Pure 1-to-1 structural unmelting without aggregation (`r=`, `c=`, `v=`).
-  - **`pivot()`**: 2D cross-tabulation aggregation matrices (`r=`, `c=`, `v=`, `a=`).
-- All three verbs produce pure, flat 1D column headers with zero MultiIndex traps.
+Tabular data consists of rows and named columns. Index hierarchies (`Index`, `MultiIndex`) in legacy tools introduce persistent cognitive overhead and defensive boilerplate (`.reset_index()`, `.set_index()`, tuple unpacking, `droplevel()`):
+- In Pytae, every operation—including multi-key group-bys, cross-tabulations (`pivot`), unmelting (`wide`), and aggregations (`agg`)—always produces a flat 2D table with 1D string column names and a standard `RangeIndex(0, 1, 2, ...)`.
+- Reshaping operations (`long`, `wide`, `pivot`) share a unified `rcva` grammar (`r=rows`, `c=columns`, `v=values`, `a=aggregation`) and guarantee pure flat outputs without nested tuple headers.
+- Column headers remain predictable, directly queryable, and instantly serializable to Parquet, Arrow, CSV, or relational databases without intermediate cleanup.
 
-### 7. `count` for Fast Tallying & Intention-Revealing Aggregations
-- **Why `count`?** Counting occurrences of categories or combinations of factors is the single most common exploratory data analysis operation. In Pandas, users are forced to choose between `.value_counts()` (which returns a 1D Series with index labels, breaking fluent chaining) or `.groupby('col').size().reset_index(name='n')`.
-- **First-Class Verb**: Pytae introduces a dedicated `count()` verb across both Python (`df.count("species")`, `df.by("species").count()`) and the CLI (`-count species`, `-by species -count`).
-- **Intuitive Defaults**: `count()` automatically sorts descending by count (`sort=True`) with output column `name="n"`. Pass `sort=False` to preserve original encounter order, or `name="total"` to rename the tally.
-- **Natural Grammar in `agg()`**: Inside `agg()`, `count` (or `count()`) is the canonical counting function (`total_penguins="count"`, `avg_mass="body_mass_g:mean"`). In `avg_mass="body_mass_g:mean"`, `mean` is the function; therefore, `total_penguins="count"` makes `count` the consistent, intention-revealing function name, eliminating the awkward `n="n"` parameter tautology while preserving `"n"` as an alias for backward compatibility.
+### 3. Non-Destructive Safe Defaults (Zero Silent Data Loss)
 
-### 8. Visualization: "Compute in Polars, Visualize with Pytae Plotter"
-- **High-Performance Visualizer**: Polars delivers unmatched multithreaded SIMD vector speed for data ingestion, filtering, and aggregation. Visualizations are rendered via Pytae's native `Plotter` engine (`pytae.plotting.Plotter`), offering full integration with Matplotlib and Seaborn.
-- **Zero-Friction Bridge**: Calling `.plot()` routes directly through `Plotter`. Users get multi-panel facet grids (`col`, `ncols`, `facet=True`), subplot mosaics (`mosaic="..."`), secondary axes (`^`), automatic legend consolidation, and publication themes, with seamless `.finalize().save('out.png')` chaining without writing conversion boilerplate.
-- **Clean Separation of Concerns**: Aggregation belongs in Polars (`.by().agg()`); visualization belongs in Plotter (`.plot()`). Pytae strictly prohibits implicit in-plot aggregation, keeping your pipelines predictable and high-performance.
+A data framework should never silently discard information by default:
+- **Missing Group Retention**: Group-by aggregations (`agg`) and cross-tabulations (`pivot`) default to `dropna=False`, preserving rows with missing group keys as explicit `null` groups rather than quietly dropping them from analysis.
+- **Safe Row Dropping**: Bare `df.dropna()` defaults to dropping only 100% empty rows (where every column is missing). In legacy tools, `dropna()` defaults to dropping rows where *any* column is missing (`how='any'`), frequently discarding valuable records due to a single unpopulated optional field.
+
+### 4. Uniform `null`: Arrow-Native Missing Value Architecture
+
+Missing data handling has historically been fragmented:
+- **Pandas** conflated missing values with floating-point non-finites (`np.nan`), creating a legacy where integer columns with missing values were forcibly cast to float, before introducing a disjoint nullable hierarchy (`pd.NA`, `np.nan`, `None`).
+- **Polars** strictly separated Arrow `null` (missingness across all data types) from IEEE 754 `NaN` (floating-point arithmetic results), introducing duplicate APIs and subtle comparison traps.
+
+Pytae establishes a single, uniform missing value architecture: **all missing values and floating-point non-finites (`null`, `None`, `np.nan`, `float('nan')`) are normalized uniformly to Arrow `null` upon ingestion and derivation.**
+
+#### Architectural Rationale for Uniform `null`:
+1. **Elimination of the IEEE 754 Comparison Trap**:
+   In Polars, IEEE 754 floating-point numbers implement `total_cmp`, where `NaN > all numbers` (including $+\infty$). If `NaN` is preserved, an expression like `df.filter("score > 15")` silently evaluates to `True` for rows where `score` is `NaN`, unintentionally including non-finite values in the results. Under uniform `null`, `null > 15` evaluates to `null` and is dropped, eliminating this silent data corruption trap.
+2. **"One and Only One Obvious Way"**:
+   Retaining separate concepts for `null` and `NaN` led to duplicate APIs: `dropna()` vs. `dropna(nans=...)`, `fillna()` vs. `fill_nan()` vs. `fill_null()`, and `.is_null()` vs. `.is_nan()`. Users were constantly forced to wonder whether a missing cell was an unrecorded value or a float calculation artifact. Uniform `null` provides a single obvious verb for each operation: `.is_null()`, `.is_not_null()`, `.fillna()`, and `.dropna()`.
+3. **Native Nullable Integers from Python Dictionaries**:
+   In Python, missing numbers in lists often arrive as `np.nan` or `float('nan')` (e.g. `{"id": [1, np.nan, 3]}`). In pure Polars, constructing a DataFrame from this input fails with `TypeError`. Pre-normalizing `nan` to `None` in Pytae enables integer columns with missing values to naturally construct as native nullable `Int64` without type errors or forced float casts.
+4. **Clean, Predictable Exports**:
+   Exporting mixed `null` and `NaN` columns to Excel or CSV creates an inconsistent mess of empty cells, `#NUM!` errors, and literal `"NaN"` strings. Uniform `null` ensures that all missing data exports consistently as native blank spreadsheet cells or empty delimited fields.
+
+### 5. Decoupled Compute & Presentation Engines
+
+Pytae enforces a clean separation of concerns between high-throughput data processing and output rendering:
+- **Compute in Polars, Visualize in Plotter**: High-performance transformations execute in the multithreaded SIMD Polars core; visualizations route through Pytae's native `Plotter` engine (`df.plot()`). Pytae strictly prohibits implicit in-plot aggregations, ensuring pipelines remain predictable, performant, and reproducible.
+- **Adaptive Terminal & Pipeline Presentation**: In an interactive TTY, outputs display formatted ASCII/Unicode tables sized to terminal width; when piped into Unix tools (`grep`, `awk`), Pytae switches to clean delimited streams.
 - 👉 **Interactive Plotting Notebook**: [notebooks/plotting/plotting.ipynb](notebooks/plotting/plotting.ipynb)
 
 ---
@@ -387,7 +388,7 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 | **SQL Engine** | **[sql.ipynb](notebooks/library/sql.ipynb)** | **[sql.md](guides/sql.md)** | `df.sql()`, `pt.sql()`, `-sql` native Polars SQL engine (SQLContext) on data and files |
 | **Plotting** | **[plotting.ipynb](notebooks/plotting/plotting.ipynb)** | **[cli_plots.md](guides/cli_plots.md)** | `df.plot()`, `-plot`, `-finalize`, terminal `-bar`, `-scatter`, `-corr`, headless figures |
 | **Doc Search & MCP** | — | — | `pytae -doc <query>`, `pt.doc()`, `pytae -mcp` stdio JSON-RPC 2.0 server for Copilot/Cursor |
-| **Comparisons** | **[vs. Pandas](comparisons/comparison_to_pandas.md)**<br>**[vs. dplyr](comparisons/comparison_to_dplyr.md)**<br>**[vs. SAS](comparisons/comparison_to_sas.md)** | — | Pytae vs. Pandas vs. dplyr vs. SAS, naming rationale, "one and only one obvious way" |
+| **Comparisons** | **[vs. Pandas](comparisons/comparison_to_pandas.md)**<br>**[vs. dplyr](comparisons/comparison_to_dplyr.md)**<br>**[vs. SAS](comparisons/comparison_to_sas.md)** | — | Pytae vs. Pandas vs. dplyr vs. SAS, core architecture, "one and only one obvious way" |
 | **Benchmarks** | **[benchmarks.ipynb](benchmarks/benchmarks.ipynb)** | **[run_benchmarks.py](benchmarks/run_benchmarks.py)**<br>**[README](benchmarks/README.md)** | Reproducible 5M-row speed benchmarks: Pytae vs. Pandas/dplyr/SAS, timings & plots |
 
 ---

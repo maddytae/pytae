@@ -1,6 +1,6 @@
 ================================================================================
 PYTAE COMPREHENSIVE KNOWLEDGE BASE & AGENT TRAINING REFERENCE MANUAL
-RELEASE VERSION: 3.14.5
+RELEASE VERSION: 3.14.6
 ================================================================================
 
 TABLE OF CONTENTS
@@ -189,7 +189,7 @@ RULE 7: THE "TWIN PROOF" RULE (GROUND ON SAMPLE DATASETS)
 
 1. OVERVIEW & CORE PHILOSOPHY
 --------------------------------------------------------------------------------
-Package: pytae (Current Release Version: 3.14.5)
+Package: pytae (Current Release Version: 3.14.6)
 
 `pytae` is an ergonomic, high-performance tabular data manipulation library and 
 command-line tool powered by a 100% native multithreaded SIMD Polars engine with 
@@ -229,8 +229,8 @@ Key principles:
 
 2. PACKAGE ARCHITECTURE & IMPORT PATTERNS
 --------------------------------------------------------------------------------
-Installation (PyPI: https://pypi.org/project/pytae/3.14.5/):
-  pip install pytae==3.14.5
+Installation (PyPI: https://pypi.org/project/pytae/3.14.6/):
+  pip install pytae==3.14.6
   pip install 'pytae[plot]'    # includes matplotlib, scipy
 
 Importing:
@@ -2162,9 +2162,11 @@ hello world    10.5 draft_stage
 
 ---
 
-## Missing Value Imputation (`-fillna`)
+## Missing Value Imputation (`-fillna`, `df.fillna()`)
 
-Replace missing values (`null` and `NaN`) across the dataset or within specific columns:
+Under Pytae's unified missing value architecture, all missing values, unrecorded data, and floating-point non-finite values (`NaN`, `np.nan`, `float('nan')`) are normalized uniformly to Arrow `null`.
+
+Impute missing values across the dataset or within specific columns:
 
 ```bash
 # Impute all numeric missing values with 0
@@ -2173,21 +2175,30 @@ pytae dataset.parquet -fillna 0 -head 5
 # Impute specific columns using column mappings or value + column list
 pytae dataset.parquet -fillna "status:Unknown, category:Unknown" -head 5
 pytae dataset.parquet -fillna "Unknown, status, category" -head 5
-
-# Only replace Arrow nulls (leave float NaNs intact)
-pytae dataset.parquet -fillna "0, nans=false" -head 5
 ```
+
+```python
+# In Python API:
+df.fillna(0)
+df.fillna({"status": "Unknown", "category": "Unknown"})
+```
+
+> [!IMPORTANT]
+> **Hard Deprecation of `nans` parameter & `.fill_nan()` / `.fill_null()`**:
+> In line with **"One and Only One Obvious Way"**, Pytae does not have separate parameters or functions for `NaN` vs. `null`.
+> - Passing `nans=...` or `drop_nans=...` to `fillna()` or `dropna()` raises an explicit `ValueError`.
+> - Calling `.fill_nan()` or `.fill_null()` raises `ValueError` directing users to canonical `.fillna()`.
+> - In filtering, `.is_nan()` and `.is_not_nan()` are retired in favor of universal `.is_null()` and `.is_not_null()`.
 
 ---
 
-## Dropping Missing Values
+## Dropping Missing Values (`-dropna`, `df.dropna()`)
 
-Pytae adheres to a **Zero Data Loss by Default** philosophy for missing values (Arrow `null`s and IEEE-754 float `NaN`s).
+Pytae adheres to a **Zero Data Loss by Default** philosophy for missing values:
 
-- **Bare `-dropna`**: Defaults to `how="all"`. Drops **only completely empty rows** (rows where every column is null/NaN), preserving partially populated rows.
-- **Targeted `-dropna "col1, col2"`**: Defaults to `how="any"`. Drops rows missing *any* of the specified columns.
+- **Bare `-dropna` / `df.dropna()`**: Defaults to `how="all"`. Drops **only completely empty rows** (rows where every column is null), preserving partially populated rows from accidental loss.
+- **Targeted `-dropna "col1, col2"` / `df.dropna("col1", "col2")`**: Defaults to `how="any"`. Drops rows missing *any* of the specified columns.
 - **Explicit `how=any`**: Drops rows containing *any* missing value across all columns.
-- **Optional `nans=false`**: Drops only Arrow nulls, preserving float IEEE-754 NaNs.
 
 ```bash
 # Bare flag defaults to how='all' (Zero Data Loss: keeps 344 rows in penguins)
@@ -2201,13 +2212,10 @@ pytae penguins.parquet -dropna body_mass_g -shape
 # Explicit how=any drops rows with any missing value (344 -> 333 rows)
 pytae penguins.parquet -dropna how=any -shape
 # (333, 7)
-
-# Drop only Arrow nulls, leaving float IEEE-754 NaNs untouched
-pytae dataset.parquet -dropna "nans=false" -head 5
 ```
 
 > [!NOTE]
-> - **Top-level `-dropna [COLS]`**: Operates as a row filter. Bare calls use `how="all"` (Zero Data Loss), while targeted calls use `how="any"` on the specified columns. Both Arrow `null` and float `NaN` are cleaned by default.
+> - **Top-level `-dropna [COLS]`**: Operates as a row filter. Bare calls use `how="all"` (Zero Data Loss), while targeted calls use `how="any"` on the specified columns.
 > - **Scoped `dropna=bool`**: In `-pivot` and `-agg`, default is `dropna=false` (retains missing group keys without silent data loss). Pass `dropna=true` inside the spec (e.g. `-agg "a=mean, dropna=true"`) to exclude NA groups.
 
 ---
@@ -2890,7 +2898,7 @@ Filter rows using pytae's ergonomic filter expressions (`-filter`), drop missing
   - [Column-to-Column Comparisons (`col_a == col_b`)](#column-to-column-comparisons-col_a--col_b)
   - [Ranges & Intervals: Option 1 & Option 2 Dictionaries](#ranges--intervals)
   - [List Membership (`in` and `not in`)](#list-membership)
-  - [Filtering Null & NaN Values (`is_null`, `is_not_null`, `is_nan`, `is_not_nan`) & Columns with Spaces](#filtering-null--nan-values-and-columns-with-spaces)
+  - [Filtering Null Values (`is_null()`, `is_not_null()`) & Columns with Spaces](#filtering-null-values-and-columns-with-spaces)
   - [Combining Multiple Conditions](#combining-multiple-conditions)
   - [Strict Syntax Enforcement & Diagnostic Errors](#strict-syntax-enforcement)
 - [Slicing Extreme Rows](#slicing-extreme-rows)
@@ -3070,18 +3078,15 @@ pytae penguins.parquet -filter "species not in ['Adelie']" -select "species,isla
 | Chinstrap | Dream    |
 | Chinstrap | Dream    |
 
-<a id="filtering-null--nan-values-and-columns-with-spaces"></a>
-### Filtering Null & NaN Values (`is_null()`, `is_not_null()`, `is_nan()`, `is_not_nan()`) & Columns with Spaces
+<a id="filtering-null-values-and-columns-with-spaces"></a>
+### Filtering Null Values (`is_null()`, `is_not_null()`) & Columns with Spaces
 
-In pure Polars, missing values (`null`) and floating-point non-finite values (`NaN`) follow a strict, universal method-token standard across both expressions and dictionaries:
+In Pytae, all missing data and non-finite floating-point values (`NaN`) are normalized uniformly to Arrow `null` upon ingestion and derivation. In line with **"One and only one obvious way"**, null checking follows a single canonical standard across both expressions and dictionaries:
 - **`null` checks**: Use `.is_null()` or `.is_not_null()`.
   - In string expressions: `"sex.is_null()"` or `"sex.is_not_null()"`
   - In dictionaries: `"{sex: is_null()}"` or `"{sex: is_not_null()}"`
   - *(Note: Parentheses are strictly required; bare words like `{sex: is_null}` and `None` like `{sex: None}` are disallowed)*
-- **`NaN` checks**: Use `.is_nan()` or `.is_not_nan()`.
-  - In string expressions: `"score.is_nan()"` or `"score.is_not_nan()"`
-  - In dictionaries: `"{score: is_nan()}"` or `"{score: is_not_nan()}"`
-  - *(Note: Parentheses are strictly required; bare words like `{score: is_nan}` and `nan` like `{score: nan}` are disallowed)*
+  - *(Note: Dedicated `is_nan()` and `is_not_nan()` tokens are retired; all `NaN` values normalize to `null` so `is_null()` handles all missing and non-finite values uniformly)*
 - For columns whose names contain spaces or special punctuation, enclose the column name in brackets `[col name]`.
 
 ```bash
@@ -3094,11 +3099,6 @@ pytae penguins.parquet -filter "sex.is_null()" -select "species,sex" -head 3
 # 3. Dictionary filter with canonical 'is_null()' method token
 pytae penguins.parquet -filter "{sex: is_null()}" -select "species,sex" -head 3
 pytae penguins.parquet -filter "{sex: is_not_null()}" -select "species,sex" -head 3
-
-# 4. Floating-point NaN filtering via expression and dictionary
-pytae measurements.parquet -filter "score.is_nan()"
-pytae measurements.parquet -filter "{score: is_nan()}"
-pytae measurements.parquet -filter "{score: is_not_nan()}"
 ```
 
 **Output:**
@@ -5558,6 +5558,7 @@ Export pipeline results, batch-convert datasets, route outputs to dedicated dire
 | **Pipe-Delimited Data** | `.dat` | ✓ | ✓ | Defaults to pipe-delimited (`\|`) and `latin-1` encoding |
 | **JSON Lines** | `.jsonl`, `.ndjson` | ✓ | ✓ | Line-delimited JSON records, streamed in chunks |
 | **Compressed Gzip** | `.csv.gz`, `.txt.gz`, `.dat.gz`, `.jsonl.gz` | ✓ | ✓ | Transparent on-the-fly streaming compression and decompression |
+| **Excel Workbook** | `.xlsx`, `.xls` | ✓ | ✓ | Multi-sheet reading & writing; defaults to `index=False` with clean native blank nulls |
 | **SAS Dataset** | `.sas7bdat` | ✓ | — | SAS binary dataset format (read-only; export to Parquet or CSV) |
 
 ---
@@ -5633,6 +5634,35 @@ Directly read and analyze tabular data copied to your system clipboard (e.g. fro
 pytae clip -head 5
 pytae clip -filter "sales > 100" -by region -agg "total = sales:sum"
 ```
+
+### Python Library Counterpart (`df.to()`, `pt.to()`)
+
+In Python code, the universal destination method is **`df.to(target)`** (providing 1:1 symmetry with CLI and REPL `-o`):
+
+```python
+# 1. Export to file path (chainable: returns self)
+df.to("subset.parquet")
+df.to("report.xlsx")
+
+# 2. Export to system clipboard
+df.to("clip")
+
+# 3. In-memory conversions
+pdf = df.to("pandas")
+pldf = df.to("polars")
+tbl = df.to("arrow")
+rows = df.to("records")
+cols = df.to("dict")
+arr = df.to("numpy")
+
+# 4. Multi-sheet Excel export from dictionary
+pt.to({"Summary": df1, "Details": df2}, "report.xlsx")
+```
+
+> [!IMPORTANT]
+> **One Canonical Destination Verb: `.to()` (`.write()` is retired)**:
+> In accordance with **"One and Only One Obvious Way"**, Pytae does not maintain duplicate `.write()` aliases.
+> Calling `df.write()` or `pt.write()` raises a helpful `ValueError` directing users to canonical `.to()`.
 
 ---
 
@@ -5724,6 +5754,65 @@ pytae web_traffic.jsonl -shape -cols
 # Convert JSON Lines to Parquet
 pytae web_traffic.jsonl -o parquet
 ```
+
+---
+
+## Excel Workbooks (`.xlsx`, `.xls`)
+
+`pytae` provides robust Excel ingestion and export capabilities built on top of standard `openpyxl`:
+
+### Reading Excel Files
+
+When reading Excel workbooks, Pytae loads sheets via `pandas.read_excel()` and wraps them directly into high-performance `pytae.DataFrame` instances. All missing cells and float `NaN` values are normalized into Arrow `null`:
+
+```bash
+# In CLI: Read default first sheet
+pytae financial_report.xlsx -head 5
+
+# In CLI: Select specific sheet via -opts
+pytae financial_report.xlsx -opts "sheet=Q3_Results" -head 5
+```
+
+```python
+import pytae as pt
+
+# Read default sheet
+df = pt.read("financial_report.xlsx")
+
+# Read specific sheet by name or index
+df_q3 = pt.read("financial_report.xlsx", sheet_name="Q3_Results")
+```
+
+### Writing Excel Files (`df.to()`, `pt.to()`)
+
+Writing to Excel in Pytae is designed around **flat, clean exports without boilerplate**:
+
+1. **Guaranteed `index=False` by Default**: Unlike Pandas which defaults to `index=True` (creating an unwanted `Unnamed: 0` index column in your spreadsheet), Pytae always defaults to `index=False`.
+2. **Clean Native Nulls**: All `null` values render as clean, native blank spreadsheet cells rather than `#NUM!` errors or unsightly `NaN` strings.
+3. **Single-Sheet Export**:
+   ```python
+   df.to("output.xlsx")
+   # Or with explicit sheet name:
+   df.to("output.xlsx", sheet_name="Summary")
+   ```
+4. **Multi-Sheet Dictionary Export**:
+   Export multiple sheets in a single call without managing `ExcelWriter` contexts manually:
+   ```python
+   pt.to({
+       "Summary": df_summary,
+       "Transactions": df_txns,
+       "Metadata": df_meta
+   }, "quarterly_pack.xlsx")
+   ```
+5. **Context Manager Compatibility**:
+   Directly compatible with `pandas.ExcelWriter` for fine-grained multi-stage workbook generation:
+   ```python
+   import pandas as pd
+
+   with pd.ExcelWriter("report.xlsx", engine="openpyxl") as writer:
+       df1.to(writer, sheet_name="January")
+       df2.to(writer, sheet_name="February")
+   ```
 
 ---
 
@@ -7342,7 +7431,7 @@ Under the hood, `filter` compiles conditions into high-performance Polars expres
 | **String Prefixes/Suffixes** | `{"species": ("starts_with", "Ad")}` or `{"species": ("ends_with", "strap")}` | String prefix / suffix search |
 | **Multiple Prefixes/Suffixes** | `{"species": ("starts_with", ["Ad", "Ge"])}` | Matches any prefix / suffix in sequence |
 | **String Substring / Regex** | `{"species": ("contains", "adel")}` or `{"species": ("regex", r"oo")}` | Substring match or regex search |
-| **Null & NaN Checks** | `"sex.is_not_null()"`, `{"sex": "is_null()"}`, `"score.is_nan()"`, `{"score": "is_nan()"}` | Missing data (`null`) and IEEE 754 float NaNs (`NaN`) via universal method tokens (expressions & dicts) |
+| **Null Checks** | `"sex.is_not_null()"`, `{"sex": "is_null()"}` | Universal method tokens (`is_null()`, `is_not_null()`); all missing and NaN values normalize to null |
 | **Column-to-Column** | `"exposure > limit"` or `"tranche_id == deal_id"` | Compare two columns using bare column names |
 | **Variable Injection** | `"exposure > @threshold and tranche == col(@target_col)"` | External scalar (`@var`) and column (`col(@var)`) references |
 
@@ -7988,14 +8077,12 @@ shape: (1, 2)
 └─────────┴─────┘
 ```
 
-## 8. Missing and Null Checks (`is_null()`, `is_not_null()`, `is_nan()`, `is_not_nan()`)
+## 8. Missing and Null Checks (`is_null()`, `is_not_null()`)
 
-In Pytae and pure Polars, missing data (`null`) and floating-point non-finite values (`NaN`) follow a unified **method-token standard** across both **string expressions** and **dictionaries**:
+In Pytae, all missing data and non-finite floating-point values (`NaN`) are normalized uniformly to Arrow `null` upon ingestion and derivation.
 
-- **Missing values (`null`)**: Represent absent / unrecorded values across any data type (string, numeric, date). Handled via `.is_null()` and `.is_not_null()`.
-- **Floating-point non-finites (`NaN`)**: Represent IEEE 754 arithmetic results on float columns (`f32`, `f64`). Handled via `.is_nan()` and `.is_not_nan()`. Polars strictly separates `null` from `NaN`.
-
-The exact same method names—`is_null()`, `is_not_null()`, `is_nan()`, and `is_not_nan()`—are used consistently everywhere.
+- **Canonical standard**: Use `.is_null()` and `.is_not_null()` across both string expressions and dictionaries.
+- Dedicated `is_nan()` and `is_not_nan()` tokens are retired in favor of universal `is_null()` / `is_not_null()`, eliminating the silent IEEE 754 NaN comparison trap and ensuring consistent filtering.
 
 ```python
 # 1. Missing data checks via string expressions (non-dict):
@@ -8175,78 +8262,14 @@ df_measurements = pt.DataFrame({
 print("--- Original DataFrame (has both float NaN and missing null) ---")
 display(df_measurements)
 
-print("\n--- Non-dict string expression: score.is_nan() ---")
-display(df_measurements.filter("score.is_nan()"))
+print("\n--- Non-dict string expression: score.is_null() ---")
+display(df_measurements.filter("score.is_null()"))
 
-print("\n--- Dictionary expression: {'score': 'is_nan()'} ---")
-display(df_measurements.filter({"score": "is_nan()"}))
+print("\n--- Dictionary expression: {'score': 'is_null()'} ---")
+display(df_measurements.filter({"score": "is_null()"}))
 
-print("\n--- Dictionary expression: {'score': 'is_not_nan()'} ---")
-display(df_measurements.filter({"score": "is_not_nan()"}))
-```
-Output:
-```text
---- Original DataFrame (has both float NaN and missing null) ---
-```
-Output:
-```text
-shape: (4, 2)
-┌───────────┬───────┐
-│ sample_id ┆ score │
-│ ---       ┆ ---   │
-│ str       ┆ f64   │
-╞═══════════╪═══════╡
-│ S1        ┆ 98.5  │
-│ S2        ┆ NaN   │
-│ S3        ┆ null  │
-│ S4        ┆ 76.2  │
-└───────────┴───────┘
-```
-Output:
-```text
---- Non-dict string expression: score.is_nan() ---
-```
-Output:
-```text
-shape: (1, 2)
-┌───────────┬───────┐
-│ sample_id ┆ score │
-│ ---       ┆ ---   │
-│ str       ┆ f64   │
-╞═══════════╪═══════╡
-│ S2        ┆ NaN   │
-└───────────┴───────┘
-```
-Output:
-```text
---- Dictionary expression: {'score': 'is_nan()'} ---
-```
-Output:
-```text
-shape: (1, 2)
-┌───────────┬───────┐
-│ sample_id ┆ score │
-│ ---       ┆ ---   │
-│ str       ┆ f64   │
-╞═══════════╪═══════╡
-│ S2        ┆ NaN   │
-└───────────┴───────┘
-```
-Output:
-```text
---- Dictionary expression: {'score': 'is_not_nan()'} ---
-```
-Output:
-```text
-shape: (2, 2)
-┌───────────┬───────┐
-│ sample_id ┆ score │
-│ ---       ┆ ---   │
-│ str       ┆ f64   │
-╞═══════════╪═══════╡
-│ S1        ┆ 98.5  │
-│ S4        ┆ 76.2  │
-└───────────┴───────┘
+print("\n--- Dictionary expression: {'score': 'is_not_null()'} ---")
+display(df_measurements.filter({"score": "is_not_null()"}))
 ```
 
 ```python
@@ -11186,13 +11209,13 @@ shape: (3, 4)
 ################################################################################
 # Notebook: read_write.ipynb
 
-# Data Ingestion, Streaming & Sinks (`pt.read`, `pt.scan`, `write_*`, `to`)
+# Data Ingestion, Streaming & Sinks (`pt.read`, `pt.scan`, `df.to`, `pt.to`)
 
 `pytae` provides fast, universal readers and writers powered by Polars' multithreaded I/O core, complete with automatic compression handling, schema inference, and lazy query optimization.
 
 - **Universal Reader**: `pt.read()` automatically detects parquet, csv, tsv, json, ndjson, ipc, excel, sas
 - **Lazy Scanner**: `pt.scan()` for out-of-core streaming and query pushdowns
-- **Writers**: `df.write_parquet()`, `df.write_csv()`, `df.write_jsonl()`, and universal `df.to()`
+- **Destination / Sinks**: Universal `df.to('out.parquet')`, `df.to('out.csv')`, `df.to('out.xlsx')`, `df.to('clip')`
 - **Sample Datasets**: Instant access to `penguins`, `diamonds`, `tips`, `flights`, `titanic` via `pt.sample()`
 
 ```python
@@ -11243,8 +11266,8 @@ with tempfile.TemporaryDirectory() as tmp_dir:
     csv_file = tmp_path / "penguins.csv"
     
     # Write to Parquet and CSV
-    penguins.write_parquet(pq_file)
-    penguins.write_csv(csv_file)
+    penguins.to(pq_file)
+    penguins.to(csv_file)
     
     # Read back eagerly
     df_pq = pt.read(pq_file)
@@ -11278,7 +11301,7 @@ Rows that do not match the filter are skipped in row groups before ever touching
 ```python
 with tempfile.TemporaryDirectory() as tmp_dir:
     pq_file = Path(tmp_dir) / "data.parquet"
-    penguins.write_parquet(pq_file)
+    penguins.to(pq_file)
     
     # Scan lazily
     lazy_df = pt.scan(pq_file)
@@ -14924,7 +14947,12 @@ pytae [df: 344x7]> -head 50 | wc -l
 ################################################################################
 # Pytae — Master Reference & Architecture Guide
 
-`pytae` is a modern, high-performance tabular data manipulation framework that provides a single, unified grammar across both **Python code** (`df.<verb>()`, `pt.<verb>(df)`) and the **Command Line** (`pytae <file> -<verb>`). Backed by a 100% native multithreaded SIMD Polars core, Pytae eliminates boilerplate, index headaches, and performance bottlenecks.
+`pytae` is a tabular data manipulation framework designed around practical lessons from modern data workflows:
+- It uses the **multithreaded SIMD execution** of Polars,
+- Adopts the **readable, functional grammar** of dplyr,
+- And avoids the **index hierarchies, API redundancies, and silent data loss defaults** of legacy libraries.
+
+Pytae provides a single, unified grammar across **Python library code** (`df.<verb>()`, `pt.<verb>(df)`), the **Interactive Terminal REPL** (`pytae`), and the **Unix Command Line** (`pytae <file> -<verb>`).
 
 ---
 
@@ -15029,72 +15057,68 @@ pytae penguins.parquet \
 
 ---
 
-## Naming Rationale: Why `filter`, `distinct`, `by`, `arrange`, `agg`, `long`/`wide`?
+## Core Architectural & Design Principles
 
-Pytae carefully chooses concise, intention-revealing names that eliminate ambiguity, prevent keyword collisions, and adhere strictly to *"One and Only One Obvious Way"*:
+Pytae translates its core philosophy into five concrete architectural principles that govern how data is structured, scoped, transformed, and exported:
 
-### 1. `filter` instead of `query` or `qry`
-- **Why `filter`?** `filter` is the canonical, intuitive verb across modern data science (R `dplyr`, SQL `FILTER`, Polars, Apache Spark). Calling it `filter` provides immediate familiarity and zero surprise.
-- **Why not `df.query()`?** Pandas' native `df.query()` is string-only and passes expressions to `numexpr`, which chokes on Python functions and spaced columns. In contrast, `df.filter()` supports:
-  - **Bare Callables & Lambdas**: `df.filter(lambda d: d['mass'] > 4000)` with full Python expressions and functions.
-  - **Mathematical Intervals**: `df.filter(mass="[3000, 4500]")` or `df.filter(pct="(0, 100)")`.
-  - **Set Membership & Operators**: lists `cat=['A', 'B']`, tuples `species=('starts_with', ['Ad', 'Ge'])`.
-  - **Pure Python Boolean Logic**: Uses clean English words `and`, `or`, and `not` (e.g. `df.filter("not is_active and mass > 3000")`), retiring confusing bitwise Pandas operators (`&`, `|`, `~`) and C-style `!` with actionable guidance.
-  - **Bracketed Spaced Columns**: `df.filter("[bill length mm] > 40")` without ugly backtick escaping.
-  - **Keyword & Dictionary Syntax**: `df.filter(status="active")` or `{"col": "> 5"}`.
-- **CLI Alignment**: The CLI uses `-filter "expr"`. The legacy `-qry` has been deprecated in favor of canonical `-filter`.
+### 1. Single-Shot Scoped Grouping (Why `ungroup()` is Obsolete)
 
-### 2. `distinct` instead of `dedupe`, `unique`, or `drop_duplicates`
-- **Why `distinct`?** `distinct` is the universally recognized keyword in SQL (`SELECT DISTINCT`) and dplyr (`distinct()`). It clearly describes returning unique, deduplicated rows.
-- **Why not `unique`?** In Pandas, `.unique()` is a Series method returning a 1D NumPy array of scalar values, not a DataFrame. Using `unique` would conflate scalar distinct values with full-table row deduplication.
-- **CLI Alignment**: The CLI uses `-distinct "species,island"`, with optional `keep=first|last|none` control.
-
-### 3. `by` for Single-Shot Scoped Grouping (Why `ungroup` is Obsolete)
-- **Why `by` over `groupby`?** In Pandas, `.groupby()` creates a lazy `DataFrameGroupBy` object that breaks standard DataFrame method chaining and forces multi-level index outputs upon aggregation.
-- In R's `dplyr`, `group_by()` produces a sticky grouped data frame that persists across operations unless the user manually chains `%>% ungroup()`.
-- **In Pytae, grouping is strictly single-shot and auto-clearing**:
-  - `df.by(*cols)` sets an active grouping context for the *immediate next verb*.
-  - `.mutate()` executes window calculations partitioned by group, consumes the grouping, and immediately returns a clean, ungrouped `DataFrame`.
-  - `.head()` / `.tail()` slices rows (including extreme values after `.arrange()`) per group and returns an ungrouped `DataFrame`.
-  - `.agg()` collapses per group and returns an ungrouped `DataFrame`.
+Grouping in Pytae is an execution modifier, not a persistent object state:
+- In **Pandas**, `.groupby()` creates a lazy `DataFrameGroupBy` object that fractures the API, breaks standard method chaining, and forces hierarchical `MultiIndex` outputs upon aggregation.
+- In **dplyr**, `group_by()` produces a "sticky" grouped table that silently alters the behavior of all downstream verbs until manually cleared with `ungroup()`.
+- In **Pytae, grouping is strictly single-shot and auto-clearing**:
+  - `df.by(*cols)` sets an active grouping scope for the *immediate next verb*.
+  - `.mutate()` computes window and partition calculations by group, consumes the grouping context, and immediately returns a clean, ungrouped `DataFrame`.
+  - `.head()` / `.tail()` slices rows per group (including extreme values after `.arrange()`) and returns an ungrouped `DataFrame`.
+  - `.agg()` collapses rows per group and returns an ungrouped `DataFrame`.
   - Because grouping is never sticky, subsequent operations naturally evaluate at the whole-table scope without needing an `ungroup()` verb.
-- **Fluent Re-Grouping**: You can seamlessly transition between group scopes and overall table scopes in one chain:
-  ```python
-  (
-      df
-      .by("region").mutate(reg_avg="mean(sales)")
-      .mutate(overall_avg="mean(sales)")
-      .by("product").mutate(prod_avg="mean(sales)")
-  )
-  ```
-- **Strict `*args` Only**: `df.by("species", "island")` requires clean positional `*args`. Nested lists (`df.by(["species"])`) and `df.by(None)` are strictly rejected with clear error guidance.
-- **Precedence**: If a second `.by()` is called before being consumed, it cleanly overwrites the previous grouping context.
 
-### 4. `arrange` instead of `sort` or `sort_by`
-- **Why not `sort`?** Python's built-in list has `.sort()`, and Pandas previously had `.sort()` (deprecated in favor of `.sort_values()`). In CLI flags, `-sort` is ambiguous (does it sort rows, columns, or files?).
-- **Why not `sort_by`?** `arrange` is the canonical Tidyverse verb for row ordering. It cleanly conveys ordering rows without implying whether an index or values are being sorted. It supports explicit ascending/descending declarations (`col desc`), multi-column ordering, and bracketed column names `[col name] desc`. Prefixing columns with `-` is intentionally rejected to prevent ambiguity with hyphenated column names or negative numbers.
+```python
+# Multi-scope grouping in a single fluent pipeline:
+(
+    df
+    .by("region").mutate(regional_avg="mean(sales)")
+    .mutate(global_avg="mean(sales)")
+    .by("dept").mutate(dept_avg="mean(sales)")
+)
+```
 
-### 5. `agg` instead of `summarise` or `summarize`
-- **Why not `summarise`?** In Python, `summarise` vs `summarize` introduces spelling ambiguity (British vs American English). Having both violates *"One and Only One Obvious Way"*.
-- **Why `agg`?** `agg` is universally recognized in Pandas (`.agg()`). By elevating `agg` (`df.agg()` and CLI `-agg`), Pytae eliminates spelling confusion while providing declarative named aggregations (`avg_mass="body_mass_g:mean"`, `total="count"`).
+### 2. Pure Flat DataFrames (No Indexes, No MultiIndex Traps)
 
-### 6. `long` and `wide` instead of `melt`, `stack`, `unstack`, `pivot_wider`
-- Pytae uses strictly complementary, intuitive English opposites:
-  - **`long()`**: Turns wide tables into tall records using the unified `rcva` grammar (`r=` or `id_vars=`, `c=`, `v=`).
-  - **`wide()`**: Pure 1-to-1 structural unmelting without aggregation (`r=`, `c=`, `v=`).
-  - **`pivot()`**: 2D cross-tabulation aggregation matrices (`r=`, `c=`, `v=`, `a=`).
-- All three verbs produce pure, flat 1D column headers with zero MultiIndex traps.
+Tabular data consists of rows and named columns. Index hierarchies (`Index`, `MultiIndex`) in legacy tools introduce persistent cognitive overhead and defensive boilerplate (`.reset_index()`, `.set_index()`, tuple unpacking, `droplevel()`):
+- In Pytae, every operation—including multi-key group-bys, cross-tabulations (`pivot`), unmelting (`wide`), and aggregations (`agg`)—always produces a flat 2D table with 1D string column names and a standard `RangeIndex(0, 1, 2, ...)`.
+- Reshaping operations (`long`, `wide`, `pivot`) share a unified `rcva` grammar (`r=rows`, `c=columns`, `v=values`, `a=aggregation`) and guarantee pure flat outputs without nested tuple headers.
+- Column headers remain predictable, directly queryable, and instantly serializable to Parquet, Arrow, CSV, or relational databases without intermediate cleanup.
 
-### 7. `count` for Fast Tallying & Intention-Revealing Aggregations
-- **Why `count`?** Counting occurrences of categories or combinations of factors is the single most common exploratory data analysis operation. In Pandas, users are forced to choose between `.value_counts()` (which returns a 1D Series with index labels, breaking fluent chaining) or `.groupby('col').size().reset_index(name='n')`.
-- **First-Class Verb**: Pytae introduces a dedicated `count()` verb across both Python (`df.count("species")`, `df.by("species").count()`) and the CLI (`-count species`, `-by species -count`).
-- **Intuitive Defaults**: `count()` automatically sorts descending by count (`sort=True`) with output column `name="n"`. Pass `sort=False` to preserve original encounter order, or `name="total"` to rename the tally.
-- **Natural Grammar in `agg()`**: Inside `agg()`, `count` (or `count()`) is the canonical counting function (`total_penguins="count"`, `avg_mass="body_mass_g:mean"`). In `avg_mass="body_mass_g:mean"`, `mean` is the function; therefore, `total_penguins="count"` makes `count` the consistent, intention-revealing function name, eliminating the awkward `n="n"` parameter tautology while preserving `"n"` as an alias for backward compatibility.
+### 3. Non-Destructive Safe Defaults (Zero Silent Data Loss)
 
-### 8. Visualization: "Compute in Polars, Visualize with Pytae Plotter"
-- **High-Performance Visualizer**: Polars delivers unmatched multithreaded SIMD vector speed for data ingestion, filtering, and aggregation. Visualizations are rendered via Pytae's native `Plotter` engine (`pytae.plotting.Plotter`), offering full integration with Matplotlib and Seaborn.
-- **Zero-Friction Bridge**: Calling `.plot()` routes directly through `Plotter`. Users get multi-panel facet grids (`col`, `ncols`, `facet=True`), subplot mosaics (`mosaic="..."`), secondary axes (`^`), automatic legend consolidation, and publication themes, with seamless `.finalize().save('out.png')` chaining without writing conversion boilerplate.
-- **Clean Separation of Concerns**: Aggregation belongs in Polars (`.by().agg()`); visualization belongs in Plotter (`.plot()`). Pytae strictly prohibits implicit in-plot aggregation, keeping your pipelines predictable and high-performance.
+A data framework should never silently discard information by default:
+- **Missing Group Retention**: Group-by aggregations (`agg`) and cross-tabulations (`pivot`) default to `dropna=False`, preserving rows with missing group keys as explicit `null` groups rather than quietly dropping them from analysis.
+- **Safe Row Dropping**: Bare `df.dropna()` defaults to dropping only 100% empty rows (where every column is missing). In legacy tools, `dropna()` defaults to dropping rows where *any* column is missing (`how='any'`), frequently discarding valuable records due to a single unpopulated optional field.
+
+### 4. Uniform `null`: Arrow-Native Missing Value Architecture
+
+Missing data handling has historically been fragmented:
+- **Pandas** conflated missing values with floating-point non-finites (`np.nan`), creating a legacy where integer columns with missing values were forcibly cast to float, before introducing a disjoint nullable hierarchy (`pd.NA`, `np.nan`, `None`).
+- **Polars** strictly separated Arrow `null` (missingness across all data types) from IEEE 754 `NaN` (floating-point arithmetic results), introducing duplicate APIs and subtle comparison traps.
+
+Pytae establishes a single, uniform missing value architecture: **all missing values and floating-point non-finites (`null`, `None`, `np.nan`, `float('nan')`) are normalized uniformly to Arrow `null` upon ingestion and derivation.**
+
+#### Architectural Rationale for Uniform `null`:
+1. **Elimination of the IEEE 754 Comparison Trap**:
+   In Polars, IEEE 754 floating-point numbers implement `total_cmp`, where `NaN > all numbers` (including $+\infty$). If `NaN` is preserved, an expression like `df.filter("score > 15")` silently evaluates to `True` for rows where `score` is `NaN`, unintentionally including non-finite values in the results. Under uniform `null`, `null > 15` evaluates to `null` and is dropped, eliminating this silent data corruption trap.
+2. **"One and Only One Obvious Way"**:
+   Retaining separate concepts for `null` and `NaN` led to duplicate APIs: `dropna()` vs. `dropna(nans=...)`, `fillna()` vs. `fill_nan()` vs. `fill_null()`, and `.is_null()` vs. `.is_nan()`. Users were constantly forced to wonder whether a missing cell was an unrecorded value or a float calculation artifact. Uniform `null` provides a single obvious verb for each operation: `.is_null()`, `.is_not_null()`, `.fillna()`, and `.dropna()`.
+3. **Native Nullable Integers from Python Dictionaries**:
+   In Python, missing numbers in lists often arrive as `np.nan` or `float('nan')` (e.g. `{"id": [1, np.nan, 3]}`). In pure Polars, constructing a DataFrame from this input fails with `TypeError`. Pre-normalizing `nan` to `None` in Pytae enables integer columns with missing values to naturally construct as native nullable `Int64` without type errors or forced float casts.
+4. **Clean, Predictable Exports**:
+   Exporting mixed `null` and `NaN` columns to Excel or CSV creates an inconsistent mess of empty cells, `#NUM!` errors, and literal `"NaN"` strings. Uniform `null` ensures that all missing data exports consistently as native blank spreadsheet cells or empty delimited fields.
+
+### 5. Decoupled Compute & Presentation Engines
+
+Pytae enforces a clean separation of concerns between high-throughput data processing and output rendering:
+- **Compute in Polars, Visualize in Plotter**: High-performance transformations execute in the multithreaded SIMD Polars core; visualizations route through Pytae's native `Plotter` engine (`df.plot()`). Pytae strictly prohibits implicit in-plot aggregations, ensuring pipelines remain predictable, performant, and reproducible.
+- **Adaptive Terminal & Pipeline Presentation**: In an interactive TTY, outputs display formatted ASCII/Unicode tables sized to terminal width; when piped into Unix tools (`grep`, `awk`), Pytae switches to clean delimited streams.
 - 👉 **Interactive Plotting Notebook**: [notebooks/plotting/plotting.ipynb](notebooks/plotting/plotting.ipynb)
 
 ---
@@ -15292,7 +15316,7 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 
 | Category | Python Library (Notebook) | CLI & Engine Guide (Markdown) | Key Capabilities & Verbs |
 |:---|:---|:---|:---|
-| **Data I/O** | **[read_write.ipynb](notebooks/library/read_write.ipynb)** | **[read_write.md](guides/read_write.md)** | `pt.read`, `pt.scan`, `df.to`, `write_*`, `-o`, `-out_dir`, `-fmt`, `-progress`, STDIN, clipboard |
+| **Data I/O** | **[read_write.ipynb](notebooks/library/read_write.ipynb)** | **[read_write.md](guides/read_write.md)** | `pt.read`, `pt.scan`, `df.to`, `pt.to`, `-o`, `-out_dir`, `-fmt`, `-progress`, STDIN, clipboard |
 | **Derivations** | **[mutate.ipynb](notebooks/library/mutate.ipynb)** | **[mutate.md](guides/mutate.md)** | `mutate`, formulas, sequential assignments, `if_else`, `case_when`, `map`, `shift`, `@var` |
 | **Row Filtering** | **[filter.ipynb](notebooks/library/filter.ipynb)** | **[filter.md](guides/filter.md)** | `filter`, `assert_` (data assertions), intervals `[10, 20]`, set membership `in`, `or`/`and`, string methods, callables |
 | **Columns** | **[select.ipynb](notebooks/library/select.ipynb)** | **[select.md](guides/select.md)** | `select`, drop with `!`, regex/patterns, inline rename, `pt.everything` |
@@ -15311,7 +15335,7 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 | **SQL Engine** | **[sql.ipynb](notebooks/library/sql.ipynb)** | **[sql.md](guides/sql.md)** | `df.sql()`, `pt.sql()`, `-sql` native Polars SQL engine (SQLContext) on data and files |
 | **Plotting** | **[plotting.ipynb](notebooks/plotting/plotting.ipynb)** | **[cli_plots.md](guides/cli_plots.md)** | `df.plot()`, `-plot`, `-finalize`, terminal `-bar`, `-scatter`, `-corr`, headless figures |
 | **Doc Search & MCP** | — | — | `pytae -doc <query>`, `pt.doc()`, `pytae -mcp` stdio JSON-RPC 2.0 server for Copilot/Cursor |
-| **Comparisons** | **[vs. Pandas](comparisons/comparison_to_pandas.md)**<br>**[vs. dplyr](comparisons/comparison_to_dplyr.md)**<br>**[vs. SAS](comparisons/comparison_to_sas.md)** | — | Pytae vs. Pandas vs. dplyr vs. SAS, naming rationale, "one and only one obvious way" |
+| **Comparisons** | **[vs. Pandas](comparisons/comparison_to_pandas.md)**<br>**[vs. dplyr](comparisons/comparison_to_dplyr.md)**<br>**[vs. SAS](comparisons/comparison_to_sas.md)** | — | Pytae vs. Pandas vs. dplyr vs. SAS, core architecture, "one and only one obvious way" |
 | **Benchmarks** | **[benchmarks.ipynb](benchmarks/benchmarks.ipynb)** | **[run_benchmarks.py](benchmarks/run_benchmarks.py)**<br>**[README](benchmarks/README.md)** | Reproducible 5M-row speed benchmarks: Pytae vs. Pandas/dplyr/SAS, timings & plots |
 
 ---
@@ -15448,13 +15472,11 @@ pytae data.parquet -filter "body_mass_g >= 3000 and body_mass_g <= 3500"
 pytae data.parquet -filter "species in ['Adelie', 'Chinstrap']"
 pytae data.parquet -filter "species not in ['Gentoo']"
 
-# Null and NaN checks (universal 'is_null()' / 'is_nan()' in expressions and dicts)
+# Null checks (universal 'is_null()' / 'is_not_null()' in expressions and dicts; all missing and NaN values normalize to null)
 pytae data.parquet -filter "sex.is_not_null()"
 pytae data.parquet -filter "sex.is_null()"
 pytae data.parquet -filter "{'sex': 'is_null()'}"
-pytae data.parquet -filter "score.is_nan()"
-pytae data.parquet -filter "score.is_not_nan()"
-pytae data.parquet -filter "{score: is_nan()}"
+pytae data.parquet -filter "{'sex': 'is_not_null()'}"
 
 # Columns with parentheses or spaces
 pytae data.parquet -filter "counterparty_class_(irb) == 'Sovereigns'"
@@ -15919,7 +15941,7 @@ Pandas has been the cornerstone of data analysis in Python for over fifteen year
 │ Grouping Scope                │ Stateful DataFrameGroupBy object │ Single-shot context (auto-clears)│
 │ Aggregation Missing Keys      │ dropna=True (Drops missing keys!)│ dropna=False (Zero Data Loss)    │
 │ Default Row-Dropping          │ dropna() drops if ANY column NA  │ dropna() drops only 100% blanks  │
-│ Float NaN vs Arrow Null       │ Conflated into np.nan / pd.NA    │ Differentiated; dual-cleaned     │
+│ Float NaN vs Arrow Null       │ Conflated into np.nan / pd.NA    │ Unified: All missing are null    │
 │ Command-Line Equivalence      │ None (requires Python script)    │ 100% grammar parity via CLI      │
 └───────────────────────────────┴──────────────────────────────────┴──────────────────────────────────┘
 ```
@@ -16161,10 +16183,12 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 |:---|:---|:---|:---|
 | **Safe Blank Row Dropping** | `df.dropna(how='all')` *(Defaults to dangerous `how='any'`)* | `df.dropna()` *(Defaults to safe `how='all'`)* | `-dropna` |
 | **Targeted Key Dropping** | `df.dropna(subset=['id', 'email'])` | `df.dropna("id", "email")` | `-dropna id,email` |
-| **Dual Null & NaN Imputation**| `df.fillna(0)` *(Fails on nullable types)*| `df.fillna(0, nans=True)` | `-fillna 0` |
+| **Unified Null Imputation**| `df.fillna(0)` *(Fails on nullable types)*| `df.fillna(0)` | `-fillna 0` |
 | **Column-Specific Imputation**| `df.fillna({'a': 0, 'b': 'N/A'})` | `df.fillna({'a': 0, 'b': 'N/A'})` | `-fillna "a=0,b='N/A'"` |
 | **Deterministic Column Cleaning**| Third-party `janitor` / `skimpy` | `df.clean_columns()` *(Deterministic 6-stage)* | `-clean_columns` |
 | **Preserve NA Groups in Agg** | `df.groupby('g', dropna=False).agg(...)` | Default behavior (`dropna=False`) | Default behavior |
+| **Unified Null Model** | Split across `np.nan`, `pd.NA`, `None` | All missing & `NaN` unified as Arrow `null` | All missing unified as `null` |
+| **Universal Null Checks** | Fragmented `.isna()`, `.isnull()`, `.isna().all()` | Canonical `.is_null()`, `.is_not_null()` | `.is_null()`, `.is_not_null()` |
 
 ### 12. Embedded ANSI SQL Engine (`sql`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
@@ -16180,6 +16204,15 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 | **Within-Group Rank** | `df.groupby('g')['x'].rank()` | `df.by("g").mutate(r="rank(x)")` | `-by g -mutate "r = rank(x)"` |
 | **Grouped Shift / Lag** | `df.groupby('g')['x'].shift(1)` | `df.by("g").mutate(prev="shift(x, 1)")` | `-by g -mutate "prev = shift(x, 1)"` |
 | **Grouped Cumulative Sum** | `df.groupby('g')['x'].cumsum()` | `df.by("g").mutate(cum="cum_sum(x)")` | `-by g -mutate "cum = cum_sum(x)"` |
+
+### 14. Excel I/O & Workbook Management (`read`, `to`)
+| Task | Pandas | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Read Excel Sheet** | `pd.read_excel('f.xlsx', sheet_name='S1')` | `pt.read('f.xlsx', sheet_name='S1')` | `pytae f.xlsx -opts "sheet=S1"` |
+| **Export without Index Column** | `df.to_excel('f.xlsx', index=False)` *(Defaults to unwanted `index=True`)* | `df.to('f.xlsx')` *(Defaults to clean `index=False`)* | `-o f.xlsx` |
+| **Clean Null Cells** | Often writes `#NUM!` or `NaN` strings depending on dtype | Clean native blank cells (all missing normalized to null) | Clean native blank cells |
+| **Multi-Sheet Dict Export** | Requires verbose `pd.ExcelWriter` context boilerplate | `pt.to({'S1': df1, 'S2': df2}, 'f.xlsx')` | N/A |
+| **Inspect Sheet Names** | `pd.ExcelFile('f.xlsx').sheet_names` | `pt.get_reader('f.xlsx').sheet_names()` | `pytae f.xlsx -sheets` |
 
 ---
 
@@ -17002,7 +17035,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.14.5"
+version = "3.14.6"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"

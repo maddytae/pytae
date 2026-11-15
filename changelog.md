@@ -2,12 +2,26 @@
 
 All notable changes to this project are documented in this file.
 
-## [3.14.7] - 2026-11-14
+## [3.14.6] - 2026-11-14
 
 ### Added & Standardized
+- **Unified Missing Value Architecture & Hard Deprecation of `NaN` / `nans` (`src/pytae/dataframe.py`, `src/pytae/polars_engine.py`, `src/pytae/_parsing.py`, `src/pytae/cli_parsing.py`)**:
+  - Normalized all missing values and IEEE 754 floating-point `NaN`s (`np.nan`, `float('nan')`) to Arrow `null` uniformly across all ingestion paths (Parquet, CSV, Excel, Python dicts, eager and lazy frames).
+  - Added pre-normalization of missing values in dictionary ingestion (`_normalize_dict_nans`), enabling mixed integer lists (e.g. `[1, np.nan, 3]`) to natively construct as `Int64` with null without throwing Polars type errors.
+  - Dynamically derived float columns in `mutate()` automatically normalize non-finite values (e.g. `0.0 / 0.0`, `sqrt(-1)`) to `null`, completely eliminating the Polars IEEE-754 `NaN > all numbers` ordering trap.
+  - Hard-deprecated `nans`, `drop_nans`, and `fill_nans` in `dropna()` and `fillna()` with clear `ValueError` and `SystemExit` messages pointing users to standard `dropna()` and `fillna()`.
+  - Retired `.fill_nan()` and `.fill_null()` methods on `DataFrame` and `GroupedDataFrame` in favor of canonical `.fillna()`.
+  - Retired `.is_nan()`, `.is_not_nan()`, and `{col: is_nan()}` filter tokens in favor of canonical `.is_null()` and `.is_not_null()`.
+- **Destination Verb Unification on `.to()` & Retirement of `.write()` (`src/pytae/dataframe.py`, `src/pytae/readers.py`, `src/pytae/accessor.py`)**:
+  - Standardized on **`df.to()`** and **`pt.to()`** as the single canonical destination verb for all exports (file sinks, clipboard, and in-memory formats), establishing 1:1 symmetry with the CLI and REPL **`-o`** flag.
+  - Retired `.write()` across `DataFrame`, `GroupedDataFrame`, `accessor.pt`, and `pt.write()` with clear `ValueError` diagnostics redirecting users to `.to()`.
+- **Excel I/O & Multi-Sheet Workbooks (`.xlsx`, `.xls`) (`src/pytae/readers.py`, `src/pytae/dataframe.py`)**:
+  - Added first-class Excel ingestion delegating to `pd.read_excel()` wrapped into `pytae.DataFrame`, automatically normalizing missing cells and `NaN` to `null`.
+  - Enforced `index=False` by default on all Excel exports (`df.to("report.xlsx")`), preventing unwanted `Unnamed: 0` columns in generated spreadsheets.
+  - Rendered all missing values as native clean blank spreadsheet cells rather than `#NUM!` errors or `NaN` strings.
+  - Added multi-sheet Excel export from dictionaries via `pt.to({"Sheet1": df1, "Sheet2": df2}, "report.xlsx")`.
+  - Maintained full interoperability with `pd.ExcelWriter` context managers for multi-stage workbook generation.
 - **Naming Standardizations Across All Interfaces**:
-  - Standardized on `nans=True|False` everywhere across Python (`df.dropna(nans=...)`, `df.fillna(..., nans=...)`, `pt.dropna(nans=...)`, `pt.fillna(nans=...)`) and the CLI (`-dropna "nans=false"`, `-fillna "0, nans=false"`).
-  - Hard-deprecated legacy `drop_nans` and `fill_nans` across the Python API and CLI parser with actionable `ValueError` and `SystemExit` messages pointing directly to `nans`.
   - Standardized on snake_case `starts_with` and `ends_with` across `select`, `filter`, `mutate`, and the CLI. Retired legacy `startswith` and `endswith` with actionable `ValueError` and `SystemExit` messages pointing to canonical syntax.
   - Standardized on `not` as the single unary boolean negation operator in `filter()` expressions (matching `and` and `or`). Retired `~` and `!` in filter predicates with helpful errors guiding users to `not`.
   - Enforced `count()` as the canonical row counting function and `count(col)` as non-null column counting in expressions. Retired legacy `n()` and bare `n` identifier row counting in expressions (`mutate`), eliminating column collision and shadowing bugs.
@@ -19,8 +33,6 @@ All notable changes to this project are documented in this file.
 - **Math and Cumulative Mutations (`src/pytae/polars_engine.py`)**:
   - Fixed integer base exponentiation with negative powers (e.g. `y ** -1`, `2 ** y`) by automatically casting base and exponent to `pl.Float64`, preventing Polars unsigned integer conversion panics.
   - Added native vectorized Polars execution for cumulative transforms in `mutate()`: `cumsum`, `cum_sum`, `cummax`, `cum_max`, `cummin`, `cum_min`, `cumprod`, and `cum_prod`.
-
-## [3.14.6] - 2026-11-13
 
 ### Fixed
 - **`DataFrame.dropna()` & `DataFrame.fillna()` String Splitting and KeyError Validation (`src/pytae/dataframe.py`, `src/pytae/polars_engine.py`)**:
