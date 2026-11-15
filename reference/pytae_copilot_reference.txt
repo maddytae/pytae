@@ -10438,8 +10438,8 @@ Pytae provides a cohesive suite of data cleaning, profiling, inspection, and exp
 
 | Utility | Key Parameters | Primary Purpose |
 |---|---|---|
-| `.dropna()` | `*cols`, `subset=`, `how='all'|'any'`, `nans=True` | Drops missing values with **Zero Data Loss by default** |
-| `.fillna()` | `value`, `*cols`, `subset=`, `nans=True` | Imputes missing values (scalars, dicts, column-specific) |
+| `.dropna()` | `*cols`, `subset=`, `how='all'|'any'` | Drops missing values with **Zero Data Loss by default** |
+| `.fillna()` | `value`, `*cols`, `subset=` | Imputes missing values (scalars, dicts, column-specific) |
 | `.clean_columns()` | `strip=`, `strip_special=`, `squeeze=`, `fill=`, `case=`, `dedupe=` | Normalizes messy spreadsheet column headers |
 | `.rename()` | `*args`, `columns=`, `**kwargs` | Renames columns via string specs (`old:new`), dicts, or kwargs |
 | `.cols()` | `ascending=True|False|None` | Returns sorted or original file order column names |
@@ -10471,7 +10471,7 @@ In standard pandas, calling `.dropna()` without arguments defaults to `how='any'
 **Pytae's Zero Data Loss Philosophy:**
 - **Bare `.dropna()`**: Drops **only completely empty rows** (rows where all columns are null, `how='all'`).
 - **Targeted columns**: Pass specific column names to drop rows where any of *those* columns are missing.
-- **`nans=True` (default)**: Drops both Arrow `null` and IEEE 754 float `NaN` (`float("nan")`). Pass `nans=False` to drop only Arrow nulls.
+- **Unified Missing Values**: Automatically normalizes all missing values and non-finite floats to Arrow null.
 
 ```python
 # Construct a dataset with partial nulls and a completely empty row
@@ -10581,7 +10581,7 @@ shape: (5, 4)
 ## 2. `fillna()` — Missing Value Imputation
 
 `.fillna()` provides flexible missing value imputation:
-- **Default `nans=True`**: Imputes both Arrow `null` and floating-point `NaN` values.
+- **Unified Missing Values**: Imputes all missing values consistently across all dtypes.
 - **Type-safe scalar fill**: Automatically casts to compatible column dtypes (e.g. numeric 0 fills numeric columns without corrupting string columns).
 - **Per-column dictionaries**: Target specific columns with tailored replacement values.
 - **Column-specific scoping**: Fill specific columns via positional arguments or `subset=`.
@@ -10656,14 +10656,14 @@ shape: (5, 7)
 ```
 
 ```python
-# Demonstrate granular null vs NaN imputation using the nans= parameter
+# Demonstrate uniform missing value imputation
 nan_df = pt.DataFrame({
     "val": [1.0, float("nan"), None, 4.0],
 })
 
 print("Original:\n", nan_df)
-print("fillna(0.0, nans=False) -> fills null only, leaves float NaN intact:\n", nan_df.fillna(0.0, nans=False))
-print("fillna(0.0, nans=True)  -> fills both null and float NaN (default):\n", nan_df.fillna(0.0, nans=True))
+print("fillna(0.0) -> fills all missing values uniformly:\n", nan_df.fillna(0.0))
+print("dropna() -> drops all rows with missing values when targeted:\n", nan_df.dropna("val"))
 ```
 Output:
 ```text

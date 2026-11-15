@@ -6,9 +6,7 @@ import io
 from unittest.mock import MagicMock, patch
 
 import polars as pl
-import pytest
 
-import pytae as pt
 from pytae.readers import is_db_or_cloud_uri, read_uri
 
 

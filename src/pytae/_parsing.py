@@ -242,7 +242,7 @@ def _split_top_level(text: str, operator_words: list[str]) -> list[str]:
 _LHS_COL_PATTERN = r"((?:\[[^\]]+\]|`[^`]+`|[^>=<!:\[\]`])+?)"
 
 
-def _parse_predicate(raw_entry: str) -> Predicate:
+def _parse_predicate(raw_entry: str) -> FilterNode:
     raw = raw_entry.strip()
     if not raw:
         raise SystemExit("invalid filter condition: empty expression")

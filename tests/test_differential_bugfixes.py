@@ -1,6 +1,6 @@
-import pytest
 import polars as pl
-import pandas as pd
+import pytest
+
 import pytae as pt
 
 

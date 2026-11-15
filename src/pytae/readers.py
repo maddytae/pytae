@@ -1560,8 +1560,8 @@ def write_dataframe(
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     index: bool | None = None,
 ) -> None:
-    import polars as pl
     import pandas as pd
+    import polars as pl
 
     if isinstance(df, dict):
         dest_path = Path(dest)
