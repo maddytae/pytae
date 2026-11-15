@@ -137,13 +137,11 @@ def parse_dropna_spec(
                 how = val
             else:
                 raise SystemExit(f"{flag_name}: invalid how value '{val}'. Expected 'any' or 'all'")
-        elif re.match(r"^drop_nans\s*[:=]\s*", token, re.IGNORECASE):
+        elif re.match(r"^(nans|drop_nans)\s*[:=]\s*", token, re.IGNORECASE):
+            matched = re.match(r"^([a-z_]+)", token, re.IGNORECASE).group(1)
             raise SystemExit(
-                f"{flag_name}: 'drop_nans=' is retired in favor of canonical 'nans='. Use {flag_name} 'nans=false' instead."
+                f"{flag_name}: '{matched}=' is retired. Pytae normalizes all missing and non-finite values to null uniformly."
             )
-        elif re.match(r"^nans\s*[:=]\s*", token, re.IGNORECASE):
-            val = re.sub(r"^nans\s*[:=]\s*", "", token, flags=re.IGNORECASE).strip().strip("'\"").lower()
-            nans = val not in ("false", "0", "no")
         elif token.lower() in ("any", "all"):
             if available_cols and token in available_cols:
                 cols.append(_unquote_name(token))
@@ -177,14 +175,11 @@ def parse_fillna_spec(
     nans = True
     clean_tokens: list[str] = []
     for t in tokens:
-        if re.match(r"^(fill_nans|drop_nans)\s*[:=]\s*", t, re.IGNORECASE):
+        if re.match(r"^(nans|fill_nans|drop_nans)\s*[:=]\s*", t, re.IGNORECASE):
             matched = re.match(r"^([a-z_]+)", t, re.IGNORECASE).group(1)
             raise SystemExit(
-                f"{flag_name}: '{matched}=' is invalid or retired in favor of canonical 'nans='. Use {flag_name} 'nans=false' instead."
+                f"{flag_name}: '{matched}=' is retired. Pytae normalizes all missing and non-finite values to null uniformly."
             )
-        elif re.match(r"^nans\s*[:=]\s*", t, re.IGNORECASE):
-            val = re.sub(r"^nans\s*[:=]\s*", "", t, flags=re.IGNORECASE).strip().strip("'\"").lower()
-            nans = val not in ("false", "0", "no")
         else:
             clean_tokens.append(t)
 

@@ -765,10 +765,9 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "-dropna 'col1,col2' drops rows missing any specified column; -dropna how=any drops rows with any missing value."
         ),
         options=[
-            "Bare flag : Drop row only if ALL columns contain NaN/null (how='all', Zero Data Loss default).",
-            '"col1,col2" : Drop row if specified columns contain NaN/null (how=\'any\').',
-            "how=any : Drop row if ANY column contains NaN/null.",
-            "nans=false : Drop only Arrow nulls, preserving float IEEE-754 NaNs.",
+            "Bare flag : Drop row only if ALL columns contain null (how='all', Zero Data Loss default).",
+            '"col1,col2" : Drop row if specified columns contain null (how=\'any\').',
+            "how=any : Drop row if ANY column contains null.",
         ],
         examples=[
             "pytae penguins.parquet -dropna",
@@ -792,7 +791,6 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "VAL : Scalar value to fill matching columns (e.g. 0, 'missing').",
             "'col1:val1, col2:val2' : Column-specific fill values.",
             "'val, col1, col2' : Fill specific columns with the given scalar value.",
-            "nans=false : Fill only Arrow nulls, preserving float IEEE-754 NaNs.",
         ],
         examples=[
             "pytae penguins.parquet -fillna 0",

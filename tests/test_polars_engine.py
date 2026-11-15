@@ -188,13 +188,11 @@ def test_dropna_polars_option_b_semantics():
     assert res_any.shape == (1, 2)
     assert res_any["b"].to_list() == ["x"]
 
-    # 4. nans=False preserves float('nan') while dropping None
-    res_no_drop_nans = dropna_polars(df, cols=["a"], nans=False)
-    assert res_no_drop_nans.shape == (2, 2)
-    assert res_no_drop_nans["b"].to_list() == ["x", "z"]
+    # 4. nans and drop_nans are retired
+    with pytest.raises(ValueError, match="'nans' is retired"):
+        dropna_polars(df, cols=["a"], nans=False)
 
-    # 4b. Retired drop_nans parameter raises ValueError
-    with pytest.raises(ValueError, match="'drop_nans' is retired in favor of canonical 'nans'"):
+    with pytest.raises(ValueError, match="'nans' is retired"):
         dropna_polars(df, drop_nans=False)
 
     # 5. LazyFrame support
@@ -725,29 +723,42 @@ def test_consistent_is_null_and_is_nan_across_dict_and_non_dict():
         }
     )
 
-    # 1. Non-dict strings: The one and only obvious way
+    # 1. Non-dict strings: The one and only obvious way (null checks)
     assert len(df.filter("sex.is_null()")) == 2
     assert len(df.filter("sex.is_not_null()")) == 2
-    assert len(df.filter("score.is_nan()")) == 1
-    assert len(df.filter("score.is_not_nan()")) == 3
+    assert len(df.filter("score.is_null()")) == 1
+    assert len(df.filter("score.is_not_null()")) == 3
 
-    # 2. Dictionaries with canonical method tokens 'is_null()' and 'is_nan()'
+    # is_nan() and is_not_nan() are retired
+    with pytest.raises(ValueError, match="retired in favor of canonical"):
+        df.filter("score.is_nan()")
+
+    with pytest.raises(ValueError, match="retired in favor of canonical"):
+        df.filter("score.is_not_nan()")
+
+    # 2. Dictionaries with canonical method tokens 'is_null()' and 'is_not_null()'
     assert len(df.filter({"sex": "is_null()"})) == 2
     assert len(df.filter({"sex": "is_not_null()"})) == 2
-    assert len(df.filter({"score": "is_nan()"})) == 1
-    assert len(df.filter({"score": "is_not_nan()"})) == 3
+    assert len(df.filter({"score": "is_null()"})) == 1
+    assert len(df.filter({"score": "is_not_null()"})) == 3
 
-    # 3. Bare words without parentheses are strictly rejected (no forgiving)
+    with pytest.raises(ValueError, match="retired in favor of canonical"):
+        df.filter({"score": "is_nan()"})
+
+    with pytest.raises(ValueError, match="retired in favor of canonical"):
+        df.filter({"score": "is_not_nan()"})
+
+    # 3. Bare words without parentheses are strictly rejected
     with pytest.raises(ValueError, match=r"requires parentheses: 'is_null\(\)'"):
         df.filter({"sex": "is_null"})
 
     with pytest.raises(ValueError, match=r"requires parentheses: 'is_not_null\(\)'"):
         df.filter({"sex": "is_not_null"})
 
-    with pytest.raises(ValueError, match=r"requires parentheses: 'is_nan\(\)'"):
+    with pytest.raises(ValueError, match="retired in favor of canonical"):
         df.filter({"score": "is_nan"})
 
-    with pytest.raises(ValueError, match=r"requires parentheses: 'is_not_nan\(\)'"):
+    with pytest.raises(ValueError, match="retired in favor of canonical"):
         df.filter({"score": "is_not_nan"})
 
     # 4. None and float('nan') in dictionaries strictly raise ValueError

@@ -21,7 +21,7 @@ Pandas has been the cornerstone of data analysis in Python for over fifteen year
 │ Grouping Scope                │ Stateful DataFrameGroupBy object │ Single-shot context (auto-clears)│
 │ Aggregation Missing Keys      │ dropna=True (Drops missing keys!)│ dropna=False (Zero Data Loss)    │
 │ Default Row-Dropping          │ dropna() drops if ANY column NA  │ dropna() drops only 100% blanks  │
-│ Float NaN vs Arrow Null       │ Conflated into np.nan / pd.NA    │ Differentiated; dual-cleaned     │
+│ Float NaN vs Arrow Null       │ Conflated into np.nan / pd.NA    │ Unified: All missing are null    │
 │ Command-Line Equivalence      │ None (requires Python script)    │ 100% grammar parity via CLI      │
 └───────────────────────────────┴──────────────────────────────────┴──────────────────────────────────┘
 ```
@@ -263,10 +263,12 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 |:---|:---|:---|:---|
 | **Safe Blank Row Dropping** | `df.dropna(how='all')` *(Defaults to dangerous `how='any'`)* | `df.dropna()` *(Defaults to safe `how='all'`)* | `-dropna` |
 | **Targeted Key Dropping** | `df.dropna(subset=['id', 'email'])` | `df.dropna("id", "email")` | `-dropna id,email` |
-| **Dual Null & NaN Imputation**| `df.fillna(0)` *(Fails on nullable types)*| `df.fillna(0, nans=True)` | `-fillna 0` |
+| **Unified Null Imputation**| `df.fillna(0)` *(Fails on nullable types)*| `df.fillna(0)` | `-fillna 0` |
 | **Column-Specific Imputation**| `df.fillna({'a': 0, 'b': 'N/A'})` | `df.fillna({'a': 0, 'b': 'N/A'})` | `-fillna "a=0,b='N/A'"` |
 | **Deterministic Column Cleaning**| Third-party `janitor` / `skimpy` | `df.clean_columns()` *(Deterministic 6-stage)* | `-clean_columns` |
 | **Preserve NA Groups in Agg** | `df.groupby('g', dropna=False).agg(...)` | Default behavior (`dropna=False`) | Default behavior |
+| **Unified Null Model** | Split across `np.nan`, `pd.NA`, `None` | All missing & `NaN` unified as Arrow `null` | All missing unified as `null` |
+| **Universal Null Checks** | Fragmented `.isna()`, `.isnull()`, `.isna().all()` | Canonical `.is_null()`, `.is_not_null()` | `.is_null()`, `.is_not_null()` |
 
 ### 12. Embedded ANSI SQL Engine (`sql`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
@@ -282,6 +284,15 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 | **Within-Group Rank** | `df.groupby('g')['x'].rank()` | `df.by("g").mutate(r="rank(x)")` | `-by g -mutate "r = rank(x)"` |
 | **Grouped Shift / Lag** | `df.groupby('g')['x'].shift(1)` | `df.by("g").mutate(prev="shift(x, 1)")` | `-by g -mutate "prev = shift(x, 1)"` |
 | **Grouped Cumulative Sum** | `df.groupby('g')['x'].cumsum()` | `df.by("g").mutate(cum="cum_sum(x)")` | `-by g -mutate "cum = cum_sum(x)"` |
+
+### 14. Excel I/O & Workbook Management (`read`, `to`)
+| Task | Pandas | Pytae (Python) | Pytae CLI |
+|:---|:---|:---|:---|
+| **Read Excel Sheet** | `pd.read_excel('f.xlsx', sheet_name='S1')` | `pt.read('f.xlsx', sheet_name='S1')` | `pytae f.xlsx -opts "sheet=S1"` |
+| **Export without Index Column** | `df.to_excel('f.xlsx', index=False)` *(Defaults to unwanted `index=True`)* | `df.to('f.xlsx')` *(Defaults to clean `index=False`)* | `-o f.xlsx` |
+| **Clean Null Cells** | Often writes `#NUM!` or `NaN` strings depending on dtype | Clean native blank cells (all missing normalized to null) | Clean native blank cells |
+| **Multi-Sheet Dict Export** | Requires verbose `pd.ExcelWriter` context boilerplate | `pt.to({'S1': df1, 'S2': df2}, 'f.xlsx')` | N/A |
+| **Inspect Sheet Names** | `pd.ExcelFile('f.xlsx').sheet_names` | `pt.get_reader('f.xlsx').sheet_names()` | `pytae f.xlsx -sheets` |
 
 ---
 

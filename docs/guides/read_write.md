@@ -50,6 +50,7 @@ Export pipeline results, batch-convert datasets, route outputs to dedicated dire
 | **Pipe-Delimited Data** | `.dat` | ✓ | ✓ | Defaults to pipe-delimited (`\|`) and `latin-1` encoding |
 | **JSON Lines** | `.jsonl`, `.ndjson` | ✓ | ✓ | Line-delimited JSON records, streamed in chunks |
 | **Compressed Gzip** | `.csv.gz`, `.txt.gz`, `.dat.gz`, `.jsonl.gz` | ✓ | ✓ | Transparent on-the-fly streaming compression and decompression |
+| **Excel Workbook** | `.xlsx`, `.xls` | ✓ | ✓ | Multi-sheet reading & writing; defaults to `index=False` with clean native blank nulls |
 | **SAS Dataset** | `.sas7bdat` | ✓ | — | SAS binary dataset format (read-only; export to Parquet or CSV) |
 
 ---
@@ -125,6 +126,35 @@ Directly read and analyze tabular data copied to your system clipboard (e.g. fro
 pytae clip -head 5
 pytae clip -filter "sales > 100" -by region -agg "total = sales:sum"
 ```
+
+### Python Library Counterpart (`df.to()`, `pt.to()`)
+
+In Python code, the universal destination method is **`df.to(target)`** (providing 1:1 symmetry with CLI and REPL `-o`):
+
+```python
+# 1. Export to file path (chainable: returns self)
+df.to("subset.parquet")
+df.to("report.xlsx")
+
+# 2. Export to system clipboard
+df.to("clip")
+
+# 3. In-memory conversions
+pdf = df.to("pandas")
+pldf = df.to("polars")
+tbl = df.to("arrow")
+rows = df.to("records")
+cols = df.to("dict")
+arr = df.to("numpy")
+
+# 4. Multi-sheet Excel export from dictionary
+pt.to({"Summary": df1, "Details": df2}, "report.xlsx")
+```
+
+> [!IMPORTANT]
+> **One Canonical Destination Verb: `.to()` (`.write()` is retired)**:
+> In accordance with **"One and Only One Obvious Way"**, Pytae does not maintain duplicate `.write()` aliases.
+> Calling `df.write()` or `pt.write()` raises a helpful `ValueError` directing users to canonical `.to()`.
 
 ---
 
@@ -216,6 +246,65 @@ pytae web_traffic.jsonl -shape -cols
 # Convert JSON Lines to Parquet
 pytae web_traffic.jsonl -o parquet
 ```
+
+---
+
+## Excel Workbooks (`.xlsx`, `.xls`)
+
+`pytae` provides robust Excel ingestion and export capabilities built on top of standard `openpyxl`:
+
+### Reading Excel Files
+
+When reading Excel workbooks, Pytae loads sheets via `pandas.read_excel()` and wraps them directly into high-performance `pytae.DataFrame` instances. All missing cells and float `NaN` values are normalized into Arrow `null`:
+
+```bash
+# In CLI: Read default first sheet
+pytae financial_report.xlsx -head 5
+
+# In CLI: Select specific sheet via -opts
+pytae financial_report.xlsx -opts "sheet=Q3_Results" -head 5
+```
+
+```python
+import pytae as pt
+
+# Read default sheet
+df = pt.read("financial_report.xlsx")
+
+# Read specific sheet by name or index
+df_q3 = pt.read("financial_report.xlsx", sheet_name="Q3_Results")
+```
+
+### Writing Excel Files (`df.to()`, `pt.to()`)
+
+Writing to Excel in Pytae is designed around **flat, clean exports without boilerplate**:
+
+1. **Guaranteed `index=False` by Default**: Unlike Pandas which defaults to `index=True` (creating an unwanted `Unnamed: 0` index column in your spreadsheet), Pytae always defaults to `index=False`.
+2. **Clean Native Nulls**: All `null` values render as clean, native blank spreadsheet cells rather than `#NUM!` errors or unsightly `NaN` strings.
+3. **Single-Sheet Export**:
+   ```python
+   df.to("output.xlsx")
+   # Or with explicit sheet name:
+   df.to("output.xlsx", sheet_name="Summary")
+   ```
+4. **Multi-Sheet Dictionary Export**:
+   Export multiple sheets in a single call without managing `ExcelWriter` contexts manually:
+   ```python
+   pt.to({
+       "Summary": df_summary,
+       "Transactions": df_txns,
+       "Metadata": df_meta
+   }, "quarterly_pack.xlsx")
+   ```
+5. **Context Manager Compatibility**:
+   Directly compatible with `pandas.ExcelWriter` for fine-grained multi-stage workbook generation:
+   ```python
+   import pandas as pd
+
+   with pd.ExcelWriter("report.xlsx", engine="openpyxl") as writer:
+       df1.to(writer, sheet_name="January")
+       df2.to(writer, sheet_name="February")
+   ```
 
 ---
 

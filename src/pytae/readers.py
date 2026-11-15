@@ -1485,6 +1485,26 @@ def write_dataframe(
     index: bool | None = None,
 ) -> None:
     import polars as pl
+    import pandas as pd
+
+    if isinstance(df, dict):
+        dest_path = Path(dest)
+        suffix, _ = _split_path_suffixes(dest_path)
+        if suffix in (".xlsx", ".xls"):
+            with pd.ExcelWriter(dest_path, engine="openpyxl") as writer:
+                for sheet, frame in df.items():
+                    if hasattr(frame, "_to_pandas_internal"):
+                        pddf = frame._to_pandas_internal()
+                    elif hasattr(frame, "to_pandas"):
+                        pddf = frame.to_pandas()
+                    elif isinstance(frame, pd.DataFrame):
+                        pddf = frame
+                    else:
+                        pddf = pd.DataFrame(frame)
+                    pddf.to_excel(writer, sheet_name=str(sheet), index=index if index is not None else False)
+            return
+        else:
+            raise ValueError(f"Writing a dictionary of datasets is only supported for Excel workbooks (.xlsx, .xls); got '{suffix or dest_path.name}'")
 
     if hasattr(df, "_df") and isinstance(df._df, (pl.DataFrame, pl.LazyFrame)):
         df = df._df
@@ -1924,17 +1944,23 @@ def scan(source: Any, *args: Any, **kwargs: Any) -> Any:
             return DataFrame(pl.scan_csv(norm_src, *args, **kwargs))
 
 
-def write(df: Any, target: Any, **kwargs: Any) -> Any:
+def to(df: Any, target: Any, **kwargs: Any) -> Any:
     """Universal destination function for exporting or converting a dataset."""
     from pytae.dataframe import DataFrame
+    if isinstance(df, dict) and str(target).endswith((".xlsx", ".xls")):
+        write_dataframe(df, Path(str(target)), **kwargs)
+        return df
     if isinstance(df, DataFrame):
         return df.to(target, **kwargs)
     return DataFrame(df).to(target, **kwargs)
 
 
-def to(df: Any, target: Any, **kwargs: Any) -> Any:
-    """Universal destination function for exporting or converting a dataset."""
-    return write(df, target, **kwargs)
+def write(df: Any, target: Any, **kwargs: Any) -> Any:
+    """Retired alias for universal pt.to(df, target, **kwargs)."""
+    raise ValueError(
+        "write(): 'pt.write()' is retired in favor of canonical 'pt.to()'. "
+        "In line with 'one and only one obvious way', use pt.to(df, target)."
+    )
 
 
 def _read_csv_impl(source: Any, *args: Any, **kwargs: Any) -> Any:

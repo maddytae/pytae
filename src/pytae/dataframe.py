@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import platform
 import subprocess
 from collections.abc import Callable, Sequence
@@ -35,6 +36,33 @@ from pytae.polars_engine import (
     sql_polars,
     wide_polars,
 )
+
+
+def _normalize_dict_nans(d: Any) -> Any:
+    """Normalize NaN floats in dictionary inputs to None (Arrow null)."""
+    if isinstance(d, dict):
+        out = {}
+        for k, v in d.items():
+            if isinstance(v, (list, tuple)):
+                out[k] = [
+                    None if isinstance(x, float) and math.isnan(x) else x
+                    for x in v
+                ]
+            else:
+                out[k] = v
+        return out
+    return d
+
+
+def _clean_nans_to_null(df: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame | pl.LazyFrame:
+    """Ensure all floating-point NaNs are normalized to Arrow nulls."""
+    try:
+        float_cols = [c for c, dt in df.schema.items() if dt.is_float()]
+        if float_cols:
+            return df.with_columns([pl.col(c).fill_nan(None).alias(c) for c in float_cols])
+    except Exception:
+        pass
+    return df
 
 
 def _copy_to_clipboard(text: str) -> None:
@@ -272,9 +300,11 @@ class DataFrame:
                                 df_c[col] = df_c[col].astype(str)
                         self._df = pl.from_pandas(df_c)
                 else:
-                    self._df = pl.DataFrame(data)
+                    self._df = pl.DataFrame(_normalize_dict_nans(data))
             except Exception:
-                self._df = pl.DataFrame(data)
+                self._df = pl.DataFrame(_normalize_dict_nans(data))
+
+        self._df = _clean_nans_to_null(self._df)
 
     # -------------------------------------------------------------------------
     # Core Properties & Representation
@@ -913,19 +943,21 @@ class DataFrame:
         *cols: Any,
         subset: Any = None,
         how: str | None = None,
-        nans: bool = True,
-        drop_nans: bool | None = None,
+        nans: Any = None,
+        drop_nans: Any = None,
+        **kwargs: Any,
     ) -> DataFrame:
-        """Drop rows containing missing values (Arrow null and/or float NaN).
+        """Drop rows containing missing values (Arrow null).
 
         Zero-Data-Loss Safety Defaults:
-        - Without arguments: drops completely empty rows (all columns null/NaN, how='all').
-        - With column names: drops rows where any of the specified columns are null/NaN (how='any').
+        - Without arguments: drops completely empty rows (all columns null, how='all').
+        - With column names: drops rows where any of the specified columns are null (how='any').
         - Pass how='any' or how='all' to explicitly override.
-        - nans=True (default) drops float NaNs in addition to Arrow nulls. Pass nans=False to drop only Arrow nulls.
         """
-        if drop_nans is not None:
-            raise ValueError("dropna(): 'drop_nans' is retired in favor of canonical 'nans'. Use dropna(nans=...) instead.")
+        if nans is not None or drop_nans is not None or "nans" in kwargs or "drop_nans" in kwargs:
+            raise ValueError(
+                "dropna(): 'nans' is retired. Pytae normalizes all missing and non-finite values to null uniformly. Use dropna() without 'nans'."
+            )
         raw_target = (
             [subset]
             if isinstance(subset, str)
@@ -943,17 +975,17 @@ class DataFrame:
             missing = [c for c in resolved if c not in avail]
             if missing:
                 raise KeyError(f"dropna: column(s) {missing} not found in DataFrame")
-        return DataFrame(dropna_polars(self._df, cols=resolved, how=how, nans=nans))
+        return DataFrame(dropna_polars(self._df, cols=resolved, how=how))
 
     def fillna(
         self,
         value: Any = None,
         *cols: Any,
         subset: Any = None,
-        nans: bool = True,
+        nans: Any = None,
         **kwargs: Any,
     ) -> DataFrame:
-        """Fill missing values (Arrow null and/or float NaN).
+        """Fill missing values (Arrow null).
 
         Parameters
         ----------
@@ -964,18 +996,13 @@ class DataFrame:
             Column names to fill (if value is a scalar).
         subset : sequence of str, optional
             Alternative way to specify columns.
-        nans : bool, default True
-            If True, cleans both float NaN and Arrow null on numeric columns.
-            If False, only replaces Arrow null.
         **kwargs : Any
             Per-column fill values as keyword arguments (e.g. ``df.fillna(a=0, b="N/A")``).
         """
-        if "fill_nans" in kwargs:
+        if nans is not None or "nans" in kwargs or "fill_nans" in kwargs or "drop_nans" in kwargs:
             raise ValueError(
-                "fillna(): 'fill_nans' is retired in favor of canonical 'nans'. Use fillna(..., nans=...) instead."
+                "fillna(): 'nans' is retired. Pytae normalizes all missing and non-finite values to null uniformly. Use fillna() without 'nans'."
             )
-        if "drop_nans" in kwargs:
-            raise ValueError("fillna(): 'drop_nans' is invalid for fillna. Use fillna(..., nans=...) instead.")
         raw_target = (
             [subset]
             if isinstance(subset, str)
@@ -993,7 +1020,15 @@ class DataFrame:
             missing = [c for c in resolved if c not in avail]
             if missing:
                 raise KeyError(f"fillna: column(s) {missing} not found in DataFrame")
-        return DataFrame(fillna_polars(self._df, value, *(resolved or ()), subset=None, nans=nans, **kwargs))
+        return DataFrame(fillna_polars(self._df, value, *(resolved or ()), subset=None, **kwargs))
+
+    def fill_nan(self, *args: Any, **kwargs: Any) -> DataFrame:
+        """Retired method."""
+        raise ValueError("'fill_nan' is retired. Pytae normalizes all missing and non-finite values to null uniformly. Use 'fillna()' instead.")
+
+    def fill_null(self, *args: Any, **kwargs: Any) -> DataFrame:
+        """Retired method."""
+        raise ValueError("'fill_null' is retired in favor of canonical 'fillna()'.")
 
     def diff(
         self,
@@ -1597,7 +1632,9 @@ class DataFrame:
             return self
 
         elif suffix in (".xlsx", ".xls"):
-            self._to_pandas_internal().to_excel(norm_target, **kwargs)
+            opts = dict(kwargs)
+            opts.setdefault("index", False)
+            self._to_pandas_internal().to_excel(norm_target, **opts)
             return self
 
         else:
@@ -1606,8 +1643,11 @@ class DataFrame:
             return self
 
     def write(self, target: Any, **kwargs: Any) -> Any:
-        """Alias for universal .to(target, **kwargs)."""
-        return self.to(target, **kwargs)
+        """Retired alias for universal .to(target, **kwargs)."""
+        raise ValueError(
+            "write(): '.write()' is retired in favor of canonical '.to()'. "
+            "In line with 'one and only one obvious way', use df.to(target)."
+        )
 
 
     def plot(self, *args: Any, **kwargs: Any) -> Any:
@@ -1897,12 +1937,15 @@ class GroupedDataFrame:
         *cols: Any,
         subset: Any = None,
         how: str | None = None,
-        nans: bool = True,
-        drop_nans: bool | None = None,
+        nans: Any = None,
+        drop_nans: Any = None,
+        **kwargs: Any,
     ) -> GroupedDataFrame:
-        """Drop rows containing missing values (Arrow null and/or float NaN), preserving grouping."""
-        if drop_nans is not None:
-            raise ValueError("dropna(): 'drop_nans' is retired in favor of canonical 'nans'. Use dropna(nans=...) instead.")
+        """Drop rows containing missing values (Arrow null), preserving grouping."""
+        if nans is not None or drop_nans is not None or "nans" in kwargs or "drop_nans" in kwargs:
+            raise ValueError(
+                "dropna(): 'nans' is retired. Pytae normalizes all missing and non-finite values to null uniformly. Use dropna() without 'nans'."
+            )
         raw_target = (
             [subset]
             if isinstance(subset, str)
@@ -1920,7 +1963,7 @@ class GroupedDataFrame:
             missing = [c for c in resolved if c not in avail]
             if missing:
                 raise KeyError(f"dropna: column(s) {missing} not found in DataFrame")
-        res_df = dropna_polars(self._df, cols=resolved, how=how, nans=nans)
+        res_df = dropna_polars(self._df, cols=resolved, how=how)
         return GroupedDataFrame(
             res_df,
             by_cols=self._by,
@@ -1935,16 +1978,14 @@ class GroupedDataFrame:
         value: Any = None,
         *cols: Any,
         subset: Any = None,
-        nans: bool = True,
+        nans: Any = None,
         **kwargs: Any,
     ) -> GroupedDataFrame:
-        """Fill missing values (Arrow null and/or float NaN), preserving grouping."""
-        if "fill_nans" in kwargs:
+        """Fill missing values (Arrow null), preserving grouping."""
+        if nans is not None or "nans" in kwargs or "fill_nans" in kwargs or "drop_nans" in kwargs:
             raise ValueError(
-                "fillna(): 'fill_nans' is retired in favor of canonical 'nans'. Use fillna(..., nans=...) instead."
+                "fillna(): 'nans' is retired. Pytae normalizes all missing and non-finite values to null uniformly. Use fillna() without 'nans'."
             )
-        if "drop_nans" in kwargs:
-            raise ValueError("fillna(): 'drop_nans' is invalid for fillna. Use fillna(..., nans=...) instead.")
         raw_target = (
             [subset]
             if isinstance(subset, str)
@@ -1962,7 +2003,7 @@ class GroupedDataFrame:
             missing = [c for c in resolved if c not in avail]
             if missing:
                 raise KeyError(f"fillna: column(s) {missing} not found in DataFrame")
-        res_df = fillna_polars(self._df, value, *(resolved or ()), subset=None, nans=nans, **kwargs)
+        res_df = fillna_polars(self._df, value, *(resolved or ()), subset=None, **kwargs)
         return GroupedDataFrame(
             res_df,
             by_cols=self._by,
@@ -1971,6 +2012,14 @@ class GroupedDataFrame:
             _last_sort_cols=self._last_sort_cols,
             _last_sort_desc=self._last_sort_desc,
         )
+
+    def fill_nan(self, *args: Any, **kwargs: Any) -> GroupedDataFrame:
+        """Retired method."""
+        raise ValueError("'fill_nan' is retired. Pytae normalizes all missing and non-finite values to null uniformly. Use 'fillna()' instead.")
+
+    def fill_null(self, *args: Any, **kwargs: Any) -> GroupedDataFrame:
+        """Retired method."""
+        raise ValueError("'fill_null' is retired in favor of canonical 'fillna()'.")
 
     def head(
         self,
@@ -2097,6 +2146,12 @@ class GroupedDataFrame:
                 )
         res = pl.concat(parts) if parts else eager_df.head(0)
         return DataFrame(res, orig_col_map=self._orig_col_map)
+
+    def write(self, *args: Any, **kwargs: Any) -> Any:
+        raise ValueError(
+            "write(): '.write()' is retired in favor of canonical '.to()'. "
+            "In line with 'one and only one obvious way', use df.to(target)."
+        )
 
     def __repr__(self) -> str:
         return f"<GroupedDataFrame by={self._by}>\n{self._df}"

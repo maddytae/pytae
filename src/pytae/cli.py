@@ -1331,13 +1331,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.unmask is not None and not args.key and not args.vault:
         parser.error("-unmask requires -key/--key (for encryption) and/or -vault/--vault (for tokenization)")
 
-    rename_specs = [parse_rename(raw) for raw in (args.rename or [])]
-    select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
-    filter_specs = [parse_filter(raw) for raw in (args.filter or [])]
-    mutate_specs = list(args.mutate or [])
-    sql_specs = list(args.sql or [])
-    join_specs = [parse_join_arg(raw) for raw in (args.join or [])]
-    concat_specs = [parse_concat_arg(raw) for raw in (args.concat or [])]
+    try:
+        rename_specs = [parse_rename(raw) for raw in (args.rename or [])]
+        select_specs = [parse_select_spec(raw) for raw in (args.select or [])]
+        filter_specs = [parse_filter(raw) for raw in (args.filter or [])]
+        mutate_specs = list(args.mutate or [])
+        sql_specs = list(args.sql or [])
+        join_specs = [parse_join_arg(raw) for raw in (args.join or [])]
+        concat_specs = [parse_concat_arg(raw) for raw in (args.concat or [])]
+    except ValueError as exc:
+        parser.error(str(exc))
 
     paths: list[Path] = []
     batch = False

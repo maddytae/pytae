@@ -105,6 +105,16 @@ class _Pipeline:
                 self._pldf = pl.LazyFrame()
         elif isinstance(self._pldf, pl.DataFrame):
             self._pldf = self._pldf.lazy()
+
+        if self._pldf is not None:
+            try:
+                schema = self._pldf.collect_schema() if hasattr(self._pldf, "collect_schema") else self._pldf.schema
+                float_cols = [c for c, dt in schema.items() if dt.is_float()]
+                if float_cols:
+                    self._pldf = self._pldf.with_columns([pl.col(c).fill_nan(None).alias(c) for c in float_cols])
+            except Exception:
+                pass
+
         return self._pldf
 
     def polars_frame(self):
@@ -327,7 +337,6 @@ class _Pipeline:
                 self.polars_lazy_frame(),
                 cols=cols if cols else None,
                 how=how,
-                nans=nans,
             )
             self._df = None
             return None
@@ -397,7 +406,7 @@ class _Pipeline:
         except Exception as exc:
             return f"-arrange: {exc}"
 
-    def apply_fillna(self, value: Any, cols: list[str] | None = None, nans: bool = True) -> str | None:
+    def apply_fillna(self, value: Any, cols: list[str] | None = None) -> str | None:
         """Apply one -fillna operation to the current view. Returns an error message or None."""
         available = self._available_columns()
         if isinstance(value, dict):
@@ -411,7 +420,7 @@ class _Pipeline:
         try:
             from pytae.polars_engine import fillna_polars
 
-            self._pldf = fillna_polars(self.polars_lazy_frame(), value, *(cols or ()), nans=nans)
+            self._pldf = fillna_polars(self.polars_lazy_frame(), value, *(cols or ()))
             self._df = None
             return None
         except Exception as exc:

@@ -78,13 +78,11 @@ pytae data.parquet -filter "body_mass_g >= 3000 and body_mass_g <= 3500"
 pytae data.parquet -filter "species in ['Adelie', 'Chinstrap']"
 pytae data.parquet -filter "species not in ['Gentoo']"
 
-# Null and NaN checks (universal 'is_null()' / 'is_nan()' in expressions and dicts)
+# Null checks (universal 'is_null()' / 'is_not_null()' in expressions and dicts; all missing and NaN values normalize to null)
 pytae data.parquet -filter "sex.is_not_null()"
 pytae data.parquet -filter "sex.is_null()"
 pytae data.parquet -filter "{'sex': 'is_null()'}"
-pytae data.parquet -filter "score.is_nan()"
-pytae data.parquet -filter "score.is_not_nan()"
-pytae data.parquet -filter "{score: is_nan()}"
+pytae data.parquet -filter "{'sex': 'is_not_null()'}"
 
 # Columns with parentheses or spaces
 pytae data.parquet -filter "counterparty_class_(irb) == 'Sovereigns'"

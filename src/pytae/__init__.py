@@ -204,10 +204,11 @@ def dropna(
     *cols: Any,
     subset: Any = None,
     how: str | None = None,
-    nans: bool = True,
-    drop_nans: bool | None = None,
+    nans: Any = None,
+    drop_nans: Any = None,
+    **kwargs: Any,
 ) -> DataFrame:
-    return DataFrame(df).dropna(*cols, subset=subset, how=how, nans=nans, drop_nans=drop_nans)
+    return DataFrame(df).dropna(*cols, subset=subset, how=how, nans=nans, drop_nans=drop_nans, **kwargs)
 
 
 def fillna(
@@ -215,7 +216,7 @@ def fillna(
     value: Any = None,
     *cols: Any,
     subset: Any = None,
-    nans: bool = True,
+    nans: Any = None,
     **kwargs: Any,
 ) -> DataFrame:
     return DataFrame(df).fillna(value, *cols, subset=subset, nans=nans, **kwargs)

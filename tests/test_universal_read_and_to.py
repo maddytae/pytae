@@ -83,9 +83,13 @@ def test_universal_to_file_and_return_self(tmp_path):
     assert df.to(out_xlsx) is df
     assert out_xlsx.exists()
 
-    # 5. write() alias works identically
+    # 5. write() is retired in favor of canonical .to()
     out_pq2 = tmp_path / "out2.parquet"
-    assert df.write(out_pq2) is df
+    with pytest.raises(ValueError, match=r"write\(\): '\.write\(\)' is retired in favor of canonical '\.to\(\)'"):
+        df.write(out_pq2)
+    with pytest.raises(ValueError, match=r"write\(\): 'pt\.write\(\)' is retired in favor of canonical 'pt\.to\(\)'"):
+        pt.write(df, out_pq2)
+    assert df.to(out_pq2) is df
     assert out_pq2.exists()
 
 

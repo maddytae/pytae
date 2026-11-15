@@ -219,3 +219,40 @@ def test_repl_no_opts_persistency(multi_sheet_excel):
     # 3. Subsequent assignment without -opts must NOT retain df1's opts
     r.execute_line(f'df2 = {multi_sheet_excel} -opts "sheet=Feb"', output_fn=outputs.append)
     assert r.tables["df2"].shape == (3, 3)  # normal 3 rows, not skipped rows!
+
+
+def test_dataframe_to_excel_defaults_index_false(tmp_path):
+    out_file = tmp_path / "single_export.xlsx"
+    df = pt.DataFrame({"id": [1, 2, None], "score": [98.5, float("nan"), 75.0]})
+    df.to(out_file)
+
+    loaded = pt.read(out_file)
+    assert list(loaded.columns) == ["id", "score"]
+    assert "Unnamed: 0" not in loaded.columns
+    assert loaded.shape == (3, 2)
+    # Verify missing value normalization
+    assert loaded["score"].to_list()[1] is None
+    assert loaded["id"].to_list()[2] is None
+
+
+def test_multi_sheet_dict_write_excel(tmp_path):
+    multi_file = tmp_path / "multi_export.xlsx"
+    df1 = pt.DataFrame({"dept": ["HR", "Eng"], "headcount": [10, 50]})
+    df2 = pt.DataFrame({"sku": ["A1", "B2", "C3"], "price": [9.99, 19.99, 29.99]})
+
+    with pytest.raises(ValueError, match=r"write\(\): 'pt\.write\(\)' is retired"):
+        pt.write({"Departments": df1, "Products": df2}, multi_file)
+
+    pt.to({"Departments": df1, "Products": df2}, multi_file)
+
+    sheet_dept = pt.read(multi_file, sheet_name="Departments")
+    sheet_prod = pt.read(multi_file, sheet_name="Products")
+
+    assert sheet_dept.shape == (2, 2)
+    assert list(sheet_dept.columns) == ["dept", "headcount"]
+    assert "Unnamed: 0" not in sheet_dept.columns
+
+    assert sheet_prod.shape == (3, 2)
+    assert list(sheet_prod.columns) == ["sku", "price"]
+    assert "Unnamed: 0" not in sheet_prod.columns
+

@@ -66,9 +66,11 @@ hello world    10.5 draft_stage
 
 ---
 
-## Missing Value Imputation (`-fillna`)
+## Missing Value Imputation (`-fillna`, `df.fillna()`)
 
-Replace missing values (`null` and `NaN`) across the dataset or within specific columns:
+Under Pytae's unified missing value architecture, all missing values, unrecorded data, and floating-point non-finite values (`NaN`, `np.nan`, `float('nan')`) are normalized uniformly to Arrow `null`.
+
+Impute missing values across the dataset or within specific columns:
 
 ```bash
 # Impute all numeric missing values with 0
@@ -77,21 +79,30 @@ pytae dataset.parquet -fillna 0 -head 5
 # Impute specific columns using column mappings or value + column list
 pytae dataset.parquet -fillna "status:Unknown, category:Unknown" -head 5
 pytae dataset.parquet -fillna "Unknown, status, category" -head 5
-
-# Only replace Arrow nulls (leave float NaNs intact)
-pytae dataset.parquet -fillna "0, nans=false" -head 5
 ```
+
+```python
+# In Python API:
+df.fillna(0)
+df.fillna({"status": "Unknown", "category": "Unknown"})
+```
+
+> [!IMPORTANT]
+> **Hard Deprecation of `nans` parameter & `.fill_nan()` / `.fill_null()`**:
+> In line with **"One and Only One Obvious Way"**, Pytae does not have separate parameters or functions for `NaN` vs. `null`.
+> - Passing `nans=...` or `drop_nans=...` to `fillna()` or `dropna()` raises an explicit `ValueError`.
+> - Calling `.fill_nan()` or `.fill_null()` raises `ValueError` directing users to canonical `.fillna()`.
+> - In filtering, `.is_nan()` and `.is_not_nan()` are retired in favor of universal `.is_null()` and `.is_not_null()`.
 
 ---
 
-## Dropping Missing Values
+## Dropping Missing Values (`-dropna`, `df.dropna()`)
 
-Pytae adheres to a **Zero Data Loss by Default** philosophy for missing values (Arrow `null`s and IEEE-754 float `NaN`s).
+Pytae adheres to a **Zero Data Loss by Default** philosophy for missing values:
 
-- **Bare `-dropna`**: Defaults to `how="all"`. Drops **only completely empty rows** (rows where every column is null/NaN), preserving partially populated rows.
-- **Targeted `-dropna "col1, col2"`**: Defaults to `how="any"`. Drops rows missing *any* of the specified columns.
+- **Bare `-dropna` / `df.dropna()`**: Defaults to `how="all"`. Drops **only completely empty rows** (rows where every column is null), preserving partially populated rows from accidental loss.
+- **Targeted `-dropna "col1, col2"` / `df.dropna("col1", "col2")`**: Defaults to `how="any"`. Drops rows missing *any* of the specified columns.
 - **Explicit `how=any`**: Drops rows containing *any* missing value across all columns.
-- **Optional `nans=false`**: Drops only Arrow nulls, preserving float IEEE-754 NaNs.
 
 ```bash
 # Bare flag defaults to how='all' (Zero Data Loss: keeps 344 rows in penguins)
@@ -105,13 +116,10 @@ pytae penguins.parquet -dropna body_mass_g -shape
 # Explicit how=any drops rows with any missing value (344 -> 333 rows)
 pytae penguins.parquet -dropna how=any -shape
 # (333, 7)
-
-# Drop only Arrow nulls, leaving float IEEE-754 NaNs untouched
-pytae dataset.parquet -dropna "nans=false" -head 5
 ```
 
 > [!NOTE]
-> - **Top-level `-dropna [COLS]`**: Operates as a row filter. Bare calls use `how="all"` (Zero Data Loss), while targeted calls use `how="any"` on the specified columns. Both Arrow `null` and float `NaN` are cleaned by default.
+> - **Top-level `-dropna [COLS]`**: Operates as a row filter. Bare calls use `how="all"` (Zero Data Loss), while targeted calls use `how="any"` on the specified columns.
 > - **Scoped `dropna=bool`**: In `-pivot` and `-agg`, default is `dropna=false` (retains missing group keys without silent data loss). Pass `dropna=true` inside the spec (e.g. `-agg "a=mean, dropna=true"`) to exclude NA groups.
 
 ---

@@ -42,10 +42,10 @@ class _BasePtAccessor:
     def count(self, *cols: Any, sort: bool = True, name: str = "n") -> DataFrame:
         return DataFrame(self._obj).count(*cols, sort=sort, name=name)
 
-    def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, nans: bool = True, drop_nans: bool | None = None) -> DataFrame:
-        return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, nans=nans, drop_nans=drop_nans)
+    def dropna(self, *cols: Any, subset: Any = None, how: str | None = None, nans: Any = None, drop_nans: Any = None, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).dropna(*cols, subset=subset, how=how, nans=nans, drop_nans=drop_nans, **kwargs)
 
-    def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: bool = True, **kwargs: Any) -> DataFrame:
+    def fillna(self, value: Any = None, *cols: Any, subset: Any = None, nans: Any = None, **kwargs: Any) -> DataFrame:
         return DataFrame(self._obj).fillna(value, *cols, subset=subset, nans=nans, **kwargs)
 
     def diff(
@@ -258,7 +258,10 @@ class _BasePtAccessor:
         return DataFrame(self._obj).to(target, **kwargs)
 
     def write(self, target: Any, **kwargs: Any) -> Any:
-        return DataFrame(self._obj).to(target, **kwargs)
+        raise ValueError(
+            "write(): '.pt.write()' is retired in favor of canonical '.pt.to()'. "
+            "In line with 'one and only one obvious way', use s.pt.to(target)."
+        )
 
     def plot(self, *args: Any, **kwargs: Any) -> Any:
         return _plot_impl(self._obj, *args, **kwargs)

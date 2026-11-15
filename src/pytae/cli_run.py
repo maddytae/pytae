@@ -1635,7 +1635,7 @@ def _process_path(
                 )
             except SystemExit as exc:
                 return _fail(parser, batch, str(exc))
-            err = pipeline.apply_fillna(fill_val, cols=fill_cols, nans=fill_nans)
+            err = pipeline.apply_fillna(fill_val, cols=fill_cols)
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)

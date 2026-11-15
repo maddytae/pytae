@@ -627,9 +627,9 @@ def test_mutate_smart_fillna():
     r1 = df.mutate(clean="fillna(flt, 0.0)")
     assert list(r1["clean"]) == [1.0, 0.0, 0.0]
 
-    # 2. fillna(col, val, nans=False) -> fills null only, leaves NaN intact
-    r2 = df.mutate(clean="fillna(flt, 0.0, nans=False)")
-    assert r2["clean"][0] == 1.0 and str(r2["clean"][1]) == "nan" and r2["clean"][2] == 0.0
+    # 2. fillna(col, val, nans=False) -> raises ValueError because nans is retired
+    with pytest.raises(ValueError, match="'nans' is retired"):
+        df.mutate(clean="fillna(flt, 0.0, nans=False)")
 
     # 3. Method syntax col.fillna(0.0)
     r3 = df.mutate(clean="flt.fillna(0.0)")

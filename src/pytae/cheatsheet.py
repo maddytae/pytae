@@ -39,8 +39,8 @@ CHEATSHEET_TEXT = """\
   pytae data.parquet -filter "{'body_mass_g': (('>=', 3000), ('<=', 3500))}" # Option 2 range
   pytae data.parquet -filter "species in ['Adelie', 'Chinstrap']" # Set membership
   pytae data.parquet -filter "species not in ['Gentoo']"
-  pytae data.parquet -filter "sex.is_not_null()"                 # Missing checks (or {'sex': 'is_null()'})
-  pytae data.parquet -filter "score.is_nan()"                    # NaN checks (or {'score': 'is_nan()'})
+  pytae data.parquet -filter "sex.is_null()"                     # Null checks (or {'sex': 'is_null()'})
+  pytae data.parquet -filter "sex.is_not_null()"                 # Non-null checks (or {'sex': 'is_not_null()'})
   pytae data.parquet -filter "counterparty_class_(irb).is_not_null()" # Special columns
   pytae data.parquet -assert "body_mass_g > 0 and id.is_not_null()"   # Schema & data assertion
   pytae data.parquet -dropna                                      # Drop 100% null rows

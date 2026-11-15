@@ -345,20 +345,31 @@ def test_filter_is_nan_and_is_not_nan(tmp_path, capsys):
         }
     ).write_parquet(path)
 
-    exit_code = cli.main([str(path), "-filter", "val.is_nan()", "-shape"])
+    # is_nan() is retired in favor of is_null()
+    with pytest.raises(SystemExit):
+        cli.main([str(path), "-filter", "val.is_nan()", "-shape"])
+    assert "retired in favor of canonical" in capsys.readouterr().err
+
+    # is_not_nan() is retired in favor of is_not_null()
+    with pytest.raises(SystemExit):
+        cli.main([str(path), "-filter", "val.is_not_nan()", "-shape"])
+    assert "retired in favor of canonical" in capsys.readouterr().err
+
+    # Dictionary tokens is_nan() and is_not_nan() are retired
+    with pytest.raises(SystemExit):
+        cli.main([str(path), "-filter", "{val: is_nan()}", "-shape"])
+    assert "retired in favor of canonical" in capsys.readouterr().err
+
+    with pytest.raises(SystemExit):
+        cli.main([str(path), "-filter", "{val: is_not_nan()}", "-shape"])
+    assert "retired in favor of canonical" in capsys.readouterr().err
+
+    # Canonical is_null() and is_not_null() succeed cleanly
+    exit_code = cli.main([str(path), "-filter", "val.is_null()", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(1, 1)"
 
-    exit_code = cli.main([str(path), "-filter", "val.is_not_nan()", "-shape"])
-    assert exit_code == 0
-    assert capsys.readouterr().out.strip() == "(2, 1)"
-
-    # Dictionaries with canonical method tokens 'is_nan()' and 'is_not_nan()' succeed in CLI
-    exit_code = cli.main([str(path), "-filter", "{val: is_nan()}", "-shape"])
-    assert exit_code == 0
-    assert capsys.readouterr().out.strip() == "(1, 1)"
-
-    exit_code = cli.main([str(path), "-filter", "{val: is_not_nan()}", "-shape"])
+    exit_code = cli.main([str(path), "-filter", "val.is_not_null()", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 1)"
 
@@ -366,7 +377,7 @@ def test_filter_is_nan_and_is_not_nan(tmp_path, capsys):
     with pytest.raises(SystemExit):
         cli.main([str(path), "-filter", "{val: is_nan}", "-shape"])
     err = capsys.readouterr().err
-    assert "requires parentheses: 'is_nan()'" in err
+    assert "retired in favor of canonical" in err
 
     # Float 'nan' is strictly rejected
     with pytest.raises(SystemExit):

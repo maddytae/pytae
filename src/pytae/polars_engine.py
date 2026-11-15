@@ -115,8 +115,8 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
     if isinstance(cond, float) and math.isnan(cond):
         raise ValueError(
             f"filter(): checking for NaN values in dictionaries via float('nan') is not supported. "
-            f"In line with 'one and only one obvious way', use 'is_nan()' instead: "
-            f"filter('{col_disp}.is_nan()') or filter({{{col!r}: 'is_nan()'}})."
+            f"In line with 'one and only one obvious way', use 'is_null()' instead: "
+            f"filter('{col_disp}.is_null()') or filter({{{col!r}: 'is_null()'}})."
         )
 
     if isinstance(cond, list):
@@ -176,12 +176,12 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
                     f"filter({suggested_pred!r}) or filter({suggested_dict})."
                 )
             if op in ("is_nan", "is_not_nan"):
-                suggested_pred = f"{col_disp}.is_not_nan()" if "not" in op else f"{col_disp}.is_nan()"
-                suggested_dict = f"{{{col!r}: 'is_not_nan()'}}" if "not" in op else f"{{{col!r}: 'is_nan()'}}"
+                suggested_pred = f"{col_disp}.is_not_null()" if "not" in op else f"{col_disp}.is_null()"
+                suggested_dict = f"{{{col!r}: 'is_not_null()'}}" if "not" in op else f"{{{col!r}: 'is_null()'}}"
                 raise ValueError(
-                    f"filter(): {op} checks in dictionaries via {cond!r} are not supported. "
-                    f"In line with 'one and only one obvious way', use 'is_nan()' or 'is_not_nan()': "
-                    f"filter({suggested_pred!r}) or filter({suggested_dict})."
+                    f"filter(): '{op}' is retired in favor of canonical 'is_null()' / 'is_not_null()'. "
+                    f"Pytae normalizes all missing and non-finite values to null uniformly. "
+                    f"Use filter({suggested_pred!r}) or filter({suggested_dict})."
                 )
             if op == "in":
                 vals = [_coerce_val(v) for v in val] if isinstance(val, (list, tuple)) else val
@@ -281,11 +281,11 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
                         f"In line with 'one and only one obvious way', use 'is_null()': filter({suggested_pred!r}) or filter({suggested_dict})."
                     )
                 if isinstance(cval, float) and math.isnan(cval):
-                    suggested_pred = f"{col_disp}.is_nan()"
-                    suggested_dict = f"{{{col!r}: 'is_nan()'}}"
+                    suggested_pred = f"{col_disp}.is_null()"
+                    suggested_dict = f"{{{col!r}: 'is_null()'}}"
                     raise ValueError(
                         f"filter(): NaN checks in dictionaries via {cond!r} are not supported. "
-                        f"In line with 'one and only one obvious way', use 'is_nan()': filter({suggested_pred!r}) or filter({suggested_dict})."
+                        f"In line with 'one and only one obvious way', use 'is_null()': filter({suggested_pred!r}) or filter({suggested_dict})."
                     )
                 return col_expr == cval
             if op == "!=":
@@ -297,11 +297,11 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
                         f"In line with 'one and only one obvious way', use 'is_not_null()': filter({suggested_pred!r}) or filter({suggested_dict})."
                     )
                 if isinstance(cval, float) and math.isnan(cval):
-                    suggested_pred = f"{col_disp}.is_not_nan()"
-                    suggested_dict = f"{{{col!r}: 'is_not_nan()'}}"
+                    suggested_pred = f"{col_disp}.is_not_null()"
+                    suggested_dict = f"{{{col!r}: 'is_not_null()'}}"
                     raise ValueError(
                         f"filter(): NaN checks in dictionaries via {cond!r} are not supported. "
-                        f"In line with 'one and only one obvious way', use 'is_not_nan()': filter({suggested_pred!r}) or filter({suggested_dict})."
+                        f"In line with 'one and only one obvious way', use 'is_not_null()': filter({suggested_pred!r}) or filter({suggested_dict})."
                     )
                 return col_expr != cval
             if op == ">":
@@ -326,12 +326,18 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
             return col_expr.is_null()
         if cond_clean in ("is_not_null()", "notna()"):
             return col_expr.is_not_null()
-        if cond_clean in ("is_nan()", "isnan()"):
-            return col_expr.is_nan()
-        if cond_clean in ("is_not_nan()", "not_nan()"):
-            return col_expr.is_not_nan()
+        if cond_clean in ("is_nan()", "isnan()", "is_nan", "isnan", "nan"):
+            raise ValueError(
+                f"filter(): 'is_nan()' in dictionaries is retired in favor of canonical 'is_null()'. "
+                f"Pytae normalizes all missing and non-finite values to null uniformly. Use filter({{{col!r}: 'is_null()'}}) or filter('{col_disp}.is_null()')."
+            )
+        if cond_clean in ("is_not_nan()", "not_nan()", "is_not_nan", "not_nan"):
+            raise ValueError(
+                f"filter(): 'is_not_nan()' in dictionaries is retired in favor of canonical 'is_not_null()'. "
+                f"Pytae normalizes all missing and non-finite values to null uniformly. Use filter({{{col!r}: 'is_not_null()'}}) or filter('{col_disp}.is_not_null()')."
+            )
 
-        # Strict: Bare words without parentheses are strictly rejected to enforce 'is_null()' / 'is_nan()'
+        # Strict: Bare words without parentheses are strictly rejected to enforce 'is_null()' / 'is_not_null()'
         if cond_clean in ("is_null", "isna", "null", "none"):
             raise ValueError(
                 f"filter(): checking for null values in dictionaries requires parentheses: 'is_null()'. "
@@ -341,16 +347,6 @@ def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -
             raise ValueError(
                 f"filter(): checking for non-null values in dictionaries requires parentheses: 'is_not_null()'. "
                 f"Use filter({{{col!r}: 'is_not_null()'}}) or filter('{col_disp}.is_not_null()')."
-            )
-        if cond_clean in ("is_nan", "isnan", "nan"):
-            raise ValueError(
-                f"filter(): checking for NaN values in dictionaries requires parentheses: 'is_nan()'. "
-                f"Use filter({{{col!r}: 'is_nan()'}}) or filter('{col_disp}.is_nan()')."
-            )
-        if cond_clean in ("is_not_nan", "not_nan"):
-            raise ValueError(
-                f"filter(): checking for non-NaN values in dictionaries requires parentheses: 'is_not_nan()'. "
-                f"Use filter({{{col!r}: 'is_not_nan()'}}) or filter('{col_disp}.is_not_nan()')."
             )
 
         if cond.strip().startswith("=") and not cond.strip().startswith("=="):
@@ -426,9 +422,15 @@ def _eval_filter_node(node: FilterNode, schema: pl.Schema | None = None) -> pl.E
                 if op_clean in ("notna", "is_not_null"):
                     return col_expr.is_not_null()
                 if op_clean in ("is_nan", "isnan"):
-                    return col_expr.is_nan()
+                    raise ValueError(
+                        "filter(): '.is_nan()' is retired in favor of canonical '.is_null()'. "
+                        "Pytae normalizes all missing and non-finite values to null uniformly."
+                    )
                 if op_clean in ("is_not_nan", "not_nan"):
-                    return col_expr.is_not_nan()
+                    raise ValueError(
+                        "filter(): '.is_not_nan()' is retired in favor of canonical '.is_not_null()'. "
+                        "Pytae normalizes all missing and non-finite values to null uniformly."
+                    )
         return _cond_to_polars_expr(node.col, node.cond, schema=schema)
     raise TypeError(f"Unknown filter node: {type(node)}")
 
@@ -603,20 +605,20 @@ def dropna_polars(
     cols: list[str] | Sequence[str] | None = None,
     *,
     how: str | None = None,
-    nans: bool = True,
-    drop_nans: bool | None = None,
+    nans: Any = None,
+    drop_nans: Any = None,
+    **kwargs: Any,
 ) -> Any:
-    """Drop rows containing missing values (Arrow null and/or float NaN).
+    """Drop rows containing missing values (Arrow null).
 
     Zero-Data-Loss Safety Defaults:
     - If `cols` is None/empty: defaults to how='all' (only drop completely empty rows).
     - If `cols` is specified: defaults to how='any' (drop rows missing any of the specified columns).
     - `how` can be explicitly 'any' or 'all' to override.
-    - `nans=True` (default) drops float NaNs in addition to Arrow nulls.
     """
-    if drop_nans is not None:
+    if nans is not None or drop_nans is not None or "nans" in kwargs or "drop_nans" in kwargs:
         raise ValueError(
-            "dropna(): 'drop_nans' is retired in favor of canonical 'nans'. Use dropna(nans=...) instead."
+            "dropna(): 'nans' is retired. Pytae normalizes all missing and non-finite values to null uniformly. Use dropna() without 'nans'."
         )
 
     import polars as pl
@@ -647,7 +649,7 @@ def dropna_polars(
     is_null_exprs = []
     for c in target_cols:
         dt = schema[c]
-        if nans and dt.is_float():
+        if dt.is_float():
             is_null_exprs.append(pl.col(c).is_null() | pl.col(c).is_nan())
         else:
             is_null_exprs.append(pl.col(c).is_null())
@@ -667,16 +669,14 @@ def fillna_polars(
     value: Any = None,
     *cols: Any,
     subset: Any = None,
-    nans: bool = True,
+    nans: Any = None,
     **kwargs: Any,
 ) -> Any:
-    """Fill missing values (Arrow null and/or float NaN) in a Polars DataFrame or LazyFrame."""
-    if "fill_nans" in kwargs:
+    """Fill missing values (Arrow null) in a Polars DataFrame or LazyFrame."""
+    if nans is not None or "nans" in kwargs or "fill_nans" in kwargs or "drop_nans" in kwargs:
         raise ValueError(
-            "fillna(): 'fill_nans' is retired in favor of canonical 'nans'. Use fillna(..., nans=...) instead."
+            "fillna(): 'nans' is retired. Pytae normalizes all missing and non-finite values to null uniformly. Use fillna() without 'nans'."
         )
-    if "drop_nans" in kwargs:
-        raise ValueError("fillna(): 'drop_nans' is invalid for fillna. Use fillna(..., nans=...) instead.")
 
     import polars as pl
 
@@ -706,7 +706,7 @@ def fillna_polars(
         target_cols = None
 
     def _fill_col_expr(c: str, dt: pl.DataType, fill_val: Any) -> pl.Expr:
-        if dt.is_float() and nans and isinstance(fill_val, (int, float)) and not isinstance(fill_val, bool):
+        if dt.is_float() and isinstance(fill_val, (int, float)) and not isinstance(fill_val, bool):
             return pl.col(c).fill_nan(fill_val).fill_null(fill_val)
         if dt == pl.Categorical and isinstance(fill_val, str):
             return pl.col(c).cast(pl.String).fill_null(fill_val).cast(pl.Categorical)
@@ -1476,12 +1476,12 @@ def _ast_to_polars_expr(
                 elif attr_name == "is_not_null":
                     expr = obj_expr.is_not_null()
                     return expr.over(by) if by else expr
-                elif attr_name == "is_nan":
-                    expr = obj_expr.is_nan()
-                    return expr.over(by) if by else expr
-                elif attr_name == "is_not_nan":
-                    expr = obj_expr.is_not_nan()
-                    return expr.over(by) if by else expr
+                elif attr_name in ("is_nan", "is_not_nan"):
+                    canonical = "is_not_null" if "not" in attr_name else "is_null"
+                    raise ValueError(
+                        f"filter(): '.{attr_name}()' is retired in favor of canonical '.{canonical}()'. "
+                        "Pytae normalizes all missing and non-finite values to null uniformly."
+                    )
                 elif attr_name == "cumsum":
                     expr = obj_expr.cum_sum()
                     return expr.over(by) if by else expr
@@ -1506,14 +1506,17 @@ def _ast_to_polars_expr(
                         if node.args
                         else pl.lit(0)
                     )
-                    nans = True
-                    if len(node.args) > 1 and isinstance(node.args[1], ast.Constant):
-                        nans = bool(node.args[1].value)
                     for kw in node.keywords:
-                        if kw.arg == "nans" and isinstance(kw.value, ast.Constant):
-                            nans = bool(kw.value.value)
+                        if kw.arg in ("nans", "fill_nans", "drop_nans"):
+                            raise ValueError(
+                                "fillna(): 'nans' is retired. Pytae normalizes all missing and non-finite values to null uniformly."
+                            )
+                    if len(node.args) > 1 and isinstance(node.args[1], ast.Constant):
+                        raise ValueError(
+                            "fillna(): 'nans' is retired. Pytae normalizes all missing and non-finite values to null uniformly."
+                        )
                     is_float = _is_float_or_numeric_expr(node.func.value, schema)
-                    if nans and is_float:
+                    if is_float:
                         expr = obj_expr.fill_nan(val_expr).fill_null(val_expr)
                     else:
                         expr = obj_expr.fill_null(val_expr)
@@ -1764,14 +1767,17 @@ def _ast_to_polars_expr(
         if func_name == "fillna" and len(node.args) >= 2:
             target_expr = _ast_to_polars_expr(node.args[0], col_names, col_map, by, schema, params)
             val_expr = _ast_to_polars_expr(node.args[1], col_names, col_map, by, schema, params)
-            nans = True
-            if len(node.args) > 2 and isinstance(node.args[2], ast.Constant):
-                nans = bool(node.args[2].value)
             for kw in node.keywords:
-                if kw.arg == "nans" and isinstance(kw.value, ast.Constant):
-                    nans = bool(kw.value.value)
+                if kw.arg in ("nans", "fill_nans", "drop_nans"):
+                    raise ValueError(
+                        "fillna(): 'nans' is retired. Pytae normalizes all missing and non-finite values to null uniformly."
+                    )
+            if len(node.args) > 2 and isinstance(node.args[2], ast.Constant):
+                raise ValueError(
+                    "fillna(): 'nans' is retired. Pytae normalizes all missing and non-finite values to null uniformly."
+                )
             is_float = _is_float_or_numeric_expr(node.args[0], schema)
-            if nans and is_float:
+            if is_float:
                 expr = target_expr.fill_nan(val_expr).fill_null(val_expr)
             else:
                 expr = target_expr.fill_null(val_expr)
@@ -1812,8 +1818,15 @@ def _ast_to_polars_expr(
             expr = args[0].is_not_null()
             return expr.over(by) if by else expr
         if func_name in ("is_nan", "isnan") and len(args) == 1:
-            expr = args[0].is_nan()
-            return expr.over(by) if by else expr
+            raise ValueError(
+                "filter(): 'is_nan()' is retired in favor of canonical 'is_null()'. "
+                "Pytae normalizes all missing and non-finite values to null uniformly."
+            )
+        if func_name in ("is_not_nan", "not_nan") and len(args) == 1:
+            raise ValueError(
+                "filter(): 'is_not_nan()' is retired in favor of canonical 'is_not_null()'. "
+                "Pytae normalizes all missing and non-finite values to null uniformly."
+            )
 
     raise ValueError(f"Unsupported AST node: {type(node)}")
 
@@ -1862,6 +1875,8 @@ def mutate_polars(
                     null_mask = pl.any_horizontal([pl.col(c).is_null() for c in by])
                     expr = pl.when(null_mask).then(pl.lit(None)).otherwise(expr)
                 cur = cur.with_columns(expr.alias(col_name))
+                if cur.schema.get(col_name, pl.Null).is_float():
+                    cur = cur.with_columns(pl.col(col_name).fill_nan(None).alias(col_name))
             except (pl.exceptions.InvalidOperationError, pl.exceptions.ComputeError) as exc:
                 msg = str(exc).lower()
                 if any(

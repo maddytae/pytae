@@ -99,14 +99,14 @@ def _extract_doc_chunks() -> list[dict[str, str]]:
             "title": "Python API: pt.filter() / df.pt.filter()",
             "category": "python_api",
             "syntax": "pt.filter(df, *conditions) / df.filter(*conditions)",
-            "keywords": "filter where query subset rows condition boolean equals in not is_null is_nan",
+            "keywords": "filter where query subset rows condition boolean equals in not is_null",
             "content": (
                 "Filter rows using pytae expressions with Polars speed.\n\n"
                 "### Syntax & Rules\n"
                 "- Strict equality: '==' strictly required; single '=' raises an error.\n"
                 "- Quoted string literals: 'species == \\'Gentoo\\''.\n"
                 "- Logic: and, or, parentheses ().\n"
-                "- Null checks: col.is_null(), col.is_not_null(), col.is_nan().\n"
+                "- Null checks: col.is_null(), col.is_not_null(). All missing and NaN values normalize to null uniformly.\n"
                 "- List membership: col in ['a', 'b'].\n\n"
                 "### Examples\n"
                 "```python\n"

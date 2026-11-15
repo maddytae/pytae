@@ -16,7 +16,7 @@ Filter rows using pytae's ergonomic filter expressions (`-filter`), drop missing
   - [Column-to-Column Comparisons (`col_a == col_b`)](#column-to-column-comparisons-col_a--col_b)
   - [Ranges & Intervals: Option 1 & Option 2 Dictionaries](#ranges--intervals)
   - [List Membership (`in` and `not in`)](#list-membership)
-  - [Filtering Null & NaN Values (`is_null`, `is_not_null`, `is_nan`, `is_not_nan`) & Columns with Spaces](#filtering-null--nan-values-and-columns-with-spaces)
+  - [Filtering Null Values (`is_null()`, `is_not_null()`) & Columns with Spaces](#filtering-null-values-and-columns-with-spaces)
   - [Combining Multiple Conditions](#combining-multiple-conditions)
   - [Strict Syntax Enforcement & Diagnostic Errors](#strict-syntax-enforcement)
 - [Slicing Extreme Rows](#slicing-extreme-rows)
@@ -196,18 +196,15 @@ pytae penguins.parquet -filter "species not in ['Adelie']" -select "species,isla
 | Chinstrap | Dream    |
 | Chinstrap | Dream    |
 
-<a id="filtering-null--nan-values-and-columns-with-spaces"></a>
-### Filtering Null & NaN Values (`is_null()`, `is_not_null()`, `is_nan()`, `is_not_nan()`) & Columns with Spaces
+<a id="filtering-null-values-and-columns-with-spaces"></a>
+### Filtering Null Values (`is_null()`, `is_not_null()`) & Columns with Spaces
 
-In pure Polars, missing values (`null`) and floating-point non-finite values (`NaN`) follow a strict, universal method-token standard across both expressions and dictionaries:
+In Pytae, all missing data and non-finite floating-point values (`NaN`) are normalized uniformly to Arrow `null` upon ingestion and derivation. In line with **"One and only one obvious way"**, null checking follows a single canonical standard across both expressions and dictionaries:
 - **`null` checks**: Use `.is_null()` or `.is_not_null()`.
   - In string expressions: `"sex.is_null()"` or `"sex.is_not_null()"`
   - In dictionaries: `"{sex: is_null()}"` or `"{sex: is_not_null()}"`
   - *(Note: Parentheses are strictly required; bare words like `{sex: is_null}` and `None` like `{sex: None}` are disallowed)*
-- **`NaN` checks**: Use `.is_nan()` or `.is_not_nan()`.
-  - In string expressions: `"score.is_nan()"` or `"score.is_not_nan()"`
-  - In dictionaries: `"{score: is_nan()}"` or `"{score: is_not_nan()}"`
-  - *(Note: Parentheses are strictly required; bare words like `{score: is_nan}` and `nan` like `{score: nan}` are disallowed)*
+  - *(Note: Dedicated `is_nan()` and `is_not_nan()` tokens are retired; all `NaN` values normalize to `null` so `is_null()` handles all missing and non-finite values uniformly)*
 - For columns whose names contain spaces or special punctuation, enclose the column name in brackets `[col name]`.
 
 ```bash
@@ -220,11 +217,6 @@ pytae penguins.parquet -filter "sex.is_null()" -select "species,sex" -head 3
 # 3. Dictionary filter with canonical 'is_null()' method token
 pytae penguins.parquet -filter "{sex: is_null()}" -select "species,sex" -head 3
 pytae penguins.parquet -filter "{sex: is_not_null()}" -select "species,sex" -head 3
-
-# 4. Floating-point NaN filtering via expression and dictionary
-pytae measurements.parquet -filter "score.is_nan()"
-pytae measurements.parquet -filter "{score: is_nan()}"
-pytae measurements.parquet -filter "{score: is_not_nan()}"
 ```
 
 **Output:**

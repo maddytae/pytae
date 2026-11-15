@@ -277,8 +277,10 @@ def _parse_predicate(raw_entry: str) -> Predicate:
             )
 
         if val_str.lower() == "nan" and op in ("!=", "=="):
-            op_nan = "is_not_nan" if op == "!=" else "is_nan"
-            return Predicate(col, (op_nan, None))
+            suggested = f"{col}.is_not_null()" if op == "!=" else f"{col}.is_null()"
+            raise ValueError(
+                f"filter(): comparisons to 'nan' are retired. Pytae normalizes all missing and non-finite values to null uniformly. Use '{suggested}' instead."
+            )
 
         if val_str.lower() in ("none", "null") and op in ("!=", "=="):
             op_null = "is_not_null" if op == "!=" else "is_null"
@@ -355,7 +357,10 @@ def _parse_predicate(raw_entry: str) -> Predicate:
         col = _unquote_name(m_null.group(1).strip())
         m_name = m_null.group(2).strip()
         if "nan" in m_name:
-            op = "is_not_nan" if "not" in m_name else "is_nan"
+            canonical = f"{col}.is_not_null()" if "not" in m_name else f"{col}.is_null()"
+            raise ValueError(
+                f"filter(): '.{m_name}()' is retired in favor of canonical '{canonical}'. Pytae normalizes all missing and non-finite values to null uniformly."
+            )
         else:
             op = "notna" if "not" in m_name else "isna"
         return Predicate(col, (op, None))

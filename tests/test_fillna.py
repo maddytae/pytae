@@ -25,19 +25,19 @@ def test_df_fillna_scalar_default_nans_true():
     assert res["num"].to_list() == [10.0, 0.0, 30.0]
 
 
-def test_df_fillna_scalar_nans_false():
-    # Only null is filled; NaN remains intact
+def test_df_fillna_scalar_nans_retired():
+    # nans=False or nans=True is retired
     df = pt.DataFrame(
         {
             "flt": [1.0, float("nan"), None],
             "txt": ["a", None, "c"],
         }
     )
-    res = df.fillna(0.0, nans=False)
-    flt_vals = res["flt"].to_list()
-    assert flt_vals[0] == 1.0
-    assert math.isnan(flt_vals[1])
-    assert flt_vals[2] == 0.0
+    with pytest.raises(ValueError, match="'nans' is retired"):
+        df.fillna(0.0, nans=False)
+
+    with pytest.raises(ValueError, match="'nans' is retired"):
+        df.fillna(0.0, nans=True)
 
 
 def test_df_fillna_dict():
@@ -64,13 +64,13 @@ def test_df_fillna_subset_and_cols():
     # Target flt1 only via *cols
     r1 = df.fillna(0.0, "flt1")
     assert r1["flt1"].to_list() == [1.0, 0.0, 0.0]
-    assert math.isnan(r1["flt2"].to_list()[1])
+    assert r1["flt2"].to_list()[1] is None
     assert r1["flt2"].to_list()[2] is None
 
     # Target flt2 only via subset=
     r2 = df.fillna(99.0, subset=["flt2"])
     assert r2["flt2"].to_list() == [2.0, 99.0, 99.0]
-    assert math.isnan(r2["flt1"].to_list()[1])
+    assert r2["flt1"].to_list()[1] is None
 
 
 def test_df_fillna_missing_column_raises_key_error():
@@ -85,22 +85,17 @@ def test_df_fillna_missing_value_raises_type_error():
         df.fillna()
 
 
-def test_df_fill_null_and_fill_nan():
+def test_df_fill_null_and_fill_nan_retired():
     df = pt.DataFrame(
         {
             "flt": [1.0, float("nan"), None],
         }
     )
-    # fill_null fills null only (nans=False)
-    r_null = df.fill_null(0.0)
-    assert math.isnan(r_null["flt"].to_list()[1])
-    assert r_null["flt"].to_list()[2] == 0.0
+    with pytest.raises(ValueError, match="'fill_null' is retired"):
+        df.fill_null(0.0)
 
-    # fill_nan fills NaN only, leaving null intact
-    r_nan = df.fill_nan(0.0)
-    assert r_nan["flt"].to_list()[0] == 1.0
-    assert r_nan["flt"].to_list()[1] == 0.0
-    assert r_nan["flt"].to_list()[2] is None
+    with pytest.raises(ValueError, match="'fill_nan' is retired"):
+        df.fill_nan(0.0)
 
 
 def test_functional_and_accessor_fillna():
