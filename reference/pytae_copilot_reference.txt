@@ -17208,6 +17208,7 @@ exclude = ["src/pytae/plotting.py"]
 [[tool.mypy.overrides]]
 module = [
     "pytae.dataframe",
+    "pytae.plotting",
     "pytae.polars_engine",
     "pytae.readers",
     "pytae.repl",

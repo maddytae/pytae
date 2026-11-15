@@ -137,8 +137,7 @@ def parse_dropna_spec(
                 how = val
             else:
                 raise SystemExit(f"{flag_name}: invalid how value '{val}'. Expected 'any' or 'all'")
-        m_retired = re.match(r"^(nans|drop_nans)\s*[:=]\s*", token, re.IGNORECASE)
-        if m_retired:
+        elif (m_retired := re.match(r"^(nans|drop_nans)\s*[:=]\s*", token, re.IGNORECASE)):
             matched = m_retired.group(1)
             raise SystemExit(
                 f"{flag_name}: '{matched}=' is retired. Pytae normalizes all missing and non-finite values to null uniformly."
