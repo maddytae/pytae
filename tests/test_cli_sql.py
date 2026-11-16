@@ -170,9 +170,15 @@ def test_sql_as_first_op_satisfies_multi_table_requirement(tmp_path):
 
 def test_sql_load_from_file_cli(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2], "b": [10, 20]}))
-    qfile = tmp_path / "query.txt"
+    qfile = tmp_path / "query.sql"
     qfile.write_text("select a, b from data where a > 1")
 
+    # Bare path without @
+    exit_code = cli.main([str(path), "-sql", str(qfile), "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(1, 2)"
+
+    # Backwards-compatible with @
     exit_code = cli.main([str(path), "-sql", f"@{qfile}", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(1, 2)"
@@ -182,16 +188,16 @@ def test_sql_load_from_quoted_file_cli(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"a": [1, 2], "b": [10, 20]}))
     sub = tmp_path / "subdir"
     sub.mkdir()
-    qfile = sub / "query.txt"
+    qfile = sub / "my query.sql"
     qfile.write_text("select a, b from data where a > 1")
 
-    # Test with outer quotes around '@path'
-    exit_code = cli.main([str(path), "-sql", f"'@{qfile}'", "-shape"])
+    # Test with outer quotes around path without @
+    exit_code = cli.main([str(path), "-sql", f'"{qfile}"', "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(1, 2)"
 
-    # Test with quotes around the path itself '@"path"'
-    exit_code = cli.main([str(path), "-sql", f'@"{qfile}"', "-shape"])
+    # Test with quotes around path with @
+    exit_code = cli.main([str(path), "-sql", f'@{qfile}', "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(1, 2)"
 

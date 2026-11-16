@@ -1072,21 +1072,30 @@ def parse_kv_spec(raw: str | None, *, flag: str) -> dict[str, Any]:
 
 
 def normalize_sql(query: str) -> str:
-    """Normalize SQL queries for CLI -sql: resolve @file references, convert backticks
-    `col` and brackets [col] to double-quoted identifiers "col" for standard SQL."""
+    """Normalize SQL queries for CLI and REPL sql: resolve file paths (.sql or existing file),
+    convert backticks `col` and brackets [col] to double-quoted identifiers "col" for standard SQL."""
+    from pathlib import Path
+
     q = query.strip()
     if (q.startswith("'") and q.endswith("'")) or (q.startswith('"') and q.endswith('"')):
         q = q[1:-1].strip()
-    if q.startswith("@"):
-        path = q[1:].strip()
-        if (path.startswith("'") and path.endswith("'")) or (path.startswith('"') and path.endswith('"')):
-            path = path[1:-1].strip()
-        from pathlib import Path
 
-        file_path = Path(path)
+    # If query starts with legacy @ (e.g. @query.sql), handle it or cleanly resolve path
+    if q.startswith("@"):
+        path_str = q[1:].strip()
+        if (path_str.startswith("'") and path_str.endswith("'")) or (path_str.startswith('"') and path_str.endswith('"')):
+            path_str = path_str[1:-1].strip()
+        file_path = Path(path_str)
         if not file_path.is_file():
-            raise FileNotFoundError(f"sql: query file not found: '{path}'")
+            raise FileNotFoundError(f"sql: query file not found: '{path_str}'")
         q = file_path.read_text(encoding="utf-8").strip()
+    elif q.lower().endswith((".sql", ".txt")) or ("\n" not in q and ("/" in q or "\\" in q or Path(q).is_file())):
+        file_path = Path(q)
+        if file_path.is_file():
+            q = file_path.read_text(encoding="utf-8").strip()
+        elif q.lower().endswith((".sql", ".txt")):
+            raise FileNotFoundError(f"sql: query file not found: '{q}'")
+
     out_chars: list[str] = []
     i, n = 0, len(q)
     quote = None

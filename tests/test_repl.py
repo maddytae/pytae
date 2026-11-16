@@ -125,13 +125,13 @@ def test_repl_non_destructive_inspection(sample_df):
     assert r.current_df.shape == (5, 3)
 
 
-def test_repl_sql_query(sample_df):
+def test_repl_sql_query(sample_df, tmp_path):
     outputs = []
     r = PytaeRepl(df=sample_df)
 
     # Bare unbraced sql and legacy -sql are rejected in REPL
     r.execute_line("sql SELECT species FROM df", output_fn=outputs.append)
-    assert "must be enclosed in braces: sql { ... }" in outputs[-1]
+    assert "must be enclosed in braces: sql { ... } or reference a file: sql <file.sql>" in outputs[-1]
 
     outputs.clear()
     r.execute_line('-sql "SELECT species FROM df"', output_fn=outputs.append)
@@ -160,6 +160,37 @@ def test_repl_sql_query(sample_df):
     # Reset restores original dataframe
     r.execute_line("reset", output_fn=outputs.append)
     assert r.current_df.shape == (5, 3)
+
+    # SQL from external file: bare preview and assignment via <file.sql>
+    q_file = tmp_path / "summary.sql"
+    q_file.write_text("SELECT species, COUNT(*) as n FROM df GROUP BY species ORDER BY n DESC")
+
+    # 1. Non-destructive preview without @
+    outputs.clear()
+    r.execute_line(f"sql {q_file}", output_fn=outputs.append)
+    preview_file = "\n".join(outputs)
+    assert "Adelie" in preview_file
+    assert r.current_df.shape == (5, 3)
+
+    # 2. Table creation from file with absolute path without @
+    outputs.clear()
+    r.execute_line(f"tbl_from_file = sql {q_file}", output_fn=outputs.append)
+    assert "Created 'tbl_from_file' from SQL query" in outputs[-1]
+    assert r.tables["tbl_from_file"].shape == (3, 2)
+    assert "n" in r.tables["tbl_from_file"].columns
+
+    # 3. Quoted path with spaces
+    spaced_file = tmp_path / "my query.sql"
+    spaced_file.write_text("SELECT species, COUNT(*) as n FROM df GROUP BY species ORDER BY n DESC")
+    outputs.clear()
+    r.execute_line(f'island_counts = sql "{spaced_file}"', output_fn=outputs.append)
+    assert "Created 'island_counts' from SQL query" in outputs[-1]
+    assert "species" in r.tables["island_counts"].columns
+
+    # 4. Missing file error handling
+    outputs.clear()
+    r.execute_line("sql non_existent.sql", output_fn=outputs.append)
+    assert "query file not found" in outputs[-1]
 
 
 def test_repl_python_expression(sample_df):

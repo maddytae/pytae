@@ -14,7 +14,7 @@ Execute full analytical SQL queries directly against tabular files and in-memory
 - [Window Functions](#window-functions)
 - [Common Table Expressions (CTEs)](#common-table-expressions-ctes)
 - [Columns With Spaces & Identifier Quoting](#columns-with-spaces--identifier-quoting)
-- [Reading SQL From File (`@query.sql`)](#reading-sql-from-file-querysql)
+- [Reading SQL From File (`query.sql`)](#reading-sql-from-file-querysql)
 - [Multi-File SQL Joins](#multi-file-sql-joins)
 
 ---
@@ -127,7 +127,8 @@ pytae data.parquet -sql "select \"body mass g\", \"bill length mm\" from data wh
 
 ---
 
-## Reading SQL From File (`@query.sql`)
+<a id="reading-sql-from-file-querysql"></a>
+## Reading SQL From File (`query.sql`)
 
 For long or reusable queries, place the SQL query in a `.sql` file:
 
@@ -144,9 +145,18 @@ GROUP BY species, island
 ORDER BY mean_weight DESC;
 ```
 
-Execute via:
+Execute directly via CLI:
 ```bash
-pytae penguins.parquet -sql @analysis.sql
+pytae penguins.parquet -sql analysis.sql
+```
+
+Or in the interactive REPL:
+```sql
+# Preview from file
+pytae [penguins]> sql analysis.sql
+
+# Create new table from file
+pytae [penguins]> summary = sql analysis.sql
 ```
 
 **Output:**
