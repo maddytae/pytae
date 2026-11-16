@@ -1200,7 +1200,7 @@ DATA TRANSFORMATION & PIPELINES:
   <tbl> -<pipeline>      : Run pipeline on specific table (e.g. df1 -filter "amount > 100")
   <tbl> -join <t2> on=<k>: Join tables (e.g. df1 -join df2 on=cust_id -o merged.parquet)
   <var> = <tbl> -<pipe>  : Assign pipeline result to new variable (e.g. df3 = df1 -filter ...)
-  <var> = sql { <query> }: Create table from ANSI SQL across loaded tables
+  <var> = sql { <query> }: Create table from ANSI SQL across loaded tables (or <var> = sql <file.sql>)
 
 INSPECTION & EXPORT:
   -head [N] / -tail [N]  : Non-destructive preview of top/bottom N rows (e.g. -head 10)
@@ -1241,7 +1241,7 @@ VARIABLES & PARAMETERS:
   rm var <name>          : Delete a session variable (or 'rm var *')
 
 QUERY & PYTHON EXPRESSIONS:
-  sql { <query> }        : Non-destructive preview of ANSI SQL across loaded tables (e.g. sql { SELECT * FROM df1 JOIN df2 ON ... })
+  sql { <query> }        : Non-destructive preview of ANSI SQL across loaded tables (or sql <file.sql>)
   py { <python code> }   : Run Python block/expression with 'df' (pytae), 'pldf' (polars), and loaded tables
 
 AUTOCOMPLETION & SHORTCUTS:
@@ -4635,8 +4635,14 @@ class PytaeRepl:
 
         if re.match(r"^sql(?:\s|\{|$)", right_expr, re.IGNORECASE):
             sql_expr = right_expr[3:].strip()
-            if not (sql_expr.startswith("{") and sql_expr.endswith("}")):
-                output_fn(f"pytae error: SQL commands must be enclosed in braces: {var_name} = sql {{ ... }}")
+            stripped_path = sql_expr.strip("'\"")
+            is_file_ref = (
+                sql_expr.startswith("@")
+                or stripped_path.lower().endswith((".sql", ".txt"))
+                or ("\n" not in sql_expr and ("/" in sql_expr or "\\" in sql_expr))
+            )
+            if not is_file_ref and not (sql_expr.startswith("{") and sql_expr.endswith("}")):
+                output_fn(f"pytae error: SQL commands must be enclosed in braces: {var_name} = sql {{ ... }} or reference a file: {var_name} = sql <file.sql>")
                 return
             if var_name in self.variables:
                 output_fn(
@@ -4645,7 +4651,16 @@ class PytaeRepl:
                 return
             import textwrap
 
-            query = textwrap.dedent(sql_expr[1:-1]).strip()
+            from pytae.cli_parsing import normalize_sql
+
+            if is_file_ref:
+                try:
+                    query = normalize_sql(sql_expr)
+                except Exception as exc:
+                    output_fn(f"pytae SQL Error: {exc}")
+                    return
+            else:
+                query = textwrap.dedent(sql_expr[1:-1]).strip()
             if not query:
                 return
             try:
@@ -4665,12 +4680,16 @@ class PytaeRepl:
                 res = ctx.execute(query).collect()
                 self.variables.pop(var_name, None)
                 self.tables[var_name] = res
-                self.table_sources[var_name] = f"sql: {query[:30]}"
+                self.table_sources[var_name] = f"sql: {sql_expr[:30]}" if is_file_ref else f"sql: {query[:30]}"
                 self.current_df = res
                 self.orig_df = self.orig_tables.get(var_name)
                 self.initial_df = self.initial_tables.get(var_name)
                 self.path_str = var_name
-                rec_entry = f"{var_name} = sql {{\n{query}\n}}" if "\n" in query else f"{var_name} = sql {{ {query} }}"
+                if is_file_ref:
+                    clean_file_expr = sql_expr.lstrip("@")
+                    rec_entry = f"{var_name} = sql {clean_file_expr}"
+                else:
+                    rec_entry = f"{var_name} = sql {{\n{query}\n}}" if "\n" in query else f"{var_name} = sql {{ {query} }}"
                 self._record_history(rec_entry)
                 output_fn(f"Created '{var_name}' from SQL query ({res.shape[0]:,} rows x {res.shape[1]} cols).")
                 return
@@ -5254,14 +5273,29 @@ class PytaeRepl:
             return
         raw_expr = expr.strip()
         if not raw_expr:
-            output_fn("Usage: sql { <SQL query> }")
+            output_fn("Usage: sql { <SQL query> } or sql <file.sql>")
             return
-        if not (raw_expr.startswith("{") and raw_expr.endswith("}")):
-            output_fn("pytae error: SQL commands must be enclosed in braces: sql { ... }")
+        stripped_path = raw_expr.strip("'\"")
+        is_file_ref = (
+            raw_expr.startswith("@")
+            or stripped_path.lower().endswith((".sql", ".txt"))
+            or ("\n" not in raw_expr and ("/" in raw_expr or "\\" in raw_expr))
+        )
+        if not is_file_ref and not (raw_expr.startswith("{") and raw_expr.endswith("}")):
+            output_fn("pytae error: SQL commands must be enclosed in braces: sql { ... } or reference a file: sql <file.sql>")
             return
         import textwrap
 
-        query = textwrap.dedent(raw_expr[1:-1]).strip()
+        from pytae.cli_parsing import normalize_sql
+
+        if is_file_ref:
+            try:
+                query = normalize_sql(raw_expr)
+            except Exception as exc:
+                output_fn(f"pytae SQL Error: {exc}")
+                return
+        else:
+            query = textwrap.dedent(raw_expr[1:-1]).strip()
         if not query:
             return
         try:
@@ -5281,7 +5315,11 @@ class PytaeRepl:
             res = ctx.execute(query).collect()
             # Non-destructive preview only (like -head / bare exploration)
             output_fn(self._format_table(res))
-            rec_entry = f"sql {{\n{query}\n}}" if "\n" in query else f"sql {{ {query} }}"
+            if is_file_ref:
+                clean_file_expr = raw_expr.lstrip("@")
+                rec_entry = f"sql {clean_file_expr}"
+            else:
+                rec_entry = f"sql {{\n{query}\n}}" if "\n" in query else f"sql {{ {query} }}"
             self._record_history(rec_entry)
         except Exception as exc:
             output_fn(f"pytae SQL Error: {exc}")

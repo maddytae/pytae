@@ -6513,7 +6513,7 @@ Execute full analytical SQL queries directly against tabular files and in-memory
 - [Window Functions](#window-functions)
 - [Common Table Expressions (CTEs)](#common-table-expressions-ctes)
 - [Columns With Spaces & Identifier Quoting](#columns-with-spaces--identifier-quoting)
-- [Reading SQL From File (`@query.sql`)](#reading-sql-from-file-querysql)
+- [Reading SQL From File (`query.sql`)](#reading-sql-from-file-querysql)
 - [Multi-File SQL Joins](#multi-file-sql-joins)
 
 ---
@@ -6626,7 +6626,8 @@ pytae data.parquet -sql "select \"body mass g\", \"bill length mm\" from data wh
 
 ---
 
-## Reading SQL From File (`@query.sql`)
+<a id="reading-sql-from-file-querysql"></a>
+## Reading SQL From File (`query.sql`)
 
 For long or reusable queries, place the SQL query in a `.sql` file:
 
@@ -6643,9 +6644,18 @@ GROUP BY species, island
 ORDER BY mean_weight DESC;
 ```
 
-Execute via:
+Execute directly via CLI:
 ```bash
-pytae penguins.parquet -sql @analysis.sql
+pytae penguins.parquet -sql analysis.sql
+```
+
+Or in the interactive REPL:
+```sql
+# Preview from file
+pytae [penguins]> sql analysis.sql
+
+# Create new table from file
+pytae [penguins]> summary = sql analysis.sql
 ```
 
 **Output:**
@@ -12203,7 +12213,7 @@ Execute full ANSI SQL queries directly against DataFrames via Polars' native `SQ
 |---|---|
 | `pt.sql(df, query)` | Function form; the passed frame is queryable as table `data` (or `self`) |
 | `df.sql(query)` | Direct DataFrame method; seamlessly chains with other `pt` methods |
-| `df.sql('@query.sql')` | Load and execute SQL query directly from an external `.sql` file |
+| `df.sql('query.sql')` | Load and execute SQL query directly from an external `.sql` file |
 
 The names `data` and `self` are reserved for the current frame.
 Column names with spaces can use standard SQL double quotes (`"bill length mm"`), square brackets (`[bill length mm]`), or backticks (`` `bill length mm` ``).
@@ -12337,12 +12347,12 @@ shape: (6, 5)
 Just like the CLI (`pytae data.parquet -sql @query.txt`), you can pass `@path.txt` to execute SQL queries directly from a file:
 
 ```python
-with open('query_demo.txt', 'w') as f:
+with open('query_demo.sql', 'w') as f:
     f.write('select species, avg(body_mass_g) as avg_mass from data group by species order by avg_mass desc')
 
-out = penguins.sql('@query_demo.txt')
-if os.path.exists('query_demo.txt'):
-    os.remove('query_demo.txt')
+out = penguins.sql('query_demo.sql')
+if os.path.exists('query_demo.sql'):
+    os.remove('query_demo.sql')
 out
 ```
 Output:

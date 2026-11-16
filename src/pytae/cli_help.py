@@ -29,11 +29,11 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "- In multi-table pipelines (e.g. s=sales.parquet st=stores.parquet), each file alias is queryable directly by name.\n"
             '- Standard SQL identifier quoting applies: double quotes for names with spaces ("col a"),\n'
             "  and single quotes for string literals ('Gentoo').\n"
-            "- To run queries from a file, prefix the filename with '@' (e.g. -sql @query.sql)."
+            "- To run queries from a file, pass the SQL file path directly (e.g. -sql query.sql)."
         ),
         options=[
             "`data` : Default in-memory table representing the current pipeline view.",
-            "@file.sql : Load SQL query string directly from an external SQL file.",
+            "file.sql : Load SQL query string directly from an external SQL file.",
             "Polars SQL functions : Full support for CTEs, WINDOW functions, aggregate functions, and math.",
         ],
         examples=[
@@ -41,7 +41,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             'pytae penguins.parquet -sql "select species, count(*) as n, round(avg(body_mass_g), 1) as avg_mass from data group by species"',
             'pytae penguins.parquet -sql "select [bill length mm], body_mass_g from data" -head 3',
             'pytae s=sales.parquet st=stores.parquet -sql "select s.*, st.city from s join st using (store_id)"',
-            "pytae sales.parquet -sql @queries/quarterly_report.sql -o report.csv",
+            "pytae sales.parquet -sql queries/quarterly_report.sql -o report.csv",
         ],
         see_also=["-filter", "-agg", "-pivot", "-join"],
     ),
