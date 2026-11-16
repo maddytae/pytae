@@ -6629,42 +6629,45 @@ pytae c=customers.csv o=orders.parquet \
 
 ### Primary Calling Paradigms
 
-1. **Explicit Aliasing (`alias = "col:operation"`) — Recommended**:
-   Every output column is explicitly declared as a keyword argument. No columns are created on the fly with unexpected suffixes.
+1. **Explicit Aliasing with Column Expressions (`alias = c.col.op()` or `n=c()`) — Recommended**:
+   Every output column is explicitly declared as a keyword argument using `c.` column expressions. No columns are created on the fly with unexpected suffixes.
    ```python
-   df.by("species").agg(
-       n="count",
-       avg_bill="bill_length_mm:mean",
-       total_mass="body_mass_g:sum",
-       max_mass="body_mass_g:max",
+   df.by(c.species).agg(
+       n=c(),
+       avg_bill=c.bill_length_mm.mean(),
+       total_mass=c.body_mass_g.sum(),
+       max_mass=c.body_mass_g.max(),
    )
    ```
 
-2. **1-to-1 Column Preservation (`col = "operation"`)**:
+2. **1-to-1 Column Preservation (`col = c.col.op()`)**:
    Keep the original column name unchanged when performing a single aggregation on that column:
    ```python
-   df.by("species").agg(
-       n="count",
-       bill_length_mm="mean",
-       body_mass_g="sum",
+   df.by(c.species).agg(
+       n=c(),
+       bill_length_mm=c.bill_length_mm.mean(),
+       body_mass_g=c.body_mass_g.sum(),
    )
    ```
 
-3. **Mixing Both Paradigms**:
+3. **Mixing Preserved Column Names & Explicit Aliases**:
    Combine preserved column names and explicit aliases seamlessly in a single `.agg()` call:
    ```python
-   tips.by("smoker", "time").agg(
-       cnt="count",
-       total_bill="mean",       # preserved 1-to-1 column name
-       avg_tip="tip:mean",      # explicit alias
-       max_tip="tip:max",       # explicit alias
+   tips.by(c.smoker, c.time).agg(
+       cnt=c(),
+       total_bill=c.total_bill.mean(),       # preserved 1-to-1 column name
+       avg_tip=c.tip.mean(),                 # explicit alias
+       max_tip=c.tip.max(),                  # explicit alias
    )
    ```
 
-4. **Columns with Spaces (String Specifications)**:
-   Bracket spaced columns matching the CLI `-agg` flag:
+4. **Columns with Spaces**:
+   Reference columns with spaces or special characters using bracketed proxy access `c["col with space"]`:
    ```python
-   df.by("species").agg("[avg bill] = [total bill]:mean, cnt = count")
+   df.by(c.species).agg(
+       avg_bill=c["bill length mm"].mean(),
+       cnt=c(),
+   )
    ```
 
 5. **Table-Wide Uniform Aggregations**:
@@ -6694,19 +6697,19 @@ tips = pt.sample_data['tips']
 titanic = pt.sample_data['titanic']
 ```
 
-## Explicit Aliasing (`alias = "col:operation"`) — Recommended
+## Explicit Aliasing (`alias = c.col.op()` or `n=c()`) — Recommended
 
 Every output column name is explicitly declared on the left side of `=`. No columns are created on the fly, eliminating any guessing or magical suffixes.
 
 ```python
 # Explicit aliases: every output column is named directly (no on-the-fly column creation)
 (penguins
- .by('species')
+ .by(c.species)
  .agg(
-     n='count',
-     bill_length_mm='mean',
-     mass_sum='body_mass_g:sum',
-     mass_mean='body_mass_g:mean',
+     n=c(),
+     bill_length_mm=c.bill_length_mm.mean(),
+     mass_sum=c.body_mass_g.sum(),
+     mass_mean=c.body_mass_g.mean(),
  )
 )
 ```
@@ -6726,22 +6729,19 @@ shape: (3, 5)
 
 ## Mixing Preserved Column Names & Explicit Aliases
 
-You can cleanly combine 1-to-1 preserved column names (`col='operation'`) and explicit aliases (`alias='col:operation'`) in the same `.agg()` call. Output column order strictly follows parameter order.
+You can cleanly combine 1-to-1 preserved column names and explicit aliases in the same `.agg()` call using `c.` expressions. Output column order strictly follows parameter order.
 
 ```python
 # Place count first (n at front), then preserved columns and explicit aliases:
-# - cnt='count': row count
-# - total_bill='mean': 1-to-1 preserved column name (mean of total_bill kept as total_bill)
-# - avg_tip='tip:mean', max_tip='tip:max': explicit aliases (no columns created on the fly)
 (
     tips
-    .select('smoker', 'time', 'total_bill', 'tip')
-    .by('smoker', 'time')
+    .select(c.smoker, c.time, c.total_bill, c.tip)
+    .by(c.smoker, c.time)
     .agg(
-        cnt='count',
-        total_bill='mean',
-        avg_tip='tip:mean',
-        max_tip='tip:max',
+        cnt=c(),
+        total_bill=c.total_bill.mean(),
+        avg_tip=c.tip.mean(),
+        max_tip=c.tip.max(),
     )
 )
 ```
