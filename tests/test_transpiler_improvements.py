@@ -42,6 +42,25 @@ def test_transpile_output_command_preserves_pipeline():
     assert "df.filter(c.x > 1).select(c.a, c.b).to('out.parquet')" in py_code
 
 
+def test_transpile_select_range_and_negation():
+    """Verify range, negated column, and negated range slices transpile to valid c. expressions."""
+    entries = [
+        "df = penguins.parquet",
+        'k1 = df -select "species, island"',
+        'k2 = df -select "bill_length_mm:flipper_length_mm"',
+        'k3 = df -select "~bill_length_mm:flipper_length_mm"',
+        'k4 = df -select "~[bill length mm]:[flipper length mm]"',
+        'k5 = df -select "~sex"',
+    ]
+    py_code = _compile_history_to_python(entries)
+    ast.parse(py_code)
+    assert "k1 = df.select(c.species, c.island)" in py_code
+    assert "k2 = df.select(c.bill_length_mm.to(c.flipper_length_mm))" in py_code
+    assert "k3 = df.select(~c.bill_length_mm.to(c.flipper_length_mm))" in py_code
+    assert "k4 = df.select(~c['bill length mm'].to(c['flipper length mm']))" in py_code
+    assert "k5 = df.select(~c.sex)" in py_code
+
+
 def test_transpile_bare_output_command_defaults_to_df():
     """Verify `-filter ... -o ...` without explicit table defaults to df."""
     entries = [

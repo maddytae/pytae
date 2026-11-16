@@ -93,17 +93,20 @@ def _transpile_select_spec(cols_val: str) -> str:
     parts = [c.strip() for c in cols_val.split(",") if c.strip()]
     res: list[str] = []
     for p in parts:
-        if p.startswith(("!", "~", "-")):
-            col = p[1:].strip()
-            res.append(f"~c.{col}" if col.isidentifier() else f"~c[{repr(col)}]")
-        elif ":" in p:
-            start, end = p.split(":", 1)
-            start, end = start.strip(), end.strip()
+        is_neg = p.startswith(("!", "~", "-"))
+        inner = p[1:].strip() if is_neg else p
+
+        if ":" in inner:
+            start, end = inner.split(":", 1)
+            start, end = start.strip().strip("[]'\""), end.strip().strip("[]'\"")
             s_expr = f"c.{start}" if start.isidentifier() else f"c[{repr(start)}]"
             e_expr = f"c.{end}" if end.isidentifier() else f"c[{repr(end)}]"
-            res.append(f"{s_expr}.to({e_expr})")
+            range_expr = f"{s_expr}.to({e_expr})"
+            res.append(f"~{range_expr}" if is_neg else range_expr)
         else:
-            res.append(f"c.{p}" if p.isidentifier() else f"c[{repr(p)}]")
+            col = inner.strip("[]'\"")
+            col_expr = f"c.{col}" if col.isidentifier() else f"c[{repr(col)}]"
+            res.append(f"~{col_expr}" if is_neg else col_expr)
     return ", ".join(res)
 
 
