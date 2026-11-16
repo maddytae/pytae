@@ -368,20 +368,28 @@ def _select_unknown_names(tokens: list[str], available: list[str]) -> list[str]:
     unknown: list[str] = []
     for token in tokens:
         clean = _unquote_name(token)
+        if clean.startswith("c."):
+            clean = clean[2:]
         if clean in available:
             continue
-        if token.startswith(("-", "~")):
+        if token.startswith("-"):
             raise SystemExit(
-                f"-select: '{token[0]}col' negation is retired in favor of '!col'. "
-                f"Use -select '!{token[1:]}' instead."
+                f"-select: '{token[0]}col' negation is retired in favor of '~col'. "
+                f"Use -select '~{token[1:]}' instead."
             )
-        if token.startswith("!"):
+        if token.startswith(("~", "!")):
             raw = _unquote_name(token[1:].strip())
+            if raw.startswith("c."):
+                raw = raw[2:]
             if raw in available:
                 continue
             if ":" in raw:
                 start, end = raw.split(":", 1)
                 start, end = _unquote_name(start.strip()), _unquote_name(end.strip())
+                if start.startswith("c."):
+                    start = start[2:]
+                if end.startswith("c."):
+                    end = end[2:]
                 if start and start not in available:
                     unknown.append(start)
                 if end and end not in available:
@@ -391,6 +399,10 @@ def _select_unknown_names(tokens: list[str], available: list[str]) -> list[str]:
         elif ":" in token:
             start, end = token.split(":", 1)
             start, end = _unquote_name(start.strip()), _unquote_name(end.strip())
+            if start.startswith("c."):
+                start = start[2:]
+            if end.startswith("c."):
+                end = end[2:]
             if start and start not in available:
                 unknown.append(start)
             if end and end not in available:

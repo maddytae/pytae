@@ -249,11 +249,10 @@ def test_select_cli_negative_column_syntax(tmp_path):
 
     with pytest.raises(SystemExit) as exc1:
         cli.main([path, "-select", "-species", "-cols"])
-    assert "'-col' negation is retired in favor of '!col'" in str(exc1.value)
+    assert "'-col' negation is retired in favor of '~col'" in str(exc1.value)
 
-    with pytest.raises(SystemExit) as exc2:
-        cli.main([path, "-select", "~island", "-cols"])
-    assert "'~col' negation is retired in favor of '!col'" in str(exc2.value)
+    # ~island is now supported
+    cli.main([path, "-select", "~island", "-cols"])
 
 
 def test_select_cli_exclude_kwarg_retired(tmp_path, capsys):

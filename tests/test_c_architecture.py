@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 import pytae as pt
@@ -128,3 +130,36 @@ def test_c_special_characters_bracket() -> None:
     res = df.filter(c["Annual Revenue"] > 150)
     assert len(res) == 1
     assert res.to("pandas").iloc[0]["Customer ID"] == 2
+
+
+def test_c_cli_full_pipeline(tmp_path: Any, capsys: Any) -> None:
+    import pandas as pd
+
+    from pytae import cli
+
+    df = pd.DataFrame(
+        {
+            "species": ["Adelie", "Adelie", "Gentoo"],
+            "island": ["Torgersen", "Biscoe", "Biscoe"],
+            "body_mass_g": [3750.0, 3200.0, 5000.0],
+        }
+    )
+    p = str(tmp_path / "data.csv")
+    df.to_csv(p, index=False)
+
+    cli.main(
+        [
+            p,
+            "-filter",
+            "c.species == 'Adelie' and c.body_mass_g > 3500",
+            "-mutate",
+            "mass_kg = c.body_mass_g / 1000",
+            "-arrange",
+            "c.mass_kg.desc()",
+            "-select",
+            "c.species, c.island, c.mass_kg",
+            "-shape",
+        ]
+    )
+    out = capsys.readouterr().out.strip()
+    assert out == "(1, 3)"

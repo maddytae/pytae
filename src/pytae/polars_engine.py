@@ -1344,6 +1344,38 @@ def _ast_to_polars_expr(
             f"column '{node.id}' not found in DataFrame{hint}. "
             f"if you intended a string literal, quote it like '{node.id}'"
         )
+    if isinstance(node, ast.Attribute):
+        if isinstance(node.value, ast.Name) and node.value.id in ("c", "col"):
+            col_name = node.attr
+            if col_name in col_map:
+                return pl.col(col_map[col_name])
+            if col_name in col_names:
+                return pl.col(col_name)
+            import difflib
+
+            close = difflib.get_close_matches(str(col_name), [str(c) for c in col_names], n=1)
+            hint = f" (did you mean '{close[0]}'?)" if close else ""
+            raise KeyError(f"column '{col_name}' not found in DataFrame{hint}.")
+        # Handle method accessors like .str and .dt
+        val = _ast_to_polars_expr(node.value, col_names, col_map, by, schema, params)
+        if node.attr == "str":
+            return val.str
+        if node.attr == "dt":
+            return val.dt
+        return getattr(val, node.attr)
+    if isinstance(node, ast.Subscript):
+        if isinstance(node.value, ast.Name) and node.value.id in ("c", "col"):
+            slice_node = node.slice
+            col_name = slice_node.value if isinstance(slice_node, ast.Constant) else str(slice_node)
+            if col_name in col_map:
+                return pl.col(col_map[col_name])
+            if col_name in col_names:
+                return pl.col(col_name)
+            import difflib
+
+            close = difflib.get_close_matches(str(col_name), [str(c) for c in col_names], n=1)
+            hint = f" (did you mean '{close[0]}'?)" if close else ""
+            raise KeyError(f"column '{col_name}' not found in DataFrame{hint}.")
     if isinstance(node, ast.BinOp):
         left = _ast_to_polars_expr(node.left, col_names, col_map, by, schema, params)
         right = _ast_to_polars_expr(node.right, col_names, col_map, by, schema, params)

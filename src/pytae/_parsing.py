@@ -30,6 +30,18 @@ def _parse_col_order(
 ) -> tuple[str, bool]:
     """Parse a single column token, e.g. 'species', 'body_mass_g desc', '-body_mass_g'."""
     token = token.strip()
+    if token.startswith("c."):
+        sub = token[2:]
+        if sub.endswith(".desc()"):
+            return sub[:-7], False
+        if sub.endswith(".asc()"):
+            return sub[:-6], True
+        if sub.endswith(" desc"):
+            return sub[:-5].strip(), False
+        if sub.endswith(" asc"):
+            return sub[:-4].strip(), True
+        return sub, default_asc
+
     if available_cols and token in available_cols:
         return token, default_asc
 
@@ -242,6 +254,15 @@ def _split_top_level(text: str, operator_words: list[str]) -> list[str]:
 _LHS_COL_PATTERN = r"((?:\[[^\]]+\]|`[^`]+`|[^>=<!:\[\]`])+?)"
 
 
+def _clean_c_col(name: str) -> str:
+    s = _unquote_name(name.strip())
+    if s.startswith("c."):
+        return s[2:].strip()
+    if s.startswith("c[") and s.endswith("]"):
+        return s[2:-1].strip().strip("'\"")
+    return s
+
+
 def _parse_predicate(raw_entry: str) -> FilterNode:
     raw = raw_entry.strip()
     if not raw:
@@ -250,7 +271,7 @@ def _parse_predicate(raw_entry: str) -> FilterNode:
     # 1. Direct comparison first: col > 5, col >= 5, col == 5, col != 5, etc.
     m_cmp = re.match(rf"^{_LHS_COL_PATTERN}\s*(>=|<=|!=|==|>|<)\s*(.+)$", raw)
     if m_cmp:
-        col = _unquote_name(m_cmp.group(1).strip())
+        col = _clean_c_col(m_cmp.group(1))
         op = m_cmp.group(2).strip()
         val_str = m_cmp.group(3).strip()
         if not col:
@@ -294,17 +315,19 @@ def _parse_predicate(raw_entry: str) -> FilterNode:
         elif val_str.startswith("col(") and val_str.endswith(")"):
             inner = val_str[4:-1].strip().strip("'\"")
             sub_val = _ColRef(_unquote_name(inner))
+        elif val_str.startswith("c."):
+            sub_val = _ColRef(_clean_c_col(val_str))
         else:
             try:
                 sub_val = ast.literal_eval(val_str)
             except (ValueError, SyntaxError):
-                sub_val = _ColRef(_unquote_name(val_str))
+                sub_val = _ColRef(_clean_c_col(val_str))
         return Predicate(col, (op, sub_val))
 
     # 2. In / not in
     m_in = re.match(rf"^{_LHS_COL_PATTERN}\s+(not\s+in|in)\s+(.+)$", raw, flags=re.IGNORECASE)
     if m_in:
-        col = _unquote_name(m_in.group(1).strip())
+        col = _clean_c_col(m_in.group(1))
         op = "not in" if "not" in m_in.group(2).lower() else "in"
         val_str = m_in.group(3).strip()
         try:
@@ -429,15 +452,11 @@ def _parse_filter_node(raw_expr: str) -> FilterNode:
             if ch == ",":
                 raise SystemExit(
                     f"invalid filter condition '{s}': comma ',' is not supported as a boolean operator. "
-                    f"Use 'and' instead (e.g. {s[:i].strip()} and {s[i + 1 :].strip()})."
+                    f"Use 'and' or '&' instead."
                 )
-            if ch == "&":
-                raise SystemExit(f"invalid filter condition '{s}': '&' is not supported in filter. Use 'and' instead.")
-            if ch == "|":
-                raise SystemExit(f"invalid filter condition '{s}': '|' is not supported in filter. Use 'or' instead.")
 
     # Split OR (lowest precedence)
-    or_parts = _split_top_level(s, ["or"])
+    or_parts = _split_top_level(s, ["or", "|"])
     if len(or_parts) > 1:
         node = _parse_filter_node(or_parts[0])
         for part in or_parts[1:]:
@@ -445,7 +464,7 @@ def _parse_filter_node(raw_expr: str) -> FilterNode:
         return node
 
     # Split AND (higher precedence than OR)
-    and_parts = _split_top_level(s, ["and"])
+    and_parts = _split_top_level(s, ["and", "&"])
     if len(and_parts) > 1:
         node = _parse_filter_node(and_parts[0])
         for part in and_parts[1:]:

@@ -142,12 +142,18 @@ def resolve_select_columns(
 
     def _resolve_negation(neg_spec: str) -> list[str]:
         raw = _unquote_name(neg_spec.strip())
+        if raw.startswith("c."):
+            raw = raw[2:].strip()
         if raw in all_cols:
             return [raw]
         elif ":" in raw:
             start_raw, end_raw = raw.split(":", 1)
             start: str | None = _unquote_name(start_raw.strip()) or None
             end: str | None = _unquote_name(end_raw.strip()) or None
+            if start and start.startswith("c."):
+                start = start[2:].strip()
+            if end and end.startswith("c."):
+                end = end[2:].strip()
             if start and start not in all_cols:
                 raise KeyError(f"Start column '{start}' not found")
             if end and end not in all_cols:
@@ -213,6 +219,8 @@ def resolve_select_columns(
                     raise KeyError(f"Column not found: '{col}'{hint}")
         elif isinstance(arg, str):
             clean_arg = _unquote_name(arg)
+            if clean_arg.startswith("c."):
+                clean_arg = clean_arg[2:].strip()
             if arg in all_cols:
                 selected_cols.add(arg)
                 if arg not in ordered_cols:
@@ -233,6 +241,8 @@ def resolve_select_columns(
                     if not sub_token:
                         continue
                     clean_sub = _unquote_name(sub_token)
+                    if clean_sub.startswith("c."):
+                        clean_sub = clean_sub[2:].strip()
                     if sub_token in all_cols:
                         selected_cols.add(sub_token)
                         if sub_token not in ordered_cols:
