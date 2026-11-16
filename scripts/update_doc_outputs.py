@@ -38,7 +38,7 @@ def setup_temp_environment(tmpdir: str) -> None:
     sample_names = ["penguins", "tips", "titanic", "diamonds", "mpg", "flights"]
     for name in sample_names:
         df = pytae.sample_data[name]
-        df.to_parquet(os.path.join(tmpdir, f"{name}.parquet"))
+        df.to(os.path.join(tmpdir, f"{name}.parquet"))
 
     # Additional standard sample files used across docs
     sales_df = pd.DataFrame(
