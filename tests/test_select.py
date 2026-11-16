@@ -204,12 +204,14 @@ def test_select_negative_typo_raises_hint():
         pt.select(df, "!speceis")
 
 
-def test_select_legacy_hyphen_tilde_negation_retired():
+def test_select_legacy_hyphen_negation_retired_and_tilde_allowed():
     df = _wide()
-    with pytest.raises(ValueError, match=r"select\(\): '-col' negation is retired in favor of '!col'"):
+    with pytest.raises(ValueError, match=r"select\(\): '-col' negation is retired in favor of '~col'"):
         pt.select(df, "-island")
-    with pytest.raises(ValueError, match=r"select\(\): '~col' negation is retired in favor of '!col'"):
-        pt.select(df, "~island")
+    # ~island is now supported and drops the column
+    res = pt.select(df, "~island")
+    assert "island" not in res.columns
+    assert "species" in res.columns
 
 
 def test_select_bracketed_names_and_slices():
@@ -341,9 +343,9 @@ def test_select_error_paths_and_pandas_exclude_dtypes():
         select(df, "a, missing:b")
     with pytest.raises(KeyError, match="End column 'missing' not found"):
         select(df, "a, b:missing")
-    with pytest.raises(ValueError, match="retired in favor of '!col'"):
+    with pytest.raises(ValueError, match="retired in favor of '~col'"):
         select(df, "a, -b")
-    with pytest.raises(ValueError, match="retired in favor of '!col'"):
+    with pytest.raises(ValueError, match="retired in favor of '~col'"):
         select(df, ["-b"])
     with pytest.raises(KeyError, match="Column not found: 'z'"):
         select(df, "a, z")

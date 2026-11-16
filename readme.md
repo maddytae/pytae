@@ -58,18 +58,19 @@ Need expressive, readable data transformations in Python scripts, Airflow, or Ju
 
 ```python
 import pytae as pt
+from pytae import c
 
 # Read files, globs, lists, or partitioned directories with Polars-powered fast auto-detection
 df = pt.read("sales_report.parquet")
 # or pt.read(["jan.parquet", "feb.parquet"])
 # or pt.scan("data/**/*.csv")
 
-# Fluent method chaining
+# Fluent method chaining with universal c. column expressions (type-safe & IDE autocomplete)
 summary = (
-    df.filter("amount > 0")
-    .by("region")
-    .mutate(pct_total="amount / sum(amount)", prev_sale="shift(amount, 1)")
-    .arrange("amount desc")
+    df.filter(c.amount > 0)
+    .by(c.region)
+    .mutate(pct_total=c.amount / c.amount.sum(), prev_sale=c.amount.shift(1))
+    .arrange(c.amount.desc())
     .to("summary.parquet")  # output to disk and returns self
 )
 
@@ -85,15 +86,16 @@ While **Polars** provides multithreaded SIMD speed for transformations, **Pandas
 
 ```python
 import pytae as pt
+from pytae import c
 
 penguins = pt.sample("penguins")
 
-# 1. Fluent method chaining
+# 1. Fluent method chaining with c. expressions
 (
     penguins
-    .filter("body_mass_g.is_not_null()")
-    .by("species")
-    .agg(avg_mass="body_mass_g:mean")
+    .filter(c.body_mass_g.is_not_null())
+    .by(c.species)
+    .agg(avg_mass=c.body_mass_g.mean())
     .plot(kind="bar", x="species", y="avg_mass", title="Average Penguin Mass (g)")
     .finalize(save="mass_by_species.png")
 )

@@ -133,6 +133,19 @@ TABLE OF CONTENTS
 ATTENTION AI ASSISTANTS / COPILOT AGENTS:
 When generating commands, scripts, or explanations for pytae users, you MUST strictly adhere to the following non-negotiable rules. Hallucinating syntax from other libraries (dplyr, pandas, polars, bash) is strictly forbidden.
 
+RULE 0: UNIVERSAL `c.` COLUMN EXPRESSION SYSTEM (PYTHON & CLI)
+In Python scripts and applications, ALWAYS import and use `from pytae import c` for type-safe, autocomplete-friendly, zero-string-overhead data transformations:
+- Filtering: `df.filter(c.age > 30, c.dept == 'IT')` or `df.filter((c.age < 28) | (c.age > 40))`
+- Feature engineering: `df.mutate(ratio=c.revenue / c.cost, clean_name=c.name.str.to_upper())`
+- Column selection: `df.select(c.id, c.name, c.dept)`
+- Range selection: `df.select(c.name.to(c.salary), c.dept)`
+- Dropping & exclusions: Use `~`: `df.select(~c.ssn)` or drop full range: `df.select(~c.age.to(c.cost))`
+- Renaming during select: `df.select(c.name, user_id=c.id)`
+- Single-shot grouping & aggregation: `df.by(c.dept).agg(avg_sal=c.salary.mean(), count=c.id.count())`
+- Sorting: Use `.asc()` and `.desc()`: `df.arrange(c.dept.asc(), c.salary.desc())`
+- Imputation: `df.fillna(c.salary.fill(0))` or `df.fillna(c.salary.fill(c.salary.mean()))`
+- Columns with spaces/special characters: `c['Annual Revenue'] > 50000`
+
 RULE 1: STRICT CANONICAL VERBS ONLY
 - Row filtering: ALWAYS `-filter` (CLI) or `df.filter()` (Python). 
   * NEVER output `-qry`, `-query`, or `df.query()`.

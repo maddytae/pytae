@@ -24,10 +24,10 @@ Select, filter, reorder, and exclude columns using names, negative prefixes, ran
 
 | Capability | Syntax / Flag | Example |
 |---|---|---|
-| Explicit names | `col1,col2` | `-select "species,island,body_mass_g"` |
-| Negative selection | `!col` | `-select "!species"` or `-select "!sex,!year"` |
-| Negative slices | `!start:end` | `-select "!bill_length_mm:flipper_length_mm"` |
-| Column slice | `start:end` | `-select "bill_length_mm:body_mass_g"` |
+| Explicit names | `col1,col2` or `c.col1, c.col2` | `-select "species,island,body_mass_g"` |
+| Negative selection | `~col` (or `!col`) | `-select "~species"` or `-select "~sex, ~year"` |
+| Negative slices | `~start:end` | `-select "~bill_length_mm:flipper_length_mm"` |
+| Column slice / range | `start:end` / `c.start.to(c.end)` | `-select "bill_length_mm:body_mass_g"` |
 | Substring / prefix / suffix | `contains=`, `starts_with=`, `ends_with=` | `-select "contains=bill"` |
 | Regular expression | `regex=PATTERN` | `-select "regex=^bill_.*mm$"` |
 | Data type filter | `dtype=numeric` / `exclude_dtype=category` | `-select "dtype=numeric"` |
