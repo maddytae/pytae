@@ -148,8 +148,8 @@ def test_repl_export_sequential_batch_preservation(tmp_path):
     pt_text = pt_file.read_text(encoding="utf-8")
     # k = df -head 2 must be recorded twice!
     assert pt_text.count("k = df -head 2") == 2
-    assert f"k -o {out1}" in pt_text
-    assert f"k -o {out2}" in pt_text
+    assert f"k -o {out1.as_posix()}" in pt_text
+    assert f"k -o {out2.as_posix()}" in pt_text
 
 
 def test_cli_export_no_prune_flag(tmp_path):

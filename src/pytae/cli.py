@@ -1346,7 +1346,7 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         parser.error(str(exc))
 
-    paths: list[Path] = []
+    paths: list[Path | str] = []
     batch = False
     if not is_relational:
         try:
@@ -1366,14 +1366,15 @@ def main(argv: list[str] | None = None) -> int:
             assert out_target is not None
             fmt = out_target.lower()
             ext = ".parquet" if fmt == "pq" else f".{fmt}"
-            dest_map: dict[Path, Path] = {}
+            dest_map: dict[Path, Path | str] = {}
             for p in paths:
-                clean_name = p.name[:-3] if p.name.lower().endswith(".gz") else p.name
+                p_obj = Path(p)
+                clean_name = p_obj.name[:-3] if p_obj.name.lower().endswith(".gz") else p_obj.name
                 dest_name = f"{Path(clean_name).stem}{ext}"
                 dest = (
                     (args.out_dir / dest_name).resolve()
                     if args.out_dir is not None
-                    else p.with_name(dest_name).resolve()
+                    else p_obj.with_name(dest_name).resolve()
                 )
                 if dest in dest_map:
                     parser.error(
@@ -1398,7 +1399,7 @@ def main(argv: list[str] | None = None) -> int:
                 aliases_seen.add(alias)
                 raw_entry = entry["path"].strip()
                 if is_db_or_cloud_uri(raw_entry):
-                    entry_path = Path(raw_entry)
+                    entry_path = raw_entry
                 elif raw_entry.startswith("sample:"):
                     from pytae import _DATASET_NAMES, DATA_PATH
 

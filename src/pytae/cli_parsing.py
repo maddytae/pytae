@@ -449,14 +449,21 @@ def parse_rename(raw: str) -> dict[str, str]:
     return mapping
 
 
-def expand_paths(patterns: str | list[str]) -> list[Path]:
+def expand_paths(patterns: str | list[str]) -> list[Path | str]:
     """Expand glob pattern(s) into matching paths, or wrap plain paths as-is."""
+    from pytae.readers import is_db_or_cloud_uri
+
     items = [patterns] if isinstance(patterns, str) else list(patterns)
-    results: list[Path] = []
-    seen: set[Path] = set()
+    results: list[Path | str] = []
+    seen: set[Path | str] = set()
     for item in items:
         target = parse_input_target(str(item))
         clean_path_str = target["path"]
+        if is_db_or_cloud_uri(clean_path_str):
+            if clean_path_str not in seen:
+                results.append(clean_path_str)
+                seen.add(clean_path_str)
+            continue
         p_literal = Path(clean_path_str)
         if p_literal.exists():
             if p_literal not in seen:

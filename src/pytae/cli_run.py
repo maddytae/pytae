@@ -902,7 +902,7 @@ def _resolve_alias(
 
 
 def _process_path(
-    path: Path | None,
+    path: Path | str | None,
     args: argparse.Namespace,
     parser: argparse.ArgumentParser,
     batch: bool,
@@ -1022,12 +1022,13 @@ def _process_path(
                 progress=args.progress,
                 chunk_size=chunk_size,
             )
-        elif path is None or not path.exists():
+        elif path is None or not Path(path).exists():
             from pytae import DATA_PATH
 
-            candidate = DATA_PATH / path.name if path is not None else None
+            p_obj = Path(path) if path is not None else None
+            candidate = DATA_PATH / p_obj.name if p_obj is not None else None
             if candidate is None or not candidate.exists():
-                candidate = DATA_PATH / f"{path.stem}.parquet" if path is not None else None
+                candidate = DATA_PATH / f"{p_obj.stem}.parquet" if p_obj is not None else None
             if candidate is not None and candidate.exists():
                 opts = dict(reader_opts or {})
                 sep_val = opts.pop("sep", None) or opts.pop("delimiter", None) or args.dlim

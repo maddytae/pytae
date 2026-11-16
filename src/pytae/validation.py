@@ -273,15 +273,24 @@ def check_dsl_string(verb: str, spec: str) -> list[str]:
     elif verb == "arrange":
         from pytae._parsing import _tokenize
 
-        tokens = _tokenize(raw, ",", track_brackets=True)
+        tokens = _tokenize(raw, ",", keep_quotes=True, track_brackets=True)
         for token in tokens:
             t = token.strip()
             if t.lower().endswith(".desc()") or t.lower().endswith(".asc()"):
                 continue
+            check_t = t[2:].strip() if t.startswith("c.") else t
+            if (
+                (check_t.startswith("`") and check_t.endswith("`"))
+                or (check_t.startswith("'") and check_t.endswith("'"))
+                or (check_t.startswith('"') and check_t.endswith('"'))
+                or (check_t.startswith("[") and check_t.endswith("]"))
+            ):
+                continue
             parts = t.split()
             if len(parts) >= 2 and parts[-1].lower() in ("asc", "desc", "ascending", "descending"):
-                errors.append(f"retired sort direction in '{t}': use canonical '.desc()' or '.asc()' instead (e.g. '{parts[0]}.desc()')")
-            elif len(parts) >= 2 and not t.startswith("["):
+                base = t[: t.rfind(parts[-1])].strip()
+                errors.append(f"retired sort direction in '{t}': use canonical '.desc()' or '.asc()' instead (e.g. '{base}.desc()')")
+            elif len(parts) >= 2:
                 direction = parts[-1].lower()
                 errors.append(f"invalid sort direction '{direction}' in arrange spec (must be '.desc()' or '.asc()')")
 

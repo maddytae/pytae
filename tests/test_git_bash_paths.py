@@ -1,5 +1,6 @@
 """Unit tests for Git Bash / MSYS POSIX path normalization on Windows."""
 
+import os
 from unittest.mock import patch
 
 from pytae.cli_parsing import normalize_git_bash_path, parse_input_target
@@ -81,7 +82,10 @@ def test_normalize_git_bash_path_preserves_standard_paths() -> None:
 
 def test_normalize_git_bash_path_posix_untouched_when_not_nt() -> None:
     # On Linux/macOS (non-NT), paths are untouched
-    with patch("os.name", "posix"):
+    env = dict(os.environ)
+    env.pop("MSYSTEM", None)
+    env.pop("CYGWIN", None)
+    with patch("os.name", "posix"), patch("sys.platform", "linux"), patch.dict("os.environ", env, clear=True):
         raw = "/c/Users/TAF3842/downloads/final_output.parquet"
         assert normalize_git_bash_path(raw) == raw
 

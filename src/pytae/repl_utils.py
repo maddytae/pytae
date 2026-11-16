@@ -10,17 +10,23 @@ from typing import Any
 
 
 def _normalize_unquoted_windows_paths(text: str) -> str:
-    """Normalize unquoted Windows drive paths and UNC paths with backslashes so shlex does not eat backslashes."""
+    """Normalize unquoted Windows drive paths, UNC paths, and relative backslash paths so shlex does not eat backslashes."""
     text = re.sub(
         r'(?<!["\'])\b([a-zA-Z]):\\([^\s"\'=]+)',
         lambda m: f"{m.group(1)}:/{m.group(2).replace(chr(92), '/')}",
         text,
     )
-    return re.sub(
+    text = re.sub(
         r'(?<!["\'])\\\\([^\s"\'=]+)',
         lambda m: f"//{m.group(1).replace(chr(92), '/')}",
         text,
     )
+    text = re.sub(
+        r'(?<!["\'])(\.{1,2})\\([^\s"\'=]+)',
+        lambda m: f"{m.group(1)}/{m.group(2).replace(chr(92), '/')}",
+        text,
+    )
+    return text
 
 
 def _collapse_inline_line_continuations(text: str) -> str:

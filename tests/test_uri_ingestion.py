@@ -42,7 +42,11 @@ def duckdb_file_path(tmp_path: Path) -> Path:
 def test_is_db_or_cloud_uri():
     assert is_db_or_cloud_uri("sqlite://app.db:orders")
     assert is_db_or_cloud_uri("sqlite:/app.db:orders")
+    assert is_db_or_cloud_uri(r"sqlite:\C:\app.db:orders")
+    assert is_db_or_cloud_uri(r"sqlite:\\C:\app.db:orders")
+    assert is_db_or_cloud_uri(Path(r"sqlite:\C:\app.db:orders"))
     assert is_db_or_cloud_uri("duckdb://analytics.duckdb:customers")
+    assert is_db_or_cloud_uri(r"duckdb:\C:\analytics.duckdb:customers")
     assert is_db_or_cloud_uri("s3://bucket/data.parquet")
     assert is_db_or_cloud_uri("gcs://bucket/data.parquet")
     assert is_db_or_cloud_uri("gs://bucket/data.parquet")

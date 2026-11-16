@@ -438,27 +438,36 @@ def _parse_filter_node(raw_expr: str) -> FilterNode:
     quote = None
     paren_depth = 0
     bracket_depth = 0
-    for i, ch in enumerate(s):
+    i = 0
+    n = len(s)
+    while i < n:
+        ch = s[i]
         if quote:
             if ch == quote:
                 quote = None
-            elif ch == "\\" and i + 1 < len(s):
-                continue
+            elif ch == "\\" and i + 1 < n:
+                i += 1
+            i += 1
             continue
         if ch in ("'", '"'):
             quote = ch
+            i += 1
             continue
         if ch == "(":
             paren_depth += 1
+            i += 1
             continue
         if ch == ")":
             paren_depth -= 1
+            i += 1
             continue
         if ch == "[":
             bracket_depth += 1
+            i += 1
             continue
         if ch == "]":
             bracket_depth -= 1
+            i += 1
             continue
         if paren_depth == 0 and bracket_depth == 0:
             if ch == ",":
@@ -476,6 +485,7 @@ def _parse_filter_node(raw_expr: str) -> FilterNode:
                     f"invalid filter condition '{s}': '|' is not supported in filter. "
                     f"In line with 'one obvious way', use 'or' instead."
                 )
+        i += 1
 
     # Split OR (lowest precedence)
     or_parts = _split_top_level(s, ["or"])

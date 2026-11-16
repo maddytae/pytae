@@ -262,3 +262,19 @@ def test_roundtrip_multi_table_join_and_concat(tmp_path):
     assert "joined" in ns
     assert len(ns["joined"]) == 3
     assert "dept_name" in ns["joined"].columns
+
+
+def test_transpile_windows_unquoted_paths_preserved():
+    """Verify that unquoted Windows backslash paths are not mangled by shlex during transpilation."""
+    entries = [
+        r"df = C:\Users\user\data\sales.csv",
+        r"df -filter 'amount > 100' -o C:\Users\user\out\summary.parquet",
+    ]
+    py_code = _compile_history_to_python(entries)
+    ast.parse(py_code)
+    assert "pt.read('C:/Users/user/data/sales.csv')" in py_code
+    assert ".to('C:/Users/user/out/summary.parquet')" in py_code
+
+    pt_code = _compile_history_to_pt(entries, "pipeline.pt")
+    assert "df = C:/Users/user/data/sales.csv" in pt_code
+    assert "-o C:/Users/user/out/summary.parquet" in pt_code
