@@ -147,7 +147,7 @@ RULE 0: DUAL EXPRESSION ARCHITECTURE — c. IN PYTHON, BARE COLUMNS (NO c.) IN C
 - Columns with spaces/special characters: `c['Annual Revenue'] > 50000`
 
 2. CLI & Interactive REPL: NEVER use `c.` prefix! Write clean, bare column identifiers in CLI and REPL expressions:
-- Filtering: `pytae data.parquet -filter "age > 30 and dept == 'IT'"`
+- Filtering: `pytae data.parquet -filter "(age > 30) & (dept == 'IT')"`
 - Feature engineering: `pytae data.parquet -mutate "ratio = revenue / cost, clean_name = name.str.to_upper()"`
 - Column selection: `pytae data.parquet -select "id, name, dept"` or `pytae data.parquet -select "~ssn"`
 - Grouping & aggregation: `pytae data.parquet -by dept -agg "salary = sum(), avg_sal = salary.mean(), count = count()"`
@@ -171,7 +171,7 @@ RULE 1: STRICT CANONICAL VERBS ONLY
 RULE 2: SHELL QUOTING STANDARD (BASH / ZSH)
 - In terminal CLI commands, ALWAYS wrap expression arguments in double quotes `""` and wrap string literals inside expressions in single quotes `''`:
   * Correct: `pytae data.parquet -filter "species == 'Gentoo'"`
-  * Correct: `pytae data.parquet -filter "currency == 'CAD' and reporting_date in ['2026-09-30']"`
+  * Correct: `pytae data.parquet -filter "(currency == 'CAD') & (reporting_date in ['2026-09-30'])"`
   * Correct: `pytae data.parquet -mutate "status = 'active'"`
   * INCORRECT: `pytae data.parquet -filter "species == Gentoo"` (Gentoo is parsed as a column identifier and fails with ColumnNotFound!)
   * INCORRECT: `pytae data.parquet -filter 'species == "Gentoo"'` (Bash outer single quotes prevent variable expansion; Polars treats inner double quotes as column identifiers).
@@ -994,7 +994,7 @@ In-Terminal Visualizations:
   -corr [COLS] [OPTS]   Render in-terminal Pearson correlation matrix heatmap
 
 Row Filtering & Slicing Flags:
-  -filter CONDITIONS    pytae filter expressions (e.g. "species == 'Adelie' and body_mass_g > 3500")
+  -filter CONDITIONS    pytae filter expressions (e.g. "(species == 'Adelie') & (body_mass_g > 3500)")
   -assert CONDITIONS    Enforce data quality invariants across all rows; halts pipeline with sample errors if violated
   -dropna [COLS]        Drop rows with missing values (bare defaults to how=all; cols defaults to how=any)
   -fillna [VAL]         Impute missing values (e.g. -fillna 0 or -fillna "col:val")
@@ -1072,13 +1072,13 @@ DSL Validation & Linting:
    - `-clean_columns`: "strip=True, fill='_', case='lower'"
    - `-join`: "left=df1, right=df2, on=id, how=left"
    - `-agg`: "tip=mean, total_bill=mean, total=count"
-3. Comparison & Filtering uses EQUALITY (`==`) and Boolean (`and`, `or`):
-   - `-filter`: "species == 'Adelie' and body_mass_g > 3500"
+3. Comparison & Filtering uses EQUALITY (`==`) and Boolean (`&`, `|`, `~`):
+   - `-filter`: "(species == 'Adelie') & (body_mass_g > 3500)"
 
 4. Terminal Shell Quoting Rules (Bash / Zsh / PowerShell):
    - Wrap the entire flag argument in double quotes `""`: `-filter "..."`, `-mutate "..."`
    - Wrap string values inside the expression in single quotes `''`:
-     `pytae data.parquet -filter "currency == 'CAD' and reporting_date in ['2026-09-30', '2026-08-31']"`
+     `pytae data.parquet -filter "(currency == 'CAD') & (reporting_date in ['2026-09-30', '2026-08-31'])"`
      `pytae data.parquet -mutate "status = 'active'"`
    - Column identifiers must NOT be quoted: `body_mass_g > 4000` (correct) vs `'body_mass_g' > 4000` (incorrect).
    - If a column name has spaces, use square brackets: `[body mass g] > 4000` or `[total bill] = mean`.
@@ -1316,7 +1316,7 @@ In Unix shells (bash, zsh), unquoted strings inside `-filter` expressions are tr
 - Error: `ColumnNotFound: column 'CAD' not found`
 - Cause: You ran `-filter "currency == CAD"` instead of `-filter "currency == 'CAD'"`.
 - Fix: Always quote string literals with inner single quotes:
-  `pytae data.parquet -filter "currency == 'CAD' and reporting_date in ['2026-09-30']"`
+  `pytae data.parquet -filter "(currency == 'CAD') & (reporting_date in ['2026-09-30'])"`
 
 6.18. How do I change where REPL sessions and checkpoints are saved? (PYTAE_SESSIONS_DIR)
 --------------------------------------------------------------------------------
@@ -1401,7 +1401,7 @@ Rules for Windows share drive paths:
 In pytae expressions, date strings formatted as ISO-8601 (`'YYYY-MM-DD'`) can be compared directly using standard operators (`>=`, `<=`, `==`, `in`):
 ```bash
 # Direct ISO date comparison in string expressions:
-pytae data.parquet -filter "reporting_date >= '2026-01-01' and reporting_date <= '2026-09-30'"
+pytae data.parquet -filter "(reporting_date >= '2026-01-01') & (reporting_date <= '2026-09-30')"
 
 # Discrete list of reporting dates:
 pytae data.parquet -filter "reporting_date in ['2026-03-31', '2026-06-30', '2026-09-30']"
@@ -1737,7 +1737,7 @@ pytae "\\\\server\\risk_share\\rwa\\deals_latest.parquet" -schema
 
 # 2. Extract targeted metrics for high-risk deals:
 pytae "\\\\server\\risk_share\\rwa\\deals_latest.parquet" \
-  -filter "pd > 0.02 and ead > 5000000" \
+  -filter "(pd > 0.02) & (ead > 5000000)" \
   -select "deal_id,counterparty_name,internal_rating,ead,pd,lgd,rwa_irba" \
   -arrange "rwa_irba.desc()" \
   -head 10 \
@@ -1758,7 +1758,7 @@ Recipe 12: Complex Date-Range & Multi-Condition Filtering
 ```bash
 # Complex boolean logic with ISO date ranges, string sets, and numeric thresholds:
 pytae data.parquet \
-  -filter "reporting_date >= '2026-06-30' and asset_class in ['Large Corporate', 'SME'] and (pd > 0.03 or lgd >= 0.50)" \
+  -filter "(reporting_date >= '2026-06-30') & (asset_class in ['Large Corporate', 'SME']) & ((pd > 0.03) | (lgd >= 0.50))" \
   -by asset_class \
   -agg "count=count, total_ead=sum(ead), avg_pd=mean(pd)" \
   -arrange "total_ead.desc()"
@@ -2098,7 +2098,7 @@ CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
 2. SHELL QUOTING STANDARD (BASH / ZSH / POWERSHELL / CMD):
    - In CLI commands, ALWAYS wrap expression arguments in double quotes `""` and wrap string values inside expressions in single quotes `''`:
      * Correct: pytae file.parquet -filter "species == 'Gentoo'"
-     * Correct: pytae file.parquet -filter "currency == 'CAD' and reporting_date in ['2026-09-30']"
+     * Correct: pytae file.parquet -filter "(currency == 'CAD') & (reporting_date in ['2026-09-30'])"
      * Correct: pytae file.parquet -mutate "status = 'active'"
      * INCORRECT: pytae file.parquet -filter "species == Gentoo" (Fails with ColumnNotFound: unquoted tokens are treated as column identifiers).
    - Column identifiers must remain UNQUOTED (e.g. `body_mass_g > 3500`). For names with spaces, use brackets: `[body mass g] > 3500`.
@@ -2152,7 +2152,7 @@ CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
      `pytae "\\\\\\\\server\\\\share\\\\data.parquet" -filter "status == 'active'"`
      In Python, use raw strings: `df = pt.read(r"\\\\server\\share\\data.parquet")`.
    - Date range filtering: Filter ISO dates as string comparisons:
-     `-filter "reporting_date >= '2026-01-01' and reporting_date <= '2026-09-30'"`
+     `-filter "(reporting_date >= '2026-01-01') & (reporting_date <= '2026-09-30')"`
    - Tolerances & Diffing: Compare metrics across periods with key-aware diff and tolerances:
      `-diff "prior.parquet,on=deal_id,tol=1e-3"`
    - Multi-sheet Excel: Ingest specific sheets using `-opts "sheet='Q3'"`.

@@ -147,7 +147,7 @@ Inject session variables directly into pipeline filter expressions, column deriv
 
 ```text
 # 1. Use in -filter
-pytae [orders]> -filter "amount >= @threshold and country in @target_countries"
+pytae [orders]> -filter "(amount >= @threshold) & (country in @target_countries)"
 
 # 2. Use in -mutate
 pytae [orders]> orders = -mutate "gross_amount = amount * (1 + @tax_rate)"

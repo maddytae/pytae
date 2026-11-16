@@ -12,10 +12,10 @@ Filter rows using pytae's ergonomic filter expressions (`-filter`), drop missing
 - [Pytae Filtering (`-filter`)](#pytae-filtering--filter)
   - [Exact Matching (`==`)](#exact-matching)
   - [Comparisons (`>`, `<`, `>=`, `<=`, `!=`)](#comparisons)
-  - [Boolean Logic (`and`, `or`, and `(...)`)](#boolean-logic)
+  - [Boolean Logic (`&`, `|`, `~`, and `(...)`)](#boolean-logic)
   - [Column-to-Column Comparisons (`col_a == col_b`)](#column-to-column-comparisons-col_a--col_b)
   - [Ranges & Intervals: Option 1 & Option 2 Dictionaries](#ranges--intervals)
-  - [List Membership (`in` and `not in`)](#list-membership)
+  - [List Membership (`in` and `~in`)](#list-membership)
   - [Filtering Null Values (`is_null()`, `is_not_null()`) & Columns with Spaces](#filtering-null-values-and-columns-with-spaces)
   - [Combining Multiple Conditions](#combining-multiple-conditions)
   - [Strict Syntax Enforcement & Diagnostic Errors](#strict-syntax-enforcement)
@@ -30,7 +30,7 @@ Filter rows using pytae's ergonomic filter expressions (`-filter`), drop missing
 
 | Flag | Category | Key Syntax Highlights |
 |---|---|---|
-| `-filter CONDITIONS` | Row Filter | Strict equality `==`, boolean `and` / `or`, dict intervals `{'col': ('between', min, max)}` or `{'col': (('>=', min), ('<=', max))}`, list membership `col in ['a', 'b']`, bracketed spaces `[col name]` |
+| `-filter CONDITIONS` | Row Filter | Strict equality `==`, boolean `&` / `|` / `~`, dict intervals `{'col': ('between', min, max)}` or `{'col': (('>=', min), ('<=', max))}`, list membership `col in ['a', 'b']`, bracketed spaces `[col name]` |
 | `-dropna [COLS]` | Row Filter | Drops rows containing `NaN` (bare for all columns, or comma-separated subset) |
 | `-head [LIMIT]`, `-tail [LIMIT]` | Row Slicing | Extract first/last $N$, percentage (`10%`), or with ties (`ties=true`), group-aware with `-by` |
 
@@ -57,7 +57,7 @@ pytae penguins.parquet -filter "species == 'Gentoo'" -head 3
 > **Shell Quoting Rule (Single Quotes Inside Double Quotes)**:
 > In bash, zsh, or PowerShell, wrap the `-filter` argument in outer double quotes and use **single quotes** for string literals:
 > ```bash
-> pytae data.parquet -filter "currency == 'CAD' and reporting_date in ['2026-09-30']"
+> pytae data.parquet -filter "(currency == 'CAD') & (reporting_date in ['2026-09-30'])"
 > ```
 
 **Output:**
@@ -86,29 +86,29 @@ pytae penguins.parquet -filter "body_mass_g > 5500" -select "species, island, bo
 | Gentoo    | Biscoe   |          5550 |
 
 <a id="boolean-logic"></a>
-### Boolean Logic (`and`, `or`, `not`, and `(...)`)
+### Boolean Logic (`&`, `|`, `~`, and `(...)`)
 
-Filter expressions support full boolean logic with natural language keywords `and`, `or`, `not`, and parentheses `(...)` for nested grouping:
+Filter expressions strictly enforce `&`, `|`, and `~` for boolean logic, matching Python's bitwise operators on Series and DataFrames:
 
 ```bash
-# Conjunction with 'and'
-pytae penguins.parquet -filter "species == 'Gentoo' and body_mass_g > 5500" -select "species, body_mass_g" -head 3
+# Conjunction with '&'
+pytae penguins.parquet -filter "(species == 'Gentoo') & (body_mass_g > 5500)" -select "species, body_mass_g" -head 3
 
-# Disjunction with 'or'
-pytae penguins.parquet -filter "island == 'Dream' or island == 'Torgersen'" -select "species, island" -head 3
+# Disjunction with '|'
+pytae penguins.parquet -filter "(island == 'Dream') | (island == 'Torgersen')" -select "species, island" -head 3
 
-# Negation with 'not'
-pytae penguins.parquet -filter "not (body_mass_g > 4000)" -head 3
+# Negation with '~'
+pytae penguins.parquet -filter "~(body_mass_g > 4000)" -head 3
 
 # Bare boolean columns
-pytae loans.parquet -filter "is_active and not is_delinquent"
+pytae loans.parquet -filter "is_active & ~is_delinquent"
 
 # Grouping and precedence with nested parentheses:
-pytae penguins.parquet -filter "(species == 'Adelie' or species == 'Chinstrap') and body_mass_g > 4000" -head 3
+pytae penguins.parquet -filter "((species == 'Adelie') | (species == 'Chinstrap')) & (body_mass_g > 4000)" -head 3
 ```
 
 > [!NOTE]
-> Following Python's *"one and only one obvious way"*, `pytae` DSL strictly uses `and`, `or`, and `not`. Bitwise `&`, `|`, `~`, and C-style `!` are disallowed, and commas `,` are strictly punctuation for function arguments and lists, not boolean operators. Using `&`, `|`, `~`, or `!` raises an explicit error guiding you to use `and`, `or`, or `not`.
+> Following Python's *"one and only one obvious way"*, `pytae` strictly uses `&`, `|`, and `~` everywhere for boolean logic. The English words `and`, `or`, and `not` are retired. Using `and`, `or`, `not`, `!`, or `,` raises an explicit error guiding you to use `&`, `|`, or `~`.
 
 ### Chained Comparisons & LHS Arithmetic Expressions
 
@@ -172,23 +172,23 @@ pytae penguins.parquet -filter "{'body_mass_g': (('>=', 3000), ('<=', 3200))}" -
 ```
 
 #### String Expression Range
-You can also write ranges directly in filter strings using `and`:
+You can also write ranges directly in filter strings using `&`:
 
 ```bash
-pytae penguins.parquet -filter "body_mass_g >= 3000 and body_mass_g <= 3200" -select "species,body_mass_g" -head 3
+pytae penguins.parquet -filter "(body_mass_g >= 3000) & (body_mass_g <= 3200)" -select "species,body_mass_g" -head 3
 ```
 
 <a id="list-membership"></a>
-### List Membership (`in` and `not in`)
+### List Membership (`in` and `~in`)
 
-Match against a set of candidate values using `in` or `not in`:
+Match against a set of candidate values using `in` or `~` negation:
 
 ```bash
 # Inclusive candidate set
 pytae penguins.parquet -filter "species in ['Chinstrap', 'Gentoo']" -select "species,island" -head 3
 
 # Exclusion
-pytae penguins.parquet -filter "species not in ['Adelie']" -select "species,island" -head 3
+pytae penguins.parquet -filter "~(species in ['Adelie'])" -select "species,island" -head 3
 ```
 
 **Output:**
@@ -233,11 +233,11 @@ pytae penguins.parquet -filter "{sex: is_not_null()}" -select "species,sex" -hea
 <a id="combining-multiple-conditions"></a>
 ### Combining Multiple Conditions
 
-Combine multiple conditions with `and`:
+Combine multiple conditions with `&`:
 
 ```bash
 pytae penguins.parquet \
-  -filter "species == 'Gentoo' and body_mass_g > 5500 and island == 'Biscoe'" \
+  -filter "(species == 'Gentoo') & (body_mass_g > 5500) & (island == 'Biscoe')" \
   -select "species,body_mass_g,sex" \
   -head 3
 ```
@@ -263,17 +263,17 @@ pytae penguins.parquet \
 2. **Comma `,` as a boolean operator is rejected**:
    ```bash
    pytae penguins.parquet -filter "species == 'Gentoo', body_mass_g > 5000"
-   # Error: invalid filter condition 'species == 'Gentoo', body_mass_g > 5000': comma ',' is not supported as a boolean operator. Use 'and' instead.
+   # Error: invalid filter condition 'species == 'Gentoo', body_mass_g > 5000': comma ',' is not supported as a boolean operator. Use '&' instead.
    ```
-3. **Bitwise `&` and `|` are rejected**:
+3. **English words `and`, `or`, and `not` are retired**:
    ```bash
-   pytae penguins.parquet -filter "species == 'Gentoo' & body_mass_g > 5000"
-   # Error: invalid filter condition '...': '&' is not supported in filter. Use 'and' instead.
+   pytae penguins.parquet -filter "species == 'Gentoo' and body_mass_g > 5000"
+   # Error: invalid filter condition 'species == 'Gentoo' and body_mass_g > 5000': 'and' is retired in filter. In line with 'one and only one obvious way', use '&' instead (e.g. (a == 1) & (b == 2)).
    ```
 4. **Bracket interval notation `[min, max]` is rejected**:
    ```bash
    pytae penguins.parquet -filter "body_mass_g = [3000, 3200]"
-   # Error: filter(): interval notation '[3000, 3200]' is not supported. Use 'and' (e.g. body_mass_g >= 3000 and body_mass_g <= 3200), or dict syntax 'body_mass_g: ("between", 3000, 3200)'.
+   # Error: filter(): interval notation '[3000, 3200]' is not supported. Use '&' (e.g. (body_mass_g >= 3000) & (body_mass_g <= 3200)), or dict syntax 'body_mass_g: ("between", 3000, 3200)'.
    ```
 
 ---

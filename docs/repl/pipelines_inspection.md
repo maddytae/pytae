@@ -46,7 +46,7 @@ In Pytae, the interactive shell follows an ironclad rule: **Bare verbs never mut
 Running a verb directly against the prompt computes and renders an immediate terminal preview without altering the underlying table in memory:
 
 ```text
-pytae [df: 344x7]> -filter "species == 'Gentoo' and body_mass_g > 5000"
+pytae [df: 344x7]> -filter "(species == 'Gentoo') & (body_mass_g > 5000)"
 shape: (61, 7)
 ┌─────────┬───────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
 │ species ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
@@ -66,7 +66,7 @@ pytae [df: 344x7]>
 To persist transformations, assign the pipeline result back to the table:
 
 ```text
-pytae [df: 344x7]> df = -filter "species in ['Adelie', 'Gentoo'] and body_mass_g >= 3500"
+pytae [df: 344x7]> df = -filter "(species in ['Adelie', 'Gentoo']) & (body_mass_g >= 3500)"
 Updated 'df' (188 rows x 7 cols).
 
 pytae [df: 188x7]> df = -mutate "mass_kg = body_mass_g / 1000" -select "species, island, mass_kg"

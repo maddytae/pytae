@@ -64,7 +64,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "[col with spaces] > 50 : Bracket notation for column names containing spaces.",
         ],
         examples=[
-            "pytae penguins.parquet -filter \"species == 'Gentoo' and body_mass_g > 5000\"",
+            "pytae penguins.parquet -filter \"(species == 'Gentoo') & (body_mass_g > 5000)\"",
             "pytae penguins.parquet -filter \"{'body_mass_g': ('between', 4000, 5000)}\" -shape",
             "pytae penguins.parquet -filter \"island in ['Biscoe', 'Dream']\"",
             "pytae data.csv -filter \"[customer name] == 'Acme Corp'\"",

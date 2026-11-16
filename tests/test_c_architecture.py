@@ -151,7 +151,7 @@ def test_c_cli_full_pipeline(tmp_path: Any, capsys: Any) -> None:
         [
             p,
             "-filter",
-            "c.species == 'Adelie' and c.body_mass_g > 3500",
+            "(c.species == 'Adelie') & (c.body_mass_g > 3500)",
             "-mutate",
             "mass_kg = c.body_mass_g / 1000",
             "-arrange",

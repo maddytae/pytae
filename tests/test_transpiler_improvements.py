@@ -280,24 +280,23 @@ def test_transpile_windows_unquoted_paths_preserved():
     assert "-o C:/Users/user/out/summary.parquet" in pt_code
 
 
-def test_transpile_filter_multi_and_comma_separated():
-    """Verify that multiple 'and' conditions in filter transpile to canonical comma-separated arguments without '&'."""
+def test_transpile_filter_strictly_symbols():
+    """Verify that filter conditions strictly transpile to &, |, ~."""
     entries = [
         "df = penguins.parquet",
-        'k = df -filter "sex == \'Male\' and body_mass_g > 4000"',
+        'k = df -filter "(sex == \'Male\') & (body_mass_g > 4000)"',
     ]
     py_code = _compile_history_to_python(entries)
     ast.parse(py_code)
-    assert "k = df.filter(c.sex == 'Male', c.body_mass_g > 4000)" in py_code
-    assert "&" not in py_code
+    assert "k = df.filter((c.sex == 'Male') & (c.body_mass_g > 4000))" in py_code
 
 
-def test_transpile_filter_mixed_and_or_not():
-    """Verify mixed and/or/not conditions transpile to comma-separated ANDs, | for OR, and ~ for NOT."""
+def test_transpile_filter_mixed_bitwise():
+    """Verify mixed &, |, ~ conditions transpile faithfully."""
     entries = [
         "df = penguins.parquet",
-        'k = df -filter "(island == \'Biscoe\' or island == \'Dream\') and not (sex == \'Female\') and body_mass_g > 4000"',
+        'k = df -filter "((island == \'Biscoe\') | (island == \'Dream\')) & ~(sex == \'Female\') & (body_mass_g > 4000)"',
     ]
     py_code = _compile_history_to_python(entries)
     ast.parse(py_code)
-    assert "k = df.filter((c.island == 'Biscoe') | (c.island == 'Dream'), ~(c.sex == 'Female'), c.body_mass_g > 4000)" in py_code
+    assert "k = df.filter(((c.island == 'Biscoe') | (c.island == 'Dream')) & ~(c.sex == 'Female') & (c.body_mass_g > 4000))" in py_code

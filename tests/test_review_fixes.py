@@ -82,9 +82,12 @@ def test_split_mutate_entries_nested_parens_on_lhs():
 
 
 def test_check_dsl_string_filter():
-    assert check_dsl_string("filter", "age >= 18 and status in ['A', 'B']") == []
-    assert check_dsl_string("filter", "score >= 10 and score <= 20 and name.is_not_null()") == []
+    assert check_dsl_string("filter", "(age >= 18) & (status in ['A', 'B'])") == []
+    assert check_dsl_string("filter", "(score >= 10) & (score <= 20) & (name.is_not_null())") == []
     assert check_dsl_string("filter", "val == @threshold") == []
+
+    errs_and = check_dsl_string("filter", "age >= 18 and status in ['A', 'B']")
+    assert any("'and' is retired in filter" in e for e in errs_and)
 
     errs = check_dsl_string("filter", "age >= (18")
     assert len(errs) > 0

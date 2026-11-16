@@ -31,14 +31,14 @@ CHEATSHEET_TEXT = """\
 --------------------------------------------------------------------------------
   pytae data.parquet -filter "species == 'Gentoo'"
   pytae data.parquet -filter "body_mass_g > 5000"
-  pytae data.parquet -filter "body_mass_g >= 3500 and flipper_length_mm < 210"
-  pytae data.parquet -filter "(species == 'Adelie' or species == 'Chinstrap') and body_mass_g > 4000"
+  pytae data.parquet -filter "(body_mass_g >= 3500) & (flipper_length_mm < 210)"
+  pytae data.parquet -filter "((species == 'Adelie') | (species == 'Chinstrap')) & (body_mass_g > 4000)"
   pytae loans.parquet -filter "exposure > limit"                  # Column compare
   pytae loans.parquet -filter "tranche_id == deal_id"             # ID equality
   pytae data.parquet -filter "{'body_mass_g': ('between', 3000, 3500)}"     # Option 1 range
   pytae data.parquet -filter "{'body_mass_g': (('>=', 3000), ('<=', 3500))}" # Option 2 range
   pytae data.parquet -filter "species in ['Adelie', 'Chinstrap']" # Set membership
-  pytae data.parquet -filter "species not in ['Gentoo']"
+  pytae data.parquet -filter "~(species in ['Gentoo'])"
   pytae data.parquet -filter "sex.is_null()"                     # Null checks (or {'sex': 'is_null()'})
   pytae data.parquet -filter "sex.is_not_null()"                 # Non-null checks (or {'sex': 'is_not_null()'})
   pytae data.parquet -filter "counterparty_class_(irb).is_not_null()" # Special columns

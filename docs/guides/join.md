@@ -203,7 +203,7 @@ Once joined or stacked, all standard `pytae` verbs apply seamlessly:
 ```bash
 pytae o=orders.parquet c=customers.csv \
   -join "on=customer_id, how=inner" \
-  -filter "region == 'West' and amount > 100" \
+  -filter "(region == 'West') & (amount > 100)" \
   -mutate "tax = amount * 0.0825, total = amount + tax" \
   -by customer_name \
   -agg "spent = total.sum(), orders = count()" \

@@ -99,14 +99,14 @@ def _extract_doc_chunks() -> list[dict[str, str]]:
                 "### Syntax & Rules\n"
                 "- Strict equality: '==' strictly required; single '=' raises an error.\n"
                 "- Quoted string literals: 'species == \\'Gentoo\\''.\n"
-                "- Logic: and, or, parentheses ().\n"
+                "- Logic: strict &, |, ~ (parentheses required for compound conditions).\n"
                 "- Null checks: col.is_null(), col.is_not_null(). All missing and NaN values normalize to null uniformly.\n"
                 "- List membership: col in ['a', 'b'].\n\n"
                 "### Examples\n"
                 "```python\n"
-                "df.filter(\"species == 'Gentoo' and body_mass_g > 4000\")\n"
-                "df.filter(\"island in ['Biscoe', 'Dream']\")\n"
-                "df.filter(\"bill_length_mm.is_not_null()\")\n"
+                "df.filter((c.species == 'Gentoo') & (c.body_mass_g > 4000))\n"
+                "df.filter(c.island.is_in(['Biscoe', 'Dream']))\n"
+                "df.filter(c.bill_length_mm.is_not_null())\n"
                 "```"
             ),
         },

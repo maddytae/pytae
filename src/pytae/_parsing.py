@@ -211,7 +211,7 @@ def _is_enclosed_in_parens(s: str) -> bool:
     return depth == 0
 
 
-def _split_top_level(text: str, operator_words: list[str]) -> list[str]:
+def _split_top_level_symbol(text: str, symbol: str) -> list[str]:
     quote = None
     paren_depth = 0
     bracket_depth = 0
@@ -229,7 +229,7 @@ def _split_top_level(text: str, operator_words: list[str]) -> list[str]:
                 i += 1
             i += 1
             continue
-        if ch in ("'", '"'):
+        if ch in ("'", '"', "`"):
             quote = ch
             i += 1
             continue
@@ -250,14 +250,9 @@ def _split_top_level(text: str, operator_words: list[str]) -> list[str]:
             i += 1
             continue
         if paren_depth == 0 and bracket_depth == 0:
-            for op in operator_words:
-                op_pattern = f" {op} "
-                k = len(op_pattern)
-                if text[i : i + k].lower() == op_pattern:
-                    splits.append(text[last_idx:i].strip())
-                    last_idx = i + k
-                    i = last_idx - 1
-                    break
+            if ch == symbol:
+                splits.append(text[last_idx:i].strip())
+                last_idx = i + 1
         i += 1
     splits.append(text[last_idx:].strip())
     return splits
@@ -306,7 +301,7 @@ def _parse_predicate(raw_entry: str) -> FilterNode:
             b2 = m_int.group(3).strip()
             raise SystemExit(
                 f"invalid filter condition '{raw}': interval notation '[min, max]' is not supported in filter expressions. "
-                f"Use '{col} >= {b1} and {col} <= {b2}' or dict syntax {{'{col}': ('between', {b1}, {b2})}}."
+                f"Use '({col} >= {b1}) & ({col} <= {b2})' or dict syntax {{'{col}': ('between', {b1}, {b2})}}."
             )
 
         if val_str.lower() == "nan" and op in ("!=", "=="):
@@ -434,7 +429,7 @@ def _parse_filter_node(raw_expr: str) -> FilterNode:
     while _is_enclosed_in_parens(s):
         s = s[1:-1].strip()
 
-    # Check for forbidden top-level operators at paren_depth == 0 and bracket_depth == 0
+    # Check for forbidden/retired operators and validate syntax
     quote = None
     paren_depth = 0
     bracket_depth = 0
@@ -449,7 +444,7 @@ def _parse_filter_node(raw_expr: str) -> FilterNode:
                 i += 1
             i += 1
             continue
-        if ch in ("'", '"'):
+        if ch in ("'", '"', "`"):
             quote = ch
             i += 1
             continue
@@ -473,51 +468,75 @@ def _parse_filter_node(raw_expr: str) -> FilterNode:
             if ch == ",":
                 raise SystemExit(
                     f"invalid filter condition '{s}': comma ',' is not supported as a boolean operator. "
-                    f"Use 'and' instead."
+                    f"In line with 'one and only one obvious way', use '&' instead (e.g. (a == 1) & (b == 2))."
                 )
-            if ch == "&":
+            if s[i : i + 2] == "&&":
                 raise SystemExit(
-                    f"invalid filter condition '{s}': '&' is not supported in filter. "
-                    f"In line with 'one obvious way', use 'and' instead."
+                    f"invalid filter condition '{s}': '&&' is not supported in filter. "
+                    f"In line with 'one and only one obvious way', use '&' instead."
                 )
-            if ch == "|":
+            if s[i : i + 2] == "||":
                 raise SystemExit(
-                    f"invalid filter condition '{s}': '|' is not supported in filter. "
-                    f"In line with 'one obvious way', use 'or' instead."
+                    f"invalid filter condition '{s}': '||' is not supported in filter. "
+                    f"In line with 'one and only one obvious way', use '|' instead."
                 )
+            if ch == "!" and (i + 1 >= n or s[i + 1] != "="):
+                raise SystemExit(
+                    f"invalid filter condition '{s}': '!' is not supported in filter. "
+                    f"In line with 'one and only one obvious way', use '~' instead (e.g. ~(a == 1))."
+                )
+            if (
+                s[i : i + 5].lower() == " and "
+                or (i == 0 and s[:4].lower() == "and ")
+                or (i + 4 == n and s[i:].lower() == " and")
+            ):
+                raise SystemExit(
+                    f"invalid filter condition '{s}': 'and' is retired in filter. "
+                    f"In line with 'one and only one obvious way', use '&' instead (e.g. (a == 1) & (b == 2))."
+                )
+            if (
+                s[i : i + 4].lower() == " or "
+                or (i == 0 and s[:3].lower() == "or ")
+                or (i + 3 == n and s[i:].lower() == " or")
+            ):
+                raise SystemExit(
+                    f"invalid filter condition '{s}': 'or' is retired in filter. "
+                    f"In line with 'one and only one obvious way', use '|' instead (e.g. (a == 1) | (b == 2))."
+                )
+            if (
+                s[i : i + 5].lower() == " not "
+                or (i == 0 and s.lower().startswith(("not ", "not(")))
+            ):
+                is_sql_null = (
+                    s[:i].rstrip().lower().endswith(" is")
+                    and s[i + 5 :].lstrip().lower().startswith(("null", "na"))
+                )
+                if not is_sql_null:
+                    raise SystemExit(
+                        f"invalid filter condition '{s}': 'not' is retired in filter. "
+                        f"In line with 'one and only one obvious way', use '~' instead (e.g. ~(a == 1))."
+                    )
         i += 1
 
-    # Split OR (lowest precedence)
-    or_parts = _split_top_level(s, ["or"])
+    # Split OR '|' (lowest precedence)
+    or_parts = _split_top_level_symbol(s, "|")
     if len(or_parts) > 1:
         node = _parse_filter_node(or_parts[0])
         for part in or_parts[1:]:
             node = BinaryOp("or", node, _parse_filter_node(part))
         return node
 
-    # Split AND (higher precedence than OR)
-    and_parts = _split_top_level(s, ["and"])
+    # Split AND '&' (higher precedence than OR)
+    and_parts = _split_top_level_symbol(s, "&")
     if len(and_parts) > 1:
         node = _parse_filter_node(and_parts[0])
         for part in and_parts[1:]:
             node = BinaryOp("and", node, _parse_filter_node(part))
         return node
 
-    # Unary NOT (strictly 'not')
-    if s.lower().startswith("not ") and len(s) > 4:
-        return NotOp(_parse_filter_node(s[4:]))
-    if s.lower().startswith("not(") and len(s) > 4:
-        return NotOp(_parse_filter_node(s[3:]))
+    # Unary NOT '~'
     if s.startswith("~") and len(s) > 1:
-        raise ValueError(
-            f"invalid filter condition '{s}': '~' is not supported in filter. "
-            f"In line with 'one obvious way', use 'not' (e.g. not {s[1:].strip()})."
-        )
-    if s.startswith("!") and len(s) > 1 and not s.startswith("!="):
-        raise ValueError(
-            f"invalid filter condition '{s}': '!' is not supported in filter. "
-            f"In line with 'one obvious way', use 'not' (e.g. not {s[1:].strip()})."
-        )
+        return NotOp(_parse_filter_node(s[1:].strip()))
 
     return _parse_predicate(s)
 

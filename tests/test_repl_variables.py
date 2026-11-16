@@ -254,7 +254,7 @@ def test_repl_pipeline_with_nested_dict_variable():
 
     r.execute_line("cfg = {'min_m': 4500, 'island': 'Biscoe'}", output_fn=outputs.append)
     outputs.clear()
-    r.execute_line('df = -filter "body_mass_g > @cfg.min_m and island == @cfg[\'island\']"', output_fn=outputs.append)
+    r.execute_line('df = -filter "(body_mass_g > @cfg.min_m) & (island == @cfg[\'island\'])"', output_fn=outputs.append)
     assert r.current_df.shape[0] > 0
     assert (r.current_df["body_mass_g"] > 4500).all()
     assert (r.current_df["island"] == "Biscoe").all()

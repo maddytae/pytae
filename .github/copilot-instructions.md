@@ -26,7 +26,7 @@ CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
 2. SHELL QUOTING STANDARD (BASH / ZSH / POWERSHELL / CMD):
    - In CLI commands, ALWAYS wrap expression arguments in double quotes `""` and wrap string values inside expressions in single quotes `''`:
      * Correct: pytae file.parquet -filter "species == 'Gentoo'"
-     * Correct: pytae file.parquet -filter "currency == 'CAD' and reporting_date in ['2026-09-30']"
+     * Correct: pytae file.parquet -filter "(currency == 'CAD') & (reporting_date in ['2026-09-30'])"
      * Correct: pytae file.parquet -mutate "status = 'active'"
      * INCORRECT: pytae file.parquet -filter "species == Gentoo" (Fails with ColumnNotFound: unquoted tokens are treated as column identifiers).
    - Column identifiers must remain UNQUOTED (e.g. `body_mass_g > 3500`). For names with spaces, use brackets: `[body mass g] > 3500`.
@@ -80,7 +80,7 @@ CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
      `pytae "\\\\server\\share\\data.parquet" -filter "status == 'active'"`
      In Python, use raw strings: `df = pt.read(r"\\server\share\data.parquet")`.
    - Date range filtering: Filter ISO dates as string comparisons:
-     `-filter "reporting_date >= '2026-01-01' and reporting_date <= '2026-09-30'"`
+     `-filter "(reporting_date >= '2026-01-01') & (reporting_date <= '2026-09-30')"`
    - Tolerances & Diffing: Compare metrics across periods with key-aware diff and tolerances:
      `-diff "prior.parquet,on=deal_id,tol=1e-3"`
    - Multi-sheet Excel: Ingest specific sheets using `-opts "sheet='Q3'"`.

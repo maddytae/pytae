@@ -147,7 +147,7 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
 | **Simple Filter** | `filter(df, sales > 100)` | `df.filter(c.sales > 100)` | `-filter "sales > 100"` |
-| **Multiple Conditions** | `filter(df, a > 1, b == "E")` | `df.filter(c.a > 1, c.b == 'E')` | `-filter "a > 1 and b == 'E'"` |
+| **Multiple Conditions** | `filter(df, a > 1, b == "E")` | `df.filter(c.a > 1, c.b == 'E')` | `-filter "(a > 1) & (b == 'E')"` |
 | **Interval / Range** | `filter(df, between(x, 10, 20))` | `df.filter(10 <= c.x, c.x <= 20)` | `-filter "10 <= x <= 20"` |
 | **Set Membership** | `filter(df, cat %in% c("A", "B"))` | `df.filter(c.cat.is_in(['A', 'B']))` | `-filter "cat in ['A', 'B']"` |
 | **Spaced Columns** | `filter(df, \`gross sales\` > 50)` | `df.filter(c['gross sales'] > 50)` | `-filter "[gross sales] > 50"` |
@@ -299,7 +299,7 @@ from pytae import c
 ### In Pytae (Unix CLI Pipeline):
 ```bash
 pytae penguins.parquet \
-  -filter "body_mass_g > 3500 and sex.is_not_null()" \
+  -filter "(body_mass_g > 3500) & (sex.is_not_null())" \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm" \
   -by species,island \
   -agg "n = count(), avg_mass_kg = body_mass_kg.mean(), max_ratio = bill_ratio.max()" \

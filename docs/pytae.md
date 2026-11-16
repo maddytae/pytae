@@ -100,7 +100,7 @@ The exact same logic translates directly to the terminal:
 
 ```bash
 pytae penguins.parquet \
-  -filter "body_mass_g > 3500 and sex.is_not_null()" \
+  -filter "(body_mass_g > 3500) & (sex.is_not_null())" \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm, status = 'verified'" \
   -by species, island \
   -agg "n = count(), avg_mass_kg = body_mass_kg.mean(), max_ratio = bill_ratio.max()" \

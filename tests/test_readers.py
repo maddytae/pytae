@@ -634,7 +634,7 @@ def test_assert_verb_python_accessor_and_cli(tmp_path, capsys):
 
     # Passing assertions return self unchanged
     from pytae import c
-    res = df.assert_("amount > 0 and id.is_not_null()").mutate(doubled=c.amount * 2)
+    res = df.assert_("(amount > 0) & (id.is_not_null())").mutate(doubled=c.amount * 2)
     assert res.shape == (3, 3)
     assert pt.assert_(df, "amount >= 10").shape == (3, 2)
     assert df.to("polars").pt.assert_("amount <= 100").shape == (3, 2)

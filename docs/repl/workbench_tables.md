@@ -336,7 +336,7 @@ The REPL maintains persistent command history saved in `~/.pytae_history`. Use <
 For complex pipelines or multi-step queries, span commands across multiple lines using a trailing backslash (`\`):
 
 ```text
-pytae [orders]> -filter "amount > 1000 and status == 'shipped'" \
+pytae [orders]> -filter "(amount > 1000) & (status == 'shipped')" \
 ... -mutate "tax = amount * 0.08" \
 ... -select "order_id, customer_id, tax, amount" \
 ... -head 5

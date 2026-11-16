@@ -136,14 +136,17 @@ def test_filter_comma_raises_error(tmp_path):
         cli.main([path, "-filter", "species == 'Gentoo', mass > 4000", "-shape"])
 
 
-def test_filter_bitwise_symbols_rejected(tmp_path):
+def test_filter_words_rejected(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"species": ["Adelie", "Gentoo"], "mass": [3000, 5000]}))
 
-    with pytest.raises(SystemExit, match=r"'&' is not supported in filter"):
-        cli.main([path, "-filter", "species == 'Gentoo' & mass > 4000", "-shape"])
+    with pytest.raises(SystemExit, match=r"'and' is retired in filter"):
+        cli.main([path, "-filter", "species == 'Gentoo' and mass > 4000", "-shape"])
 
-    with pytest.raises(SystemExit, match=r"'\|' is not supported in filter"):
-        cli.main([path, "-filter", "species == 'Gentoo' | mass < 4000", "-shape"])
+    with pytest.raises(SystemExit, match=r"'or' is retired in filter"):
+        cli.main([path, "-filter", "species == 'Gentoo' or mass < 4000", "-shape"])
+
+    with pytest.raises(SystemExit, match=r"'not' is retired in filter"):
+        cli.main([path, "-filter", "not (species == 'Gentoo')", "-shape"])
 
 
 def test_filter_cli_bracket_interval_errors(tmp_path):
@@ -169,14 +172,19 @@ def test_filter_logical_and_and_or(tmp_path, capsys):
     )
 
     # 1. OR condition
-    exit_code = cli.main([path, "-filter", "species == 'Gentoo' or body_mass_g < 3500", "-shape"])
+    exit_code = cli.main([path, "-filter", "(species == 'Gentoo') | (body_mass_g < 3500)", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(3, 3)"
 
     # 2. AND condition
-    exit_code = cli.main([path, "-filter", "species == 'Gentoo' and body_mass_g > 5000", "-shape"])
+    exit_code = cli.main([path, "-filter", "(species == 'Gentoo') & (body_mass_g > 5000)", "-shape"])
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(1, 3)"
+
+    # 3. NOT condition
+    exit_code = cli.main([path, "-filter", "~(species == 'Gentoo')", "-shape"])
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip() == "(2, 3)"
 
 
 def test_filter_nested_parentheses_precedence(tmp_path, capsys):
@@ -191,9 +199,9 @@ def test_filter_nested_parentheses_precedence(tmp_path, capsys):
         ),
     )
 
-    # species == 'Gentoo' and (island == 'Biscoe' or body_mass_g < 4500)
+    # (species == 'Gentoo') & ((island == 'Biscoe') | (body_mass_g < 4500))
     exit_code = cli.main(
-        [path, "-filter", "species == 'Gentoo' and (island == 'Biscoe' or body_mass_g < 4500)", "-shape"]
+        [path, "-filter", "(species == 'Gentoo') & ((island == 'Biscoe') | (body_mass_g < 4500))", "-shape"]
     )
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "(2, 3)"

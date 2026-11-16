@@ -58,12 +58,12 @@ Filter rows cleanly using operator expressions, ranges, set membership, or colum
 ```bash
 # Exact match (strict '==' enforced; string values must be quoted with single quotes inside double quotes)
 pytae data.parquet -filter "species == 'Gentoo'"
-pytae data.parquet -filter "currency == 'CAD' and reporting_date in ['2026-09-30', '2026-08-31']"
+pytae data.parquet -filter "(currency == 'CAD') & (reporting_date in ['2026-09-30', '2026-08-31'])"
 
-# Numeric comparison operators (>, <, >=, <=, !=) and boolean logic (and, or, &, |, parens)
+# Numeric comparison operators (>, <, >=, <=, !=) and boolean logic (&, |, ~)
 pytae data.parquet -filter "body_mass_g > 5000"
-pytae data.parquet -filter "body_mass_g >= 3500 and flipper_length_mm < 210"
-pytae data.parquet -filter "(species == 'Adelie' or species == 'Chinstrap') and body_mass_g > 4000"
+pytae data.parquet -filter "(body_mass_g >= 3500) & (flipper_length_mm < 210)"
+pytae data.parquet -filter "((species == 'Adelie') | (species == 'Chinstrap')) & (body_mass_g > 4000)"
 
 # Column-to-column comparison (reconcile IDs, detect limit breaches)
 pytae loans.parquet -filter "exposure > limit"
@@ -72,9 +72,9 @@ pytae loans.parquet -filter "tranche_id == deal_id"
 # Ranges & Intervals
 pytae data.parquet -filter "3000 <= body_mass_g <= 3500"
 
-# List set membership (in, not in)
+# List set membership (in, ~in)
 pytae data.parquet -filter "species in ['Adelie', 'Chinstrap']"
-pytae data.parquet -filter "species not in ['Gentoo']"
+pytae data.parquet -filter "~(species in ['Gentoo'])"
 
 # Null checks (universal 'is_null()' / 'is_not_null()' in expressions)
 pytae data.parquet -filter "sex.is_not_null()"

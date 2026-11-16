@@ -485,7 +485,7 @@ def expand_paths(patterns: str | list[str]) -> list[Path | str]:
 
 
 def parse_filter(raw: str) -> FilterNode | dict[str, Any]:
-    """Parse -filter conditions like "col == 5 and other in ['a','b']", or dict literal '{"col": 5}'."""
+    """Parse -filter conditions like "(col == 5) & (other in ['a','b'])", or dict literal '{"col": 5}'."""
     stripped = raw.strip()
     parsed_dict = _parse_dict_literal(stripped)
     if parsed_dict is not None:

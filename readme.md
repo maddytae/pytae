@@ -128,7 +128,7 @@ pytae penguins.parquet -sample 5% -seed 42
 
 # 2. In-memory pipeline: filter, engineer features, sort, and export
 pytae penguins.parquet \
-  -filter "species == 'Adelie' and body_mass_g > 3500" \
+  -filter "(species == 'Adelie') & (body_mass_g > 3500)" \
   -mutate "mass_kg = body_mass_g / 1000" \
   -arrange "mass_kg desc" \
   -select "species, island, mass_kg" \
@@ -179,10 +179,10 @@ pytae [df1: 344x7]> -head 3
 pytae [df1: 344x7]> -sample 5%
 
 # Exploratory previews (safe, non-mutating preview matching CLI output)
-pytae [df1: 344x7]> -filter "species == 'Gentoo' and body_mass_g > 5000"
+pytae [df1: 344x7]> -filter "(species == 'Gentoo') & (body_mass_g > 5000)"
 
 # State mutation via explicit assignment
-pytae [df1: 344x7]> df1 = -filter "species in ['Adelie', 'Gentoo'] and body_mass_g >= 3500"
+pytae [df1: 344x7]> df1 = -filter "(species in ['Adelie', 'Gentoo']) & (body_mass_g >= 3500)"
 Updated 'df1' (188 rows x 7 cols).
 
 pytae [df1: 188x7]> df1 = -mutate "mass_kg = body_mass_g / 1000" -select "species, island, mass_kg"
