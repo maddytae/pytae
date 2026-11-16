@@ -871,7 +871,11 @@ def _fail(parser: argparse.ArgumentParser, batch: bool, msg: str) -> bool:
     """Abort immediately outside batch mode; in batch mode, warn on stderr and signal failure instead."""
     if not batch:
         parser.error(msg)
-    print(f"pytae: {msg}", file=sys.stderr)
+    repl_fn = getattr(parser, "repl_output_fn", None)
+    if repl_fn is not None:
+        repl_fn(f"pytae: {msg}")
+    else:
+        print(f"pytae: {msg}", file=sys.stderr)
     return True
 
 
