@@ -222,6 +222,12 @@ def test_repl_error_handling(sample_df):
     assert r.current_df.shape == (5, 3)  # Intact!
     assert any("error" in o.lower() or "not found" in o.lower() for o in outputs)
 
+    # Syntax error in filter assignment (e.g. single '=' instead of '==') must not fail silently
+    outputs.clear()
+    r.execute_line('t = df -filter "species=\'Gentoo\'"', output_fn=outputs.append)
+    assert any("invalid filter condition" in o and "==" in o for o in outputs)
+    assert "t" not in r.tables
+
 
 def test_repl_headless_run(sample_df):
     lines = [

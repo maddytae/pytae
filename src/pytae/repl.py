@@ -5490,12 +5490,12 @@ class PytaeRepl:
         try:
             subbed_tokens = [self._substitute_variables(t) for t in tokens]
         except KeyError as exc:
-            if not quiet:
-                output_fn(f"pytae: {exc}")
+            output_fn(f"pytae: {exc}")
             return None, None, True
 
         exec_argv = _normalize_cli_args(["<memory>"] + subbed_tokens)
         parser = build_parser(exit_on_error=False)
+        parser.repl_output_fn = output_fn
         try:
             args, extras = parser.parse_known_args(exec_argv)
             if extras:
@@ -5521,7 +5521,7 @@ class PytaeRepl:
             concat_specs = [parse_concat_arg(raw) for raw in (args.concat or [])]
         except (argparse.ArgumentError, SystemExit, Exception) as exc:
             msg = str(exc)
-            if msg and not quiet:
+            if msg:
                 if msg.startswith("-") or msg.startswith("pytae") or msg.startswith("invalid"):
                     output_fn(msg)
                 else:
@@ -5647,7 +5647,7 @@ class PytaeRepl:
             return res_pl, durations, False
         except (Exception, SystemExit) as exc:
             msg = str(exc)
-            if msg and not quiet:
+            if msg:
                 if msg.startswith("-") or msg.startswith("pytae") or msg.startswith("invalid"):
                     output_fn(msg)
                 else:
