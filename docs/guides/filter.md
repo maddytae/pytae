@@ -282,7 +282,7 @@ Extract top or bottom rows ordered by a specific column by composing `-arrange` 
 ### Top N Rows Overall
 
 ```bash
-pytae penguins.parquet -arrange "body_mass_g desc" -head 3 -select "species,island,body_mass_g"
+pytae penguins.parquet -arrange "body_mass_g.desc()" -head 3 -select "species,island,body_mass_g"
 ```
 
 **Output:**
@@ -395,4 +395,4 @@ In terminal shells (bash, zsh):
 - Enclose the entire spec in outer double quotes: `-filter "..."`.
 - Enclose string literals in inner single quotes: `'Gentoo'`, `'9'`. Unquoted strings or numbers against string columns will raise an explicit `TypeError`.
 - Numeric literals should remain unquoted: `body_mass_g > 3500`.
-- Columns with spaces should be wrapped in brackets: `[bill length mm] > 40` or `-arrange "[bill length mm] desc" -head 3`.
+- Columns with spaces should be wrapped in brackets: `[bill length mm] > 40` or `-arrange "[bill length mm].desc()" -head 3`.

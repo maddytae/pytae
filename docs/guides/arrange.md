@@ -20,16 +20,16 @@ Order DataFrame rows by one or more columns with full support for descending ord
 
 | Flag | Syntax / Format | Description |
 |---|---|---|
-| `-arrange SPEC` | `col` | Sort ascending (default) |
-| `-arrange SPEC` | `col desc` | Sort descending |
-| `-arrange SPEC` | `col1, col2 desc` | Multi-column hierarchical sort |
-| `-arrange SPEC` | `"[col name] desc"` | Sort columns containing spaces |
+| `-arrange SPEC` | `col` or `col.asc()` | Sort ascending (default) |
+| `-arrange SPEC` | `col.desc()` | Sort descending |
+| `-arrange SPEC` | `col1, col2.desc()` | Multi-column hierarchical sort |
+| `-arrange SPEC` | `"[col name].desc()"` | Sort columns containing spaces |
 
 ---
 
 ## Ascending Sort (Default)
 
-By default, `-arrange` sorts rows in ascending order:
+By default, `-arrange` sorts rows in ascending order (explicit `.asc()` is also supported):
 
 ```bash
 # Sort ascending by body mass
@@ -48,13 +48,13 @@ pytae penguins.parquet -arrange body_mass_g -select "species, island, body_mass_
 
 ---
 
-## Descending Sort (`desc`)
+## Descending Sort (`.desc()`)
 
-Specify descending order explicitly by appending `desc`:
+Specify descending order explicitly using canonical `.desc()`:
 
 ```bash
-# Explicit 'desc'
-pytae penguins.parquet -arrange "body_mass_g desc" -select "species, island, body_mass_g" -head 5
+# Explicit '.desc()'
+pytae penguins.parquet -arrange "body_mass_g.desc()" -select "species, island, body_mass_g" -head 5
 ```
 
 **Output:**
@@ -75,7 +75,7 @@ Pass multiple columns separated by commas:
 
 ```bash
 # Species ascending, body mass descending
-pytae penguins.parquet -arrange "species, body_mass_g desc" -select "species,island,body_mass_g" -head 6
+pytae penguins.parquet -arrange "species, body_mass_g.desc()" -select "species,island,body_mass_g" -head 6
 ```
 
 **Output:**
@@ -91,12 +91,12 @@ pytae penguins.parquet -arrange "species, body_mass_g desc" -select "species,isl
 
 ---
 
-## Columns With Spaces (`[col name]`)
+## Columns With Spaces (`[col name].desc()`)
 
 Columns with spaces are cleanly referenced using square brackets:
 
 ```bash
-pytae sales.csv -arrange "[annual revenue] desc" -head 5
+pytae sales.csv -arrange "[annual revenue].desc()" -head 5
 ```
 
 **Output:**

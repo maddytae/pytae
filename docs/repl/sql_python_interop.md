@@ -330,7 +330,7 @@ If you wish to mutate the currently active table using Python logic:
 
 ```text
 pytae [orders: 100,000x6]> py {
-... df = orders.filter("amount > 0").arrange("amount desc")
+... df = orders.filter(c.amount > 0).arrange(c.amount.desc())
 ... }
 Updated active table 'orders' (98,420 rows x 6 cols).
 ```

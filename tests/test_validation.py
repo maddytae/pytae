@@ -117,7 +117,11 @@ def test_check_dsl_string_select():
 
 def test_check_dsl_string_arrange():
     # Valid
-    assert check_dsl_string("arrange", "a desc, b asc") == []
+    assert check_dsl_string("arrange", "a.desc(), b.asc()") == []
+
+    # Retired space direction
+    errs_retired = check_dsl_string("arrange", "a desc, b asc")
+    assert any("retired sort direction" in e for e in errs_retired)
 
     # Invalid direction
     errs = check_dsl_string("arrange", "a descc")

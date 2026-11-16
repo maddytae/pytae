@@ -102,7 +102,7 @@ pytae [penguins]> -filter "body_mass_g > 3500" \
                   -mutate "mass_kg = body_mass_g / 1000" \
                   -by species, island \
                   -agg "n = count(), avg_mass = mass_kg.mean()" \
-                  -arrange "avg_mass desc"
+                  -arrange "avg_mass.desc()"
 ```
 
 ### Multi-Line Pipeline Continuation (`\`)
@@ -112,7 +112,7 @@ For long or complex transformation chains, terminate lines with a backslash `\` 
 ```text
 pytae [df: 10,000x8]> df = -filter "status == 'completed'" \
                       -mutate "margin = revenue - cost" \
-                      -arrange "margin desc" \
+                      -arrange "margin.desc()" \
                       -head 10
 Updated 'df' (10 rows x 9 cols).
 ```

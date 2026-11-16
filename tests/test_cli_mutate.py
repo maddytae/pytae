@@ -303,7 +303,7 @@ def test_cli_multi_by_agg_and_head(tmp_path, capsys):
             "-agg",
             "avg_mass = mean(body_mass_g)",
             "-arrange",
-            "island, avg_mass desc",
+            "island, avg_mass.desc()",
             "-by",
             "island",
             "-head",

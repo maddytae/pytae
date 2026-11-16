@@ -111,9 +111,23 @@ def _transpile_arrange_spec(col_val: str, desc: bool = False) -> str:
     parts = [p.strip() for p in col_val.split(",") if p.strip()]
     res: list[str] = []
     for p in parts:
-        toks = p.split()
-        col = toks[0]
-        is_desc = desc or (len(toks) > 1 and toks[1].lower() in ("desc", "descending"))
+        p_clean = p.strip()
+        is_desc = desc
+        col = p_clean
+        if p_clean.lower().endswith(".desc()"):
+            col = p_clean[:-7].strip()
+            is_desc = True
+        elif p_clean.lower().endswith(".asc()"):
+            col = p_clean[:-6].strip()
+            is_desc = False
+        else:
+            toks = p_clean.split()
+            col = toks[0]
+            if len(toks) > 1 and toks[1].lower() in ("desc", "descending"):
+                is_desc = True
+            elif len(toks) > 1 and toks[1].lower() in ("asc", "ascending"):
+                is_desc = False
+        col = col.strip("[]'\"")
         c_expr = f"c.{col}" if col.isidentifier() else f"c[{repr(col)}]"
         method = "desc()" if is_desc else "asc()"
         res.append(f"{c_expr}.{method}")

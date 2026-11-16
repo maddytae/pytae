@@ -558,7 +558,7 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         default=None,
         metavar="SPEC",
         action=_OrderedStore,
-        help='sort rows by one or more columns with direction, e.g. -arrange "species,mass desc"',
+        help='sort rows by one or more columns with direction, e.g. -arrange "species,mass.desc()"',
     )
     parser.add_argument(
         "-by",

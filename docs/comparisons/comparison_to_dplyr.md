@@ -177,9 +177,9 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
 | **Ascending** | `arrange(df, sales)` | `df.arrange(c.sales.asc())` | `-arrange sales` |
-| **Descending** | `arrange(df, desc(sales))` | `df.arrange(c.sales.desc())` | `-arrange "sales desc"` |
-| **Multi-Column Mixed** | `arrange(df, a, desc(b))` | `df.arrange(c.a.asc(), c.b.desc())` | `-arrange "a, b desc"` |
-| **Spaced Columns** | `arrange(df, desc(\`gross sales\`))` | `df.arrange(c['gross sales'].desc())` | `-arrange "[gross sales] desc"` |
+| **Descending** | `arrange(df, desc(sales))` | `df.arrange(c.sales.desc())` | `-arrange "sales.desc()"` |
+| **Multi-Column Mixed** | `arrange(df, a, desc(b))` | `df.arrange(c.a.asc(), c.b.desc())` | `-arrange "a, b.desc()"` |
+| **Spaced Columns** | `arrange(df, desc(\`gross sales\`))` | `df.arrange(c['gross sales'].desc())` | `-arrange "[gross sales].desc()"` |
 
 ### 5. Grouped Summaries & Counting (`count`, `by` + `agg`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
@@ -194,10 +194,10 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 ### 6. Slicing Top / Bottom Records (`arrange` + `head` / `tail`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Top N Records** | `slice_max(df, sales, n = 5)` | `df.arrange("sales desc").head(5)` | `-arrange "sales desc" -head 5` |
-| **Bottom N Records** | `slice_min(df, sales, n = 5)` | `df.arrange("sales").head(5)` | `-arrange sales -head 5` |
-| **Top Proportion** | `slice_max(df, sales, prop = 0.1)` | `df.arrange("sales desc").head(prop=0.1)` | `-arrange "sales desc" -head 10%` |
-| **Top N per Group** | `df %>% group_by(g) %>% slice_max(x, n = 3) %>% ungroup()` | `df.by("g").arrange("x desc").head(3)` | `-by g -arrange "x desc" -head 3` |
+| **Top N Records** | `slice_max(df, sales, n = 5)` | `df.arrange(c.sales.desc()).head(5)` | `-arrange "sales.desc()" -head 5` |
+| **Bottom N Records** | `slice_min(df, sales, n = 5)` | `df.arrange(c.sales.asc()).head(5)` | `-arrange sales -head 5` |
+| **Top Proportion** | `slice_max(df, sales, prop = 0.1)` | `df.arrange(c.sales.desc()).head(prop=0.1)` | `-arrange "sales.desc()" -head 10%` |
+| **Top N per Group** | `df %>% group_by(g) %>% slice_max(x, n = 3) %>% ungroup()` | `df.by(c.g).arrange(c.x.desc()).head(3)` | `-by g -arrange "x.desc()" -head 3` |
 
 ### 7. Deduplication (`distinct`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
@@ -303,7 +303,7 @@ pytae penguins.parquet \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm" \
   -by species,island \
   -agg "n = count(), avg_mass_kg = body_mass_kg.mean(), max_ratio = bill_ratio.max()" \
-  -arrange "avg_mass_kg desc" \
+  -arrange "avg_mass_kg.desc()" \
   -o summary.parquet
 ```
 

@@ -143,7 +143,7 @@ To compute group-level metrics and then filter for the top $N$ entities within a
 ```bash
 pytae sample:penguins \
   -by island, species -agg "avg_mass = body_mass_g.mean()" \
-  -arrange "island, avg_mass desc" \
+  -arrange "island, avg_mass.desc()" \
   -by island -head 2
 ```
 
@@ -160,7 +160,7 @@ pytae sample:penguins \
 > [!NOTE]
 > **Single-Shot Zero-Pollution Scoping**: In Pytae CLI, `-by` is strictly single-shot and auto-clears after the verb that consumes it:
 > 1. `-by island,species` scopes `-agg "avg_mass=mean(body_mass_g)"` and collapses rows to island-species pairs.
-> 2. `-arrange "island, avg_mass desc"` sorts all rows globally (whole-table scope).
+> 2. `-arrange "island, avg_mass.desc()"` sorts all rows globally (whole-table scope).
 > 3. `-by island` scopes `-head 2`, slicing the top 2 rows for each island before resetting to clean ungrouped state.
 
 Alternatively, you can compute this using ANSI SQL via `-sql`:
@@ -246,7 +246,7 @@ By default, missing values (`NaN`) in group columns form their own group (`dropn
 
 ```bash
 # Keep missing sex as its own group (default)
-pytae penguins.parquet -by sex -agg "body_mass_g = body_mass_g.mean(), dropna = false" -round 1
+pytae penguins.parquet -by sex -agg "body_mass_g = mean(), dropna = false" -round 1
 ```
 
 **Output:**
@@ -261,7 +261,7 @@ To drop rows with missing group keys, either specify `dropna=true` inside the `-
 
 ```bash
 # In-spec dropna=true
-pytae penguins.parquet -by sex -agg "body_mass_g = body_mass_g.mean(), dropna = true" -round 1
+pytae penguins.parquet -by sex -agg "body_mass_g = mean(), dropna = true" -round 1
 ```
 
 **Output:**

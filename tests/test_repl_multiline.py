@@ -52,7 +52,7 @@ def test_repl_multiline_pipeline_with_backslash():
         "df_clean = df \\\n"
         "  -filter 'body_mass_g > 3500' \\\n"
         "  -mutate 'kg = body_mass_g / 1000' \\\n"
-        "  -arrange 'kg desc'"
+        "  -arrange 'kg.desc()'"
     )
     outputs.clear()
     r.execute_line(multiline_cmd, output_fn=outputs.append)

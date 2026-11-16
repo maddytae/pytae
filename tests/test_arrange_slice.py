@@ -124,19 +124,19 @@ def test_cli_arrange_and_head(tmp_path, capsys):
     path = _write_csv(tmp_path, df)
 
     # -arrange with direction and -head
-    exit_code = cli.main([path, "-arrange", "body_mass_g desc", "-head", "1"])
+    exit_code = cli.main([path, "-arrange", "body_mass_g.desc()", "-head", "1"])
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "5500" in out
 
     # -by with -arrange and -head
-    exit_code = cli.main([path, "-by", "species", "-arrange", "body_mass_g desc", "-head", "1", "-shape"])
+    exit_code = cli.main([path, "-by", "species", "-arrange", "body_mass_g.desc()", "-head", "1", "-shape"])
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "(2, 2)" in out
 
     # -by with -arrange and -tail
-    exit_code = cli.main([path, "-by", "species", "-arrange", "body_mass_g desc", "-tail", "1", "-shape"])
+    exit_code = cli.main([path, "-by", "species", "-arrange", "body_mass_g.desc()", "-tail", "1", "-shape"])
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "(2, 2)" in out
@@ -291,5 +291,11 @@ def test_cli_head_syntax_and_prop(tmp_path, capsys):
     assert "(5, 2)" in capsys.readouterr().out
 
     # -by with -arrange and -head
-    assert cli.main([path, "-by", "grp", "-arrange", "x desc", "-head", "2", "-shape"]) == 0
+    assert cli.main([path, "-by", "grp", "-arrange", "x.desc()", "-head", "2", "-shape"]) == 0
     assert "(4, 2)" in capsys.readouterr().out
+
+    # Retired space syntax 'x desc' raises SystemExit/error in CLI
+    with pytest.raises(SystemExit):
+        cli.main([path, "-arrange", "x desc"])
+    err = capsys.readouterr().err
+    assert "syntax is retired" in err

@@ -129,7 +129,7 @@ def test_arrange_polars():
             "val": [10, 20, 5, 15],
         }
     )
-    res = arrange_polars(df, "grp, val desc")
+    res = arrange_polars(df, "grp, val.desc()")
     assert res["grp"].to_list() == ["A", "A", "B", "B"]
     assert res["val"].to_list() == [20, 15, 10, 5]
 

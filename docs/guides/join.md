@@ -207,7 +207,7 @@ pytae o=orders.parquet c=customers.csv \
   -mutate "tax = amount * 0.0825, total = amount + tax" \
   -by customer_name \
   -agg "spent = total.sum(), orders = count()" \
-  -arrange "spent desc" \
+  -arrange "spent.desc()" \
   -head 10 \
   -o top_west_customers.parquet
 ```

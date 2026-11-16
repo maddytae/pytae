@@ -11,14 +11,14 @@ CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
 
 0. DUAL EXPRESSION ARCHITECTURE (c. IN PYTHON, NO c. IN CLI/REPL):
    - In Python: ALWAYS use `from pytae import c, count` for type-safe column expressions (`df.filter(c.age > 30)`, `df.mutate(ratio=c.revenue / c.cost)`, `df.select(c.id, c.name)`, `df.arrange(c.salary.desc())`, `df.agg(n=count(), avg_sal=c.salary.mean())`). Row counting is `count()`; `c()` is deprecated.
-   - In CLI & REPL: NEVER use `c.` prefix! Write clean, bare column names without `c.` (`-filter "age > 30"`, `-mutate "ratio = revenue / cost"`, `-select "id, name"`, `-arrange "salary desc"`, `-agg "body_mass_g = sum(), n = count()"`).
+   - In CLI & REPL: NEVER use `c.` prefix! Write clean, bare column names without `c.` (`-filter "age > 30"`, `-mutate "ratio = revenue / cost"`, `-select "id, name"`, `-arrange "salary.desc()"`, `-agg "body_mass_g = sum(), n = count()"`).
 
 1. CANONICAL VERBS ONLY:
    - Row filtering: ALWAYS `-filter` (CLI) or `df.filter()` (Python). NEVER use `-qry`, `-query`, or `df.query()`.
    - Data assertions: ALWAYS `-assert` (CLI) or `df.assert_()` (Python). Fails fast on invalid rows.
    - List/array unnesting: ALWAYS `-explode` (CLI) or `df.explode()` (Python). Flattens array/list elements into rows.
    - Key-aware diffing: ALWAYS `-diff "target,on=key"` (CLI) or `df.diff(other, on="key")` (Python).
-   - Row sorting: ALWAYS `-arrange` (CLI) or `df.arrange()` (Python). For descending sort use `col desc` (e.g. `-arrange "col desc"`). NEVER use `-sort`, `-sort_by`, or `-order`. NEVER use `-arrange "-col"`.
+   - Row sorting: ALWAYS `-arrange` (CLI) or `df.arrange()` (Python). For descending sort use `col.desc()` (e.g. `-arrange "col.desc()"`). NEVER use `-sort`, `-sort_by`, or `-order`. The old `col desc` space syntax is retired.
    - Deduplication: ALWAYS `-distinct` (CLI) or `df.distinct()` (Python). NEVER use `-dedupe` or `drop_duplicates()`.
    - Frequency / Counting: ALWAYS `-count` or `pt.count(df)` or `df.agg(n=count())` (or CLI `-agg "col = sum(), n = count()"`).
    - Reshaping: Pure unmelting is `wide()` / `-wide`; 2D aggregation matrix is `pivot()` / `-pivot`.
@@ -39,7 +39,7 @@ CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
 
 4. TOP N PER GROUP & CHAINED PIPELINES:
    - CLI: Chain sequential `-by` operations:
-     `pytae sample:penguins -by island,species -agg "avg_mass=mean(body_mass_g)" -arrange "island, avg_mass desc" -by island -head 2`
+     `pytae sample:penguins -by island,species -agg "avg_mass=mean(body_mass_g)" -arrange "island, avg_mass.desc()" -by island -head 2`
    - Python:
      `(penguins.by(c.island, c.species).agg(avg_mass=c.body_mass_g.mean()).arrange(c.island.asc(), c.avg_mass.desc()).by(c.island).head(2))`
    - ANSI SQL:

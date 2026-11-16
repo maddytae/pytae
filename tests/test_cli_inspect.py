@@ -267,7 +267,7 @@ def test_arrange_respects_select_and_descending(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-select", "grp,val", "-arrange", "val desc", "-head", "1"])
+    exit_code = cli.main([path, "-select", "grp,val", "-arrange", "val.desc()", "-head", "1"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -335,7 +335,7 @@ def test_arrange_default_is_ascending(tmp_path, capsys):
 def test_arrange_explicit_asc(tmp_path, capsys):
     path = _write_csv(tmp_path, pd.DataFrame({"grp": ["b", "a"], "val": [2, 1]}))
 
-    exit_code = cli.main([path, "-arrange", "val asc", "-head", "1"])
+    exit_code = cli.main([path, "-arrange", "val.asc()", "-head", "1"])
 
     out = capsys.readouterr().out
     assert exit_code == 0

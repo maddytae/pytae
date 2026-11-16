@@ -24,7 +24,7 @@ Extract first, last, or extreme rows with full group awareness via `-by`, propor
 |---|---|---|
 | `-head [LIMIT]` | Extract first $N$ rows, percentage, or proportion | `-head 5`, `-head 10%`, `-head 0.1`, `-head "3, ties=true"` |
 | `-tail [LIMIT]` | Extract last $N$ rows, percentage, or proportion | `-tail 5`, `-tail 10%`, `-tail 0.1`, `-tail "3, ties=true"` |
-| `-by COLS` | Partition rows into groups before slicing | `-by species -head 2`, `-by species -arrange "mass desc" -head 1` |
+| `-by COLS` | Partition rows into groups before slicing | `-by species -head 2`, `-by species -arrange "mass.desc()" -head 1` |
 
 When `-head` or `-tail` is passed without an explicit limit, it defaults to 5 rows. Slicing preserves column order, resets the row index, and cleanly ungroups.
 
@@ -80,7 +80,7 @@ In accordance with Pytae's *"One and Only One Obvious Way"*, extreme row selecti
 
 ```bash
 # Top 3 heaviest penguins overall
-pytae penguins.parquet -arrange "body_mass_g desc" -head 3 -select "species,island,body_mass_g"
+pytae penguins.parquet -arrange "body_mass_g.desc()" -head 3 -select "species,island,body_mass_g"
 ```
 
 **Output:**
@@ -98,7 +98,7 @@ pytae penguins.parquet -arrange "body_mass_g desc" -head 3 -select "species,isla
 pytae penguins.parquet -arrange body_mass_g -head 3 -select "species,island,body_mass_g"
 ```
 
-*(Alternatively: `pytae penguins.parquet -arrange "body_mass_g desc" -tail 3`)*
+*(Alternatively: `pytae penguins.parquet -arrange "body_mass_g.desc()" -tail 3`)*
 
 **Output:**
 
@@ -118,7 +118,7 @@ When combined with `-by`, `-head` and `-tail` extract rows **within each unique 
 
 ```bash
 # Top 1 heaviest penguin for each species
-pytae penguins.parquet -by species -arrange "body_mass_g desc" -head 1 -select "species,island,body_mass_g"
+pytae penguins.parquet -by species -arrange "body_mass_g.desc()" -head 1 -select "species,island,body_mass_g"
 ```
 
 **Output:**
@@ -149,7 +149,7 @@ pytae penguins.parquet -by island -arrange body_mass_g -head 2 -select "island,s
 ### Top 10% per Group
 
 ```bash
-pytae penguins.parquet -by species -arrange "body_mass_g desc" -head 10% -select "species,island,body_mass_g"
+pytae penguins.parquet -by species -arrange "body_mass_g.desc()" -head 10% -select "species,island,body_mass_g"
 ```
 
 ### Top N per Group in Chained Pipelines (Sequential `-by`)
@@ -160,7 +160,7 @@ In Pytae CLI, `-by` operates with **single-shot zero-pollution scoping**: each `
 # Top 2 species by average body mass for each island
 pytae penguins.parquet \
   -by island,species -agg "avg_mass=mean(body_mass_g)" \
-  -arrange "island, avg_mass desc" \
+  -arrange "island, avg_mass.desc()" \
   -by island -head 2
 ```
 
@@ -182,7 +182,7 @@ When multiple rows share the exact value at the $N$-th boundary rank, pass `ties
 
 ```bash
 # Include ties at the rank boundary
-pytae penguins.parquet -arrange "body_mass_g desc" -head "3, ties=true" -select "species,island,body_mass_g"
+pytae penguins.parquet -arrange "body_mass_g.desc()" -head "3, ties=true" -select "species,island,body_mass_g"
 ```
 
 ---
@@ -190,8 +190,8 @@ pytae penguins.parquet -arrange "body_mass_g desc" -head "3, ties=true" -select 
 ## Retirement of Legacy `-pick`
 
 The niche verb `-pick` has been removed. In Pytae:
-- Selecting top records is simply `-arrange "col desc" -head N`.
-- Selecting bottom records is `-arrange col -head N` (or `-arrange "col desc" -tail N`).
-- Grouped extreme selection is `-by group -arrange "col desc" -head N`.
+- Selecting top records is simply `-arrange "col.desc()" -head N`.
+- Selecting bottom records is `-arrange col -head N` (or `-arrange "col.desc()" -tail N`).
+- Grouped extreme selection is `-by group -arrange "col.desc()" -head N`.
 
 Calling `-pick` raises an immediate, helpful redirect error guiding users to compose `-arrange` and `-head`/`-tail`.

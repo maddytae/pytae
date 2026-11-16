@@ -151,16 +151,17 @@ RULE 0: DUAL EXPRESSION ARCHITECTURE — c. IN PYTHON, BARE COLUMNS (NO c.) IN C
 - Feature engineering: `pytae data.parquet -mutate "ratio = revenue / cost, clean_name = name.str.to_upper()"`
 - Column selection: `pytae data.parquet -select "id, name, dept"` or `pytae data.parquet -select "~ssn"`
 - Grouping & aggregation: `pytae data.parquet -by dept -agg "salary = sum(), avg_sal = salary.mean(), count = count()"`
-- Sorting: `pytae data.parquet -arrange "dept, salary desc"`
+- Sorting: `pytae data.parquet -arrange "dept, salary.desc()"`
 - Column names with spaces: `pytae data.parquet -filter "[Annual Revenue] > 50000"`
 
 RULE 1: STRICT CANONICAL VERBS ONLY
 - Row filtering: ALWAYS `-filter` (CLI) or `df.filter()` (Python). 
   * NEVER output `-qry`, `-query`, or `df.query()`.
 - Row sorting: ALWAYS `-arrange` (CLI) or `df.arrange()` (Python).
-  * Explicit descending: `body_mass_g desc`.
+  * Explicit descending: `body_mass_g.desc()`.
   * NEVER output `-sort`, `-sort_by`, or `-order`.
-  * NEVER prefix columns with `-` (e.g. `-arrange "-col"` is an error; use `-arrange "col desc"`).
+  * NEVER prefix columns with `-` (e.g. `-arrange "-col"` is an error).
+  * The old `col desc` space syntax is retired: use canonical `col.desc()`.
 - Deduplication: ALWAYS `-distinct` (CLI) or `df.distinct()` (Python).
   * NEVER output `-dedupe` or `df.drop_duplicates()`.
 - Counting: ALWAYS `-count` (CLI) or `df.count()` (Python) or `agg(total="count")`.
@@ -177,7 +178,7 @@ RULE 2: SHELL QUOTING STANDARD (BASH / ZSH)
 - Column identifiers must remain UNQUOTED (e.g. `body_mass_g > 3500`).
 - If a column name contains spaces, enclose it in square brackets `[col name]`:
   * Example: `pytae data.parquet -filter "[body mass g] > 3500"`
-  * Example: `pytae data.parquet -arrange "[bill length mm] desc"`
+  * Example: `pytae data.parquet -arrange "[bill length mm].desc()"`
 
 RULE 3: SINGLE-SHOT ZERO-POLLUTION GROUPING (`-by` / `df.by()`)
 - In Pytae, grouping is strictly single-shot and auto-clearing.
@@ -192,11 +193,11 @@ RULE 4: CHAINED PIPELINES & SEQUENTIAL `-by` (TOP N RECIPE)
   # Top 2 species by average body mass for each island:
   pytae sample:penguins \
     -by island,species -agg "avg_mass=mean(body_mass_g)" \
-    -arrange "island, avg_mass desc" \
+    -arrange "island, avg_mass.desc()" \
     -by island -head 2
   ```
   * Step 1: `-by island,species -agg ...` groups by island & species and collapses to summary rows.
-  * Step 2: `-arrange "island, avg_mass desc"` sorts all rows globally (whole-table scope).
+  * Step 2: `-arrange "island, avg_mass.desc()"` sorts all rows globally (whole-table scope).
   * Step 3: `-by island -head 2` groups by island and takes top 2 rows per island, then resets.
 - ANSI SQL Alternative via `-sql`:
   ```bash
@@ -236,12 +237,12 @@ RULE 7: THE "TWIN PROOF" RULE (GROUND ON SAMPLE DATASETS)
     * Direct Solution:
       pytae sales.parquet \
         -by zone,customer -agg "avg_profit=mean(profit)" \
-        -arrange "zone, avg_profit desc" \
+        -arrange "zone, avg_profit.desc()" \
         -by zone -head 2
     * Twin Proof on sample:penguins (zone -> island, customer -> species, profit -> body_mass_g):
       pytae sample:penguins \
         -by island,species -agg "avg_mass=mean(body_mass_g)" \
-        -arrange "island, avg_mass desc" \
+        -arrange "island, avg_mass.desc()" \
         -by island -head 2
 ================================================================================
 
@@ -652,10 +653,9 @@ Signature:
   ) -> pd.DataFrame
 
 Calling Styles:
-  # Ascending (default), descending ("desc" or leading "-"), bracketed for spaces
-  df.pt.arrange("species", "body_mass_g desc")
-  df.pt.arrange("species, -body_mass_g")
-  df.pt.arrange("[bill length mm] desc")
+  # Ascending (default or .asc()), descending (.desc()), bracketed for spaces
+  df.arrange(c.species, c.body_mass_g.desc())
+  df.arrange(c['bill length mm'].desc())
 
 
 4.6. head() / tail() — Group-Aware & Proportion-Aware Row Slicing
@@ -681,20 +681,20 @@ Calling Styles:
   df.head("10%")
 
   # Extreme top/bottom rows via arrange
-  df.arrange("body_mass_g desc").head(3)     # Heaviest 3 penguins
-  df.arrange("body_mass_g").head(3)          # Lightest 3 penguins (or df.arrange("body_mass_g desc").tail(3))
+  df.arrange(c.body_mass_g.desc()).head(3)     # Heaviest 3 penguins
+  df.arrange(c.body_mass_g.asc()).head(3)      # Lightest 3 penguins (or df.arrange(c.body_mass_g.desc()).tail(3))
 
   # Group-aware row slicing:
   (
       penguins
-      .by("species")
-      .arrange("body_mass_g desc")
+      .by(c.species)
+      .arrange(c.body_mass_g.desc())
       .head(1)
-      .select("species", "island", "body_mass_g")
+      .select(c.species, c.island, c.body_mass_g)
   )
 
   # Boundary ties included:
-  df.arrange("body_mass_g desc").head(3, with_ties=True)
+  df.arrange(c.body_mass_g.desc()).head(3, with_ties=True)
 
 
 4.7. pt.distinct() / df.pt.distinct() — Deduplication
@@ -984,7 +984,7 @@ Inspection & Summary Flags:
   -sample [SPEC]        Random sample of rows: count (e.g. 10), percentage (e.g. 5%), or fraction (e.g. 0.05)
   -seed N               Random seed for sampling
   -nrows, -limit N      Limit reading to first N rows of file
-  -arrange SPEC         Sort rows by columns: e.g. -arrange "col1, col2 asc" or -arrange "col1 desc"
+  -arrange SPEC         Sort rows by columns: e.g. -arrange "col1, col2.desc()"
 
 In-Terminal Visualizations:
   -freq COL             Render horizontal frequency distribution bars with counts & percentages
@@ -2083,14 +2083,14 @@ CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
 
 0. DUAL EXPRESSION ARCHITECTURE (c. IN PYTHON, NO c. IN CLI/REPL):
    - In Python: ALWAYS use `from pytae import c, count` for type-safe column expressions (`df.filter(c.age > 30)`, `df.mutate(ratio=c.revenue / c.cost)`, `df.select(c.id, c.name)`, `df.arrange(c.salary.desc())`, `df.agg(n=count(), avg_sal=c.salary.mean())`). Row counting is `count()`; `c()` is deprecated.
-   - In CLI & REPL: NEVER use `c.` prefix! Write clean, bare column names without `c.` (`-filter "age > 30"`, `-mutate "ratio = revenue / cost"`, `-select "id, name"`, `-arrange "salary desc"`, `-agg "body_mass_g = sum(), n = count()"`).
+   - In CLI & REPL: NEVER use `c.` prefix! Write clean, bare column names without `c.` (`-filter "age > 30"`, `-mutate "ratio = revenue / cost"`, `-select "id, name"`, `-arrange "salary.desc()"`, `-agg "body_mass_g = sum(), n = count()"`).
 
 1. CANONICAL VERBS ONLY:
    - Row filtering: ALWAYS `-filter` (CLI) or `df.filter()` (Python). NEVER use `-qry`, `-query`, or `df.query()`.
    - Data assertions: ALWAYS `-assert` (CLI) or `df.assert_()` (Python). Fails fast on invalid rows.
    - List/array unnesting: ALWAYS `-explode` (CLI) or `df.explode()` (Python). Flattens array/list elements into rows.
    - Key-aware diffing: ALWAYS `-diff "target,on=key"` (CLI) or `df.diff(other, on="key")` (Python).
-   - Row sorting: ALWAYS `-arrange` (CLI) or `df.arrange()` (Python). For descending sort use `col desc` (e.g. `-arrange "col desc"`). NEVER use `-sort`, `-sort_by`, or `-order`. NEVER use `-arrange "-col"`.
+   - Row sorting: ALWAYS `-arrange` (CLI) or `df.arrange()` (Python). For descending sort use `col.desc()` (e.g. `-arrange "col.desc()"`). NEVER use `-sort`, `-sort_by`, or `-order`. The old `col desc` space syntax is retired.
    - Deduplication: ALWAYS `-distinct` (CLI) or `df.distinct()` (Python). NEVER use `-dedupe` or `drop_duplicates()`.
    - Frequency / Counting: ALWAYS `-count` or `pt.count(df)` or `df.agg(n=count())` (or CLI `-agg "col = sum(), n = count()"`).
    - Reshaping: Pure unmelting is `wide()` / `-wide`; 2D aggregation matrix is `pivot()` / `-pivot`.
@@ -2111,7 +2111,7 @@ CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
 
 4. TOP N PER GROUP & CHAINED PIPELINES:
    - CLI: Chain sequential `-by` operations:
-     `pytae sample:penguins -by island,species -agg "avg_mass=mean(body_mass_g)" -arrange "island, avg_mass desc" -by island -head 2`
+     `pytae sample:penguins -by island,species -agg "avg_mass=mean(body_mass_g)" -arrange "island, avg_mass.desc()" -by island -head 2`
    - Python:
      `(penguins.by(c.island, c.species).agg(avg_mass=c.body_mass_g.mean()).arrange(c.island.asc(), c.avg_mass.desc()).by(c.island).head(2))`
    - ANSI SQL:

@@ -276,14 +276,14 @@ def check_dsl_string(verb: str, spec: str) -> list[str]:
         tokens = _tokenize(raw, ",", track_brackets=True)
         for token in tokens:
             t = token.strip()
-            # If brackets present, extract token outside brackets
-            if t.endswith("]"):
+            if t.lower().endswith(".desc()") or t.lower().endswith(".asc()"):
                 continue
             parts = t.split()
-            if len(parts) >= 2 and not t.startswith("["):
+            if len(parts) >= 2 and parts[-1].lower() in ("asc", "desc", "ascending", "descending"):
+                errors.append(f"retired sort direction in '{t}': use canonical '.desc()' or '.asc()' instead (e.g. '{parts[0]}.desc()')")
+            elif len(parts) >= 2 and not t.startswith("["):
                 direction = parts[-1].lower()
-                if direction not in ("asc", "desc", "ascending", "descending"):
-                    errors.append(f"invalid sort direction '{direction}' in arrange spec (must be 'asc' or 'desc')")
+                errors.append(f"invalid sort direction '{direction}' in arrange spec (must be '.desc()' or '.asc()')")
 
     elif verb == "agg":
         from pytae._parsing import _tokenize

@@ -125,9 +125,9 @@ def _extract_doc_chunks() -> list[dict[str, str]]:
                 "# Grouped aggregation:\n"
                 "df.by('species').agg(avg_mass='body_mass_g:mean', n='count')\n\n"
                 "# Grouped window mutation:\n"
-                "df.by('species').mutate(pct_mass='body_mass_g / sum(body_mass_g)')\n\n"
+                "df.by(c.species).mutate(pct_mass=c.body_mass_g / c.body_mass_g.sum())\n\n"
                 "# Top N per group:\n"
-                "df.by('species').arrange('body_mass_g desc').head(2)\n"
+                "df.by(c.species).arrange(c.body_mass_g.desc()).head(2)\n"
                 "```"
             ),
         },
@@ -176,9 +176,9 @@ def _extract_doc_chunks() -> list[dict[str, str]]:
                 "Sort rows by one or more columns with ascending/descending control.\n\n"
                 "### Examples\n"
                 "```python\n"
-                "df.arrange('body_mass_g desc')\n"
-                "df.arrange('species', 'body_mass_g desc')\n"
-                "df.arrange('island', ascending=True)\n"
+                "df.arrange(c.body_mass_g.desc())\n"
+                "df.arrange(c.species, c.body_mass_g.desc())\n"
+                "df.arrange(c.island.asc())\n"
                 "```"
             ),
         },

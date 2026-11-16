@@ -28,49 +28,61 @@ def _parse_col_order(
     default_asc: bool = True,
     available_cols: set[str] | None = None,
 ) -> tuple[str, bool]:
-    """Parse a single column token, e.g. 'species', 'body_mass_g desc', '-body_mass_g'."""
+    """Parse a single column token, e.g. 'species', 'body_mass_g.desc()', 'body_mass_g.asc()'."""
     token = token.strip()
-    if token.startswith("c."):
-        sub = token[2:]
-        if sub.endswith(".desc()"):
-            return sub[:-7], False
-        if sub.endswith(".asc()"):
-            return sub[:-6], True
-        if sub.endswith(" desc"):
-            return sub[:-5].strip(), False
-        if sub.endswith(" asc"):
-            return sub[:-4].strip(), True
-        return sub, default_asc
-
     if available_cols and token in available_cols:
         return token, default_asc
 
-    asc = default_asc
+    if token.startswith("c."):
+        sub = token[2:].strip()
+        if sub.lower().endswith(".desc()"):
+            return _unquote_name(sub[:-7].strip()), False
+        if sub.lower().endswith(".asc()"):
+            return _unquote_name(sub[:-6].strip()), True
+        if re.search(r"\s+(?:desc|descending)$", sub, flags=re.IGNORECASE):
+            base = re.sub(r"\s+(?:desc|descending)$", "", sub, flags=re.IGNORECASE).strip()
+            clean_b = _unquote_name(base)
+            raise ValueError(
+                f"arrange(): '{token}' syntax is retired. In line with 'one and only one obvious way', use '{clean_b}.desc()' instead (e.g. arrange('{clean_b}.desc()'))."
+            )
+        if re.search(r"\s+(?:asc|ascending)$", sub, flags=re.IGNORECASE):
+            base = re.sub(r"\s+(?:asc|ascending)$", "", sub, flags=re.IGNORECASE).strip()
+            clean_b = _unquote_name(base)
+            raise ValueError(
+                f"arrange(): '{token}' syntax is retired. In line with 'one and only one obvious way', use '{clean_b}.asc()' or '{clean_b}' instead."
+            )
+        return _unquote_name(sub), default_asc
+
     if token.startswith("-") and len(token) > 1:
-        col = token[1:].strip()
+        col = _unquote_name(token[1:].strip())
         raise ValueError(
-            f"arrange(): leading '-' is not supported. In line with 'one and only one obvious way', use '{col} desc' instead (e.g. arrange('{col} desc'))."
-        )
+            f"arrange(): leading '-' is not supported. In line with 'one and only one obvious way', use '{col}.desc()' instead (e.g. arrange('{col}.desc()')).")
     elif token.startswith("+") and len(token) > 1:
-        col = token[1:].strip()
+        col = _unquote_name(token[1:].strip())
         raise ValueError(
-            f"arrange(): leading '+' is not supported. Columns sort ascending by default (e.g. arrange('{col}'))."
+            f"arrange(): leading '+' is not supported. Columns sort ascending by default (e.g. arrange('{col}') or arrange('{col}.asc()')).")
+
+    lower = token.lower()
+    if lower.endswith(".desc()"):
+        return _unquote_name(token[:-7].strip()), False
+    if lower.endswith(".asc()"):
+        return _unquote_name(token[:-6].strip()), True
+
+    if re.search(r"\s+(?:desc|descending)$", token, flags=re.IGNORECASE):
+        base = re.sub(r"\s+(?:desc|descending)$", "", token, flags=re.IGNORECASE).strip()
+        clean_b = _unquote_name(base)
+        raise ValueError(
+            f"arrange(): '{token}' syntax is retired. In line with 'one and only one obvious way', use '{clean_b}.desc()' instead (e.g. arrange('{clean_b}.desc()'))."
         )
-    else:
-        lower = token.lower()
-        for suffix, direction in [
-            (" descending", False),
-            (" desc", False),
-            (" ascending", True),
-            (" asc", True),
-        ]:
-            if lower.endswith(suffix):
-                asc = direction
-                token = token[: len(token) - len(suffix)].strip()
-                break
+    if re.search(r"\s+(?:asc|ascending)$", token, flags=re.IGNORECASE):
+        base = re.sub(r"\s+(?:asc|ascending)$", "", token, flags=re.IGNORECASE).strip()
+        clean_b = _unquote_name(base)
+        raise ValueError(
+            f"arrange(): '{token}' syntax is retired. In line with 'one and only one obvious way', use '{clean_b}.asc()' or '{clean_b}' instead."
+        )
 
     token = _unquote_name(token)
-    return token, asc
+    return token, default_asc
 
 
 def _extract_arrange_specs(

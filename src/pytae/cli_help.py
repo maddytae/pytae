@@ -134,22 +134,22 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     "arrange": KeywordHelp(
         name="arrange",
         flag="-arrange SPEC",
-        syntax='pytae <path> -arrange "<col1 [desc], -col2, ...>"',
+        syntax='pytae <path> -arrange "<col1.desc(), col2.asc(), ...>"',
         summary="Sort rows by one or more columns with inline ascending or descending directions.",
         description=(
             "Sorts rows by column specifications in order.\n"
-            "Ascending is default; descending can be indicated via trailing 'desc', 'descending', or leading '-'."
+            "Ascending is default (or .asc()); descending must be indicated via .desc()."
         ),
         options=[
             "col : Ascending order.",
-            "col desc : Descending order.",
-            "-col : Descending order shorthand.",
-            "[col with space] desc : Sort by spaced column header.",
+            "col.desc() : Descending order.",
+            "col.asc() : Explicit ascending order.",
+            "[col with space].desc() : Sort by spaced column header.",
         ],
         examples=[
-            'pytae penguins.parquet -arrange "body_mass_g desc" -head 5',
-            'pytae penguins.parquet -arrange "species, -body_mass_g"',
-            'pytae penguins.parquet -arrange "island, bill_length_mm asc"',
+            'pytae penguins.parquet -arrange "body_mass_g.desc()" -head 5',
+            'pytae penguins.parquet -arrange "species, body_mass_g.desc()"',
+            'pytae penguins.parquet -arrange "island, bill_length_mm.asc()"',
         ],
         see_also=["-head", "-tail", "-by"],
     ),
@@ -160,14 +160,14 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         summary="Removed: use -arrange ... -head N (or -by ... -arrange ... -head N) instead.",
         description=(
             "The -pick verb has been removed in favor of composable sort and slice verbs:\n"
-            "  - Whole table top N: -arrange '<col> desc' -head N\n"
-            "  - Grouped top N:     -by <group> -arrange '<col> desc' -head N\n"
+            "  - Whole table top N: -arrange '<col>.desc()' -head N\n"
+            "  - Grouped top N:     -by <group> -arrange '<col>.desc()' -head N\n"
             "  - Percentage/ties:   -head 10% or -head '3, ties=true'"
         ),
         options=[],
         examples=[
-            'pytae penguins.parquet -arrange "body_mass_g desc" -head 5',
-            'pytae penguins.parquet -by species -arrange "body_mass_g desc" -head 2',
+            'pytae penguins.parquet -arrange "body_mass_g.desc()" -head 5',
+            'pytae penguins.parquet -by species -arrange "body_mass_g.desc()" -head 2',
         ],
         see_also=["-arrange", "-head", "-tail", "-by"],
     ),
@@ -290,7 +290,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         examples=[
             "pytae penguins.parquet -by species -agg mean",
             'pytae penguins.parquet -by "species,island" -agg "mean,count"',
-            'pytae penguins.parquet -by species -arrange "body_mass_g desc" -head 2',
+            'pytae penguins.parquet -by species -arrange "body_mass_g.desc()" -head 2',
             'pytae penguins.parquet -by species -mutate "avg = mean(body_mass_g)"',
         ],
         see_also=["-agg", "-mutate", "-head", "-tail"],
@@ -629,9 +629,9 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "pytae penguins.parquet -head",
             "pytae penguins.parquet -head 10",
             "pytae penguins.parquet -head 10%",
-            'pytae penguins.parquet -arrange "body_mass_g desc" -head 3',
-            'pytae penguins.parquet -by species -arrange "body_mass_g desc" -head 2',
-            'pytae penguins.parquet -arrange "body_mass_g desc" -head "3, ties=true"',
+            'pytae penguins.parquet -arrange "body_mass_g.desc()" -head 3',
+            'pytae penguins.parquet -by species -arrange "body_mass_g.desc()" -head 2',
+            'pytae penguins.parquet -arrange "body_mass_g.desc()" -head "3, ties=true"',
         ],
         see_also=["-tail", "-arrange", "-by", "-sample"],
     ),
@@ -654,8 +654,8 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "pytae penguins.parquet -tail",
             "pytae penguins.parquet -tail 10",
             "pytae penguins.parquet -tail 10%",
-            'pytae penguins.parquet -arrange "body_mass_g desc" -tail 3',
-            'pytae penguins.parquet -by species -arrange "body_mass_g desc" -tail 2',
+            'pytae penguins.parquet -arrange "body_mass_g.desc()" -tail 3',
+            'pytae penguins.parquet -by species -arrange "body_mass_g.desc()" -tail 2',
         ],
         see_also=["-head", "-arrange", "-by", "-sample"],
     ),

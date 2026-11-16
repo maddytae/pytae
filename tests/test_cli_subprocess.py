@@ -106,7 +106,7 @@ def test_cli_stdin_pipeline_filter_mutate_select():
         "-select",
         "species,mass_kg",
         "-arrange",
-        "mass_kg desc",
+        "mass_kg.desc()",
         stdin=csv_data,
     )
     assert proc.returncode == 0

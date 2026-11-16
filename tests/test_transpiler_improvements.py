@@ -166,7 +166,7 @@ def test_roundtrip_execution_repl_to_python(tmp_path):
     # 3. In-place mutate with shorthand flag
     r.execute_line("df = -mutate \"bonus = score * 1.1\"", output_fn=outputs.append)
     # 4. Pipeline with output
-    r.execute_line(f"df -arrange \"bonus desc\" -o {out_file}", output_fn=outputs.append)
+    r.execute_line(f"df -arrange \"bonus.desc()\" -o {out_file}", output_fn=outputs.append)
 
     repl_result = r.current_df.to_dict(as_series=False)
 

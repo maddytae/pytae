@@ -44,7 +44,7 @@ Yet for over a decade, tabular data engineering and data science have drifted fa
 │ 1. ONE CANONICAL VERB     │ Exactly one obvious verb per task: filter, mutate, arrange, │
 │                           │ by, agg, distinct, head, tail, wide, long, pivot, join.     │
 ├───────────────────────────┼────────────────────────────────────────────────────────────┤
-│ 2. ZERO SYNTAX AMBIGUITY  │ No competing shortcuts or dual APIs. Explicit 'desc' for   │
+│ 2. ZERO SYNTAX AMBIGUITY  │ No competing shortcuts or dual APIs. Explicit '.desc()' for│
 │                           │ sorting; explicit predicate strings for missing checks.    │
 ├───────────────────────────┼────────────────────────────────────────────────────────────┤
 │ 3. DUAL-MODALITY PARITY   │ 100% grammar symmetry between Python library & terminal    │
@@ -104,7 +104,7 @@ pytae penguins.parquet \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm, status = 'verified'" \
   -by species, island \
   -agg "n = count(), avg_mass_kg = body_mass_kg.mean(), max_ratio = bill_ratio.max()" \
-  -arrange "avg_mass_kg desc" \
+  -arrange "avg_mass_kg.desc()" \
   -o summary.parquet
 ```
 
@@ -196,7 +196,7 @@ Whether you are writing a production Python service, conducting exploratory anal
         .mutate(tax=c.sales * 0.08)                   -mutate "tax = sales * 0.08"
         .by(c.region)                                 -by region
         .agg(total_rev=c.sales.sum(), n=c.sales.count()) -agg "total_rev = sales.sum(), n = count()"
-        .arrange(c.total_rev.desc())                  -arrange "total_rev desc"
+        .arrange(c.total_rev.desc())                  -arrange "total_rev.desc()"
                       │                                       │
                       ▼                                       ▼
               In-Memory Result                          Stdout / Export

@@ -201,9 +201,9 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 | Task | Pandas | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
 | **Ascending** | `df.sort_values('sales')` | `df.arrange(c.sales.asc())` | `-arrange sales` |
-| **Descending** | `df.sort_values('sales', ascending=False)` | `df.arrange(c.sales.desc())` | `-arrange "sales desc"` |
-| **Multi-Column Mixed** | `df.sort_values(['a', 'b'], ascending=[True, False])` | `df.arrange(c.a.asc(), c.b.desc())` | `-arrange "a, b desc"` |
-| **Spaced Columns** | `df.sort_values('gross sales')` | `df.arrange(c['gross sales'].desc())` | `-arrange "[gross sales] desc"` |
+| **Descending** | `df.sort_values('sales', ascending=False)` | `df.arrange(c.sales.desc())` | `-arrange "sales.desc()"` |
+| **Multi-Column Mixed** | `df.sort_values(['a', 'b'], ascending=[True, False])` | `df.arrange(c.a.asc(), c.b.desc())` | `-arrange "a, b.desc()"` |
+| **Spaced Columns** | `df.sort_values('gross sales')` | `df.arrange(c['gross sales'].desc())` | `-arrange "[gross sales].desc()"` |
 
 ### 5. Grouped Aggregation & Counting (`count`, `by` + `agg`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
@@ -219,10 +219,10 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 ### 6. Slicing Extreme Records (`arrange` + `head` / `tail`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Top N Records** | `df.nlargest(5, 'sales')` | `df.arrange(c.sales.desc()).head(5)` | `-arrange "sales desc" -head 5` |
+| **Top N Records** | `df.nlargest(5, 'sales')` | `df.arrange(c.sales.desc()).head(5)` | `-arrange "sales.desc()" -head 5` |
 | **Bottom N Records** | `df.nsmallest(5, 'sales')` | `df.arrange(c.sales.asc()).head(5)` | `-arrange sales -head 5` |
-| **Top Percentage** | `df.nlargest(int(len(df)*0.1), 'sales')` | `df.arrange(c.sales.desc()).head(prop=0.1)` | `-arrange "sales desc" -head 10%` |
-| **Top N per Group** | `df.groupby('g').apply(lambda d: d.nlargest(3, 'x')).reset_index(drop=True)` | `df.by(c.g).arrange(c.x.desc()).head(3)` | `-by g -arrange "x desc" -head 3` |
+| **Top Percentage** | `df.nlargest(int(len(df)*0.1), 'sales')` | `df.arrange(c.sales.desc()).head(prop=0.1)` | `-arrange "sales.desc()" -head 10%` |
+| **Top N per Group** | `df.groupby('g').apply(lambda d: d.nlargest(3, 'x')).reset_index(drop=True)` | `df.by(c.g).arrange(c.x.desc()).head(3)` | `-by g -arrange "x.desc()" -head 3` |
 
 ### 7. Deduplication (`distinct`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
@@ -361,7 +361,7 @@ pytae penguins.parquet \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm" \
   -by species,island \
   -agg "n = count(), avg_mass_kg = body_mass_kg.mean(), max_ratio = bill_ratio.max()" \
-  -arrange "avg_mass_kg desc" \
+  -arrange "avg_mass_kg.desc()" \
   -o summary.parquet
 ```
 

@@ -253,8 +253,8 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
 | **Ascending Sort** | `PROC SORT; BY sales; RUN;` | `df.arrange(c.sales.asc())` | `-arrange sales` |
-| **Descending Sort** | `PROC SORT; BY DESCENDING sales; RUN;` | `df.arrange(c.sales.desc())` | `-arrange "sales desc"` |
-| **Multi-Column Sort** | `PROC SORT; BY a DESCENDING b; RUN;` | `df.arrange(c.a.asc(), c.b.desc())` | `-arrange "a, b desc"` |
+| **Descending Sort** | `PROC SORT; BY DESCENDING sales; RUN;` | `df.arrange(c.sales.desc())` | `-arrange "sales.desc()"` |
+| **Multi-Column Sort** | `PROC SORT; BY a DESCENDING b; RUN;` | `df.arrange(c.a.asc(), c.b.desc())` | `-arrange "a, b.desc()"` |
 
 ### 6. Grouped Summaries & Counting (`count`, `by` + `agg`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
@@ -274,9 +274,9 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 ### 8. Extreme Record Slicing (`arrange` + `head` / `tail`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Top N Records** | `PROC SORT; BY DESCENDING x; DATA out; SET in; IF _N_ <= 5; RUN;` | `df.arrange(c.x.desc()).head(5)` | `-arrange "x desc" -head 5` |
+| **Top N Records** | `PROC SORT; BY DESCENDING x; DATA out; SET in; IF _N_ <= 5; RUN;` | `df.arrange(c.x.desc()).head(5)` | `-arrange "x.desc()" -head 5` |
 | **Bottom N Records** | `PROC SORT; BY x; DATA out; SET in; IF _N_ <= 5; RUN;` | `df.arrange(c.x.asc()).head(5)` | `-arrange x -head 5` |
-| **Top N per Group** | `PROC SORT; BY g DESCENDING x; DATA out; SET in; BY g; IF FIRST.g; RUN;` | `df.by(c.g).arrange(c.x.desc()).head(1)` | `-by g -arrange "x desc" -head 1` |
+| **Top N per Group** | `PROC SORT; BY g DESCENDING x; DATA out; SET in; BY g; IF FIRST.g; RUN;` | `df.by(c.g).arrange(c.x.desc()).head(1)` | `-by g -arrange "x.desc()" -head 1` |
 
 ### 9. Reshaping & Pivoting (`wide`, `long`, `pivot`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
@@ -399,7 +399,7 @@ pytae vsl.sas7bdat \
   -mutate "pulse_pressure = SYSBP - DIABP, htn_tier = case_when(SYSBP >= 140 | DIABP >= 90, 'Stage 2', SYSBP >= 130 | DIABP >= 80, 'Stage 1', default='Normal')" \
   -by TRTP,SEX \
   -agg "n_subjects = count(), mean_sysbp = SYSBP.mean(), mean_pp = pulse_pressure.mean()" \
-  -arrange "mean_sysbp desc" \
+  -arrange "mean_sysbp.desc()" \
   -o summary.parquet
 ```
 

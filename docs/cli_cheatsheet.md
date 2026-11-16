@@ -203,13 +203,13 @@ pytae data.parquet -by "species, island" -agg "mean_mass = body_mass_g.mean()"
 pytae data.parquet -distinct "species, island"
 
 # Sort rows by multiple columns with directions
-pytae data.parquet -arrange "species, body_mass_g desc"
+pytae data.parquet -arrange "species, body_mass_g.desc()"
 
 # Sequential -by with single-shot zero-pollution scoping (each -by scopes the next verb, then resets)
 pytae sales.parquet -by region -mutate "regional_mean = sales.mean()" -mutate "global_mean = sales.mean()" -by dept -mutate "dept_mean = sales.mean()"
 
 # Top N per group in a single CLI command (e.g. top 2 species by avg body mass for each island)
-pytae penguins.parquet -by island, species -agg "avg_mass = body_mass_g.mean()" -arrange "island, avg_mass desc" -by island -head 2
+pytae penguins.parquet -by island, species -agg "avg_mass = body_mass_g.mean()" -arrange "island, avg_mass.desc()" -by island -head 2
 ```
 
 ---
@@ -349,7 +349,7 @@ cat raw_stream.csv | pytae - -fmt csv -shape
 pytae data.parquet -filter "body_mass_g > 4000" | grep "Biscoe" | less
 
 # Shell output redirection
-pytae data.parquet -select "species,body_mass_g" -arrange "body_mass_g desc" > top_penguins.txt
+pytae data.parquet -select "species,body_mass_g" -arrange "body_mass_g.desc()" > top_penguins.txt
 
 # Inspect compressed archives directly
 pytae archive.csv.gz -shape -head 5
@@ -440,7 +440,7 @@ pytae> -filter "species == 'Gentoo'"
 pytae> -mutate "mass_kg = body_mass_g / 1000.0"
 pytae> -by species -agg "mean_kg = mass_kg.mean(), n = count()"
 pytae> -select "species,island,mass_kg"
-pytae> -arrange "mass_kg desc"
+pytae> -arrange "mass_kg.desc()"
 pytae> -cols asc                                             # Column names sorted alphabetically
 pytae> -cols | grep mass                                     # Pipe command output to shell utility
 # Multi-line continuation: pipelines with '\', SQL with quotes, dicts/lists with brackets, 'py { ... }' for blocks

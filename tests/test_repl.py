@@ -3939,7 +3939,7 @@ def test_export_script_pt_and_py_e2e(tmp_path, monkeypatch):
     r.execute_line("peng = sample:penguins", output_fn=outputs.append)
     r.execute_line("peng -head 5", output_fn=outputs.append)  # pure REPL inspection (must be skipped)
     r.execute_line("py { print(peng.shape) }", output_fn=outputs.append)  # pure Python inspection (must be skipped)
-    r.execute_line("peng = peng -filter \"species == 'Adelie'\" -arrange \"bill_length_mm desc\"", output_fn=outputs.append)
+    r.execute_line("peng = peng -filter \"species == 'Adelie'\" -arrange \"bill_length_mm.desc()\"", output_fn=outputs.append)
 
     # Mutating Python block
     py_block = (

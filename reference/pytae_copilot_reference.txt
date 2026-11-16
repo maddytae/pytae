@@ -122,16 +122,17 @@ RULE 0: DUAL EXPRESSION ARCHITECTURE — c. IN PYTHON, BARE COLUMNS (NO c.) IN C
 - Feature engineering: `pytae data.parquet -mutate "ratio = revenue / cost, clean_name = name.str.to_upper()"`
 - Column selection: `pytae data.parquet -select "id, name, dept"` or `pytae data.parquet -select "~ssn"`
 - Grouping & aggregation: `pytae data.parquet -by dept -agg "salary = sum(), avg_sal = salary.mean(), count = count()"`
-- Sorting: `pytae data.parquet -arrange "dept, salary desc"`
+- Sorting: `pytae data.parquet -arrange "dept, salary.desc()"`
 - Column names with spaces: `pytae data.parquet -filter "[Annual Revenue] > 50000"`
 
 RULE 1: STRICT CANONICAL VERBS ONLY
 - Row filtering: ALWAYS `-filter` (CLI) or `df.filter()` (Python). 
   * NEVER output `-qry`, `-query`, or `df.query()`.
 - Row sorting: ALWAYS `-arrange` (CLI) or `df.arrange()` (Python).
-  * Explicit descending: `body_mass_g desc`.
+  * Explicit descending: `body_mass_g.desc()`.
   * NEVER output `-sort`, `-sort_by`, or `-order`.
-  * NEVER prefix columns with `-` (e.g. `-arrange "-col"` is an error; use `-arrange "col desc"`).
+  * NEVER prefix columns with `-` (e.g. `-arrange "-col"` is an error).
+  * The old `col desc` space syntax is retired: use canonical `col.desc()`.
 - Deduplication: ALWAYS `-distinct` (CLI) or `df.distinct()` (Python).
   * NEVER output `-dedupe` or `df.drop_duplicates()`.
 - Counting: ALWAYS `-count` (CLI) or `df.count()` (Python) or `agg(total="count")`.
@@ -148,7 +149,7 @@ RULE 2: SHELL QUOTING STANDARD (BASH / ZSH)
 - Column identifiers must remain UNQUOTED (e.g. `body_mass_g > 3500`).
 - If a column name contains spaces, enclose it in square brackets `[col name]`:
   * Example: `pytae data.parquet -filter "[body mass g] > 3500"`
-  * Example: `pytae data.parquet -arrange "[bill length mm] desc"`
+  * Example: `pytae data.parquet -arrange "[bill length mm].desc()"`
 
 RULE 3: SINGLE-SHOT ZERO-POLLUTION GROUPING (`-by` / `df.by()`)
 - In Pytae, grouping is strictly single-shot and auto-clearing.
@@ -161,10 +162,10 @@ RULE 4: CHAINED PIPELINES & SEQUENTIAL `-by` (TOP N RECIPE)
 - Pytae CLI allows sequential `-by` flags in a single command. Each `-by` scopes the next verb, allowing multi-stage aggregation, whole-table sorting, and group-aware slicing:
   ```bash
   # Top 2 species by average body mass for each island:
-  pytae sample:penguins     -by island,species -agg "avg_mass=mean(body_mass_g)"     -arrange "island, avg_mass desc"     -by island -head 2
+  pytae sample:penguins     -by island,species -agg "avg_mass=mean(body_mass_g)"     -arrange "island, avg_mass.desc()"     -by island -head 2
   ```
   * Step 1: `-by island,species -agg ...` groups by island & species and collapses to summary rows.
-  * Step 2: `-arrange "island, avg_mass desc"` sorts all rows globally (whole-table scope).
+  * Step 2: `-arrange "island, avg_mass.desc()"` sorts all rows globally (whole-table scope).
   * Step 3: `-by island -head 2` groups by island and takes top 2 rows per island, then resets.
 - ANSI SQL Alternative via `-sql`:
   ```bash
@@ -202,9 +203,9 @@ RULE 7: THE "TWIN PROOF" RULE (GROUND ON SAMPLE DATASETS)
   - Example:
     * User Query: "Top 2 customers by avg profit for each zone in sales.parquet"
     * Direct Solution:
-      pytae sales.parquet         -by zone,customer -agg "avg_profit=mean(profit)"         -arrange "zone, avg_profit desc"         -by zone -head 2
+      pytae sales.parquet         -by zone,customer -agg "avg_profit=mean(profit)"         -arrange "zone, avg_profit.desc()"         -by zone -head 2
     * Twin Proof on sample:penguins (zone -> island, customer -> species, profit -> body_mass_g):
-      pytae sample:penguins         -by island,species -agg "avg_mass=mean(body_mass_g)"         -arrange "island, avg_mass desc"         -by island -head 2
+      pytae sample:penguins         -by island,species -agg "avg_mass=mean(body_mass_g)"         -arrange "island, avg_mass.desc()"         -by island -head 2
 ================================================================================
 
 
@@ -614,10 +615,9 @@ Signature:
   ) -> pd.DataFrame
 
 Calling Styles:
-  # Ascending (default), descending ("desc" or leading "-"), bracketed for spaces
-  df.pt.arrange("species", "body_mass_g desc")
-  df.pt.arrange("species, -body_mass_g")
-  df.pt.arrange("[bill length mm] desc")
+  # Ascending (default or .asc()), descending (.desc()), bracketed for spaces
+  df.arrange(c.species, c.body_mass_g.desc())
+  df.arrange(c['bill length mm'].desc())
 
 
 4.6. head() / tail() — Group-Aware & Proportion-Aware Row Slicing
@@ -643,20 +643,20 @@ Calling Styles:
   df.head("10%")
 
   # Extreme top/bottom rows via arrange
-  df.arrange("body_mass_g desc").head(3)     # Heaviest 3 penguins
-  df.arrange("body_mass_g").head(3)          # Lightest 3 penguins (or df.arrange("body_mass_g desc").tail(3))
+  df.arrange(c.body_mass_g.desc()).head(3)     # Heaviest 3 penguins
+  df.arrange(c.body_mass_g.asc()).head(3)      # Lightest 3 penguins (or df.arrange(c.body_mass_g.desc()).tail(3))
 
   # Group-aware row slicing:
   (
       penguins
-      .by("species")
-      .arrange("body_mass_g desc")
+      .by(c.species)
+      .arrange(c.body_mass_g.desc())
       .head(1)
-      .select("species", "island", "body_mass_g")
+      .select(c.species, c.island, c.body_mass_g)
   )
 
   # Boundary ties included:
-  df.arrange("body_mass_g desc").head(3, with_ties=True)
+  df.arrange(c.body_mass_g.desc()).head(3, with_ties=True)
 
 
 4.7. pt.distinct() / df.pt.distinct() — Deduplication
@@ -946,7 +946,7 @@ Inspection & Summary Flags:
   -sample [SPEC]        Random sample of rows: count (e.g. 10), percentage (e.g. 5%), or fraction (e.g. 0.05)
   -seed N               Random seed for sampling
   -nrows, -limit N      Limit reading to first N rows of file
-  -arrange SPEC         Sort rows by columns: e.g. -arrange "col1, col2 asc" or -arrange "col1 desc"
+  -arrange SPEC         Sort rows by columns: e.g. -arrange "col1, col2.desc()"
 
 In-Terminal Visualizations:
   -freq COL             Render horizontal frequency distribution bars with counts & percentages
@@ -1860,7 +1860,7 @@ To compute group-level metrics and then filter for the top $N$ entities within a
 ```bash
 pytae sample:penguins \
   -by island, species -agg "avg_mass = body_mass_g.mean()" \
-  -arrange "island, avg_mass desc" \
+  -arrange "island, avg_mass.desc()" \
   -by island -head 2
 ```
 
@@ -1877,7 +1877,7 @@ pytae sample:penguins \
 > [!NOTE]
 > **Single-Shot Zero-Pollution Scoping**: In Pytae CLI, `-by` is strictly single-shot and auto-clears after the verb that consumes it:
 > 1. `-by island,species` scopes `-agg "avg_mass=mean(body_mass_g)"` and collapses rows to island-species pairs.
-> 2. `-arrange "island, avg_mass desc"` sorts all rows globally (whole-table scope).
+> 2. `-arrange "island, avg_mass.desc()"` sorts all rows globally (whole-table scope).
 > 3. `-by island` scopes `-head 2`, slicing the top 2 rows for each island before resetting to clean ungrouped state.
 
 Alternatively, you can compute this using ANSI SQL via `-sql`:
@@ -1963,7 +1963,7 @@ By default, missing values (`NaN`) in group columns form their own group (`dropn
 
 ```bash
 # Keep missing sex as its own group (default)
-pytae penguins.parquet -by sex -agg "body_mass_g = body_mass_g.mean(), dropna = false" -round 1
+pytae penguins.parquet -by sex -agg "body_mass_g = mean(), dropna = false" -round 1
 ```
 
 **Output:**
@@ -1978,7 +1978,7 @@ To drop rows with missing group keys, either specify `dropna=true` inside the `-
 
 ```bash
 # In-spec dropna=true
-pytae penguins.parquet -by sex -agg "body_mass_g = body_mass_g.mean(), dropna = true" -round 1
+pytae penguins.parquet -by sex -agg "body_mass_g = mean(), dropna = true" -round 1
 ```
 
 **Output:**
@@ -2025,16 +2025,16 @@ Order DataFrame rows by one or more columns with full support for descending ord
 
 | Flag | Syntax / Format | Description |
 |---|---|---|
-| `-arrange SPEC` | `col` | Sort ascending (default) |
-| `-arrange SPEC` | `col desc` | Sort descending |
-| `-arrange SPEC` | `col1, col2 desc` | Multi-column hierarchical sort |
-| `-arrange SPEC` | `"[col name] desc"` | Sort columns containing spaces |
+| `-arrange SPEC` | `col` or `col.asc()` | Sort ascending (default) |
+| `-arrange SPEC` | `col.desc()` | Sort descending |
+| `-arrange SPEC` | `col1, col2.desc()` | Multi-column hierarchical sort |
+| `-arrange SPEC` | `"[col name].desc()"` | Sort columns containing spaces |
 
 ---
 
 ## Ascending Sort (Default)
 
-By default, `-arrange` sorts rows in ascending order:
+By default, `-arrange` sorts rows in ascending order (explicit `.asc()` is also supported):
 
 ```bash
 # Sort ascending by body mass
@@ -2053,13 +2053,13 @@ pytae penguins.parquet -arrange body_mass_g -select "species, island, body_mass_
 
 ---
 
-## Descending Sort (`desc`)
+## Descending Sort (`.desc()`)
 
-Specify descending order explicitly by appending `desc`:
+Specify descending order explicitly using canonical `.desc()`:
 
 ```bash
-# Explicit 'desc'
-pytae penguins.parquet -arrange "body_mass_g desc" -select "species, island, body_mass_g" -head 5
+# Explicit '.desc()'
+pytae penguins.parquet -arrange "body_mass_g.desc()" -select "species, island, body_mass_g" -head 5
 ```
 
 **Output:**
@@ -2080,7 +2080,7 @@ Pass multiple columns separated by commas:
 
 ```bash
 # Species ascending, body mass descending
-pytae penguins.parquet -arrange "species, body_mass_g desc" -select "species,island,body_mass_g" -head 6
+pytae penguins.parquet -arrange "species, body_mass_g.desc()" -select "species,island,body_mass_g" -head 6
 ```
 
 **Output:**
@@ -2096,12 +2096,12 @@ pytae penguins.parquet -arrange "species, body_mass_g desc" -select "species,isl
 
 ---
 
-## Columns With Spaces (`[col name]`)
+## Columns With Spaces (`[col name].desc()`)
 
 Columns with spaces are cleanly referenced using square brackets:
 
 ```bash
-pytae sales.csv -arrange "[annual revenue] desc" -head 5
+pytae sales.csv -arrange "[annual revenue].desc()" -head 5
 ```
 
 **Output:**
@@ -3187,7 +3187,7 @@ Extract top or bottom rows ordered by a specific column by composing `-arrange` 
 ### Top N Rows Overall
 
 ```bash
-pytae penguins.parquet -arrange "body_mass_g desc" -head 3 -select "species,island,body_mass_g"
+pytae penguins.parquet -arrange "body_mass_g.desc()" -head 3 -select "species,island,body_mass_g"
 ```
 
 **Output:**
@@ -3300,7 +3300,7 @@ In terminal shells (bash, zsh):
 - Enclose the entire spec in outer double quotes: `-filter "..."`.
 - Enclose string literals in inner single quotes: `'Gentoo'`, `'9'`. Unquoted strings or numbers against string columns will raise an explicit `TypeError`.
 - Numeric literals should remain unquoted: `body_mass_g > 3500`.
-- Columns with spaces should be wrapped in brackets: `[bill length mm] > 40` or `-arrange "[bill length mm] desc" -head 3`.
+- Columns with spaces should be wrapped in brackets: `[bill length mm] > 40` or `-arrange "[bill length mm].desc()" -head 3`.
 
 ################################################################################
 # FILE: docs/guides/head_tail.md
@@ -3331,7 +3331,7 @@ Extract first, last, or extreme rows with full group awareness via `-by`, propor
 |---|---|---|
 | `-head [LIMIT]` | Extract first $N$ rows, percentage, or proportion | `-head 5`, `-head 10%`, `-head 0.1`, `-head "3, ties=true"` |
 | `-tail [LIMIT]` | Extract last $N$ rows, percentage, or proportion | `-tail 5`, `-tail 10%`, `-tail 0.1`, `-tail "3, ties=true"` |
-| `-by COLS` | Partition rows into groups before slicing | `-by species -head 2`, `-by species -arrange "mass desc" -head 1` |
+| `-by COLS` | Partition rows into groups before slicing | `-by species -head 2`, `-by species -arrange "mass.desc()" -head 1` |
 
 When `-head` or `-tail` is passed without an explicit limit, it defaults to 5 rows. Slicing preserves column order, resets the row index, and cleanly ungroups.
 
@@ -3387,7 +3387,7 @@ In accordance with Pytae's *"One and Only One Obvious Way"*, extreme row selecti
 
 ```bash
 # Top 3 heaviest penguins overall
-pytae penguins.parquet -arrange "body_mass_g desc" -head 3 -select "species,island,body_mass_g"
+pytae penguins.parquet -arrange "body_mass_g.desc()" -head 3 -select "species,island,body_mass_g"
 ```
 
 **Output:**
@@ -3405,7 +3405,7 @@ pytae penguins.parquet -arrange "body_mass_g desc" -head 3 -select "species,isla
 pytae penguins.parquet -arrange body_mass_g -head 3 -select "species,island,body_mass_g"
 ```
 
-*(Alternatively: `pytae penguins.parquet -arrange "body_mass_g desc" -tail 3`)*
+*(Alternatively: `pytae penguins.parquet -arrange "body_mass_g.desc()" -tail 3`)*
 
 **Output:**
 
@@ -3425,7 +3425,7 @@ When combined with `-by`, `-head` and `-tail` extract rows **within each unique 
 
 ```bash
 # Top 1 heaviest penguin for each species
-pytae penguins.parquet -by species -arrange "body_mass_g desc" -head 1 -select "species,island,body_mass_g"
+pytae penguins.parquet -by species -arrange "body_mass_g.desc()" -head 1 -select "species,island,body_mass_g"
 ```
 
 **Output:**
@@ -3456,7 +3456,7 @@ pytae penguins.parquet -by island -arrange body_mass_g -head 2 -select "island,s
 ### Top 10% per Group
 
 ```bash
-pytae penguins.parquet -by species -arrange "body_mass_g desc" -head 10% -select "species,island,body_mass_g"
+pytae penguins.parquet -by species -arrange "body_mass_g.desc()" -head 10% -select "species,island,body_mass_g"
 ```
 
 ### Top N per Group in Chained Pipelines (Sequential `-by`)
@@ -3467,7 +3467,7 @@ In Pytae CLI, `-by` operates with **single-shot zero-pollution scoping**: each `
 # Top 2 species by average body mass for each island
 pytae penguins.parquet \
   -by island,species -agg "avg_mass=mean(body_mass_g)" \
-  -arrange "island, avg_mass desc" \
+  -arrange "island, avg_mass.desc()" \
   -by island -head 2
 ```
 
@@ -3489,7 +3489,7 @@ When multiple rows share the exact value at the $N$-th boundary rank, pass `ties
 
 ```bash
 # Include ties at the rank boundary
-pytae penguins.parquet -arrange "body_mass_g desc" -head "3, ties=true" -select "species,island,body_mass_g"
+pytae penguins.parquet -arrange "body_mass_g.desc()" -head "3, ties=true" -select "species,island,body_mass_g"
 ```
 
 ---
@@ -3497,9 +3497,9 @@ pytae penguins.parquet -arrange "body_mass_g desc" -head "3, ties=true" -select 
 ## Retirement of Legacy `-pick`
 
 The niche verb `-pick` has been removed. In Pytae:
-- Selecting top records is simply `-arrange "col desc" -head N`.
-- Selecting bottom records is `-arrange col -head N` (or `-arrange "col desc" -tail N`).
-- Grouped extreme selection is `-by group -arrange "col desc" -head N`.
+- Selecting top records is simply `-arrange "col.desc()" -head N`.
+- Selecting bottom records is `-arrange col -head N` (or `-arrange "col.desc()" -tail N`).
+- Grouped extreme selection is `-by group -arrange "col.desc()" -head N`.
 
 Calling `-pick` raises an immediate, helpful redirect error guiding users to compose `-arrange` and `-head`/`-tail`.
 
@@ -4146,7 +4146,7 @@ pytae o=orders.parquet c=customers.csv \
   -mutate "tax = amount * 0.0825, total = amount + tax" \
   -by customer_name \
   -agg "spent = total.sum(), orders = count()" \
-  -arrange "spent desc" \
+  -arrange "spent.desc()" \
   -head 10 \
   -o top_west_customers.parquet
 ```
@@ -13618,7 +13618,7 @@ pytae [penguins]> -filter "body_mass_g > 3500" \
                   -mutate "mass_kg = body_mass_g / 1000" \
                   -by species, island \
                   -agg "n = count(), avg_mass = mass_kg.mean()" \
-                  -arrange "avg_mass desc"
+                  -arrange "avg_mass.desc()"
 ```
 
 ### Multi-Line Pipeline Continuation (`\`)
@@ -13628,7 +13628,7 @@ For long or complex transformation chains, terminate lines with a backslash `\` 
 ```text
 pytae [df: 10,000x8]> df = -filter "status == 'completed'" \
                       -mutate "margin = revenue - cost" \
-                      -arrange "margin desc" \
+                      -arrange "margin.desc()" \
                       -head 10
 Updated 'df' (10 rows x 9 cols).
 ```
@@ -14104,7 +14104,7 @@ If you wish to mutate the currently active table using Python logic:
 
 ```text
 pytae [orders: 100,000x6]> py {
-... df = orders.filter("amount > 0").arrange("amount desc")
+... df = orders.filter(c.amount > 0).arrange(c.amount.desc())
 ... }
 Updated active table 'orders' (98,420 rows x 6 cols).
 ```
@@ -14944,7 +14944,7 @@ Yet for over a decade, tabular data engineering and data science have drifted fa
 │ 1. ONE CANONICAL VERB     │ Exactly one obvious verb per task: filter, mutate, arrange, │
 │                           │ by, agg, distinct, head, tail, wide, long, pivot, join.     │
 ├───────────────────────────┼────────────────────────────────────────────────────────────┤
-│ 2. ZERO SYNTAX AMBIGUITY  │ No competing shortcuts or dual APIs. Explicit 'desc' for   │
+│ 2. ZERO SYNTAX AMBIGUITY  │ No competing shortcuts or dual APIs. Explicit '.desc()' for│
 │                           │ sorting; explicit predicate strings for missing checks.    │
 ├───────────────────────────┼────────────────────────────────────────────────────────────┤
 │ 3. DUAL-MODALITY PARITY   │ 100% grammar symmetry between Python library & terminal    │
@@ -15004,7 +15004,7 @@ pytae penguins.parquet \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm, status = 'verified'" \
   -by species, island \
   -agg "n = count(), avg_mass_kg = body_mass_kg.mean(), max_ratio = bill_ratio.max()" \
-  -arrange "avg_mass_kg desc" \
+  -arrange "avg_mass_kg.desc()" \
   -o summary.parquet
 ```
 
@@ -15096,7 +15096,7 @@ Whether you are writing a production Python service, conducting exploratory anal
         .mutate(tax=c.sales * 0.08)                   -mutate "tax = sales * 0.08"
         .by(c.region)                                 -by region
         .agg(total_rev=c.sales.sum(), n=c.sales.count()) -agg "total_rev = sales.sum(), n = count()"
-        .arrange(c.total_rev.desc())                  -arrange "total_rev desc"
+        .arrange(c.total_rev.desc())                  -arrange "total_rev.desc()"
                       │                                       │
                       ▼                                       ▼
               In-Memory Result                          Stdout / Export
@@ -15550,13 +15550,13 @@ pytae data.parquet -by "species, island" -agg "mean_mass = body_mass_g.mean()"
 pytae data.parquet -distinct "species, island"
 
 # Sort rows by multiple columns with directions
-pytae data.parquet -arrange "species, body_mass_g desc"
+pytae data.parquet -arrange "species, body_mass_g.desc()"
 
 # Sequential -by with single-shot zero-pollution scoping (each -by scopes the next verb, then resets)
 pytae sales.parquet -by region -mutate "regional_mean = sales.mean()" -mutate "global_mean = sales.mean()" -by dept -mutate "dept_mean = sales.mean()"
 
 # Top N per group in a single CLI command (e.g. top 2 species by avg body mass for each island)
-pytae penguins.parquet -by island, species -agg "avg_mass = body_mass_g.mean()" -arrange "island, avg_mass desc" -by island -head 2
+pytae penguins.parquet -by island, species -agg "avg_mass = body_mass_g.mean()" -arrange "island, avg_mass.desc()" -by island -head 2
 ```
 
 ---
@@ -15696,7 +15696,7 @@ cat raw_stream.csv | pytae - -fmt csv -shape
 pytae data.parquet -filter "body_mass_g > 4000" | grep "Biscoe" | less
 
 # Shell output redirection
-pytae data.parquet -select "species,body_mass_g" -arrange "body_mass_g desc" > top_penguins.txt
+pytae data.parquet -select "species,body_mass_g" -arrange "body_mass_g.desc()" > top_penguins.txt
 
 # Inspect compressed archives directly
 pytae archive.csv.gz -shape -head 5
@@ -15787,7 +15787,7 @@ pytae> -filter "species == 'Gentoo'"
 pytae> -mutate "mass_kg = body_mass_g / 1000.0"
 pytae> -by species -agg "mean_kg = mass_kg.mean(), n = count()"
 pytae> -select "species,island,mass_kg"
-pytae> -arrange "mass_kg desc"
+pytae> -arrange "mass_kg.desc()"
 pytae> -cols asc                                             # Column names sorted alphabetically
 pytae> -cols | grep mass                                     # Pipe command output to shell utility
 # Multi-line continuation: pipelines with '\', SQL with quotes, dicts/lists with brackets, 'py { ... }' for blocks
@@ -16069,9 +16069,9 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 | Task | Pandas | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
 | **Ascending** | `df.sort_values('sales')` | `df.arrange(c.sales.asc())` | `-arrange sales` |
-| **Descending** | `df.sort_values('sales', ascending=False)` | `df.arrange(c.sales.desc())` | `-arrange "sales desc"` |
-| **Multi-Column Mixed** | `df.sort_values(['a', 'b'], ascending=[True, False])` | `df.arrange(c.a.asc(), c.b.desc())` | `-arrange "a, b desc"` |
-| **Spaced Columns** | `df.sort_values('gross sales')` | `df.arrange(c['gross sales'].desc())` | `-arrange "[gross sales] desc"` |
+| **Descending** | `df.sort_values('sales', ascending=False)` | `df.arrange(c.sales.desc())` | `-arrange "sales.desc()"` |
+| **Multi-Column Mixed** | `df.sort_values(['a', 'b'], ascending=[True, False])` | `df.arrange(c.a.asc(), c.b.desc())` | `-arrange "a, b.desc()"` |
+| **Spaced Columns** | `df.sort_values('gross sales')` | `df.arrange(c['gross sales'].desc())` | `-arrange "[gross sales].desc()"` |
 
 ### 5. Grouped Aggregation & Counting (`count`, `by` + `agg`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
@@ -16087,10 +16087,10 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 ### 6. Slicing Extreme Records (`arrange` + `head` / `tail`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Top N Records** | `df.nlargest(5, 'sales')` | `df.arrange(c.sales.desc()).head(5)` | `-arrange "sales desc" -head 5` |
+| **Top N Records** | `df.nlargest(5, 'sales')` | `df.arrange(c.sales.desc()).head(5)` | `-arrange "sales.desc()" -head 5` |
 | **Bottom N Records** | `df.nsmallest(5, 'sales')` | `df.arrange(c.sales.asc()).head(5)` | `-arrange sales -head 5` |
-| **Top Percentage** | `df.nlargest(int(len(df)*0.1), 'sales')` | `df.arrange(c.sales.desc()).head(prop=0.1)` | `-arrange "sales desc" -head 10%` |
-| **Top N per Group** | `df.groupby('g').apply(lambda d: d.nlargest(3, 'x')).reset_index(drop=True)` | `df.by(c.g).arrange(c.x.desc()).head(3)` | `-by g -arrange "x desc" -head 3` |
+| **Top Percentage** | `df.nlargest(int(len(df)*0.1), 'sales')` | `df.arrange(c.sales.desc()).head(prop=0.1)` | `-arrange "sales.desc()" -head 10%` |
+| **Top N per Group** | `df.groupby('g').apply(lambda d: d.nlargest(3, 'x')).reset_index(drop=True)` | `df.by(c.g).arrange(c.x.desc()).head(3)` | `-by g -arrange "x.desc()" -head 3` |
 
 ### 7. Deduplication (`distinct`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
@@ -16229,7 +16229,7 @@ pytae penguins.parquet \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm" \
   -by species,island \
   -agg "n = count(), avg_mass_kg = body_mass_kg.mean(), max_ratio = bill_ratio.max()" \
-  -arrange "avg_mass_kg desc" \
+  -arrange "avg_mass_kg.desc()" \
   -o summary.parquet
 ```
 
@@ -16418,9 +16418,9 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
 | **Ascending** | `arrange(df, sales)` | `df.arrange(c.sales.asc())` | `-arrange sales` |
-| **Descending** | `arrange(df, desc(sales))` | `df.arrange(c.sales.desc())` | `-arrange "sales desc"` |
-| **Multi-Column Mixed** | `arrange(df, a, desc(b))` | `df.arrange(c.a.asc(), c.b.desc())` | `-arrange "a, b desc"` |
-| **Spaced Columns** | `arrange(df, desc(\`gross sales\`))` | `df.arrange(c['gross sales'].desc())` | `-arrange "[gross sales] desc"` |
+| **Descending** | `arrange(df, desc(sales))` | `df.arrange(c.sales.desc())` | `-arrange "sales.desc()"` |
+| **Multi-Column Mixed** | `arrange(df, a, desc(b))` | `df.arrange(c.a.asc(), c.b.desc())` | `-arrange "a, b.desc()"` |
+| **Spaced Columns** | `arrange(df, desc(\`gross sales\`))` | `df.arrange(c['gross sales'].desc())` | `-arrange "[gross sales].desc()"` |
 
 ### 5. Grouped Summaries & Counting (`count`, `by` + `agg`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
@@ -16435,10 +16435,10 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 ### 6. Slicing Top / Bottom Records (`arrange` + `head` / `tail`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Top N Records** | `slice_max(df, sales, n = 5)` | `df.arrange("sales desc").head(5)` | `-arrange "sales desc" -head 5` |
-| **Bottom N Records** | `slice_min(df, sales, n = 5)` | `df.arrange("sales").head(5)` | `-arrange sales -head 5` |
-| **Top Proportion** | `slice_max(df, sales, prop = 0.1)` | `df.arrange("sales desc").head(prop=0.1)` | `-arrange "sales desc" -head 10%` |
-| **Top N per Group** | `df %>% group_by(g) %>% slice_max(x, n = 3) %>% ungroup()` | `df.by("g").arrange("x desc").head(3)` | `-by g -arrange "x desc" -head 3` |
+| **Top N Records** | `slice_max(df, sales, n = 5)` | `df.arrange(c.sales.desc()).head(5)` | `-arrange "sales.desc()" -head 5` |
+| **Bottom N Records** | `slice_min(df, sales, n = 5)` | `df.arrange(c.sales.asc()).head(5)` | `-arrange sales -head 5` |
+| **Top Proportion** | `slice_max(df, sales, prop = 0.1)` | `df.arrange(c.sales.desc()).head(prop=0.1)` | `-arrange "sales.desc()" -head 10%` |
+| **Top N per Group** | `df %>% group_by(g) %>% slice_max(x, n = 3) %>% ungroup()` | `df.by(c.g).arrange(c.x.desc()).head(3)` | `-by g -arrange "x.desc()" -head 3` |
 
 ### 7. Deduplication (`distinct`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
@@ -16544,7 +16544,7 @@ pytae penguins.parquet \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm" \
   -by species,island \
   -agg "n = count(), avg_mass_kg = body_mass_kg.mean(), max_ratio = bill_ratio.max()" \
-  -arrange "avg_mass_kg desc" \
+  -arrange "avg_mass_kg.desc()" \
   -o summary.parquet
 ```
 
@@ -16809,8 +16809,8 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
 | **Ascending Sort** | `PROC SORT; BY sales; RUN;` | `df.arrange(c.sales.asc())` | `-arrange sales` |
-| **Descending Sort** | `PROC SORT; BY DESCENDING sales; RUN;` | `df.arrange(c.sales.desc())` | `-arrange "sales desc"` |
-| **Multi-Column Sort** | `PROC SORT; BY a DESCENDING b; RUN;` | `df.arrange(c.a.asc(), c.b.desc())` | `-arrange "a, b desc"` |
+| **Descending Sort** | `PROC SORT; BY DESCENDING sales; RUN;` | `df.arrange(c.sales.desc())` | `-arrange "sales.desc()"` |
+| **Multi-Column Sort** | `PROC SORT; BY a DESCENDING b; RUN;` | `df.arrange(c.a.asc(), c.b.desc())` | `-arrange "a, b.desc()"` |
 
 ### 6. Grouped Summaries & Counting (`count`, `by` + `agg`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
@@ -16830,9 +16830,9 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 ### 8. Extreme Record Slicing (`arrange` + `head` / `tail`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Top N Records** | `PROC SORT; BY DESCENDING x; DATA out; SET in; IF _N_ <= 5; RUN;` | `df.arrange(c.x.desc()).head(5)` | `-arrange "x desc" -head 5` |
+| **Top N Records** | `PROC SORT; BY DESCENDING x; DATA out; SET in; IF _N_ <= 5; RUN;` | `df.arrange(c.x.desc()).head(5)` | `-arrange "x.desc()" -head 5` |
 | **Bottom N Records** | `PROC SORT; BY x; DATA out; SET in; IF _N_ <= 5; RUN;` | `df.arrange(c.x.asc()).head(5)` | `-arrange x -head 5` |
-| **Top N per Group** | `PROC SORT; BY g DESCENDING x; DATA out; SET in; BY g; IF FIRST.g; RUN;` | `df.by(c.g).arrange(c.x.desc()).head(1)` | `-by g -arrange "x desc" -head 1` |
+| **Top N per Group** | `PROC SORT; BY g DESCENDING x; DATA out; SET in; BY g; IF FIRST.g; RUN;` | `df.by(c.g).arrange(c.x.desc()).head(1)` | `-by g -arrange "x.desc()" -head 1` |
 
 ### 9. Reshaping & Pivoting (`wide`, `long`, `pivot`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
@@ -16955,7 +16955,7 @@ pytae vsl.sas7bdat \
   -mutate "pulse_pressure = SYSBP - DIABP, htn_tier = case_when(SYSBP >= 140 | DIABP >= 90, 'Stage 2', SYSBP >= 130 | DIABP >= 80, 'Stage 1', default='Normal')" \
   -by TRTP,SEX \
   -agg "n_subjects = count(), mean_sysbp = SYSBP.mean(), mean_pp = pulse_pressure.mean()" \
-  -arrange "mean_sysbp desc" \
+  -arrange "mean_sysbp.desc()" \
   -o summary.parquet
 ```
 

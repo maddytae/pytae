@@ -166,7 +166,7 @@ def test_sequential_by_arrange_slice_scoping(tmp_path, capsys):
             "-by",
             "grp",
             "-arrange",
-            "val desc",
+            "val.desc()",
             "-head",
             "1",
             "-mutate",
