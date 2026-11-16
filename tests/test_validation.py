@@ -108,10 +108,16 @@ def test_check_dsl_string_select():
 def test_check_dsl_string_arrange():
     # Valid
     assert check_dsl_string("arrange", "a desc, b asc") == []
+    assert check_dsl_string("arrange", "`col name`") == []
+    assert check_dsl_string("arrange", "'col name'") == []
+    assert check_dsl_string("arrange", '"col name"') == []
+    assert check_dsl_string("arrange", "[col name]") == []
 
     # Invalid direction
     errs = check_dsl_string("arrange", "a descc")
     assert any("invalid sort direction" in e for e in errs)
+    errs_invalid_quoted = check_dsl_string("arrange", "`col name` descc")
+    assert any("invalid sort direction" in e for e in errs_invalid_quoted)
 
 
 def test_check_dsl_string_agg():

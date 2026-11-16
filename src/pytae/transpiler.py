@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from pytae.repl_utils import (
+    _normalize_unquoted_windows_paths,
     _parse_reader_options,
     _to_relative_path,
 )
@@ -417,7 +418,7 @@ def _extract_entry_def_and_uses(entry: str) -> tuple[set[str], set[str], bool, b
     Returns:
         (defs, uses, has_side_effect, is_barrier)
     """
-    clean = entry.strip()
+    clean = _normalize_unquoted_windows_paths(entry.strip())
     if not clean or clean.startswith("#"):
         return set(), set(), False, False
 
@@ -550,6 +551,7 @@ def _prune_dead_assignments(entries: list[str]) -> list[str]:
     or scratchpad re-reads) while faithfully preserving repeated computations in sequential
     pipelines where intermediate values are read or exported (e.g. batch loops with '-o').
     """
+    entries = [_normalize_unquoted_windows_paths(e) for e in entries]
     analyzed = [_extract_entry_def_and_uses(e) for e in entries]
     n = len(entries)
     keep = [True] * n
@@ -598,6 +600,7 @@ def _compile_history_to_python(
     prune_dead: bool = True,
 ) -> str:
     """Compile replayable REPL history into a standalone, executable Python script."""
+    entries = [_normalize_unquoted_windows_paths(e) for e in entries]
     entries = _prune_rolled_back_entries(entries)
     if prune_dead:
         entries = _prune_dead_assignments(entries)
@@ -1031,6 +1034,7 @@ def _compile_history_to_pt(
     prune_dead: bool = True,
 ) -> str:
     """Compile replayable REPL history into a clean, replayable Pytae script."""
+    entries = [_normalize_unquoted_windows_paths(e) for e in entries]
     entries = _prune_rolled_back_entries(entries)
     if prune_dead:
         entries = _prune_dead_assignments(entries)
@@ -1161,7 +1165,7 @@ def _is_replayable_entry_static(entry: str) -> bool:
     Exploratory previews (bare -pivot, -head, -describe, inspection, etc.) and session
     comments are excluded from exported replay scripts.
     """
-    clean = entry.strip()
+    clean = _normalize_unquoted_windows_paths(entry.strip())
     if not clean or clean.startswith("#"):
         return False
     if clean.startswith("*checkpoint:") and clean.endswith("*"):
@@ -1305,7 +1309,7 @@ def run_cli_export(argv: list[str]) -> int:
         print(f"pytae error: history file '{history_file_str}' not found.")
         return 1
 
-    lines = _prune_rolled_back_entries(hist_p.read_text(encoding="utf-8").splitlines())
+    lines = _prune_rolled_back_entries([_normalize_unquoted_windows_paths(ln) for ln in hist_p.read_text(encoding="utf-8").splitlines()])
     replayable = [item.strip() for item in lines if _is_replayable_entry_static(item)]
 
     if not replayable:

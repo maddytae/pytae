@@ -273,11 +273,19 @@ def check_dsl_string(verb: str, spec: str) -> list[str]:
     elif verb == "arrange":
         from pytae._parsing import _tokenize
 
-        tokens = _tokenize(raw, ",", track_brackets=True)
+        tokens = _tokenize(raw, ",", keep_quotes=True, track_brackets=True)
         for token in tokens:
             t = token.strip()
             # If brackets present, extract token outside brackets
             if t.endswith("]"):
+                continue
+            check_t = t[2:].strip() if t.startswith("c.") else t
+            if (
+                (check_t.startswith("`") and check_t.endswith("`"))
+                or (check_t.startswith("'") and check_t.endswith("'"))
+                or (check_t.startswith('"') and check_t.endswith('"'))
+                or (check_t.startswith("[") and check_t.endswith("]"))
+            ):
                 continue
             parts = t.split()
             if len(parts) >= 2 and not t.startswith("["):

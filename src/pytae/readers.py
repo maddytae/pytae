@@ -1106,7 +1106,7 @@ def is_db_or_cloud_uri(s: Any) -> bool:
     """Return True if s is a supported database or cloud storage URI."""
     if not isinstance(s, (str, Path)):
         return False
-    s_str = str(s).strip().lower()
+    s_str = str(s).strip().lower().replace("\\", "/")
     return any(
         s_str.startswith(pfx)
         for pfx in (
@@ -1130,11 +1130,18 @@ def is_db_or_cloud_uri(s: Any) -> bool:
 def _normalize_uri(s: str | Path) -> str:
     s_str = str(s).strip()
     for pfx in ("sqlite", "duckdb", "s3", "gcs", "gs", "http", "https", "hf"):
-        if s_str.lower().startswith(f"{pfx}:///"):
+        lower = s_str.lower()
+        if lower.startswith(f"{pfx}:///"):
             return s_str
-        if s_str.lower().startswith(f"{pfx}://"):
+        if lower.startswith(f"{pfx}://"):
             return s_str
-        if s_str.lower().startswith(f"{pfx}:/"):
+        if lower.startswith(f"{pfx}:\\\\") or lower.startswith(f"{pfx}:\\"):
+            rest = s_str[len(pfx) + 1 :].lstrip("\\/")
+            if pfx in ("sqlite", "duckdb"):
+                return f"{pfx}://{rest}"
+            else:
+                return f"{pfx}://{rest}"
+        if lower.startswith(f"{pfx}:/"):
             rest = s_str[len(pfx) + 1 :]
             if pfx in ("sqlite", "duckdb"):
                 return f"{pfx}://{rest}"
