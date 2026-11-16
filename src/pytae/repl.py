@@ -1735,7 +1735,7 @@ class PytaeRepl:
                     self.tables[var_name] = t_df
                     self.orig_tables[var_name] = t_df
                     self.initial_tables[var_name] = t_df
-                    self.table_sources[var_name] = p.name
+                    self.table_sources[var_name] = str(p)
                     self.current_df = t_df
                     self.orig_df = t_df
                     if self.initial_df is None:
@@ -1763,7 +1763,8 @@ class PytaeRepl:
             self.orig_tables[initial_name] = self.current_df
             self.initial_tables[initial_name] = self.current_df
             self.initial_df = self.current_df
-            self.table_sources[initial_name] = self.path.name
+            self.table_sources[initial_name] = str(self.path)
+            self.table_sources["df"] = str(self.path)
 
         self._session_start_time = datetime.datetime.now()
         timestamp_str = self._session_start_time.strftime("%Y_%m_%d_%H_%M_%S")
@@ -1907,7 +1908,7 @@ class PytaeRepl:
                 content = _compile_history_to_python(replayable, self.table_sources, relative=relative, prune_dead=prune_dead)
                 desc = "standalone Python script"
             else:
-                content = _compile_history_to_pt(replayable, target_path.name, relative=relative, prune_dead=prune_dead)
+                content = _compile_history_to_pt(replayable, target_path.name, table_sources=self.table_sources, relative=relative, prune_dead=prune_dead)
                 desc = "Pytae script"
 
             target_path.write_text(content, encoding="utf-8")
@@ -1942,7 +1943,7 @@ class PytaeRepl:
             if target_path.suffix.lower() == ".py":
                 content = _compile_history_to_python(replayable, self.table_sources, relative=relative, prune_dead=prune_dead)
             else:
-                content = _compile_history_to_pt(replayable, target_path.name, relative=relative, prune_dead=prune_dead)
+                content = _compile_history_to_pt(replayable, target_path.name, table_sources=self.table_sources, relative=relative, prune_dead=prune_dead)
 
             target_path.write_text(content, encoding="utf-8")
             path_desc = " (-relative)" if relative else ""

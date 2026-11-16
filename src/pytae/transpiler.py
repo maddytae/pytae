@@ -6,6 +6,7 @@ import ast
 import os
 import re
 import shlex
+import textwrap
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -61,10 +62,21 @@ def _transpile_pipeline_tokens_to_python(tokens: list[str]) -> str:
             i += 2
             continue
 
-        # -clean_columns
+        # -clean_columns [spec]
         if low in ("-clean_columns", "--clean_columns"):
-            calls.append(".clean_columns()")
-            i += 1
+            if i + 1 < n and not tokens[i + 1].startswith("-"):
+                from pytae.cli_parsing import parse_clean_columns_arg
+
+                try:
+                    cc_opts = parse_clean_columns_arg(tokens[i + 1])
+                    cc_args = [f"{k}={repr(v)}" for k, v in cc_opts.items()]
+                    calls.append(f".clean_columns({', '.join(cc_args)})")
+                except Exception:
+                    calls.append(".clean_columns()")
+                i += 2
+            else:
+                calls.append(".clean_columns()")
+                i += 1
             continue
 
         # -rename <spec>
@@ -97,16 +109,42 @@ def _transpile_pipeline_tokens_to_python(tokens: list[str]) -> str:
                 i += 2
             continue
 
-        # -distinct
+        # -distinct [spec]
         if low in ("-distinct", "--distinct"):
-            calls.append(".distinct()")
-            i += 1
+            if i + 1 < n and not tokens[i + 1].startswith("-"):
+                from pytae.cli_parsing import parse_distinct_spec
+
+                try:
+                    d_cols, d_keep = parse_distinct_spec(tokens[i + 1])
+                    d_args = [repr(c) for c in d_cols]
+                    if d_keep and d_keep != "first":
+                        d_args.append(f"keep={repr(d_keep)}")
+                    calls.append(f".distinct({', '.join(d_args)})")
+                except Exception:
+                    calls.append(".distinct()")
+                i += 2
+            else:
+                calls.append(".distinct()")
+                i += 1
             continue
 
-        # -dropna
+        # -dropna [spec]
         if low in ("-dropna", "--dropna"):
-            calls.append(".dropna()")
-            i += 1
+            if i + 1 < n and not tokens[i + 1].startswith("-"):
+                from pytae.cli_parsing import parse_dropna_spec
+
+                try:
+                    dr_cols, dr_how, _ = parse_dropna_spec(tokens[i + 1])
+                    dr_args = [repr(c) for c in dr_cols]
+                    if dr_how:
+                        dr_args.append(f"how={repr(dr_how)}")
+                    calls.append(f".dropna({', '.join(dr_args)})")
+                except Exception:
+                    calls.append(".dropna()")
+                i += 2
+            else:
+                calls.append(".dropna()")
+                i += 1
             continue
 
         # -fillna <val>
@@ -145,22 +183,101 @@ def _transpile_pipeline_tokens_to_python(tokens: list[str]) -> str:
                 i += 1
             continue
 
-        # -join <other> [on=<key>] [how=<how>]
+        # -join <other> [on=<key>|-on <key>] [how=<how>|-how <how>] [left_on=...] [right_on=...] ...
         if low in ("-join", "--join") and i + 1 < n:
             other_tbl = tokens[i + 1]
             on_key = None
+            left_on = None
+            right_on = None
             how = "inner"
+            validate = None
+            fuzzy = None
+            score = None
+            suffix = None
             j = i + 2
-            while j < n and not tokens[j].startswith("-"):
+            while j < n:
                 arg = tokens[j]
-                if arg.lower().startswith("on="):
+                arg_low = arg.lower()
+                if arg_low in ("-on", "--on") and j + 1 < n:
+                    on_key = tokens[j + 1].strip("\"'")
+                    j += 2
+                elif arg_low.startswith("on="):
                     on_key = arg.split("=", 1)[1].strip("\"'")
-                elif arg.lower().startswith("how="):
+                    j += 1
+                elif arg_low in ("-left_on", "--left_on") and j + 1 < n:
+                    left_on = tokens[j + 1].strip("\"'")
+                    j += 2
+                elif arg_low.startswith("left_on="):
+                    left_on = arg.split("=", 1)[1].strip("\"'")
+                    j += 1
+                elif arg_low in ("-right_on", "--right_on") and j + 1 < n:
+                    right_on = tokens[j + 1].strip("\"'")
+                    j += 2
+                elif arg_low.startswith("right_on="):
+                    right_on = arg.split("=", 1)[1].strip("\"'")
+                    j += 1
+                elif arg_low in ("-how", "--how") and j + 1 < n:
+                    how = tokens[j + 1].strip("\"'")
+                    j += 2
+                elif arg_low.startswith("how="):
                     how = arg.split("=", 1)[1].strip("\"'")
-                j += 1
-            on_str = f", on={repr(on_key)}" if on_key else ""
-            calls.append(f".join({other_tbl}{on_str}, how={repr(how)})")
+                    j += 1
+                elif arg_low.startswith("validate="):
+                    validate = arg.split("=", 1)[1].strip("\"'")
+                    j += 1
+                elif arg_low.startswith("fuzzy="):
+                    fuzzy = arg.split("=", 1)[1].strip("\"'")
+                    j += 1
+                elif arg_low.startswith("score="):
+                    score = arg.split("=", 1)[1].strip("\"'")
+                    j += 1
+                elif arg_low.startswith("suffix="):
+                    suffix = arg.split("=", 1)[1].strip("\"'")
+                    j += 1
+                elif not arg.startswith("-"):
+                    j += 1
+                else:
+                    break
+
+            join_args = [other_tbl]
+            if on_key:
+                join_args.append(f"on={repr(on_key)}")
+            if left_on:
+                join_args.append(f"left_on={repr(left_on)}")
+            if right_on:
+                join_args.append(f"right_on={repr(right_on)}")
+            join_args.append(f"how={repr(how)}")
+            if validate:
+                join_args.append(f"validate={repr(validate)}")
+            if fuzzy is not None:
+                try:
+                    join_args.append(f"fuzzy={float(fuzzy)}")
+                except ValueError:
+                    join_args.append(f"fuzzy={repr(fuzzy)}")
+            if score is not None:
+                join_args.append(f"score={repr(score)}")
+            if suffix:
+                join_args.append(f"suffix={repr(suffix)}")
+
+            calls.append(f".join({', '.join(join_args)})")
             i = j
+            continue
+
+        # -concat [spec]
+        if low in ("-concat", "--concat"):
+            if i + 1 < n and not tokens[i + 1].startswith("-"):
+                c_val = tokens[i + 1]
+                if c_val.lower().startswith("frames="):
+                    c_val = c_val.split("=", 1)[1]
+                c_parts = [c.strip().strip("\"'") for c in c_val.split(",") if c.strip().strip("\"'")]
+                if c_parts:
+                    calls.append(f".concat({', '.join(c_parts)})")
+                else:
+                    calls.append(".concat()")
+                i += 2
+            else:
+                calls.append(".concat()")
+                i += 1
             continue
 
         # -collect
@@ -278,13 +395,13 @@ def _prune_rolled_back_entries(entries: list[str]) -> list[str]:
         if clean.startswith("checkpoint "):
             toks = clean.split()
             if len(toks) >= 2:
-                cp_name = toks[1]
+                cp_name = toks[1].strip("\"'")
                 cp_indices[cp_name] = len(result)
             continue
         elif clean.startswith("restore "):
             toks = clean.split()
             if len(toks) >= 2:
-                cp_name = toks[1]
+                cp_name = toks[1].strip("\"'")
                 if cp_name in cp_indices:
                     idx = cp_indices[cp_name]
                     result = result[:idx]
@@ -357,7 +474,7 @@ def _extract_entry_def_and_uses(entry: str) -> tuple[set[str], set[str], bool, b
         if left.isidentifier():
             defs.add(left)
             # Find uses on the right side:
-            if re.match(r"^(?:sql\s*\{|-sql|--sql)\b|^(?:sql\s*\{)", right, re.IGNORECASE):
+            if re.match(r"^(?:sql\s*\{|-sql|--sql)\b", right, re.IGNORECASE):
                 words = set(re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*\b", right))
                 sql_keywords = {
                     "select", "from", "where", "join", "inner", "left", "right", "outer",
@@ -396,11 +513,13 @@ def _extract_entry_def_and_uses(entry: str) -> tuple[set[str], set[str], bool, b
                     if not is_path_or_literal and first.isidentifier():
                         uses.add(first)
 
-                    for idx_t, tok in enumerate(r_toks[1:], start=1):
+                    for idx_t, tok in enumerate(r_toks):
                         if tok in ("-join", "--join", "-concat", "--concat") and idx_t + 1 < len(r_toks):
                             next_tok = r_toks[idx_t + 1].strip("'\"")
-                            if next_tok.isidentifier():
-                                uses.add(next_tok)
+                            for candidate in next_tok.split(","):
+                                cand = candidate.strip()
+                                if cand.isidentifier():
+                                    uses.add(cand)
                         if tok in ("-o", "-output", "--output") and idx_t + 1 < len(r_toks):
                             has_side_effect = True
                         elif tok.startswith(("-o=", "-output=", "--output=")):
@@ -479,9 +598,6 @@ def _compile_history_to_python(
     prune_dead: bool = True,
 ) -> str:
     """Compile replayable REPL history into a standalone, executable Python script."""
-    import shlex
-    from datetime import datetime
-
     entries = _prune_rolled_back_entries(entries)
     if prune_dead:
         entries = _prune_dead_assignments(entries)
@@ -502,6 +618,68 @@ def _compile_history_to_python(
         ("import", "polars", "pl"),
         ("import", "pytae", "pt"),
     }
+
+    if table_sources:
+        initially_defined: set[str] = set()
+        for e in entries:
+            c = e.strip()
+            if c.startswith(("load ", "scan ")):
+                toks = c.split()
+                if len(toks) >= 4 and toks[2].lower() == "as":
+                    initially_defined.add(toks[3])
+                elif len(toks) >= 2:
+                    p_stem = Path(toks[1].strip("\"'")).stem
+                    initially_defined.add(p_stem if p_stem.isidentifier() else "df")
+            elif "=" in c and not c.startswith("-"):
+                tgt = c.split("=", 1)[0].strip()
+                rhs = c.split("=", 1)[1].strip()
+                if tgt.isidentifier() and not rhs.startswith("-"):
+                    initially_defined.add(tgt)
+            elif c.startswith("py"):
+                py_c = c[2:].strip().strip("{}")
+                try:
+                    tree_c = ast.parse(py_c)
+                    for node in ast.walk(tree_c):
+                        if isinstance(node, ast.Assign):
+                            for target_node in node.targets:
+                                if isinstance(target_node, ast.Name):
+                                    initially_defined.add(target_node.id)
+                except Exception:
+                    pass
+
+        valid_exts = {
+            ".parquet", ".csv", ".tsv", ".txt", ".json", ".jsonl", ".ndjson",
+            ".ipc", ".arrow", ".feather", ".dat", ".xlsx", ".sas7bdat",
+        }
+        for t_name, t_src in table_sources.items():
+            var_name = (
+                t_name
+                if t_name.isidentifier()
+                else (Path(t_name).stem if Path(t_name).stem.isidentifier() else "df")
+            )
+            if (
+                var_name not in initially_defined
+                and var_name not in known_tables
+                and t_src
+                and t_src not in ("<memory>", "python")
+                and not t_src.startswith("sql:")
+                and (Path(t_src).suffix.lower() in valid_exts or Path(t_src).exists())
+            ):
+                in_src = _to_relative_path(t_src) if relative else t_src
+                lines.append(f"{var_name} = pt.read({repr(in_src)})")
+                known_tables.add(var_name)
+
+        if "df" not in known_tables and "df" not in initially_defined:
+            uses_df = any(
+                "df" in _extract_entry_def_and_uses(e)[1]
+                or e.strip().startswith(("df ", "df=", "df ="))
+                or (e.strip().startswith("-") or ("=" in e and e.split("=", 1)[1].strip().startswith("-")))
+                for e in entries
+            )
+            if uses_df and known_tables:
+                first_tbl = next(iter(sorted(known_tables)))
+                lines.append(f"df = {first_tbl}")
+                known_tables.add("df")
 
     def _compile_sql_assignment(target_var: str, query_text: str) -> str:
         sql_words = re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*\b", query_text)
@@ -739,19 +917,37 @@ def _compile_history_to_python(
                     known_tables.add(target)
                     continue
                 if expr.startswith("load "):
-                    p = expr.split("load ", 1)[1].strip().strip("\"'")
-                    in_p = _to_relative_path(p) if relative else p
-                    if p.lower() in ("clip", "clipboard"):
-                        lines.append(f"{target} = pl.from_pandas(pd.read_clipboard())")
-                    else:
-                        lines.append(f"{target} = pt.read({repr(in_p)})")
+                    load_tail = expr[5:].strip()
+                    try:
+                        load_toks = shlex.split(load_tail)
+                    except Exception:
+                        load_toks = load_tail.split()
+                    if load_toks:
+                        p = load_toks[0].strip("\"'")
+                        in_p = _to_relative_path(p) if relative else p
+                        if p.lower() in ("clip", "clipboard"):
+                            src_code = "pl.from_pandas(pd.read_clipboard())"
+                        else:
+                            src_code = f"pt.read({repr(in_p)})"
+                        chain = _transpile_pipeline_tokens_to_python(load_toks[1:])
+                        lines.append(f"{target} = {src_code}{chain}")
+                        known_tables.add(target)
+                        continue
+
+                if expr.startswith("-"):
+                    src_code = target if target in known_tables else "df"
+                    chain = _transpile_pipeline_tokens_to_python(toks)
+                    lines.append(f"{target} = {src_code}{chain}")
                     known_tables.add(target)
                     continue
 
                 cleaned_src_tokens, src_reader_kwargs, src_nrows = _parse_reader_options(toks)
                 if cleaned_src_tokens:
                     src_token = cleaned_src_tokens[0]
-                    if "." in src_token or "/" in src_token or "\\" in src_token:
+                    if src_token.startswith("-"):
+                        src_code = target if target in known_tables else "df"
+                        pipe_toks = cleaned_src_tokens
+                    elif "." in src_token or "/" in src_token or "\\" in src_token:
                         raw_src = src_token.strip("\"'")
                         in_src = _to_relative_path(raw_src) if relative else raw_src
                         opts_call = []
@@ -786,21 +982,36 @@ def _compile_history_to_python(
             continue
 
         # 6. Output commands: `<tbl> -o <path>` or `export <path>`
-        toks = clean.split()
-        if len(toks) >= 2 and toks[-2] == "-o":
-            dest = toks[-1].strip("\"'")
-            src = toks[0] if len(toks) > 2 else "df"
-            if dest.lower() in ("clip", "clipboard"):
-                lines.append(f"{src}.to('clip')")
-            else:
-                lines.append(f"{src}.to({repr(dest)})")
-            continue
-        if len(toks) >= 2 and toks[0] in ("export", "save"):
-            dest = toks[1].strip("\"'")
+        try:
+            toks = shlex.split(clean)
+        except Exception:
+            toks = clean.split()
+
+        if toks and toks[0] in ("export", "save"):
+            dest = toks[1].strip("\"'") if len(toks) >= 2 else "out"
             if dest.lower() in ("clip", "clipboard"):
                 lines.append("df.to('clip')")
             else:
                 lines.append(f"df.to({repr(dest)})")
+            continue
+
+        has_output_flag = any(
+            t in ("-o", "-output", "--output") or t.startswith(("-o=", "-output=", "--output=")) for t in toks
+        )
+        if has_output_flag and toks:
+            if toks[0].startswith("-"):
+                src_code = "df"
+                pipe_toks = toks
+            elif "." in toks[0] or "/" in toks[0] or "\\" in toks[0]:
+                raw_src = toks[0].strip("\"'")
+                in_src = _to_relative_path(raw_src) if relative else raw_src
+                src_code = f"pt.read({repr(in_src)})"
+                pipe_toks = toks[1:]
+            else:
+                src_code = toks[0]
+                pipe_toks = toks[1:]
+            chain = _transpile_pipeline_tokens_to_python(pipe_toks)
+            lines.append(f"{src_code}{chain}")
             continue
 
     code_str = "\n".join(lines) + "\n"
@@ -814,13 +1025,12 @@ def _compile_history_to_python(
 def _compile_history_to_pt(
     entries: list[str],
     filename: str = "pipeline.pt",
+    table_sources: dict[str, str] | None = None,
     *,
     relative: bool = False,
     prune_dead: bool = True,
 ) -> str:
     """Compile replayable REPL history into a clean, replayable Pytae script."""
-    import shlex
-
     entries = _prune_rolled_back_entries(entries)
     if prune_dead:
         entries = _prune_dead_assignments(entries)
@@ -830,6 +1040,73 @@ def _compile_history_to_pt(
         f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         "",
     ]
+
+    if table_sources:
+        initially_defined: set[str] = set()
+        for e in entries:
+            c = e.strip()
+            if c.startswith(("load ", "scan ")):
+                toks = c.split()
+                if len(toks) >= 4 and toks[2].lower() == "as":
+                    initially_defined.add(toks[3])
+                elif len(toks) >= 2:
+                    p_stem = Path(toks[1].strip("\"'")).stem
+                    initially_defined.add(p_stem if p_stem.isidentifier() else "df")
+            elif "=" in c and not c.startswith("-"):
+                tgt = c.split("=", 1)[0].strip()
+                rhs = c.split("=", 1)[1].strip()
+                if tgt.isidentifier() and not rhs.startswith("-"):
+                    initially_defined.add(tgt)
+            elif c.startswith("py"):
+                py_c = c[2:].strip().strip("{}")
+                try:
+                    tree_c = ast.parse(py_c)
+                    for node in ast.walk(tree_c):
+                        if isinstance(node, ast.Assign):
+                            for target_node in node.targets:
+                                if isinstance(target_node, ast.Name):
+                                    initially_defined.add(target_node.id)
+                except Exception:
+                    pass
+
+        valid_exts = {
+            ".parquet", ".csv", ".tsv", ".txt", ".json", ".jsonl", ".ndjson",
+            ".ipc", ".arrow", ".feather", ".dat", ".xlsx", ".sas7bdat",
+        }
+        seen_preloaded: set[str] = set()
+        for t_name, t_src in table_sources.items():
+            var_name = (
+                t_name
+                if t_name.isidentifier()
+                else (Path(t_name).stem if Path(t_name).stem.isidentifier() else "df")
+            )
+            if (
+                var_name not in initially_defined
+                and var_name not in seen_preloaded
+                and t_src
+                and t_src not in ("<memory>", "python")
+                and not t_src.startswith("sql:")
+                and (Path(t_src).suffix.lower() in valid_exts or Path(t_src).exists())
+            ):
+                rel_src = _to_relative_path(t_src) if relative else t_src
+                if var_name == "df":
+                    lines.append(f"load {rel_src}")
+                else:
+                    lines.append(f"load {rel_src} as {var_name}")
+                seen_preloaded.add(var_name)
+
+        if "df" not in seen_preloaded and "df" not in initially_defined:
+            uses_df = any(
+                "df" in _extract_entry_def_and_uses(e)[1]
+                or e.strip().startswith(("df ", "df=", "df ="))
+                or (e.strip().startswith("-") or ("=" in e and e.split("=", 1)[1].strip().startswith("-")))
+                for e in entries
+            )
+            if uses_df and seen_preloaded:
+                first_tbl = next(iter(sorted(seen_preloaded)))
+                lines.append(f"df = {first_tbl}")
+                seen_preloaded.add("df")
+
     for raw_entry in entries:
         clean = raw_entry.strip()
         if not clean or clean.startswith("#"):
@@ -856,6 +1133,11 @@ def _compile_history_to_pt(
             elif "=" in clean and not clean.startswith("-"):
                 target, expr = [p.strip() for p in clean.split("=", 1)]
                 if target.isidentifier():
+                    if expr.startswith("load "):
+                        raw_lp = expr[5:].strip().strip("\"'")
+                        rel_lp = _to_relative_path(raw_lp)
+                        lines.append(f"{target} = load {rel_lp}")
+                        continue
                     if expr.startswith(("scan ", "scan:")):
                         raw_sp = expr[4:].lstrip(": ").strip().strip("\"'")
                         rel_sp = _to_relative_path(raw_sp)
@@ -904,12 +1186,9 @@ def _is_replayable_entry_static(entry: str) -> bool:
         elif py_body.endswith(" py"):
             py_body = py_body[:-3].strip()
         if py_body.startswith("{") and py_body.endswith("}"):
-            import textwrap
-
             py_body = textwrap.dedent(py_body[1:-1]).strip()
         if not py_body:
             return False
-        import ast
 
         try:
             tree = ast.parse(py_body)
