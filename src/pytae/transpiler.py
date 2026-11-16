@@ -61,6 +61,12 @@ def _transpile_filter_expr(expr_str: str) -> str:
     try:
         clean = expr_str.strip()
         tree = ast.parse(clean, mode="eval")
+        if isinstance(tree.body, ast.BoolOp) and isinstance(tree.body.op, ast.And):
+            # Top-level `and` conditions transpile to canonical comma-separated arguments:
+            # df.filter(c.sex == 'Male', c.body_mass_g > 4000)
+            transformer = _CTransformer()
+            args = [ast.unparse(transformer.visit(v)) for v in tree.body.values]
+            return ", ".join(args)
         tree = _CTransformer().visit(tree)
         return ast.unparse(tree)
     except Exception:
