@@ -40,7 +40,7 @@ Supported function names: `mean`, `sum`, `std`, `min`, `max`, `median`, `count` 
 
 > [!TIP]
 > **Column Scoping in Aggregations**:
-> - **Direct named targets**: When you declare specific columns inside `-agg` (e.g. `-by species -agg "body_mass_g=mean, n=count"`), pytae automatically restricts the output to those columns and the grouping keys without needing a pre-`-select`.
+> - **Direct named targets**: When you declare specific columns inside `-agg` (e.g. `-by species -agg "body_mass_g = mean(), n = count()"`), pytae automatically restricts the output to those columns and the grouping keys without needing a pre-`-select`.
 > - **Bulk aggregations & column pruning**: When using bulk functions (e.g. `-agg mean` across all numeric columns) or working with wide files where you want to load only relevant columns into RAM, using `-select` beforehand (e.g. `-select "species,contains=mass" -by species -agg mean`) is completely valid and recommended for performance.
 
 ### Single Function across Numeric Columns
@@ -48,8 +48,10 @@ Supported function names: `mean`, `sum`, `std`, `min`, `max`, `median`, `count` 
 Average body mass by species (specify the metric directly in `-agg` without a pre-`-select`):
 
 ```bash
-pytae penguins.parquet -by species -agg "body_mass_g = body_mass_g.mean()" -round 1
+pytae penguins.parquet -by species -agg "body_mass_g = mean()" -round 1
 ```
+
+*(Note: When keeping the original column name, write `body_mass_g = mean()`. Explicit `body_mass_g = body_mass_g.mean()` is also supported.)*
 
 **Output:**
 
@@ -64,7 +66,7 @@ pytae penguins.parquet -by species -agg "body_mass_g = body_mass_g.mean()" -roun
 Compute mean and sample size simultaneously:
 
 ```bash
-pytae penguins.parquet -by species -agg "body_mass_g = body_mass_g.mean(), n = count()" -round 1
+pytae penguins.parquet -by species -agg "body_mass_g = mean(), n = count()" -round 1
 ```
 
 **Output:**
@@ -82,7 +84,7 @@ Assign different aggregate functions to specific columns:
 ```bash
 pytae penguins.parquet \
   -by species \
-  -agg "body_mass_g = body_mass_g.mean(), flipper_length_mm = flipper_length_mm.max(), n = count()" \
+  -agg "body_mass_g = mean(), flipper_length_mm = max(), n = count()" \
   -round 1
 ```
 
@@ -94,7 +96,7 @@ pytae penguins.parquet \
 | Chinstrap | 3733.1 | 212.0 | 68 |
 | Gentoo | 5076.0 | 231.0 | 124 |
 
-### Named Outputs (`total = col:aggfunc`)
+### Named Outputs (`new_name = col.aggfunc()`)
 
 Rename aggregated outputs cleanly using `new_name = col.aggfunc()`:
 

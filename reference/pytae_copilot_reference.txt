@@ -112,7 +112,7 @@ RULE 0: DUAL EXPRESSION ARCHITECTURE — c. IN PYTHON, BARE COLUMNS (NO c.) IN C
 - Range selection: `df.select(c.name.to(c.salary), c.dept)`
 - Dropping & exclusions: Use `~`: `df.select(~c.ssn)` or drop full range: `df.select(~c.age.to(c.cost))`
 - Renaming during select: `df.select(c.name, user_id=c.id)`
-- Single-shot grouping & aggregation: `df.by(c.dept).agg(avg_sal=c.salary.mean(), count=c.id.count())`
+- Single-shot grouping & aggregation: `df.by(c.dept).agg(n=count(), avg_sal=c.salary.mean(), valid_ids=c.id.count())`. Row count is `count()`; `c()` is deprecated.
 - Sorting: Use `.asc()` and `.desc()`: `df.arrange(c.dept.asc(), c.salary.desc())`
 - Imputation: `df.fillna(c.salary.fill(0))` or `df.fillna(c.salary.fill(c.salary.mean()))`
 - Columns with spaces/special characters: `c['Annual Revenue'] > 50000`
@@ -121,7 +121,7 @@ RULE 0: DUAL EXPRESSION ARCHITECTURE — c. IN PYTHON, BARE COLUMNS (NO c.) IN C
 - Filtering: `pytae data.parquet -filter "age > 30 and dept == 'IT'"`
 - Feature engineering: `pytae data.parquet -mutate "ratio = revenue / cost, clean_name = name.str.to_upper()"`
 - Column selection: `pytae data.parquet -select "id, name, dept"` or `pytae data.parquet -select "~ssn"`
-- Grouping & aggregation: `pytae data.parquet -by dept -agg "avg_sal = salary.mean(), count = count()"`
+- Grouping & aggregation: `pytae data.parquet -by dept -agg "salary = sum(), avg_sal = salary.mean(), count = count()"`
 - Sorting: `pytae data.parquet -arrange "dept, salary desc"`
 - Column names with spaces: `pytae data.parquet -filter "[Annual Revenue] > 50000"`
 
@@ -1757,7 +1757,7 @@ Supported function names: `mean`, `sum`, `std`, `min`, `max`, `median`, `count` 
 
 > [!TIP]
 > **Column Scoping in Aggregations**:
-> - **Direct named targets**: When you declare specific columns inside `-agg` (e.g. `-by species -agg "body_mass_g=mean, n=count"`), pytae automatically restricts the output to those columns and the grouping keys without needing a pre-`-select`.
+> - **Direct named targets**: When you declare specific columns inside `-agg` (e.g. `-by species -agg "body_mass_g = mean(), n = count()"`), pytae automatically restricts the output to those columns and the grouping keys without needing a pre-`-select`.
 > - **Bulk aggregations & column pruning**: When using bulk functions (e.g. `-agg mean` across all numeric columns) or working with wide files where you want to load only relevant columns into RAM, using `-select` beforehand (e.g. `-select "species,contains=mass" -by species -agg mean`) is completely valid and recommended for performance.
 
 ### Single Function across Numeric Columns
@@ -1765,8 +1765,10 @@ Supported function names: `mean`, `sum`, `std`, `min`, `max`, `median`, `count` 
 Average body mass by species (specify the metric directly in `-agg` without a pre-`-select`):
 
 ```bash
-pytae penguins.parquet -by species -agg "body_mass_g = body_mass_g.mean()" -round 1
+pytae penguins.parquet -by species -agg "body_mass_g = mean()" -round 1
 ```
+
+*(Note: When keeping the original column name, write `body_mass_g = mean()`. Explicit `body_mass_g = body_mass_g.mean()` is also supported.)*
 
 **Output:**
 
@@ -1781,7 +1783,7 @@ pytae penguins.parquet -by species -agg "body_mass_g = body_mass_g.mean()" -roun
 Compute mean and sample size simultaneously:
 
 ```bash
-pytae penguins.parquet -by species -agg "body_mass_g = body_mass_g.mean(), n = count()" -round 1
+pytae penguins.parquet -by species -agg "body_mass_g = mean(), n = count()" -round 1
 ```
 
 **Output:**
@@ -1799,7 +1801,7 @@ Assign different aggregate functions to specific columns:
 ```bash
 pytae penguins.parquet \
   -by species \
-  -agg "body_mass_g = body_mass_g.mean(), flipper_length_mm = flipper_length_mm.max(), n = count()" \
+  -agg "body_mass_g = mean(), flipper_length_mm = max(), n = count()" \
   -round 1
 ```
 
@@ -1811,7 +1813,7 @@ pytae penguins.parquet \
 | Chinstrap | 3733.1 | 212.0 | 68 |
 | Gentoo | 5076.0 | 231.0 | 124 |
 
-### Named Outputs (`total = col:aggfunc`)
+### Named Outputs (`new_name = col.aggfunc()`)
 
 Rename aggregated outputs cleanly using `new_name = col.aggfunc()`:
 
@@ -6642,11 +6644,11 @@ pytae c=customers.csv o=orders.parquet \
 
 ### Primary Calling Paradigms
 
-1. **Explicit Aliasing with Column Expressions (`alias = c.col.op()` or `n=c()`) — Recommended**:
+1. **Explicit Aliasing with Column Expressions (`alias = c.col.op()` or `n=count()`) — Recommended**:
    Every output column is explicitly declared as a keyword argument using `c.` column expressions. No columns are created on the fly with unexpected suffixes.
    ```python
    df.by(c.species).agg(
-       n=c(),
+       n=count(),
        avg_bill=c.bill_length_mm.mean(),
        total_mass=c.body_mass_g.sum(),
        max_mass=c.body_mass_g.max(),
@@ -6657,7 +6659,7 @@ pytae c=customers.csv o=orders.parquet \
    Keep the original column name unchanged when performing a single aggregation on that column:
    ```python
    df.by(c.species).agg(
-       n=c(),
+       n=count(),
        bill_length_mm=c.bill_length_mm.mean(),
        body_mass_g=c.body_mass_g.sum(),
    )
@@ -6667,7 +6669,7 @@ pytae c=customers.csv o=orders.parquet \
    Combine preserved column names and explicit aliases seamlessly in a single `.agg()` call:
    ```python
    tips.by(c.smoker, c.time).agg(
-       cnt=c(),
+       cnt=count(),
        total_bill=c.total_bill.mean(),       # preserved 1-to-1 column name
        avg_tip=c.tip.mean(),                 # explicit alias
        max_tip=c.tip.max(),                  # explicit alias
@@ -6679,7 +6681,7 @@ pytae c=customers.csv o=orders.parquet \
    ```python
    df.by(c.species).agg(
        avg_bill=c["bill length mm"].mean(),
-       cnt=c(),
+       cnt=count(),
    )
    ```
 
@@ -6692,7 +6694,7 @@ pytae c=customers.csv o=orders.parquet \
 6. **Whole-Table Summary**:
    Omit `.by(...)` to compute grand totals across the entire table:
    ```python
-   df.agg(n=c(), avg_bill=c.bill_length_mm.mean())
+   df.agg(n=count(), avg_bill=c.bill_length_mm.mean())
    ```
 
 ---
@@ -6711,7 +6713,7 @@ tips = pt.sample_data['tips']
 titanic = pt.sample_data['titanic']
 ```
 
-## Explicit Aliasing (`alias = c.col.op()` or `n=c()`) — Recommended
+## Explicit Aliasing (`alias = c.col.op()` or `n=count()`) — Recommended
 
 Every output column name is explicitly declared on the left side of `=`. No columns are created on the fly, eliminating any guessing or magical suffixes.
 
@@ -6951,21 +6953,21 @@ shape: (6, 5)
 
 In `pytae`, counting in the Python API is streamlined into **two fundamental expressions** and **one shortcut verb**:
 
-1. **Row Count (`n = c()`)**:
+1. **Row Count (`n = count()`)**:
    Unconditional total row count per group (equivalent to SQL `COUNT(*)` or Polars `pl.len()`). It counts every row in the group regardless of `null` values.
 2. **Column Non-Null Count (`valid = c.col.count()`)**:
    Conditional non-null count of a specific column (equivalent to SQL `COUNT(col)`). Any `null` values in that column are ignored.
 3. **The Frequency Shortcut Verb (`df.count(c.col)`)**:
    When you don't need other metrics and only want an instant, descending frequency table, use `df.count(c.col)`.
 
-*(Note: `a="count"` is an internal artifact of CLI `-agg count`; in Python code, always use `n=c()` or `df.count()`.)*
+*(Note: `a="count"` is an internal artifact of CLI `-agg count`; in Python code, always use `n=count()` or `df.count()`.)*
 
 ```python
-# Explicit row count in .agg() using n=c()
+# Explicit row count in .agg() using n=count()
 (penguins
  .select(exclude_dtype='number')
  .by(c.species, c.island)
- .agg(n=c())
+ .agg(n=count())
 )
 ```
 Output:
@@ -15524,7 +15526,7 @@ pytae data.parquet -scatter "bill_length_mm,bill_depth_mm"
 pytae data.parquet -corr
 
 # Generate publication-quality Matplotlib figures headlessly
-pytae data.parquet -by species -agg "avg_mass=body_mass_g:mean" \
+pytae data.parquet -by species -agg "avg_mass = body_mass_g.mean()" \
   -plot "kind=bar, x=species, y=avg_mass" -finalize "save=chart.png"
 ```
 
@@ -15783,7 +15785,7 @@ clear                     # Clear the terminal screen
 # 2. Pipeline Execution & Inspection (RAM-speed with zero file re-reads)
 pytae> -filter "species == 'Gentoo'"
 pytae> -mutate "mass_kg = body_mass_g / 1000.0"
-pytae> -by species -agg "mean_kg=mass_kg:mean, n=count"
+pytae> -by species -agg "mean_kg = mass_kg.mean(), n = count()"
 pytae> -select "species,island,mass_kg"
 pytae> -arrange "mass_kg desc"
 pytae> -cols asc                                             # Column names sorted alphabetically

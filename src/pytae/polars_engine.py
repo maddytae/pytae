@@ -846,7 +846,7 @@ def sql_polars(df: Any, query: str) -> Any:
 
 
 def _polars_agg_expr(col: pl.Expr, func: str) -> pl.Expr:
-    fn = func.lower()
+    fn = re.sub(r"\(\s*\)$", "", func.strip()).lower()
     if fn == "sum":
         return col.sum()
     elif fn in ("mean", "avg"):
@@ -872,7 +872,7 @@ def _polars_agg_expr(col: pl.Expr, func: str) -> pl.Expr:
     elif fn in ("n_unique", "nunique"):
         return col.n_unique()
     else:
-        raise ValueError(f"pivot_polars: unsupported aggregation function '{func}'")
+        raise ValueError(f"agg: unsupported aggregation function '{func}'")
 
 
 def pivot_polars(
@@ -2501,11 +2501,35 @@ def agg_polars(
                     )
                 _add_expr(_polars_agg_expr(pl.col(src), fn_list[0]), clean_out)
             elif isinstance(val, str):
-                fn_call_m = re.match(r"^(\w+)\(([^)]+)\)$", val.strip())
-                if fn_call_m:
+                val_s = val.strip()
+                method_m = re.match(r"^(.+)\.(\w+)\(\s*\)$", val_s)
+                fn_call_m = re.match(r"^(\w+)\((.+)\)$", val_s)
+                zero_m = re.match(r"^(\w+)(?:\(\s*\))?$", val_s)
+                if method_m:
+                    src = _unquote_name(method_m.group(1).strip())
+                    fn_name = method_m.group(2).strip()
+                    _add_expr(_polars_agg_expr(pl.col(src), fn_name), clean_out)
+                elif fn_call_m:
                     fn_name = fn_call_m.group(1).strip()
                     src = _unquote_name(fn_call_m.group(2).strip())
                     _add_expr(_polars_agg_expr(pl.col(src), fn_name), clean_out)
+                elif zero_m:
+                    fn_name = zero_m.group(1).strip()
+                    fn_low = fn_name.lower()
+                    if fn_low in ("n", "count", "size", "len"):
+                        if "n" in by_cols and clean_out == "n":
+                            raise ValueError("agg(): count 'n' collides with group column 'n'")
+                        if clean_out in _df_columns(work_df) and clean_out not in ("n", "cnt", "count", "size", "len", "n_rows"):
+                            _add_expr(pl.col(clean_out).count().cast(pl.Int64), clean_out)
+                        else:
+                            _add_expr(pl.len().cast(pl.Int64), clean_out)
+                    else:
+                        if clean_out not in _df_columns(work_df):
+                            raise KeyError(
+                                f"agg(): cannot apply '{val_s}' to new alias '{clean_out}' because column '{clean_out}' does not exist in DataFrame. "
+                                f"Specify the source column, e.g. '{clean_out} = col.{fn_low}()'"
+                            )
+                        _add_expr(_polars_agg_expr(pl.col(clean_out), fn_name), clean_out)
                 else:
                     fn_list = [f.strip() for f in val.split(",") if f.strip()]
                     if len(fn_list) > 1:
@@ -2515,7 +2539,14 @@ def agg_polars(
                             "Pytae prohibits creating column names on the fly. "
                             f"Use Paradigm 2: {example_aliases}"
                         )
-                    _add_expr(_polars_agg_expr(pl.col(clean_out), fn_list[0]), clean_out)
+                    fn_single = fn_list[0]
+                    fn_norm = re.sub(r"\(\s*\)$", "", fn_single).strip().lower()
+                    if clean_out not in _df_columns(work_df):
+                        raise KeyError(
+                            f"agg(): cannot apply '{fn_single}' to new alias '{clean_out}' because column '{clean_out}' does not exist in DataFrame. "
+                            f"Specify the source column, e.g. '{clean_out} = col.{fn_norm}()'"
+                        )
+                    _add_expr(_polars_agg_expr(pl.col(clean_out), fn_single), clean_out)
             elif isinstance(val, (list, tuple)):
                 fn_list = list(val)
                 if len(fn_list) > 1:

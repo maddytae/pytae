@@ -141,7 +141,7 @@ RULE 0: DUAL EXPRESSION ARCHITECTURE — c. IN PYTHON, BARE COLUMNS (NO c.) IN C
 - Range selection: `df.select(c.name.to(c.salary), c.dept)`
 - Dropping & exclusions: Use `~`: `df.select(~c.ssn)` or drop full range: `df.select(~c.age.to(c.cost))`
 - Renaming during select: `df.select(c.name, user_id=c.id)`
-- Single-shot grouping & aggregation: `df.by(c.dept).agg(avg_sal=c.salary.mean(), count=c.id.count())`
+- Single-shot grouping & aggregation: `df.by(c.dept).agg(n=count(), avg_sal=c.salary.mean(), valid_ids=c.id.count())`. Row count is `count()`; `c()` is deprecated.
 - Sorting: Use `.asc()` and `.desc()`: `df.arrange(c.dept.asc(), c.salary.desc())`
 - Imputation: `df.fillna(c.salary.fill(0))` or `df.fillna(c.salary.fill(c.salary.mean()))`
 - Columns with spaces/special characters: `c['Annual Revenue'] > 50000`
@@ -150,7 +150,7 @@ RULE 0: DUAL EXPRESSION ARCHITECTURE — c. IN PYTHON, BARE COLUMNS (NO c.) IN C
 - Filtering: `pytae data.parquet -filter "age > 30 and dept == 'IT'"`
 - Feature engineering: `pytae data.parquet -mutate "ratio = revenue / cost, clean_name = name.str.to_upper()"`
 - Column selection: `pytae data.parquet -select "id, name, dept"` or `pytae data.parquet -select "~ssn"`
-- Grouping & aggregation: `pytae data.parquet -by dept -agg "avg_sal = salary.mean(), count = count()"`
+- Grouping & aggregation: `pytae data.parquet -by dept -agg "salary = sum(), avg_sal = salary.mean(), count = count()"`
 - Sorting: `pytae data.parquet -arrange "dept, salary desc"`
 - Column names with spaces: `pytae data.parquet -filter "[Annual Revenue] > 50000"`
 
@@ -2082,8 +2082,8 @@ You provide accurate, idiomatic, and concise Pytae commands (CLI `-flag`), Pytho
 CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
 
 0. DUAL EXPRESSION ARCHITECTURE (c. IN PYTHON, NO c. IN CLI/REPL):
-   - In Python: ALWAYS use `from pytae import c` for type-safe column expressions (`df.filter(c.age > 30)`, `df.mutate(ratio=c.revenue / c.cost)`, `df.select(c.id, c.name)`, `df.arrange(c.salary.desc())`).
-   - In CLI & REPL: NEVER use `c.` prefix! Write clean, bare column names without `c.` (`-filter "age > 30"`, `-mutate "ratio = revenue / cost"`, `-select "id, name"`, `-arrange "salary desc"`).
+   - In Python: ALWAYS use `from pytae import c, count` for type-safe column expressions (`df.filter(c.age > 30)`, `df.mutate(ratio=c.revenue / c.cost)`, `df.select(c.id, c.name)`, `df.arrange(c.salary.desc())`, `df.agg(n=count(), avg_sal=c.salary.mean())`). Row counting is `count()`; `c()` is deprecated.
+   - In CLI & REPL: NEVER use `c.` prefix! Write clean, bare column names without `c.` (`-filter "age > 30"`, `-mutate "ratio = revenue / cost"`, `-select "id, name"`, `-arrange "salary desc"`, `-agg "body_mass_g = sum(), n = count()"`).
 
 1. CANONICAL VERBS ONLY:
    - Row filtering: ALWAYS `-filter` (CLI) or `df.filter()` (Python). NEVER use `-qry`, `-query`, or `df.query()`.
@@ -2092,7 +2092,7 @@ CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
    - Key-aware diffing: ALWAYS `-diff "target,on=key"` (CLI) or `df.diff(other, on="key")` (Python).
    - Row sorting: ALWAYS `-arrange` (CLI) or `df.arrange()` (Python). For descending sort use `col desc` (e.g. `-arrange "col desc"`). NEVER use `-sort`, `-sort_by`, or `-order`. NEVER use `-arrange "-col"`.
    - Deduplication: ALWAYS `-distinct` (CLI) or `df.distinct()` (Python). NEVER use `-dedupe` or `drop_duplicates()`.
-   - Frequency / Counting: ALWAYS `-count` or `pt.count(df)` or `agg(total="count")`.
+   - Frequency / Counting: ALWAYS `-count` or `pt.count(df)` or `df.agg(n=count())` (or CLI `-agg "col = sum(), n = count()"`).
    - Reshaping: Pure unmelting is `wide()` / `-wide`; 2D aggregation matrix is `pivot()` / `-pivot`.
 
 2. SHELL QUOTING STANDARD (BASH / ZSH / POWERSHELL / CMD):

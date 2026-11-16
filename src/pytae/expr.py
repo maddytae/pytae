@@ -567,6 +567,13 @@ class ColumnProxy:
 
     def __call__(self, name: str | None = None) -> ColumnExpr:
         if name is None:
+            import warnings
+
+            warnings.warn(
+                "c() is deprecated for row counting. Use count() instead (e.g. df.agg(n=count()) or from pytae import count).",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             return ColumnExpr(pl.len())
         return self[name]
 
@@ -577,6 +584,17 @@ class ColumnProxy:
 # Global singleton instance
 c = ColumnProxy()
 col = c
+
+
+def count(col: Any = None) -> ColumnExpr:
+    """Return a row count expression (pl.len()) if no column is given, or non-null count of a column."""
+    if col is None:
+        return ColumnExpr(pl.len())
+    if isinstance(col, ColumnExpr):
+        return col.count()
+    if isinstance(col, str):
+        return ColumnExpr(pl.col(col).count())
+    return ColumnExpr(col).count()
 
 
 def if_else(predicate: Any, then_val: Any, otherwise_val: Any) -> ColumnExpr:

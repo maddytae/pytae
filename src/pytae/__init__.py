@@ -29,6 +29,7 @@ from pytae.expr import (
     case_when,
     coalesce,
     col,
+    count as _expr_count,
     if_else,
 )
 from pytae.other_utilities import format_glimpse
@@ -203,12 +204,14 @@ def distinct(df: Any, *cols: Any, keep: str = "first") -> DataFrame:
     return DataFrame(df).distinct(*cols, keep=keep)
 
 
-def count(df: Any, *cols: Any, sort: bool = True, name: str = "n") -> DataFrame:
-    if isinstance(df, GroupedDataFrame):
+def count(df_or_col: Any = None, *cols: Any, sort: bool = True, name: str = "n") -> Any:
+    if df_or_col is None or isinstance(df_or_col, ColumnExpr):
+        return _expr_count(df_or_col)
+    if isinstance(df_or_col, GroupedDataFrame):
         if cols:
-            return df.by(*cols).count(sort=sort, name=name)
-        return df.count(sort=sort, name=name)
-    return DataFrame(df).count(*cols, sort=sort, name=name)
+            return df_or_col.by(*cols).count(sort=sort, name=name)
+        return df_or_col.count(sort=sort, name=name)
+    return DataFrame(df_or_col).count(*cols, sort=sort, name=name)
 
 
 def dropna(

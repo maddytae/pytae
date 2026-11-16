@@ -324,5 +324,64 @@ def test_agg_df_comma_separated_by_string():
     assert len(res) == 3
 
 
+def test_agg_shorthand_syntax():
+    import pytae as pt
+    from pytae import c, count
+
+    df = pt.DataFrame({
+        "species": ["A", "A", "B"],
+        "body_mass_g": [100.0, 200.0, 300.0],
+        "flipper_length_mm": [10.0, 20.0, 30.0],
+    })
+
+    # 1. Shorthand in-place: body_mass_g = sum()
+    res1 = df.by("species").agg("body_mass_g = sum(), flipper_length_mm = mean(), n = count()")
+    assert list(res1.columns) == ["species", "body_mass_g", "flipper_length_mm", "n"]
+    assert res1.filter(c.species == "A")["body_mass_g"].to_list() == [300.0]
+    assert res1.filter(c.species == "A")["flipper_length_mm"].to_list() == [15.0]
+    assert res1.filter(c.species == "A")["n"].to_list() == [2]
+
+    # 2. Method call in string: avg_mass = body_mass_g.mean()
+    res2 = df.by("species").agg("avg_mass = body_mass_g.mean(), max_mass = body_mass_g.max()")
+    assert list(res2.columns) == ["species", "avg_mass", "max_mass"]
+    assert res2.filter(c.species == "A")["avg_mass"].to_list() == [150.0]
+    assert res2.filter(c.species == "A")["max_mass"].to_list() == [200.0]
+
+    # 3. Python API with count() and c
+    res3 = df.by(c.species).agg(n=count(), total_mass=c.body_mass_g.sum())
+    assert res3.filter(c.species == "A")["n"].to_list() == [2]
+    assert res3.filter(c.species == "A")["total_mass"].to_list() == [300.0]
+
+
+def test_agg_shorthand_missing_col_error():
+    import pytae as pt
+
+    df = pt.DataFrame({
+        "species": ["A", "A", "B"],
+        "body_mass_g": [100.0, 200.0, 300.0],
+    })
+    with pytest.raises(KeyError, match="cannot apply 'sum\\(\\)' to new alias 'total_mass'"):
+        df.by("species").agg("total_mass = sum()")
+
+
+def test_c_call_deprecation_and_count_expr():
+    import warnings
+    from pytae import c, count
+
+    # c() emits DeprecationWarning
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        expr = c()
+        assert len(w) == 1
+        assert issubclass(w[-1].category, DeprecationWarning)
+        assert "c() is deprecated for row counting" in str(w[-1].message)
+
+    # count() works cleanly without warning
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        cnt_expr = count()
+        assert len(w) == 0
+
+
 if __name__ == "__main__":
     pytest.main()
