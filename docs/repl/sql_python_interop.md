@@ -347,7 +347,7 @@ pytae> df = sample:tips
 Loaded tips.parquet as 'df' (244 rows x 7 cols).
 
 # 2. Filter using CLI verbs
-pytae [df: 244x7]> df = -filter "total_bill > 10"
+pytae [df: 244x7]> df = -filter "c.total_bill > 10"
 
 # 3. Aggregate using ANSI SQL
 pytae [df: 226x7]> summary = sql { SELECT day, time, avg(tip) as avg_tip, count(*) as count FROM df GROUP BY 1, 2 }

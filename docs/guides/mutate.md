@@ -32,15 +32,14 @@ The `-mutate` flag evaluates mathematical, logical, and window expressions using
 
 Syntax:
 ```bash
-pytae data.parquet -mutate "new_col = expression"
+pytae data.parquet -mutate "new_col = c.col * 2"
 ```
 
 Key Rules:
-1. Column names inside the expression must remain **unquoted** so they resolve as variables: `mass_kg = body_mass_g / 1000`.
-2. Wrap column names containing spaces in brackets: `[bmi] = [body mass g] / ([bill length mm] ** 2)`.
-3. Separate multiple new column definitions with commas: `"col1 = a + b, col2 = a * 2"`.
-4. Transform multiple columns at once using `(col1, col2) = expr` with `_` as the current column placeholder.
-5. In string expressions, use natural English `or` and `and` without defensive parentheses.
+1. Column names inside the expression are prefixed with `c.`: `mass_kg = c.body_mass_g / 1000`.
+2. Column names containing spaces use `c[...]`: `bmi = c['body mass g'] / (c['bill length mm'] ** 2)`.
+3. Separate multiple new column definitions with commas: `"col1 = c.a + c.b, col2 = c.a * 2"`.
+4. In string expressions, use natural English `or` and `and`, or bitwise `|` and `&`.
 
 ---
 
@@ -50,8 +49,8 @@ Convert penguin body mass from grams to kilograms:
 
 ```bash
 pytae penguins.parquet \
-  -mutate "mass_kg = body_mass_g / 1000" \
-  -select "species,body_mass_g,mass_kg" \
+  -mutate "mass_kg = c.body_mass_g / 1000" \
+  -select "c.species, c.body_mass_g, c.mass_kg" \
   -head 3
 ```
 

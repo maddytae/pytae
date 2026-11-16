@@ -151,16 +151,16 @@ Combine `-by` with `-sample` to draw a balanced, stratified sample of $N$ rows (
 
 ```bash
 # Sample 2 penguins from each species
-pytae penguins.parquet -by species -sample 2 -select species,island,body_mass_g
+pytae penguins.parquet -by c.species -sample 2 -select "c.species, c.island, c.body_mass_g"
 ```
 
 In Python:
 ```python
 # Sample 2 rows per group
-df.by("species").sample(2, seed=42)
+df.by(c.species).sample(2, seed=42)
 
 # Sample 10% per group with seed
-df.by("species").sample(prop=0.1, seed=42)
+df.by(c.species).sample(prop=0.1, seed=42)
 ```
 
 ---
@@ -224,7 +224,7 @@ pytae penguins.parquet -shape
 Chain after filtering to count matching rows:
 
 ```bash
-pytae penguins.parquet -filter "species == 'Gentoo'" -shape
+pytae penguins.parquet -filter "c.species == 'Gentoo'" -shape
 ```
 
 **Output:**

@@ -77,7 +77,7 @@ All post-checkpoint scratch tables and uncommitted mutations are automatically d
 Compare the active in-memory table against its frozen counterpart inside any checkpoint. Running bare `-diff` compares the active table against the **latest saved milestone**:
 
 ```text
-pytae [t1*]> t1 = -mutate "bonus = tip * 2"
+pytae [t1*]> t1 = -mutate "bonus = c.tip * 2"
 
 # 1. Bare -diff compares active table vs latest checkpoint
 pytae [t1*]> -diff
@@ -168,8 +168,8 @@ pytae [df: 344x7]> history
 Session History:
    1: df = penguins.parquet
    2: checkpoint v1
-   3: -filter "species == 'Adelie'"
-   4: df = -mutate "mass_kg = body_mass_g / 1000"
+   3: -filter "c.species == 'Adelie'"
+   4: df = -mutate "mass_kg = c.body_mass_g / 1000"
 
 # View only the last 3 commands
 pytae [df: 344x7]> history 3
@@ -279,7 +279,7 @@ Pytae enforces clear boundaries between native Pytae scripts and standard Python
 
 ### Pytae Pipeline Scripts (`.pt`)
 
-Native Pytae pipeline scripts contain zero-boilerplate assignments and flags (`orders = orders.parquet`, `-filter "amount > 100"`).
+Native Pytae pipeline scripts contain zero-boilerplate assignments and flags (`orders = orders.parquet`, `-filter "c.amount > 100"`).
 
 - **Headless Execution**:
   ```bash
@@ -344,7 +344,7 @@ pytae [tips]> checkpoint baseline
 Saved checkpoint 'baseline' (244 rows x 7 cols).
 
 # 3. Add experimental features
-pytae [tips]> tips = -mutate "pct = (tip / total_bill) * 100", "is_high = tip > 5"
+pytae [tips]> tips = -mutate "pct = (c.tip / c.total_bill) * 100, is_high = c.tip > 5"
 shape: (244, 9)
 
 # 4. Compare active table vs baseline milestone
@@ -387,7 +387,7 @@ Saved checkpoint 'pre_join' (2 tables: orders, cust; 1 variable: @min_spend).
 
 # 3. Filter orders and join with customers
 pytae [orders, cust]> switch orders
-pytae [orders, cust*]> orders = -filter "amount >= @min_spend"
+pytae [orders, cust*]> orders = -filter "c.amount >= @min_spend"
 pytae [orders, cust*]> orders = -join cust on=customer_id -o clean_orders.parquet
 Exported 6,420 rows to clean_orders.parquet.
 
@@ -405,7 +405,7 @@ Generated `session.pt`:
 orders = orders.parquet
 cust = customers.csv
 min_spend = 50.0
-orders = -filter "amount >= @min_spend"
+orders = -filter "c.amount >= @min_spend"
 orders = -join cust on=customer_id -o clean_orders.parquet
 ```
 

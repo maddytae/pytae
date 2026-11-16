@@ -36,7 +36,7 @@ Fast, ergonomic tabular data manipulation, feature engineering, and visualizatio
 Run commands immediately anywhere in your terminal without setting up or activating virtual environments:
 ```bash
 # Instant zero-install one-liner (executes in milliseconds via uv):
-uvx pytae sales.parquet -filter "revenue > 1000" -shape
+uvx pytae sales.parquet -filter "c.revenue > 1000" -shape
 
 # Or install permanently into an isolated CLI tool environment:
 uv tool install pytae     # via uv
@@ -128,10 +128,10 @@ pytae penguins.parquet -sample 5% -seed 42
 
 # 2. In-memory pipeline: filter, engineer features, sort, and export
 pytae penguins.parquet \
-  -filter "species == 'Adelie' and body_mass_g > 3500" \
-  -mutate "mass_kg = body_mass_g / 1000" \
-  -arrange "mass_kg desc" \
-  -select "species,island,mass_kg" \
+  -filter "c.species == 'Adelie' and c.body_mass_g > 3500" \
+  -mutate "mass_kg = c.body_mass_g / 1000" \
+  -arrange "c.mass_kg.desc()" \
+  -select "c.species, c.island, c.mass_kg" \
   -o heavy_adelie.parquet
 
 # 3. Frequency tables, terminal ASCII visualizations & ANSI SQL
@@ -179,13 +179,13 @@ pytae [df1: 344x7]> -head 3
 pytae [df1: 344x7]> -sample 5%
 
 # Exploratory previews (safe, non-mutating preview matching CLI output)
-pytae [df1: 344x7]> -filter "species == 'Gentoo' and body_mass_g > 5000"
+pytae [df1: 344x7]> -filter "c.species == 'Gentoo' and c.body_mass_g > 5000"
 
 # State mutation via explicit assignment
-pytae [df1: 344x7]> df1 = -filter "species in ['Adelie', 'Gentoo'] and body_mass_g >= 3500"
+pytae [df1: 344x7]> df1 = -filter "c.species in ['Adelie', 'Gentoo'] and c.body_mass_g >= 3500"
 Updated 'df1' (188 rows x 7 cols).
 
-pytae [df1: 188x7]> df1 = -mutate "mass_kg = body_mass_g / 1000" -select "species,island,mass_kg"
+pytae [df1: 188x7]> df1 = -mutate "mass_kg = c.body_mass_g / 1000" -select "c.species, c.island, c.mass_kg"
 Updated 'df1' (188 rows x 3 cols).
 
 # Multi-table workflows, relational joins & ANSI SQL
@@ -219,10 +219,10 @@ pytae> exit -s                   # Save clean, pruned pipeline on exit to ./sess
 
 | Operation | Pandas | dplyr (R) | SAS | Pytae (Python & CLI) |
 |:---|:---|:---|:---|:---|
-| **Filter rows** | `df[df['a'] > 1]`<br>`df.query('a > 1')` | `filter(df, a > 1)` | `DATA out; SET in;`<br>`IF a > 1; RUN;` | `df.filter("a > 1")`<br>`pytae in.csv -filter "a > 1"` |
-| **Add columns** | `df['c'] = df['a'] + df['b']`<br>`df.assign(c=...)` | `mutate(df, c = a + b)` | `DATA out; SET in;`<br>`c = a + b; RUN;` | `df.mutate(c="a + b")`<br>`pytae in.csv -mutate "c = a + b"` |
-| **Grouped agg** | `df.groupby('k').agg(...)`<br>*(MultiIndex hell)* | `df %>% group_by(k) %>%`<br>`summarise(...) %>% ungroup()` | `PROC MEANS DATA=in;`<br>`CLASS k; VAR v; RUN;` | `df.by("k").agg(avg="v:mean")`<br>`pytae in.csv -by k -agg "avg=v:mean"` |
-| **Sort rows** | `df.sort_values(['a', 'b'],`<br>`ascending=[True, False])` | `arrange(df, a, desc(b))` | `PROC SORT DATA=in;`<br>`BY a DESCENDING b; RUN;` | `df.arrange("a", "b desc")`<br>`pytae in.csv -arrange "a, b desc"` |
+| **Filter rows** | `df[df['a'] > 1]`<br>`df.query('a > 1')` | `filter(df, a > 1)` | `DATA out; SET in;`<br>`IF a > 1; RUN;` | `df.filter(c.a > 1)`<br>`pytae in.csv -filter "c.a > 1"` |
+| **Add columns** | `df['c'] = df['a'] + df['b']`<br>`df.assign(c=...)` | `mutate(df, c = a + b)` | `DATA out; SET in;`<br>`c = a + b; RUN;` | `df.mutate(c=c.a + c.b)`<br>`pytae in.csv -mutate "c = c.a + c.b"` |
+| **Grouped agg** | `df.groupby('k').agg(...)`<br>*(MultiIndex hell)* | `df %>% group_by(k) %>%`<br>`summarise(...) %>% ungroup()` | `PROC MEANS DATA=in;`<br>`CLASS k; VAR v; RUN;` | `df.by(c.k).agg(avg=c.v.mean())`<br>`pytae in.csv -by c.k -agg "avg=c.v.mean()"` |
+| **Sort rows** | `df.sort_values(['a', 'b'],`<br>`ascending=[True, False])` | `arrange(df, a, desc(b))` | `PROC SORT DATA=in;`<br>`BY a DESCENDING b; RUN;` | `df.arrange(c.a.asc(), c.b.desc())`<br>`pytae in.csv -arrange "c.a, c.b.desc()"` |
 | **Cross-Tab Pivot** | `pd.pivot_table(df, ...)`<br>*(Hierarchical tuples)* | `pivot_wider(df, ...)` | `PROC TRANSPOSE DATA=in ...;`<br>`BY ...; RUN;` | `df.pivot(r='x', c='y', v='z')`<br>`pytae in.csv -pivot "r=x,c=y,v=z"` |
 
 Detailed migration guides with line-by-line syntax comparisons:

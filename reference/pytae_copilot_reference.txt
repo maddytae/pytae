@@ -1757,7 +1757,7 @@ Supported function names: `mean`, `sum`, `std`, `min`, `max`, `median`, `count` 
 Average body mass by species (specify the metric directly in `-agg` without a pre-`-select`):
 
 ```bash
-pytae penguins.parquet -by species -agg body_mass_g=mean -round 1
+pytae penguins.parquet -by c.species -agg "body_mass_g = c.body_mass_g.mean()" -round 1
 ```
 
 **Output:**
@@ -1773,7 +1773,7 @@ pytae penguins.parquet -by species -agg body_mass_g=mean -round 1
 Compute mean and sample size simultaneously:
 
 ```bash
-pytae penguins.parquet -by species -agg "body_mass_g=mean, n=count" -round 1
+pytae penguins.parquet -by c.species -agg "body_mass_g = c.body_mass_g.mean(), n = count()" -round 1
 ```
 
 **Output:**
@@ -1790,8 +1790,8 @@ Assign different aggregate functions to specific columns:
 
 ```bash
 pytae penguins.parquet \
-  -by species \
-  -agg "body_mass_g = mean, flipper_length_mm = max, n = count" \
+  -by c.species \
+  -agg "body_mass_g = c.body_mass_g.mean(), flipper_length_mm = c.flipper_length_mm.max(), n = count()" \
   -round 1
 ```
 
@@ -1805,12 +1805,12 @@ pytae penguins.parquet \
 
 ### Named Outputs (`total = col:aggfunc`)
 
-Rename aggregated outputs cleanly using `new_name = col:aggfunc`:
+Rename aggregated outputs cleanly using `new_name = c.col.aggfunc()`:
 
 ```bash
 pytae penguins.parquet \
-  -by species \
-  -agg "avg_mass = body_mass_g:mean, max_mass = body_mass_g:max, count = count" \
+  -by c.species \
+  -agg "avg_mass = c.body_mass_g.mean(), max_mass = c.body_mass_g.max(), count = count()" \
   -round 1
 ```
 
@@ -1849,9 +1849,9 @@ To compute group-level metrics and then filter for the top $N$ entities within a
 
 ```bash
 pytae sample:penguins \
-  -by island,species -agg "avg_mass=mean(body_mass_g)" \
-  -arrange "island, avg_mass desc" \
-  -by island -head 2
+  -by c.island, c.species -agg "avg_mass = c.body_mass_g.mean()" \
+  -arrange "c.island, c.avg_mass.desc()" \
+  -by c.island -head 2
 ```
 
 **Output:**
@@ -1927,9 +1927,9 @@ Grouped mutations are evaluated per group by combining `-by` with `-mutate`:
 ```bash
 # Calculate maximum species mass and deviation from maximum without collapsing rows
 pytae penguins.parquet \
-  -select "species,sex,body_mass_g" \
-  -by species \
-  -mutate "max_mass = max(body_mass_g), diff = body_mass_g - max_mass" \
+  -select "c.species, c.sex, c.body_mass_g" \
+  -by c.species \
+  -mutate "max_mass = max(c.body_mass_g), diff = c.body_mass_g - max_mass" \
   -head 4
 ```
 
@@ -1953,7 +1953,7 @@ By default, missing values (`NaN`) in group columns form their own group (`dropn
 
 ```bash
 # Keep missing sex as its own group (default)
-pytae penguins.parquet -by sex -agg "body_mass_g=mean, dropna=false" -round 1
+pytae penguins.parquet -by c.sex -agg "body_mass_g = c.body_mass_g.mean(), dropna = false" -round 1
 ```
 
 **Output:**
@@ -1968,7 +1968,7 @@ To drop rows with missing group keys, either specify `dropna=true` inside the `-
 
 ```bash
 # In-spec dropna=true
-pytae penguins.parquet -by sex -agg "body_mass_g=mean, dropna=true" -round 1
+pytae penguins.parquet -by c.sex -agg "body_mass_g = c.body_mass_g.mean(), dropna = true" -round 1
 ```
 
 **Output:**
@@ -1980,7 +1980,7 @@ pytae penguins.parquet -by sex -agg "body_mass_g=mean, dropna=true" -round 1
 
 ```bash
 # Or chain -dropna beforehand
-pytae penguins.parquet -dropna sex -by sex -agg mean -round 1
+pytae penguins.parquet -dropna c.sex -by c.sex -agg mean -round 1
 ```
 
 **Output:**
@@ -2028,7 +2028,7 @@ By default, `-arrange` sorts rows in ascending order:
 
 ```bash
 # Sort ascending by body mass
-pytae penguins.parquet -arrange body_mass_g -select "species,island,body_mass_g" -head 5
+pytae penguins.parquet -arrange c.body_mass_g -select "c.species, c.island, c.body_mass_g" -head 5
 ```
 
 **Output:**
@@ -2045,11 +2045,11 @@ pytae penguins.parquet -arrange body_mass_g -select "species,island,body_mass_g"
 
 ## Descending Sort (`desc`)
 
-In line with *"one and only one obvious way"*, specify descending order explicitly by appending `desc` or `descending` to the column name:
+Specify descending order explicitly by calling `.desc()` on the column expression or appending `desc`:
 
 ```bash
-# Explicit 'desc'
-pytae penguins.parquet -arrange "body_mass_g desc" -select "species,island,body_mass_g" -head 5
+# Explicit 'desc()'
+pytae penguins.parquet -arrange "c.body_mass_g.desc()" -select "c.species, c.island, c.body_mass_g" -head 5
 ```
 
 **Output:**
@@ -2257,13 +2257,13 @@ Recode cell values cleanly via vectorized dictionary mapping directly in `-mutat
 
 ```bash
 # 1. Two-argument: recode mapped values, preserve unmapped values intact
-pytae penguins.parquet -mutate "species_code = map(species, {'Adelie': 'AD', 'Gentoo': 'GEN'})" -head 5
+pytae penguins.parquet -mutate "species_code = map(c.species, {'Adelie': 'AD', 'Gentoo': 'GEN'})" -head 5
 
 # 2. Three-argument with constant fallback: replace unmapped rows with 'Other'
-pytae penguins.parquet -mutate "species_code = map(species, {'Adelie': 'AD'}, 'Other')" -head 5
+pytae penguins.parquet -mutate "species_code = map(c.species, {'Adelie': 'AD'}, 'Other')" -head 5
 
 # 3. Three-argument with column fallback: pull fallback value from another column
-pytae deals.parquet -mutate "broker = map(deal_type, {'Direct': 'DIR'}, broker_code)" -head 5
+pytae deals.parquet -mutate "broker = map(c.deal_type, {'Direct': 'DIR'}, c.broker_code)" -head 5
 ```
 
 ################################################################################
@@ -2874,10 +2874,10 @@ pytae penguins.parquet -distinct "species,island"
 ```bash
 # Filter rows -> select subset -> distinct -> sort -> output
 pytae penguins.parquet \
-  -filter "body_mass_g > 4000" \
-  -select "species,island" \
+  -filter "c.body_mass_g > 4000" \
+  -select "c.species, c.island" \
   -distinct \
-  -arrange species
+  -arrange c.species
 ```
 
 **Output:**
@@ -2941,20 +2941,19 @@ Pytae's `-filter` compiles expressions directly into Polars native engine filter
 String values inside `-filter` must be enclosed in single quotes `'value'`, and equality comparisons strictly require `==`:
 
 ```bash
-pytae penguins.parquet -filter "species == 'Gentoo'" -head 3
+pytae penguins.parquet -filter "c.species == 'Gentoo'" -head 3
 ```
 
 > [!IMPORTANT]
 > **Strict Equality and String Quoting Requirements**:
 > - **Strict `==`**: Equality comparisons require `==`. Single `=` is reserved exclusively for column assignments in `-mutate`. Using `=` in `-filter` produces an immediate error guiding you to use `==`.
-> - **Quoted String Literals**: String literals must always be quoted (e.g. `'Gentoo'`, `'9'`). If an unquoted literal or number is passed when filtering a string column (e.g. `species == Gentoo` or `id == 9` where `id` is a string column), `pytae` raises an explicit error guiding you to quote the string. This prevents silent type coercion and avoids unexpected lexicographical comparison bugs.
+> - **Quoted String Literals**: String literals must always be quoted (e.g. `'Gentoo'`, `'9'`). If an unquoted literal or number is passed when filtering a string column (e.g. `c.species == Gentoo`), `pytae` raises an explicit error guiding you to quote the string.
 >
 > **Shell Quoting Rule (Single Quotes Inside Double Quotes)**:
 > In bash, zsh, or PowerShell, wrap the `-filter` argument in outer double quotes and use **single quotes** for string literals:
 > ```bash
-> pytae data.parquet -filter "currency == 'CAD' and reporting_date in ['2026-09-30']"
+> pytae data.parquet -filter "c.currency == 'CAD' and c.reporting_date in ['2026-09-30']"
 > ```
-> *Avoid nesting unescaped double quotes* like `-filter "currency=="CAD""` — the shell will strip the inner double quotes before `pytae` receives the argument, causing `pytae` to treat `CAD` as an unknown column name!
 
 **Output:**
 
@@ -2970,7 +2969,7 @@ pytae penguins.parquet -filter "species == 'Gentoo'" -head 3
 Standard mathematical comparison operators are supported:
 
 ```bash
-pytae penguins.parquet -filter "body_mass_g > 5500" -select "species,island,body_mass_g" -head 3
+pytae penguins.parquet -filter "c.body_mass_g > 5500" -select "c.species, c.island, c.body_mass_g" -head 3
 ```
 
 **Output:**
@@ -2982,29 +2981,26 @@ pytae penguins.parquet -filter "body_mass_g > 5500" -select "species,island,body
 | Gentoo    | Biscoe   |          5550 |
 
 <a id="boolean-logic"></a>
-### Boolean Logic (`and`, `or`, `not`, and `(...)`)
+### Boolean Logic (`and`, `or`, `not`, `&`, `|`, and `(...)`)
 
-Filter expressions support full boolean logic with `and`, `or`, `not`, and parentheses `(...)` for nested grouping:
+Filter expressions support full boolean logic with `and`, `or`, `not`, bitwise operators `&` and `|`, and parentheses `(...)` for nested grouping:
 
 ```bash
-# Conjunction with 'and'
-pytae penguins.parquet -filter "species == 'Gentoo' and body_mass_g > 5500" -select "species,body_mass_g" -head 3
+# Conjunction with 'and' or '&'
+pytae penguins.parquet -filter "c.species == 'Gentoo' and c.body_mass_g > 5500" -select "c.species, c.body_mass_g" -head 3
 
-# Disjunction with 'or'
-pytae penguins.parquet -filter "island == 'Dream' or island == 'Torgersen'" -select "species,island" -head 3
+# Disjunction with 'or' or '|'
+pytae penguins.parquet -filter "c.island == 'Dream' or c.island == 'Torgersen'" -select "c.species, c.island" -head 3
 
 # Negation with 'not'
-pytae penguins.parquet -filter "not (body_mass_g > 4000)" -head 3
+pytae penguins.parquet -filter "not (c.body_mass_g > 4000)" -head 3
 
 # Bare boolean columns
-pytae loans.parquet -filter "is_active and not is_delinquent"
+pytae loans.parquet -filter "c.is_active and not c.is_delinquent"
 
 # Grouping and precedence with nested parentheses:
-pytae penguins.parquet -filter "(species == 'Adelie' or species == 'Chinstrap') and body_mass_g > 4000" -head 3
+pytae penguins.parquet -filter "(c.species == 'Adelie' or c.species == 'Chinstrap') and c.body_mass_g > 4000" -head 3
 ```
-
-> [!NOTE]
-> Following Python's *"one and only one obvious way"*, `pytae` strictly uses `and`, `or`, and `not`. Bitwise `&`, `|`, `~`, and C-style `!` are disallowed, and commas `,` are strictly punctuation for function arguments and lists, not boolean operators. Using `&`, `|`, `~`, or `!` raises clear, actionable errors guiding you to the canonical English keywords.
 
 ### Chained Comparisons & LHS Arithmetic Expressions
 
@@ -3012,10 +3008,10 @@ Filter expressions support chained comparisons and arithmetic operations:
 
 ```bash
 # Chained mathematical intervals
-pytae penguins.parquet -filter "3000 <= body_mass_g <= 4500"
+pytae penguins.parquet -filter "3000 <= c.body_mass_g <= 4500"
 
 # Arithmetic expressions
-pytae penguins.parquet -filter "bill_length_mm * 2 > 80"
+pytae penguins.parquet -filter "c.bill_length_mm * 2 > 80"
 ```
 
 <a id="column-to-column-comparisons-col_a--col_b"></a>
@@ -3648,16 +3644,16 @@ Combine `-by` with `-sample` to draw a balanced, stratified sample of $N$ rows (
 
 ```bash
 # Sample 2 penguins from each species
-pytae penguins.parquet -by species -sample 2 -select species,island,body_mass_g
+pytae penguins.parquet -by c.species -sample 2 -select "c.species, c.island, c.body_mass_g"
 ```
 
 In Python:
 ```python
 # Sample 2 rows per group
-df.by("species").sample(2, seed=42)
+df.by(c.species).sample(2, seed=42)
 
 # Sample 10% per group with seed
-df.by("species").sample(prop=0.1, seed=42)
+df.by(c.species).sample(prop=0.1, seed=42)
 ```
 
 ---
@@ -3721,7 +3717,7 @@ pytae penguins.parquet -shape
 Chain after filtering to count matching rows:
 
 ```bash
-pytae penguins.parquet -filter "species == 'Gentoo'" -shape
+pytae penguins.parquet -filter "c.species == 'Gentoo'" -shape
 ```
 
 **Output:**
@@ -4131,11 +4127,11 @@ Once joined or stacked, all standard `pytae` verbs apply seamlessly:
 ```bash
 pytae o=orders.parquet c=customers.csv \
   -join "on=customer_id, how=inner" \
-  -filter "region == 'West' and amount > 100" \
-  -mutate "tax = amount * 0.0825, total = amount + tax" \
-  -by customer_name \
-  -agg "spent = total:sum, orders = count" \
-  -arrange "spent desc" \
+  -filter "c.region == 'West' and c.amount > 100" \
+  -mutate "tax = c.amount * 0.0825, total = c.amount + c.tax" \
+  -by c.customer_name \
+  -agg "spent = c.total.sum(), orders = count()" \
+  -arrange "c.spent.desc()" \
   -head 10 \
   -o top_west_customers.parquet
 ```
@@ -4516,15 +4512,14 @@ The `-mutate` flag evaluates mathematical, logical, and window expressions using
 
 Syntax:
 ```bash
-pytae data.parquet -mutate "new_col = expression"
+pytae data.parquet -mutate "new_col = c.col * 2"
 ```
 
 Key Rules:
-1. Column names inside the expression must remain **unquoted** so they resolve as variables: `mass_kg = body_mass_g / 1000`.
-2. Wrap column names containing spaces in brackets: `[bmi] = [body mass g] / ([bill length mm] ** 2)`.
-3. Separate multiple new column definitions with commas: `"col1 = a + b, col2 = a * 2"`.
-4. Transform multiple columns at once using `(col1, col2) = expr` with `_` as the current column placeholder.
-5. In string expressions, use natural English `or` and `and` without defensive parentheses.
+1. Column names inside the expression are prefixed with `c.`: `mass_kg = c.body_mass_g / 1000`.
+2. Column names containing spaces use `c[...]`: `bmi = c['body mass g'] / (c['bill length mm'] ** 2)`.
+3. Separate multiple new column definitions with commas: `"col1 = c.a + c.b, col2 = c.a * 2"`.
+4. In string expressions, use natural English `or` and `and`, or bitwise `|` and `&`.
 
 ---
 
@@ -4534,8 +4529,8 @@ Convert penguin body mass from grams to kilograms:
 
 ```bash
 pytae penguins.parquet \
-  -mutate "mass_kg = body_mass_g / 1000" \
-  -select "species,body_mass_g,mass_kg" \
+  -mutate "mass_kg = c.body_mass_g / 1000" \
+  -select "c.species, c.body_mass_g, c.mass_kg" \
   -head 3
 ```
 
@@ -6065,7 +6060,7 @@ Melts all numeric columns into row-wise key-value pairs (`variable` and `value`)
 
 ```bash
 pytae penguins.parquet \
-  -select "species,bill_length_mm,bill_depth_mm" \
+  -select "c.species, c.bill_length_mm, c.bill_depth_mm" \
   -long \
   -head 4
 ```
@@ -6215,8 +6210,8 @@ Select, filter, reorder, and exclude columns using names, negative prefixes, ran
 
 - [Overview](#overview)
 - [Selecting Explicit Columns](#selecting-explicit-columns)
-- [Negative Selection & Exclusion (`!col`, `!start:end`)](#negative-selection--exclusion)
-- [Slice Notation (`start:end`)](#slice-notation-startend)
+- [Negative Selection & Exclusion (`~col`, `~start:end`)](#negative-selection--exclusion)
+- [Slice Notation (`start:end` / `c.start.to(c.end)`)](#slice-notation-startend)
 - [Pattern Matching (`contains=`, `starts_with=`, `ends_with=`, `regex=`)](#pattern-matching)
 - [Data Type Filtering (`dtype=`, `exclude_dtype=`)](#data-type-filtering)
 - [Chaining `-select` in Pipelines](#chaining--select-in-pipelines)
@@ -6229,10 +6224,10 @@ Select, filter, reorder, and exclude columns using names, negative prefixes, ran
 
 | Capability | Syntax / Flag | Example |
 |---|---|---|
-| Explicit names | `col1,col2` or `c.col1, c.col2` | `-select "species,island,body_mass_g"` |
-| Negative selection | `~col` (or `!col`) | `-select "~species"` or `-select "~sex, ~year"` |
-| Negative slices | `~start:end` | `-select "~bill_length_mm:flipper_length_mm"` |
-| Column slice / range | `start:end` / `c.start.to(c.end)` | `-select "bill_length_mm:body_mass_g"` |
+| Explicit names | `col1,col2` or `c.col1, c.col2` | `-select "c.species, c.island, c.body_mass_g"` |
+| Negative selection | `~col` | `-select "~c.species"` or `-select "~c.sex, ~c.year"` |
+| Negative slices | `~start:end` / `~c.start.to(c.end)` | `-select "~c.bill_length_mm.to(c.flipper_length_mm)"` |
+| Column slice / range | `start:end` / `c.start.to(c.end)` | `-select "c.bill_length_mm.to(c.body_mass_g)"` |
 | Substring / prefix / suffix | `contains=`, `starts_with=`, `ends_with=` | `-select "contains=bill"` |
 | Regular expression | `regex=PATTERN` | `-select "regex=^bill_.*mm$"` |
 | Data type filter | `dtype=numeric` / `exclude_dtype=category` | `-select "dtype=numeric"` |
@@ -6244,7 +6239,7 @@ Select, filter, reorder, and exclude columns using names, negative prefixes, ran
 List column names separated by commas. The output DataFrame columns are ordered exactly as listed in the `-select` argument:
 
 ```bash
-pytae penguins.parquet -select "species,island,body_mass_g" -head 3
+pytae penguins.parquet -select "c.species, c.island, c.body_mass_g" -head 3
 ```
 
 **Output:**
@@ -6257,7 +6252,7 @@ pytae penguins.parquet -select "species,island,body_mass_g" -head 3
 
 Reorder columns on the fly:
 ```bash
-pytae penguins.parquet -select "body_mass_g,species" -head 3
+pytae penguins.parquet -select "c.body_mass_g, c.species" -head 3
 ```
 
 **Output:**
@@ -6271,16 +6266,16 @@ pytae penguins.parquet -select "body_mass_g,species" -head 3
 ---
 
 <a id="negative-selection--exclusion"></a>
-## Negative Selection & Exclusion (`!col`, `!start:end`)
+## Negative Selection & Exclusion (`~col`, `~start:end`)
 
 You can exclude specific columns, combinations, or slices directly within `-select`. Remaining columns preserve their original relative order.
 
-### Negated Column Names (`!col`)
+### Negated Column Names (`~col`)
 
-Prefix a column name with `!` to exclude it. Using `!` avoids any collision with CLI command flags and cleanly reserves `-col` exclusively for descending sort in `-arrange`:
+Prefix a column name with `~` to exclude it. Using `~` avoids any collision with CLI command flags and cleanly reserves `.desc()` for descending sort in `-arrange`:
 
 ```bash
-pytae penguins.parquet -select "!species" -head 3
+pytae penguins.parquet -select "~c.species" -head 3
 ```
 
 **Output:**
@@ -6293,7 +6288,7 @@ pytae penguins.parquet -select "!species" -head 3
 
 Multiple negated columns can be combined in quotes:
 ```bash
-pytae penguins.parquet -select "!species, !island, !sex" -head 3
+pytae penguins.parquet -select "~c.species, ~c.island, ~c.sex" -head 3
 ```
 
 **Output:**
@@ -6304,11 +6299,11 @@ pytae penguins.parquet -select "!species, !island, !sex" -head 3
 |             39.5 |            17.4 |                 186 |          3800 |
 |             40.3 |            18   |                 195 |          3250 |
 
-### Negated Slices (`!start:end`)
+### Negated Slices (`~start:end`)
 
 Exclude a contiguous range of columns:
 ```bash
-pytae penguins.parquet -select "!bill_length_mm:flipper_length_mm" -head 3
+pytae penguins.parquet -select "~c.bill_length_mm.to(c.flipper_length_mm)" -head 3
 ```
 
 **Output:**
@@ -6321,12 +6316,12 @@ pytae penguins.parquet -select "!bill_length_mm:flipper_length_mm" -head 3
 
 ---
 
-## Slice Notation (`start:end`)
+## Slice Notation (`start:end` / `c.start.to(c.end)`)
 
-Select a contiguous range of columns from `start` up to and including `end` (using pandas column position order):
+Select a contiguous range of columns from `start` up to and including `end`:
 
 ```bash
-pytae penguins.parquet -select "bill_length_mm:body_mass_g" -head 3
+pytae penguins.parquet -select "c.bill_length_mm.to(c.body_mass_g)" -head 3
 ```
 
 **Output:**
@@ -6413,7 +6408,7 @@ pytae penguins.parquet -select "dtype=numeric" -head 3
 
 ```bash
 # Select numeric columns, then subtract bill_depth_mm
-pytae penguins.parquet -select "dtype=numeric" -select "!bill_depth_mm" -head 3
+pytae penguins.parquet -select "dtype=numeric" -select "~c.bill_depth_mm" -head 3
 ```
 
 **Output:**
@@ -6427,9 +6422,9 @@ pytae penguins.parquet -select "dtype=numeric" -select "!bill_depth_mm" -head 3
 ```bash
 # Narrowing output columns after an aggregation
 pytae penguins.parquet \
-  -by species \
-  -agg "avg_mass = body_mass_g:mean, total = count" \
-  -select "species,avg_mass"
+  -by c.species \
+  -agg "avg_mass = c.body_mass_g.mean(), total = count()" \
+  -select "c.species, c.avg_mass"
 ```
 
 **Output:**
@@ -13169,10 +13164,10 @@ pytae [orders: 100,000x6]> cust = customers.csv
 Loaded customers.csv as 'cust' (15,000 rows x 5 cols).
 
 # 2. Safe, non-destructive preview
-pytae [orders, cust]> -filter "amount > 500" -head 3
+pytae [orders, cust]> -filter "c.amount > 500" -head 3
 
 # 3. Explicit state mutation
-pytae [orders, cust]> orders = -filter "amount > 500" -mutate "tax = amount * 0.08"
+pytae [orders, cust]> orders = -filter "c.amount > 500" -mutate "tax = c.amount * 0.08"
 
 # 4. Instant named snapshot (0 MB RAM overhead)
 pytae [orders, cust]> checkpoint baseline
@@ -13333,7 +13328,7 @@ All post-checkpoint scratch tables and uncommitted mutations are automatically d
 Compare the active in-memory table against its frozen counterpart inside any checkpoint. Running bare `-diff` compares the active table against the **latest saved milestone**:
 
 ```text
-pytae [t1*]> t1 = -mutate "bonus = tip * 2"
+pytae [t1*]> t1 = -mutate "bonus = c.tip * 2"
 
 # 1. Bare -diff compares active table vs latest checkpoint
 pytae [t1*]> -diff
@@ -13424,8 +13419,8 @@ pytae [df: 344x7]> history
 Session History:
    1: df = penguins.parquet
    2: checkpoint v1
-   3: -filter "species == 'Adelie'"
-   4: df = -mutate "mass_kg = body_mass_g / 1000"
+   3: -filter "c.species == 'Adelie'"
+   4: df = -mutate "mass_kg = c.body_mass_g / 1000"
 
 # View only the last 3 commands
 pytae [df: 344x7]> history 3
@@ -13535,7 +13530,7 @@ Pytae enforces clear boundaries between native Pytae scripts and standard Python
 
 ### Pytae Pipeline Scripts (`.pt`)
 
-Native Pytae pipeline scripts contain zero-boilerplate assignments and flags (`orders = orders.parquet`, `-filter "amount > 100"`).
+Native Pytae pipeline scripts contain zero-boilerplate assignments and flags (`orders = orders.parquet`, `-filter "c.amount > 100"`).
 
 - **Headless Execution**:
   ```bash
@@ -13600,7 +13595,7 @@ pytae [tips]> checkpoint baseline
 Saved checkpoint 'baseline' (244 rows x 7 cols).
 
 # 3. Add experimental features
-pytae [tips]> tips = -mutate "pct = (tip / total_bill) * 100", "is_high = tip > 5"
+pytae [tips]> tips = -mutate "pct = (c.tip / c.total_bill) * 100, is_high = c.tip > 5"
 shape: (244, 9)
 
 # 4. Compare active table vs baseline milestone
@@ -13643,7 +13638,7 @@ Saved checkpoint 'pre_join' (2 tables: orders, cust; 1 variable: @min_spend).
 
 # 3. Filter orders and join with customers
 pytae [orders, cust]> switch orders
-pytae [orders, cust*]> orders = -filter "amount >= @min_spend"
+pytae [orders, cust*]> orders = -filter "c.amount >= @min_spend"
 pytae [orders, cust*]> orders = -join cust on=customer_id -o clean_orders.parquet
 Exported 6,420 rows to clean_orders.parquet.
 
@@ -13661,7 +13656,7 @@ Generated `session.pt`:
 orders = orders.parquet
 cust = customers.csv
 min_spend = 50.0
-orders = -filter "amount >= @min_spend"
+orders = -filter "c.amount >= @min_spend"
 orders = -join cust on=customer_id -o clean_orders.parquet
 ```
 
@@ -13721,7 +13716,7 @@ In Pytae, the interactive shell follows an ironclad rule: **Bare verbs never mut
 Running a verb directly against the prompt computes and renders an immediate terminal preview without altering the underlying table in memory:
 
 ```text
-pytae [df: 344x7]> -filter "species == 'Gentoo' and body_mass_g > 5000"
+pytae [df: 344x7]> -filter "c.species == 'Gentoo' and c.body_mass_g > 5000"
 shape: (61, 7)
 ┌─────────┬───────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
 │ species ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
@@ -13741,10 +13736,10 @@ pytae [df: 344x7]>
 To persist transformations, assign the pipeline result back to the table:
 
 ```text
-pytae [df: 344x7]> df = -filter "species in ['Adelie', 'Gentoo'] and body_mass_g >= 3500"
+pytae [df: 344x7]> df = -filter "c.species in ['Adelie', 'Gentoo'] and c.body_mass_g >= 3500"
 Updated 'df' (188 rows x 7 cols).
 
-pytae [df: 188x7]> df = -mutate "mass_kg = body_mass_g / 1000" -select "species,island,mass_kg"
+pytae [df: 188x7]> df = -mutate "mass_kg = c.body_mass_g / 1000" -select "c.species, c.island, c.mass_kg"
 Updated 'df' (188 rows x 3 cols).
 
 pytae [df: 188x3]> 
@@ -13755,7 +13750,7 @@ pytae [df: 188x3]>
 Create derived tables without modifying the original source:
 
 ```text
-pytae [orders, cust]> big_orders = orders -filter "total > 500"
+pytae [orders, cust]> big_orders = orders -filter "c.total > 500"
 Created 'big_orders' (12,400 rows x 6 cols).
 
 # Both 'orders' and 'big_orders' now exist independently in memory
@@ -13773,11 +13768,11 @@ All 19 Pytae CLI flags execute at native Polars multithreaded SIMD speeds direct
 Chain verbs from left to right as a continuous pipeline:
 
 ```text
-pytae [penguins]> -filter "body_mass_g > 3500" \
-                  -mutate "mass_kg = body_mass_g / 1000" \
-                  -by species,island \
-                  -agg "n=count, avg_mass=mass_kg:mean" \
-                  -arrange "avg_mass desc"
+pytae [penguins]> -filter "c.body_mass_g > 3500" \
+                  -mutate "mass_kg = c.body_mass_g / 1000" \
+                  -by c.species, c.island \
+                  -agg "n = count(), avg_mass = c.mass_kg.mean()" \
+                  -arrange "c.avg_mass.desc()"
 ```
 
 ### Multi-Line Pipeline Continuation (`\`)
@@ -13785,9 +13780,9 @@ pytae [penguins]> -filter "body_mass_g > 3500" \
 For long or complex transformation chains, terminate lines with a backslash `\` to continue input:
 
 ```text
-pytae [df: 10,000x8]> df = -filter "status == 'completed'" \
-                      -mutate "margin = revenue - cost" \
-                      -arrange "margin desc" \
+pytae [df: 10,000x8]> df = -filter "c.status == 'completed'" \
+                      -mutate "margin = c.revenue - c.cost" \
+                      -arrange "c.margin.desc()" \
                       -head 10
 Updated 'df' (10 rows x 9 cols).
 ```
@@ -14280,7 +14275,7 @@ pytae> df = sample:tips
 Loaded tips.parquet as 'df' (244 rows x 7 cols).
 
 # 2. Filter using CLI verbs
-pytae [df: 244x7]> df = -filter "total_bill > 10"
+pytae [df: 244x7]> df = -filter "c.total_bill > 10"
 
 # 3. Aggregate using ANSI SQL
 pytae [df: 226x7]> summary = sql { SELECT day, time, avg(tip) as avg_tip, count(*) as count FROM df GROUP BY 1, 2 }
@@ -14350,8 +14345,8 @@ To keep the REPL mental model clean and unambiguous:
 | Scope | Rule | Example |
 | :--- | :--- | :--- |
 | **Session Variables** | **Always prefix LHS with `@`** | `@threshold = 5000`<br>`@path = "Z:\data\*.parquet"`<br>`@regions = ['North', 'West']` |
-| **Tables (DataFrames)** | **Always bare on LHS (no `@`)** | `df = orders.parquet`<br>`sales = sample:tips`<br>`heavy = df -filter "mass > 5000"` |
-| **Referencing Variables** | **Always use `@`** | `-filter "amount > @threshold"`<br>`df = @path`<br>`lazy_df = scan @path` |
+| **Tables (DataFrames)** | **Always bare on LHS (no `@`)** | `df = orders.parquet`<br>`sales = sample:tips`<br>`heavy = df -filter "c.mass > 5000"` |
+| **Referencing Variables** | **Always use `@`** | `-filter "c.amount > @threshold"`<br>`df = @path`<br>`lazy_df = scan @path` |
 
 > [!TIP]
 > Bare scalar definitions (e.g. `threshold = 5000`) continue to work as a silent fallback, but the recommended convention is to always use `@` on the left-hand side (`@threshold = 5000`).
@@ -14461,10 +14456,10 @@ Inject session variables directly into pipeline filter expressions, column deriv
 
 ```text
 # 1. Use in -filter
-pytae [orders]> -filter "amount >= @threshold and country in @target_countries"
+pytae [orders]> -filter "c.amount >= @threshold and c.country in @target_countries"
 
 # 2. Use in -mutate
-pytae [orders]> orders = -mutate "gross_amount = amount * (1 + @tax_rate)"
+pytae [orders]> orders = -mutate "gross_amount = c.amount * (1 + @tax_rate)"
 
 # 3. Use in ANSI SQL
 pytae [orders]> sql { SELECT * FROM orders WHERE amount > @thresholds.medium }
@@ -14944,7 +14939,7 @@ pytae [orders, cust]> cust -shape
 (15,000, 5)
 
 # Transform cust directly
-pytae [orders, cust]> cust -filter "country == 'US'"
+pytae [orders, cust]> cust -filter "c.country == 'US'"
 -> cust: 9,200 rows x 5 cols
 ```
 
@@ -15005,9 +15000,9 @@ The REPL maintains persistent command history saved in `~/.pytae_history`. Use <
 For complex pipelines or multi-step queries, span commands across multiple lines using a trailing backslash (`\`):
 
 ```text
-pytae [orders]> -filter "amount > 1000 and status == 'shipped'" \
-... -mutate "tax = amount * 0.08" \
-... -select "order_id,customer_id,tax,amount" \
+pytae [orders]> -filter "c.amount > 1000 and c.status == 'shipped'" \
+... -mutate "tax = c.amount * 0.08" \
+... -select "c.order_id, c.customer_id, c.tax, c.amount" \
 ... -head 5
 ```
 
@@ -15134,19 +15129,19 @@ import pytae as pt
 penguins = pt.read("penguins.parquet")
 
 report = (
-    penguins.filter("body_mass_g > 3500 & sex.is_not_null()")
+    penguins.filter(c.body_mass_g > 3500, c.sex.is_not_null())
     .mutate(
-        body_mass_kg="body_mass_g / 1000",
-        bill_ratio="bill_length_mm / bill_depth_mm",
-        status="'verified'"
+        body_mass_kg=c.body_mass_g / 1000,
+        bill_ratio=c.bill_length_mm / c.bill_depth_mm,
+        status="'verified'",
     )
-    .by("species", "island")
+    .by(c.species, c.island)
     .agg(
-        n="count",
-        avg_mass_kg="body_mass_kg:mean",
-        max_ratio="bill_ratio:max"
+        n=c.species.count(),
+        avg_mass_kg=c.body_mass_kg.mean(),
+        max_ratio=c.bill_ratio.max(),
     )
-    .arrange("avg_mass_kg desc")
+    .arrange(c.avg_mass_kg.desc())
 )
 
 # Export results
@@ -15158,11 +15153,11 @@ The exact same logic translates directly to the terminal:
 
 ```bash
 pytae penguins.parquet \
-  -filter "body_mass_g > 3500 and sex.is_not_null()" \
-  -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm, status = 'verified'" \
-  -by species,island \
-  -agg "n = count, avg_mass_kg = body_mass_kg:mean, max_ratio = bill_ratio:max" \
-  -arrange "avg_mass_kg desc" \
+  -filter "c.body_mass_g > 3500 and c.sex.is_not_null()" \
+  -mutate "body_mass_kg = c.body_mass_g / 1000, bill_ratio = c.bill_length_mm / c.bill_depth_mm, status = 'verified'" \
+  -by c.species, c.island \
+  -agg "n = count(), avg_mass_kg = c.body_mass_kg.mean(), max_ratio = c.bill_ratio.max()" \
+  -arrange "c.avg_mass_kg.desc()" \
   -o summary.parquet
 ```
 
@@ -15188,9 +15183,9 @@ Grouping in Pytae is an execution modifier, not a persistent object state:
 # Multi-scope grouping in a single fluent pipeline:
 (
     df
-    .by("region").mutate(regional_avg="mean(sales)")
-    .mutate(global_avg="mean(sales)")
-    .by("dept").mutate(dept_avg="mean(sales)")
+    .by(c.region).mutate(regional_avg=c.sales.mean())
+    .mutate(global_avg=c.sales.mean())
+    .by(c.dept).mutate(dept_avg=c.sales.mean())
 )
 ```
 
@@ -15250,11 +15245,11 @@ Whether you are writing a production Python service, conducting exploratory anal
           import pytae as pt                         $ pytae file.parquet
      df = pt.read("file.parquet")                              │
                       │                                       │
-      df.filter("sales > 100")                        -filter "sales > 100"
-        .mutate(tax="sales * 0.08")                   -mutate "tax = sales * 0.08"
-        .by("region")                                 -by region
-        .agg(total_rev="sum(sales)", n="count")       -agg "total_rev = sum(sales), n = count"
-        .arrange("total_rev desc")                    -arrange "total_rev desc"
+      df.filter(c.sales > 100)                        -filter "c.sales > 100"
+        .mutate(tax=c.sales * 0.08)                   -mutate "tax = c.sales * 0.08"
+        .by(c.region)                                 -by c.region
+        .agg(total_rev=c.sales.sum(), n=c.sales.count()) -agg "total_rev = c.sales.sum(), n = count()"
+        .arrange(c.total_rev.desc())                  -arrange "c.total_rev.desc()"
                       │                                       │
                       ▼                                       ▼
               In-Memory Result                          Stdout / Export
@@ -15321,12 +15316,12 @@ eager_from_lazy = lazy_df.collect()   # Explicitly materialize lazy -> eager
 When running on a lazy DataFrame, Pytae defers execution until results are required. Polars' underlying Rust optimizer analyzes the entire computational graph and applies physical query optimizations:
 
 1. **Predicate Pushdown (Filter Pushdown)**:
-   - When you write `.filter("status == 'completed' & amount > 100")`, Pytae does not read all rows and filter in Python.
+   - When you write `.filter(c.status == 'completed', c.amount > 100)`, Pytae does not read all rows and filter in Python.
    - It pushes the filter criteria directly down into the file reader. For Parquet files, entire row groups are skipped at the disk level using Parquet block metadata and statistics, reading only matching rows into memory.
 2. **Projection Pushdown (Column Selection)**:
-   - When you write `.select("customer_id", "total_spend")`, Pytae reads **only those two columns** from storage. The remaining 50+ columns in the file are never touched, dramatically reducing disk I/O and memory bandwidth.
+   - When you write `.select(c.customer_id, c.total_spend)`, Pytae reads **only those two columns** from storage. The remaining 50+ columns in the file are never touched, dramatically reducing disk I/O and memory bandwidth.
 3. **Slice / Limit Pushdown**:
-   - Calling `.head(10)` or `.arrange("sales desc").head(5)` avoids scanning the remainder of the file once the threshold is satisfied.
+   - Calling `.head(10)` or `.arrange(c.sales.desc()).head(5)` avoids scanning the remainder of the file once the threshold is satisfied.
 
 #### Inspecting the Execution Plan with `df.explain()`
 You can inspect the exact physical and logical optimizations performed by Pytae using `.explain()`:
@@ -15334,9 +15329,9 @@ You can inspect the exact physical and logical optimizations performed by Pytae 
 ```python
 plan = (
     pt.scan("sales.parquet")
-    .filter("region == 'East' & sales > 500")
-    .mutate(tax="sales * 0.08")
-    .select("order_id", "sales", "tax")
+    .filter(c.region == 'East', c.sales > 500)
+    .mutate(tax=c.sales * 0.08)
+    .select(c.order_id, c.sales, c.tax)
     .explain()
 )
 print(plan)
@@ -15562,44 +15557,39 @@ Filter rows cleanly using operator expressions, ranges, set membership, or colum
 
 ```bash
 # Exact match (strict '==' enforced; string values must be quoted with single quotes inside double quotes)
-pytae data.parquet -filter "species == 'Gentoo'"
-pytae data.parquet -filter "currency == 'CAD' and reporting_date in ['2026-09-30', '2026-08-31']"
+pytae data.parquet -filter "c.species == 'Gentoo'"
+pytae data.parquet -filter "c.currency == 'CAD' and c.reporting_date in ['2026-09-30', '2026-08-31']"
 
-# Numeric comparison operators (>, <, >=, <=, !=) and boolean logic (and, or, parens)
-pytae data.parquet -filter "body_mass_g > 5000"
-pytae data.parquet -filter "body_mass_g >= 3500 and flipper_length_mm < 210"
-pytae data.parquet -filter "(species == 'Adelie' or species == 'Chinstrap') and body_mass_g > 4000"
+# Numeric comparison operators (>, <, >=, <=, !=) and boolean logic (and, or, &, |, parens)
+pytae data.parquet -filter "c.body_mass_g > 5000"
+pytae data.parquet -filter "c.body_mass_g >= 3500 and c.flipper_length_mm < 210"
+pytae data.parquet -filter "(c.species == 'Adelie' or c.species == 'Chinstrap') and c.body_mass_g > 4000"
 
 # Column-to-column comparison (reconcile IDs, detect limit breaches)
-pytae loans.parquet -filter "exposure > limit"
-pytae loans.parquet -filter "tranche_id == deal_id"
+pytae loans.parquet -filter "c.exposure > c.limit"
+pytae loans.parquet -filter "c.tranche_id == c.deal_id"
 
-# Ranges & Intervals (Option 1 native between or Option 2 multi-condition tuple dicts)
-pytae data.parquet -filter "{'body_mass_g': ('between', 3000, 3500)}"
-pytae data.parquet -filter "{'body_mass_g': (('>=', 3000), ('<=', 3500))}"
-pytae data.parquet -filter "body_mass_g >= 3000 and body_mass_g <= 3500"
+# Ranges & Intervals
+pytae data.parquet -filter "3000 <= c.body_mass_g <= 3500"
 
 # List set membership (in, not in)
-pytae data.parquet -filter "species in ['Adelie', 'Chinstrap']"
-pytae data.parquet -filter "species not in ['Gentoo']"
+pytae data.parquet -filter "c.species in ['Adelie', 'Chinstrap']"
+pytae data.parquet -filter "c.species not in ['Gentoo']"
 
-# Null checks (universal 'is_null()' / 'is_not_null()' in expressions and dicts; all missing and NaN values normalize to null)
-pytae data.parquet -filter "sex.is_not_null()"
-pytae data.parquet -filter "sex.is_null()"
-pytae data.parquet -filter "{'sex': 'is_null()'}"
-pytae data.parquet -filter "{'sex': 'is_not_null()'}"
+# Null checks (universal 'is_null()' / 'is_not_null()' in expressions)
+pytae data.parquet -filter "c.sex.is_not_null()"
+pytae data.parquet -filter "c.sex.is_null()"
 
 # Columns with parentheses or spaces
-pytae data.parquet -filter "counterparty_class_(irb) == 'Sovereigns'"
-pytae data.parquet -filter "[counterparty class (irb)].is_not_null()"
+pytae data.parquet -filter "c['counterparty class (irb)'].is_not_null()"
 
 # Inline assertions (validates all rows satisfy conditions; fails fast on violation)
-pytae data.parquet -assert "body_mass_g > 0 and id.is_not_null()"
-pytae orders.parquet -assert "order_id.is_not_null() and amount >= 0" -o valid.parquet
+pytae data.parquet -assert "c.body_mass_g > 0 and c.id.is_not_null()"
+pytae orders.parquet -assert "c.order_id.is_not_null() and c.amount >= 0" -o valid.parquet
 
 # Drop rows containing missing values
 pytae data.parquet -dropna
-pytae data.parquet -dropna "body_mass_g,sex"
+pytae data.parquet -dropna "c.body_mass_g, c.sex"
 ```
 
 ---
@@ -15610,30 +15600,27 @@ Derive and overwrite columns using vectorized Polars SIMD expressions:
 
 ```bash
 # Basic arithmetic formulas
-pytae data.parquet -mutate "mass_kg = body_mass_g / 1000.0"
+pytae data.parquet -mutate "mass_kg = c.body_mass_g / 1000.0"
 
 # Sequential assignments (later columns reference earlier ones)
-pytae data.parquet -mutate "mass_kg = body_mass_g / 1000.0, mass_lbs = mass_kg * 2.20462"
+pytae data.parquet -mutate "mass_kg = c.body_mass_g / 1000.0, mass_lbs = c.mass_kg * 2.20462"
 
 # Conditional branching: if_else(condition, true_val, false_val)
-pytae data.parquet -mutate "size = if_else(body_mass_g > 4000, 'Large', 'Small')"
+pytae data.parquet -mutate "size = if_else(c.body_mass_g > 4000, 'Large', 'Small')"
 
 # Multi-condition branching: case_when
-pytae data.parquet -mutate "tier = case_when(body_mass_g > 5000, 'Heavy', body_mass_g > 3500, 'Medium', default='Light')"
+pytae data.parquet -mutate "tier = case_when(c.body_mass_g > 5000, 'Heavy', c.body_mass_g > 3500, 'Medium', default='Light')"
 
 # Categorical mapping & recoding: map(col, {dict}, default=...)
 # (Strict boolean safety: mapping booleans preserves Boolean dtype)
-pytae data.parquet -mutate "is_heavy = map(species, {'Gentoo': True}, default=False)"
-pytae data.parquet -mutate "region = map(island, {'Biscoe': 'South', 'Dream': 'North'}, default='Other')"
+pytae data.parquet -mutate "is_heavy = map(c.species, {'Gentoo': True}, default=False)"
+pytae data.parquet -mutate "region = map(c.island, {'Biscoe': 'South', 'Dream': 'North'}, default='Other')"
 
 # String functions: .str.lower(), .str.upper(), .str.slice(), .str.replace()
-pytae data.parquet -mutate "species_lower = species.str.lower()"
+pytae data.parquet -mutate "species_lower = c.species.str.lower()"
 
-# Unbracketed special-character columns (parentheses, hyphens)
-pytae data.parquet -mutate "diff = irba_unsecured_lgd_(1g00) - post_crm_lgd_(2a)"
-
-# Dynamic column referencing via col()
-pytae data.parquet -mutate "target_copy = col('body_mass_g') * 1.5"
+# Columns with spaces
+pytae data.parquet -mutate "diff = c['gross revenue'] - c['cost']"
 ```
 
 ---
@@ -15644,10 +15631,13 @@ Select, reorder, and drop columns with flexible pattern matching:
 
 ```bash
 # Explicit column selection and reordering
-pytae data.parquet -select "species,island,body_mass_g"
+pytae data.parquet -select "c.species, c.island, c.body_mass_g"
 
 # Drop columns using tilde negation (~col)
-pytae data.parquet -select "~sex, ~year"
+pytae data.parquet -select "~c.sex, ~c.year"
+
+# Range selection
+pytae data.parquet -select "c.bill_length_mm.to(c.body_mass_g)"
 
 # Pattern and prefix matching
 pytae data.parquet -select "starts_with=bill_"
@@ -15701,25 +15691,25 @@ Perform blazing-fast grouped calculations:
 
 ```bash
 # Group-by count
-pytae data.parquet -by species -count
+pytae data.parquet -by c.species -count
 
 # Multiple aggregations per group
-pytae data.parquet -by species -agg "avg_mass=body_mass_g:mean, max_flipper=flipper_length_mm:max, total=count"
+pytae data.parquet -by c.species -agg "avg_mass = c.body_mass_g.mean(), max_flipper = c.flipper_length_mm.max(), total = count()"
 
 # Multi-column grouping
-pytae data.parquet -by "species,island" -agg "mean_mass=body_mass_g:mean"
+pytae data.parquet -by "c.species, c.island" -agg "mean_mass = c.body_mass_g.mean()"
 
 # Deduplicate rows across key columns
-pytae data.parquet -distinct "species,island"
+pytae data.parquet -distinct "c.species, c.island"
 
 # Sort rows by multiple columns with directions
-pytae data.parquet -arrange "species asc, body_mass_g desc"
+pytae data.parquet -arrange "c.species.asc(), c.body_mass_g.desc()"
 
 # Sequential -by with single-shot zero-pollution scoping (each -by scopes the next verb, then resets)
-pytae sales.parquet -by region -mutate "regional_mean=mean(sales)" -mutate "global_mean=mean(sales)" -by dept -mutate "dept_mean=mean(sales)"
+pytae sales.parquet -by c.region -mutate "regional_mean = c.sales.mean()" -mutate "global_mean = c.sales.mean()" -by c.dept -mutate "dept_mean = c.sales.mean()"
 
 # Top N per group in a single CLI command (e.g. top 2 species by avg body mass for each island)
-pytae penguins.parquet -by island,species -agg "avg_mass=mean(body_mass_g)" -arrange "island, avg_mass desc" -by island -head 2
+pytae penguins.parquet -by c.island, c.species -agg "avg_mass = c.body_mass_g.mean()" -arrange "c.island, c.avg_mass.desc()" -by c.island -head 2
 ```
 
 ---
@@ -16197,46 +16187,44 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 ### 1. Row Filtering
 | Task | Pandas | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Boolean Mask** | `df[df['sales'] > 100]` | `df.filter("sales > 100")` | `-filter "sales > 100"` |
-| **Multiple Conditions** | `df[(df['a'] > 1) & (df['b'] == 'E')]` | `df.filter("a > 1 and b == 'E'")` | `-filter "a > 1 and b == 'E'"` |
-| **Interval / Range** | `df[df['x'].between(10, 20)]` | `df.filter({'x': ('between', 10, 20)})` | `-filter "{'x': ('between', 10, 20)}"` |
-| **Set Membership** | `df[df['cat'].isin(['A', 'B'])]` | `df.filter("cat in ['A', 'B']")` | `-filter "cat in ['A', 'B']"` |
-| **Spaced Columns** | `df[df['gross sales'] > 50]` | `df.filter("[gross sales] > 50")` | `-filter "[gross sales] > 50"` |
-| **String Prefix** | `df[df['name'].str.startswith('A')]` | `df.filter("name.starts_with('A')")` | `-filter "name.starts_with('A')"` |
-| **Null Row Check** | `df[df['col'].notna()]` | `df.filter("col.is_not_null()")` | `-filter "col.is_not_null()"` |
+| **Boolean Mask** | `df[df['sales'] > 100]` | `df.filter(c.sales > 100)` | `-filter "c.sales > 100"` |
+| **Multiple Conditions** | `df[(df['a'] > 1) & (df['b'] == 'E')]` | `df.filter(c.a > 1, c.b == 'E')` | `-filter "c.a > 1 and c.b == 'E'"` |
+| **Interval / Range** | `df[df['x'].between(10, 20)]` | `df.filter(10 <= c.x, c.x <= 20)` | `-filter "10 <= c.x <= 20"` |
+| **Set Membership** | `df[df['cat'].isin(['A', 'B'])]` | `df.filter(c.cat.is_in(['A', 'B']))` | `-filter "c.cat in ['A', 'B']"` |
+| **Spaced Columns** | `df[df['gross sales'] > 50]` | `df.filter(c['gross sales'] > 50)` | `-filter "c['gross sales'] > 50"` |
+| **String Prefix** | `df[df['name'].str.startswith('A')]` | `df.filter(c.name.str.starts_with('A'))` | `-filter "c.name.str.starts_with('A')"` |
+| **Null Row Check** | `df[df['col'].notna()]` | `df.filter(c.col.is_not_null())` | `-filter "c.col.is_not_null()"` |
 | **Callable / Lambda** | `df[lambda d: d['x'] > 5]` | `df.filter(lambda d: d['x'] > 5)` | N/A |
 
 ### 2. Feature Engineering & Column Derivations (`mutate`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Basic Formula** | `df.assign(y=df['a'] / df['b'])` | `df.mutate(y="a / b")` | `-mutate "y = a / b"` |
-| **Sequential Calculations**| Chained `.assign(a=...).assign(b=lambda ...)` | `df.mutate(a="1", b="a * 2")` | `-mutate "a=1, b=a*2"` |
-| **If / Else** | `np.where(df['x'] > 0, 'pos', 'neg')` | `df.mutate(f="if_else(x > 0, 'pos', 'neg')")` | `-mutate "f=if_else(x>0,'pos','neg')"` |
-| **Multi-Branch (Case)** | `np.select([c1, c2], [v1, v2], default=v3)` | `df.mutate(f="case_when(c1, v1, c2, v2, v3)")` | `-mutate "f=case_when(c1,v1,v3)"` |
-| **Value Mapping** | `df['x'].map({'A': 1, 'B': 2})` | `df.mutate(x="map(x, {'A': 1, 'B': 2})")` | `-mutate "x=map(x, {'A':1})"` |
+| **Basic Formula** | `df.assign(y=df['a'] / df['b'])` | `df.mutate(y=c.a / c.b)` | `-mutate "y = c.a / c.b"` |
+| **Sequential Calculations**| Chained `.assign(a=...).assign(b=lambda ...)` | `df.mutate(a=1, b=c.a * 2)` | `-mutate "a=1, b=c.a*2"` |
+| **If / Else** | `np.where(df['x'] > 0, 'pos', 'neg')` | `df.mutate(f=c.x.when(c.x > 0, 'pos', 'neg'))` | `-mutate "f=if_else(c.x>0,'pos','neg')"` |
 | **Multi-Column Transform**| Loop over columns or complex `apply` | `df.mutate("(a, b) = _ * 10")` | `-mutate "(a, b) = _ * 10"` |
 | **Multi-Column + Suffix**| Loop + dictionary comprehension | `df.mutate("(a, b)_cm = _ * 10")` | `-mutate "(a, b)_cm = _ * 10"` |
-| **Grouped Window Calculation**| `df.groupby('g')['x'].transform('mean')` | `df.by("g").mutate(m="mean(x)")` | `-by g -mutate "m = mean(x)"` |
-| **Lag / Shift** | `df.groupby('g')['x'].shift(1)` | `df.by("g").mutate(prev="shift(x, 1)")` | `-by g -mutate "prev=shift(x,1)"` |
+| **Grouped Window Calculation**| `df.groupby('g')['x'].transform('mean')` | `df.by(c.g).mutate(m=c.x.mean())` | `-by c.g -mutate "m = c.x.mean()"` |
+| **Lag / Shift** | `df.groupby('g')['x'].shift(1)` | `df.by(c.g).mutate(prev=c.x.shift(1))` | `-by c.g -mutate "prev=c.x.shift(1)"` |
 
 ### 3. Column Selection, Renaming & Exclusion (`select`, `rename`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Select Columns** | `df[['a', 'b']]` | `df.select("a", "b")` | `-select "a,b"` |
-| **Drop Columns** | `df.drop(columns=['c', 'd'])` | `df.select("!c", "!d")` | `-select "!c,!d"` |
+| **Select Columns** | `df[['a', 'b']]` | `df.select(c.a, c.b)` | `-select "c.a, c.b"` |
+| **Drop Columns** | `df.drop(columns=['c', 'd'])` | `df.select(~c.c, ~c.d)` | `-select "~c.c, ~c.d"` |
 | **Pattern Match** | `df.filter(like='bill')` | `df.select(contains="bill")` | `-select "contains=bill"` |
 | **Prefix Match** | `df[[c for c in df if c.startswith('b')]]`| `df.select(starts_with="b")` | `-select "starts_with=b"` |
-| **Column Slicing** | `df.loc[:, 'a':'b']` | `df.select("a:b")` | `-select "a:b"` |
+| **Column Slicing** | `df.loc[:, 'a':'b']` | `df.select(c.a.to(c.b))` | `-select "c.a.to(c.b)"` |
 | **Dedicated Rename** | `df.rename(columns={'a': 'b'})` | `df.rename("a:b")` | `-rename "a:b"` |
-| **Reorder with Rest** | `df[['lead'] + [c for c in df if c != 'lead']]` | `df.select("lead", pt.everything)` | N/A |
+| **Reorder with Rest** | `df[['lead'] + [c for c in df if c != 'lead']]` | `df.select(c.lead, pt.everything)` | N/A |
 
 ### 4. Row Sorting (`arrange`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Ascending** | `df.sort_values('sales')` | `df.arrange("sales")` | `-arrange sales` |
-| **Descending** | `df.sort_values('sales', ascending=False)` | `df.arrange("sales desc")` | `-arrange "sales desc"` |
-| **Multi-Column Mixed** | `df.sort_values(['a', 'b'], ascending=[True, False])` | `df.arrange("a", "b desc")` | `-arrange "a, b desc"` |
-| **Spaced Columns** | `df.sort_values('gross sales')` | `df.arrange("[gross sales] desc")` | `-arrange "[gross sales] desc"` |
+| **Ascending** | `df.sort_values('sales')` | `df.arrange(c.sales.asc())` | `-arrange c.sales` |
+| **Descending** | `df.sort_values('sales', ascending=False)` | `df.arrange(c.sales.desc())` | `-arrange "c.sales.desc()"` |
+| **Multi-Column Mixed** | `df.sort_values(['a', 'b'], ascending=[True, False])` | `df.arrange(c.a.asc(), c.b.desc())` | `-arrange "c.a, c.b.desc()"` |
+| **Spaced Columns** | `df.sort_values('gross sales')` | `df.arrange(c['gross sales'].desc())` | `-arrange "c['gross sales'].desc()"` |
 
 ### 5. Grouped Aggregation & Counting (`count`, `by` + `agg`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
@@ -16551,44 +16539,40 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 ### 1. Row Filtering
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Simple Filter** | `filter(df, sales > 100)` | `df.filter("sales > 100")` | `-filter "sales > 100"` |
-| **Multiple Conditions** | `filter(df, a > 1, b == "E")` | `df.filter("a > 1 and b == 'E'")` | `-filter "a > 1 and b == 'E'"` |
-| **Interval / Range** | `filter(df, between(x, 10, 20))` | `df.filter(x=("between", 10, 20))` | `-filter "{'x': ('between', 10, 20)}"` |
-| **Set Membership** | `filter(df, cat %in% c("A", "B"))` | `df.filter(cat=['A', 'B'])` | `-filter "cat in ['A', 'B']"` |
-| **Spaced Columns** | `filter(df, \`gross sales\` > 50)` | `df.filter("[gross sales] > 50")` | `-filter "[gross sales] > 50"` |
-| **Prefix Match** | `filter(df, str_starts(name, "A"))`| `df.filter(name=('starts_with', 'A'))`| `-filter "name.starts_with('A')"` |
-| **Null Row Check** | `filter(df, !is.na(col))` | `df.filter("col.is_not_null()")` | `-filter "col.is_not_null()"` |
+| **Simple Filter** | `filter(df, sales > 100)` | `df.filter(c.sales > 100)` | `-filter "c.sales > 100"` |
+| **Multiple Conditions** | `filter(df, a > 1, b == "E")` | `df.filter(c.a > 1, c.b == 'E')` | `-filter "c.a > 1 and c.b == 'E'"` |
+| **Interval / Range** | `filter(df, between(x, 10, 20))` | `df.filter(10 <= c.x, c.x <= 20)` | `-filter "10 <= c.x <= 20"` |
+| **Set Membership** | `filter(df, cat %in% c("A", "B"))` | `df.filter(c.cat.is_in(['A', 'B']))` | `-filter "c.cat in ['A', 'B']"` |
+| **Spaced Columns** | `filter(df, \`gross sales\` > 50)` | `df.filter(c['gross sales'] > 50)` | `-filter "c['gross sales'] > 50"` |
+| **Prefix Match** | `filter(df, str_starts(name, "A"))`| `df.filter(c.name.str.starts_with('A'))`| `-filter "c.name.str.starts_with('A')"` |
+| **Null Row Check** | `filter(df, !is.na(col))` | `df.filter(c.col.is_not_null())` | `-filter "c.col.is_not_null()"` |
 
 ### 2. Feature Engineering & Column Derivations (`mutate`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Simple Derivation** | `mutate(df, y = a / b)` | `df.mutate(y="a / b")` | `-mutate "y = a / b"` |
-| **Sequential Calculations**| `mutate(df, a = 1, b = a * 2)` | `df.mutate(a="1", b="a * 2")` | `-mutate "a=1, b=a*2"` |
-| **Conditional (If/Else)** | `mutate(df, f = if_else(x > 0, "pos", "neg"))` | `df.mutate(f="if_else(x > 0, 'pos', 'neg')")` | `-mutate "f=if_else(x>0,'pos','neg')"` |
-| **Multi-Branch (Case)** | `mutate(df, f = case_when(c1 ~ v1, c2 ~ v2, TRUE ~ v3))` | `df.mutate(f="case_when(c1, v1, c2, v2, v3)")` | `-mutate "f=case_when(c1,v1,v3)"` |
-| **Value Recoding** | `mutate(df, x = recode(x, "A" = 1, "B" = 2))` | `df.mutate(x="map(x, {'A': 1, 'B': 2})")` | `-mutate "x=map(x, {'A':1})"` |
-| **Multi-Column Transform** | `mutate(df, across(c(a, b), ~ .x * 10))` | `df.mutate("(a, b) = _ * 10")` | `-mutate "(a, b) = _ * 10"` |
-| **Multi-Column + Suffix** | `mutate(df, across(c(a, b), ~ .x * 10, .names = "{.col}_cm"))` | `df.mutate("(a, b)_cm = _ * 10")` | `-mutate "(a, b)_cm = _ * 10"` |
-| **Lag / Lead** | `mutate(df, prev = lag(x, 1))` | `df.mutate(prev="shift(x, 1)")` | `-mutate "prev = shift(x, 1)"` |
+| **Simple Derivation** | `mutate(df, y = a / b)` | `df.mutate(y=c.a / c.b)` | `-mutate "y = c.a / c.b"` |
+| **Sequential Calculations**| `mutate(df, a = 1, b = a * 2)` | `df.mutate(a=1, b=c.a * 2)` | `-mutate "a=1, b=c.a*2"` |
+| **Conditional (If/Else)** | `mutate(df, f = if_else(x > 0, "pos", "neg"))` | `df.mutate(f=c.x.when(c.x > 0, 'pos', 'neg'))` | `-mutate "f=if_else(c.x>0,'pos','neg')"` |
+| **Lag / Lead** | `mutate(df, prev = lag(x, 1))` | `df.mutate(prev=c.x.shift(1))` | `-mutate "prev = c.x.shift(1)"` |
 
 ### 3. Column Selection & Exclusion (`select`, `rename`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Select Columns** | `select(df, a, b)` | `df.select("a", "b")` | `-select "a,b"` |
-| **Drop Columns** | `select(df, -c, -d)` | `df.select("!c", "!d")` | `-select "!c,!d"` |
+| **Select Columns** | `select(df, a, b)` | `df.select(c.a, c.b)` | `-select "c.a, c.b"` |
+| **Drop Columns** | `select(df, -c, -d)` | `df.select(~c.c, ~c.d)` | `-select "~c.c, ~c.d"` |
 | **Pattern Match** | `select(df, contains("bill"))` | `df.select(contains="bill")` | `-select "contains=bill"` |
 | **Prefix Match** | `select(df, starts_with("b"))` | `df.select(starts_with="b")` | `-select "starts_with=b"` |
-| **Inline Rename** | `select(df, new_b = a)` | `df.select("a:new_b")` | `-select "a:new_b"` |
+| **Inline Rename** | `select(df, new_b = a)` | `df.select(new_b=c.a)` | `-select "new_b=c.a"` |
 | **Dedicated Rename** | `rename(df, new_b = a)` | `df.rename("a:new_b")` | `-rename "a:new_b"` |
-| **Reorder with Rest** | `select(df, lead, everything())` | `df.select("lead", pt.everything)` | N/A |
+| **Reorder with Rest** | `select(df, lead, everything())` | `df.select(c.lead, pt.everything)` | N/A |
 
 ### 4. Row Sorting (`arrange`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Ascending** | `arrange(df, sales)` | `df.arrange("sales")` | `-arrange sales` |
-| **Descending** | `arrange(df, desc(sales))` | `df.arrange("sales desc")` | `-arrange "sales desc"` |
-| **Multi-Column Mixed** | `arrange(df, a, desc(b))` | `df.arrange("a", "b desc")` | `-arrange "a, b desc"` |
-| **Spaced Columns** | `arrange(df, desc(\`gross sales\`))` | `df.arrange("[gross sales] desc")` | `-arrange "[gross sales] desc"` |
+| **Ascending** | `arrange(df, sales)` | `df.arrange(c.sales.asc())` | `-arrange c.sales` |
+| **Descending** | `arrange(df, desc(sales))` | `df.arrange(c.sales.desc())` | `-arrange "c.sales.desc()"` |
+| **Multi-Column Mixed** | `arrange(df, a, desc(b))` | `df.arrange(c.a.asc(), c.b.desc())` | `-arrange "c.a, c.b.desc()"` |
+| **Spaced Columns** | `arrange(df, desc(\`gross sales\`))` | `df.arrange(c['gross sales'].desc())` | `-arrange "c['gross sales'].desc()"` |
 
 ### 5. Grouped Summaries & Counting (`count`, `by` + `agg`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
@@ -16948,40 +16932,36 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 ### 2. Row Filtering
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Simple Filter** | `WHERE sales > 100;` (or `IF sales > 100;`) | `df.filter("sales > 100")` | `-filter "sales > 100"` |
-| **Multiple Conditions** | `WHERE a > 1 AND b = 'East';` | `df.filter("a > 1 and b == 'East'")` | `-filter "a > 1 and b == 'East'"` |
-| **Mathematical Range** | `WHERE 10 <= x <= 20;` | `df.filter(x=("between", 10, 20))` | `-filter "{'x': ('between', 10, 20)}"` |
-| **Set Membership** | `WHERE cat IN ('A', 'B');` | `df.filter(cat=['A', 'B'])` | `-filter "cat in ['A', 'B']"` |
-| **Spaced Column Name** | `WHERE 'gross sales'n > 50;` | `df.filter("[gross sales] > 50")` | `-filter "[gross sales] > 50"` |
-| **String Prefix Match**| `WHERE name LIKE 'A%';` | `df.filter(name=('starts_with', 'A'))` | `-filter "name.starts_with('A')"` |
-| **Non-Missing Check** | `WHERE col IS NOT MISSING;` | `df.filter("col.is_not_null()")` | `-filter "col.is_not_null()"` |
+| **Simple Filter** | `WHERE sales > 100;` (or `IF sales > 100;`) | `df.filter(c.sales > 100)` | `-filter "c.sales > 100"` |
+| **Multiple Conditions** | `WHERE a > 1 AND b = 'East';` | `df.filter(c.a > 1, c.b == 'East')` | `-filter "c.a > 1 and c.b == 'East'"` |
+| **Mathematical Range** | `WHERE 10 <= x <= 20;` | `df.filter(10 <= c.x, c.x <= 20)` | `-filter "10 <= c.x <= 20"` |
+| **Set Membership** | `WHERE cat IN ('A', 'B');` | `df.filter(c.cat.is_in(['A', 'B']))` | `-filter "c.cat in ['A', 'B']"` |
+| **Spaced Column Name** | `WHERE 'gross sales'n > 50;` | `df.filter(c['gross sales'] > 50)` | `-filter "c['gross sales'] > 50"` |
+| **String Prefix Match**| `WHERE name LIKE 'A%';` | `df.filter(c.name.str.starts_with('A'))` | `-filter "c.name.str.starts_with('A')"` |
+| **Non-Missing Check** | `WHERE col IS NOT MISSING;` | `df.filter(c.col.is_not_null())` | `-filter "c.col.is_not_null()"` |
 
 ### 3. Column Derivations & Feature Engineering (`mutate`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Simple Math** | `y = a / b;` | `df.mutate(y="a / b")` | `-mutate "y = a / b"` |
-| **Sequential Calculations**| `a = 1; b = a * 2;` | `df.mutate(a="1", b="a * 2")` | `-mutate "a=1, b=a*2"` |
-| **Conditional (If/Else)** | `IF x > 0 THEN f='pos'; ELSE f='neg';` | `df.mutate(f="if_else(x > 0, 'pos', 'neg')")` | `-mutate "f=if_else(x>0,'pos','neg')"` |
-| **Multi-Branch (Case)** | `SELECT; WHEN(c1) f=v1; OTHERWISE f=v3; END;` | `df.mutate(f="case_when(c1, v1, c2, v2, v3)")` | `-mutate "f=case_when(c1,v1,v3)"` |
-| **Format / Value Recoding**| `PROC FORMAT; ... PUT(x, fmt.);` | `df.mutate(x="map(x, {'A': 1, 'B': 2})")` | `-mutate "x=map(x, {'A':1})"` |
-| **Lag / Previous Row** | `prev = LAG(x);` | `df.mutate(prev="shift(x, 1)")` | `-mutate "prev = shift(x, 1)"` |
-| **Multi-Column Transform**| `ARRAY cols(*) a b; DO i=1 TO 2; ...` | `df.mutate("(a, b) = _ * 10")` | `-mutate "(a, b) = _ * 10"` |
-| **Multi-Column + Suffix** | Macro loop generating variable assignments | `df.mutate("(a, b)_cm = _ * 10")` | `-mutate "(a, b)_cm = _ * 10"` |
+| **Simple Math** | `y = a / b;` | `df.mutate(y=c.a / c.b)` | `-mutate "y = c.a / c.b"` |
+| **Sequential Calculations**| `a = 1; b = a * 2;` | `df.mutate(a=1, b=c.a * 2)` | `-mutate "a=1, b=c.a*2"` |
+| **Conditional (If/Else)** | `IF x > 0 THEN f='pos'; ELSE f='neg';` | `df.mutate(f=c.x.when(c.x > 0, 'pos', 'neg'))` | `-mutate "f=if_else(c.x>0,'pos','neg')"` |
+| **Lag / Previous Row** | `prev = LAG(x);` | `df.mutate(prev=c.x.shift(1))` | `-mutate "prev = c.x.shift(1)"` |
 
 ### 4. Column Selection & Renaming (`select`, `rename`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Keep Columns** | `KEEP a b;` (or `SET in (KEEP=a b);`) | `df.select("a", "b")` | `-select "a,b"` |
-| **Drop Columns** | `DROP c d;` (or `SET in (DROP=c d);`) | `df.select("!c", "!d")` | `-select "!c,!d"` |
+| **Keep Columns** | `KEEP a b;` (or `SET in (KEEP=a b);`) | `df.select(c.a, c.b)` | `-select "c.a, c.b"` |
+| **Drop Columns** | `DROP c d;` (or `SET in (DROP=c d);`) | `df.select(~c.c, ~c.d)` | `-select "~c.c, ~c.d"` |
 | **Rename Variables** | `RENAME old=new;` | `df.rename("old:new")` | `-rename "old:new"` |
-| **Inline Select & Rename**| `SET in (KEEP=a RENAME=(a=b));` | `df.select("a:b")` | `-select "a:b"` |
+| **Inline Select & Rename**| `SET in (KEEP=a RENAME=(a=b));` | `df.select(b=c.a)` | `-select "b=c.a"` |
 
 ### 5. Row Sorting (`arrange`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Ascending Sort** | `PROC SORT; BY sales; RUN;` | `df.arrange("sales")` | `-arrange sales` |
-| **Descending Sort** | `PROC SORT; BY DESCENDING sales; RUN;` | `df.arrange("sales desc")` | `-arrange "sales desc"` |
-| **Multi-Column Sort** | `PROC SORT; BY a DESCENDING b; RUN;` | `df.arrange("a", "b desc")` | `-arrange "a, b desc"` |
+| **Ascending Sort** | `PROC SORT; BY sales; RUN;` | `df.arrange(c.sales.asc())` | `-arrange c.sales` |
+| **Descending Sort** | `PROC SORT; BY DESCENDING sales; RUN;` | `df.arrange(c.sales.desc())` | `-arrange "c.sales.desc()"` |
+| **Multi-Column Sort** | `PROC SORT; BY a DESCENDING b; RUN;` | `df.arrange(c.a.asc(), c.b.desc())` | `-arrange "c.a, c.b.desc()"` |
 
 ### 6. Grouped Summaries & Counting (`count`, `by` + `agg`)
 | Task | SAS | Pytae (Python) | Pytae CLI |

@@ -146,44 +146,40 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 ### 1. Row Filtering
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Simple Filter** | `filter(df, sales > 100)` | `df.filter("sales > 100")` | `-filter "sales > 100"` |
-| **Multiple Conditions** | `filter(df, a > 1, b == "E")` | `df.filter("a > 1 and b == 'E'")` | `-filter "a > 1 and b == 'E'"` |
-| **Interval / Range** | `filter(df, between(x, 10, 20))` | `df.filter(x=("between", 10, 20))` | `-filter "{'x': ('between', 10, 20)}"` |
-| **Set Membership** | `filter(df, cat %in% c("A", "B"))` | `df.filter(cat=['A', 'B'])` | `-filter "cat in ['A', 'B']"` |
-| **Spaced Columns** | `filter(df, \`gross sales\` > 50)` | `df.filter("[gross sales] > 50")` | `-filter "[gross sales] > 50"` |
-| **Prefix Match** | `filter(df, str_starts(name, "A"))`| `df.filter(name=('starts_with', 'A'))`| `-filter "name.starts_with('A')"` |
-| **Null Row Check** | `filter(df, !is.na(col))` | `df.filter("col.is_not_null()")` | `-filter "col.is_not_null()"` |
+| **Simple Filter** | `filter(df, sales > 100)` | `df.filter(c.sales > 100)` | `-filter "c.sales > 100"` |
+| **Multiple Conditions** | `filter(df, a > 1, b == "E")` | `df.filter(c.a > 1, c.b == 'E')` | `-filter "c.a > 1 and c.b == 'E'"` |
+| **Interval / Range** | `filter(df, between(x, 10, 20))` | `df.filter(10 <= c.x, c.x <= 20)` | `-filter "10 <= c.x <= 20"` |
+| **Set Membership** | `filter(df, cat %in% c("A", "B"))` | `df.filter(c.cat.is_in(['A', 'B']))` | `-filter "c.cat in ['A', 'B']"` |
+| **Spaced Columns** | `filter(df, \`gross sales\` > 50)` | `df.filter(c['gross sales'] > 50)` | `-filter "c['gross sales'] > 50"` |
+| **Prefix Match** | `filter(df, str_starts(name, "A"))`| `df.filter(c.name.str.starts_with('A'))`| `-filter "c.name.str.starts_with('A')"` |
+| **Null Row Check** | `filter(df, !is.na(col))` | `df.filter(c.col.is_not_null())` | `-filter "c.col.is_not_null()"` |
 
 ### 2. Feature Engineering & Column Derivations (`mutate`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Simple Derivation** | `mutate(df, y = a / b)` | `df.mutate(y="a / b")` | `-mutate "y = a / b"` |
-| **Sequential Calculations**| `mutate(df, a = 1, b = a * 2)` | `df.mutate(a="1", b="a * 2")` | `-mutate "a=1, b=a*2"` |
-| **Conditional (If/Else)** | `mutate(df, f = if_else(x > 0, "pos", "neg"))` | `df.mutate(f="if_else(x > 0, 'pos', 'neg')")` | `-mutate "f=if_else(x>0,'pos','neg')"` |
-| **Multi-Branch (Case)** | `mutate(df, f = case_when(c1 ~ v1, c2 ~ v2, TRUE ~ v3))` | `df.mutate(f="case_when(c1, v1, c2, v2, v3)")` | `-mutate "f=case_when(c1,v1,v3)"` |
-| **Value Recoding** | `mutate(df, x = recode(x, "A" = 1, "B" = 2))` | `df.mutate(x="map(x, {'A': 1, 'B': 2})")` | `-mutate "x=map(x, {'A':1})"` |
-| **Multi-Column Transform** | `mutate(df, across(c(a, b), ~ .x * 10))` | `df.mutate("(a, b) = _ * 10")` | `-mutate "(a, b) = _ * 10"` |
-| **Multi-Column + Suffix** | `mutate(df, across(c(a, b), ~ .x * 10, .names = "{.col}_cm"))` | `df.mutate("(a, b)_cm = _ * 10")` | `-mutate "(a, b)_cm = _ * 10"` |
-| **Lag / Lead** | `mutate(df, prev = lag(x, 1))` | `df.mutate(prev="shift(x, 1)")` | `-mutate "prev = shift(x, 1)"` |
+| **Simple Derivation** | `mutate(df, y = a / b)` | `df.mutate(y=c.a / c.b)` | `-mutate "y = c.a / c.b"` |
+| **Sequential Calculations**| `mutate(df, a = 1, b = a * 2)` | `df.mutate(a=1, b=c.a * 2)` | `-mutate "a=1, b=c.a*2"` |
+| **Conditional (If/Else)** | `mutate(df, f = if_else(x > 0, "pos", "neg"))` | `df.mutate(f=c.x.when(c.x > 0, 'pos', 'neg'))` | `-mutate "f=if_else(c.x>0,'pos','neg')"` |
+| **Lag / Lead** | `mutate(df, prev = lag(x, 1))` | `df.mutate(prev=c.x.shift(1))` | `-mutate "prev = c.x.shift(1)"` |
 
 ### 3. Column Selection & Exclusion (`select`, `rename`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Select Columns** | `select(df, a, b)` | `df.select("a", "b")` | `-select "a,b"` |
-| **Drop Columns** | `select(df, -c, -d)` | `df.select("!c", "!d")` | `-select "!c,!d"` |
+| **Select Columns** | `select(df, a, b)` | `df.select(c.a, c.b)` | `-select "c.a, c.b"` |
+| **Drop Columns** | `select(df, -c, -d)` | `df.select(~c.c, ~c.d)` | `-select "~c.c, ~c.d"` |
 | **Pattern Match** | `select(df, contains("bill"))` | `df.select(contains="bill")` | `-select "contains=bill"` |
 | **Prefix Match** | `select(df, starts_with("b"))` | `df.select(starts_with="b")` | `-select "starts_with=b"` |
-| **Inline Rename** | `select(df, new_b = a)` | `df.select("a:new_b")` | `-select "a:new_b"` |
+| **Inline Rename** | `select(df, new_b = a)` | `df.select(new_b=c.a)` | `-select "new_b=c.a"` |
 | **Dedicated Rename** | `rename(df, new_b = a)` | `df.rename("a:new_b")` | `-rename "a:new_b"` |
-| **Reorder with Rest** | `select(df, lead, everything())` | `df.select("lead", pt.everything)` | N/A |
+| **Reorder with Rest** | `select(df, lead, everything())` | `df.select(c.lead, pt.everything)` | N/A |
 
 ### 4. Row Sorting (`arrange`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Ascending** | `arrange(df, sales)` | `df.arrange("sales")` | `-arrange sales` |
-| **Descending** | `arrange(df, desc(sales))` | `df.arrange("sales desc")` | `-arrange "sales desc"` |
-| **Multi-Column Mixed** | `arrange(df, a, desc(b))` | `df.arrange("a", "b desc")` | `-arrange "a, b desc"` |
-| **Spaced Columns** | `arrange(df, desc(\`gross sales\`))` | `df.arrange("[gross sales] desc")` | `-arrange "[gross sales] desc"` |
+| **Ascending** | `arrange(df, sales)` | `df.arrange(c.sales.asc())` | `-arrange c.sales` |
+| **Descending** | `arrange(df, desc(sales))` | `df.arrange(c.sales.desc())` | `-arrange "c.sales.desc()"` |
+| **Multi-Column Mixed** | `arrange(df, a, desc(b))` | `df.arrange(c.a.asc(), c.b.desc())` | `-arrange "c.a, c.b.desc()"` |
+| **Spaced Columns** | `arrange(df, desc(\`gross sales\`))` | `df.arrange(c['gross sales'].desc())` | `-arrange "c['gross sales'].desc()"` |
 
 ### 5. Grouped Summaries & Counting (`count`, `by` + `agg`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |

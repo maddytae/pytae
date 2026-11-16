@@ -225,40 +225,36 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 ### 2. Row Filtering
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Simple Filter** | `WHERE sales > 100;` (or `IF sales > 100;`) | `df.filter("sales > 100")` | `-filter "sales > 100"` |
-| **Multiple Conditions** | `WHERE a > 1 AND b = 'East';` | `df.filter("a > 1 and b == 'East'")` | `-filter "a > 1 and b == 'East'"` |
-| **Mathematical Range** | `WHERE 10 <= x <= 20;` | `df.filter(x=("between", 10, 20))` | `-filter "{'x': ('between', 10, 20)}"` |
-| **Set Membership** | `WHERE cat IN ('A', 'B');` | `df.filter(cat=['A', 'B'])` | `-filter "cat in ['A', 'B']"` |
-| **Spaced Column Name** | `WHERE 'gross sales'n > 50;` | `df.filter("[gross sales] > 50")` | `-filter "[gross sales] > 50"` |
-| **String Prefix Match**| `WHERE name LIKE 'A%';` | `df.filter(name=('starts_with', 'A'))` | `-filter "name.starts_with('A')"` |
-| **Non-Missing Check** | `WHERE col IS NOT MISSING;` | `df.filter("col.is_not_null()")` | `-filter "col.is_not_null()"` |
+| **Simple Filter** | `WHERE sales > 100;` (or `IF sales > 100;`) | `df.filter(c.sales > 100)` | `-filter "c.sales > 100"` |
+| **Multiple Conditions** | `WHERE a > 1 AND b = 'East';` | `df.filter(c.a > 1, c.b == 'East')` | `-filter "c.a > 1 and c.b == 'East'"` |
+| **Mathematical Range** | `WHERE 10 <= x <= 20;` | `df.filter(10 <= c.x, c.x <= 20)` | `-filter "10 <= c.x <= 20"` |
+| **Set Membership** | `WHERE cat IN ('A', 'B');` | `df.filter(c.cat.is_in(['A', 'B']))` | `-filter "c.cat in ['A', 'B']"` |
+| **Spaced Column Name** | `WHERE 'gross sales'n > 50;` | `df.filter(c['gross sales'] > 50)` | `-filter "c['gross sales'] > 50"` |
+| **String Prefix Match**| `WHERE name LIKE 'A%';` | `df.filter(c.name.str.starts_with('A'))` | `-filter "c.name.str.starts_with('A')"` |
+| **Non-Missing Check** | `WHERE col IS NOT MISSING;` | `df.filter(c.col.is_not_null())` | `-filter "c.col.is_not_null()"` |
 
 ### 3. Column Derivations & Feature Engineering (`mutate`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Simple Math** | `y = a / b;` | `df.mutate(y="a / b")` | `-mutate "y = a / b"` |
-| **Sequential Calculations**| `a = 1; b = a * 2;` | `df.mutate(a="1", b="a * 2")` | `-mutate "a=1, b=a*2"` |
-| **Conditional (If/Else)** | `IF x > 0 THEN f='pos'; ELSE f='neg';` | `df.mutate(f="if_else(x > 0, 'pos', 'neg')")` | `-mutate "f=if_else(x>0,'pos','neg')"` |
-| **Multi-Branch (Case)** | `SELECT; WHEN(c1) f=v1; OTHERWISE f=v3; END;` | `df.mutate(f="case_when(c1, v1, c2, v2, v3)")` | `-mutate "f=case_when(c1,v1,v3)"` |
-| **Format / Value Recoding**| `PROC FORMAT; ... PUT(x, fmt.);` | `df.mutate(x="map(x, {'A': 1, 'B': 2})")` | `-mutate "x=map(x, {'A':1})"` |
-| **Lag / Previous Row** | `prev = LAG(x);` | `df.mutate(prev="shift(x, 1)")` | `-mutate "prev = shift(x, 1)"` |
-| **Multi-Column Transform**| `ARRAY cols(*) a b; DO i=1 TO 2; ...` | `df.mutate("(a, b) = _ * 10")` | `-mutate "(a, b) = _ * 10"` |
-| **Multi-Column + Suffix** | Macro loop generating variable assignments | `df.mutate("(a, b)_cm = _ * 10")` | `-mutate "(a, b)_cm = _ * 10"` |
+| **Simple Math** | `y = a / b;` | `df.mutate(y=c.a / c.b)` | `-mutate "y = c.a / c.b"` |
+| **Sequential Calculations**| `a = 1; b = a * 2;` | `df.mutate(a=1, b=c.a * 2)` | `-mutate "a=1, b=c.a*2"` |
+| **Conditional (If/Else)** | `IF x > 0 THEN f='pos'; ELSE f='neg';` | `df.mutate(f=c.x.when(c.x > 0, 'pos', 'neg'))` | `-mutate "f=if_else(c.x>0,'pos','neg')"` |
+| **Lag / Previous Row** | `prev = LAG(x);` | `df.mutate(prev=c.x.shift(1))` | `-mutate "prev = c.x.shift(1)"` |
 
 ### 4. Column Selection & Renaming (`select`, `rename`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Keep Columns** | `KEEP a b;` (or `SET in (KEEP=a b);`) | `df.select("a", "b")` | `-select "a,b"` |
-| **Drop Columns** | `DROP c d;` (or `SET in (DROP=c d);`) | `df.select("!c", "!d")` | `-select "!c,!d"` |
+| **Keep Columns** | `KEEP a b;` (or `SET in (KEEP=a b);`) | `df.select(c.a, c.b)` | `-select "c.a, c.b"` |
+| **Drop Columns** | `DROP c d;` (or `SET in (DROP=c d);`) | `df.select(~c.c, ~c.d)` | `-select "~c.c, ~c.d"` |
 | **Rename Variables** | `RENAME old=new;` | `df.rename("old:new")` | `-rename "old:new"` |
-| **Inline Select & Rename**| `SET in (KEEP=a RENAME=(a=b));` | `df.select("a:b")` | `-select "a:b"` |
+| **Inline Select & Rename**| `SET in (KEEP=a RENAME=(a=b));` | `df.select(b=c.a)` | `-select "b=c.a"` |
 
 ### 5. Row Sorting (`arrange`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Ascending Sort** | `PROC SORT; BY sales; RUN;` | `df.arrange("sales")` | `-arrange sales` |
-| **Descending Sort** | `PROC SORT; BY DESCENDING sales; RUN;` | `df.arrange("sales desc")` | `-arrange "sales desc"` |
-| **Multi-Column Sort** | `PROC SORT; BY a DESCENDING b; RUN;` | `df.arrange("a", "b desc")` | `-arrange "a, b desc"` |
+| **Ascending Sort** | `PROC SORT; BY sales; RUN;` | `df.arrange(c.sales.asc())` | `-arrange c.sales` |
+| **Descending Sort** | `PROC SORT; BY DESCENDING sales; RUN;` | `df.arrange(c.sales.desc())` | `-arrange "c.sales.desc()"` |
+| **Multi-Column Sort** | `PROC SORT; BY a DESCENDING b; RUN;` | `df.arrange(c.a.asc(), c.b.desc())` | `-arrange "c.a, c.b.desc()"` |
 
 ### 6. Grouped Summaries & Counting (`count`, `by` + `agg`)
 | Task | SAS | Pytae (Python) | Pytae CLI |

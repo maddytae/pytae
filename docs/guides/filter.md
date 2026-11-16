@@ -46,20 +46,19 @@ Pytae's `-filter` compiles expressions directly into Polars native engine filter
 String values inside `-filter` must be enclosed in single quotes `'value'`, and equality comparisons strictly require `==`:
 
 ```bash
-pytae penguins.parquet -filter "species == 'Gentoo'" -head 3
+pytae penguins.parquet -filter "c.species == 'Gentoo'" -head 3
 ```
 
 > [!IMPORTANT]
 > **Strict Equality and String Quoting Requirements**:
 > - **Strict `==`**: Equality comparisons require `==`. Single `=` is reserved exclusively for column assignments in `-mutate`. Using `=` in `-filter` produces an immediate error guiding you to use `==`.
-> - **Quoted String Literals**: String literals must always be quoted (e.g. `'Gentoo'`, `'9'`). If an unquoted literal or number is passed when filtering a string column (e.g. `species == Gentoo` or `id == 9` where `id` is a string column), `pytae` raises an explicit error guiding you to quote the string. This prevents silent type coercion and avoids unexpected lexicographical comparison bugs.
+> - **Quoted String Literals**: String literals must always be quoted (e.g. `'Gentoo'`, `'9'`). If an unquoted literal or number is passed when filtering a string column (e.g. `c.species == Gentoo`), `pytae` raises an explicit error guiding you to quote the string.
 >
 > **Shell Quoting Rule (Single Quotes Inside Double Quotes)**:
 > In bash, zsh, or PowerShell, wrap the `-filter` argument in outer double quotes and use **single quotes** for string literals:
 > ```bash
-> pytae data.parquet -filter "currency == 'CAD' and reporting_date in ['2026-09-30']"
+> pytae data.parquet -filter "c.currency == 'CAD' and c.reporting_date in ['2026-09-30']"
 > ```
-> *Avoid nesting unescaped double quotes* like `-filter "currency=="CAD""` — the shell will strip the inner double quotes before `pytae` receives the argument, causing `pytae` to treat `CAD` as an unknown column name!
 
 **Output:**
 
@@ -75,7 +74,7 @@ pytae penguins.parquet -filter "species == 'Gentoo'" -head 3
 Standard mathematical comparison operators are supported:
 
 ```bash
-pytae penguins.parquet -filter "body_mass_g > 5500" -select "species,island,body_mass_g" -head 3
+pytae penguins.parquet -filter "c.body_mass_g > 5500" -select "c.species, c.island, c.body_mass_g" -head 3
 ```
 
 **Output:**
@@ -87,29 +86,26 @@ pytae penguins.parquet -filter "body_mass_g > 5500" -select "species,island,body
 | Gentoo    | Biscoe   |          5550 |
 
 <a id="boolean-logic"></a>
-### Boolean Logic (`and`, `or`, `not`, and `(...)`)
+### Boolean Logic (`and`, `or`, `not`, `&`, `|`, and `(...)`)
 
-Filter expressions support full boolean logic with `and`, `or`, `not`, and parentheses `(...)` for nested grouping:
+Filter expressions support full boolean logic with `and`, `or`, `not`, bitwise operators `&` and `|`, and parentheses `(...)` for nested grouping:
 
 ```bash
-# Conjunction with 'and'
-pytae penguins.parquet -filter "species == 'Gentoo' and body_mass_g > 5500" -select "species,body_mass_g" -head 3
+# Conjunction with 'and' or '&'
+pytae penguins.parquet -filter "c.species == 'Gentoo' and c.body_mass_g > 5500" -select "c.species, c.body_mass_g" -head 3
 
-# Disjunction with 'or'
-pytae penguins.parquet -filter "island == 'Dream' or island == 'Torgersen'" -select "species,island" -head 3
+# Disjunction with 'or' or '|'
+pytae penguins.parquet -filter "c.island == 'Dream' or c.island == 'Torgersen'" -select "c.species, c.island" -head 3
 
 # Negation with 'not'
-pytae penguins.parquet -filter "not (body_mass_g > 4000)" -head 3
+pytae penguins.parquet -filter "not (c.body_mass_g > 4000)" -head 3
 
 # Bare boolean columns
-pytae loans.parquet -filter "is_active and not is_delinquent"
+pytae loans.parquet -filter "c.is_active and not c.is_delinquent"
 
 # Grouping and precedence with nested parentheses:
-pytae penguins.parquet -filter "(species == 'Adelie' or species == 'Chinstrap') and body_mass_g > 4000" -head 3
+pytae penguins.parquet -filter "(c.species == 'Adelie' or c.species == 'Chinstrap') and c.body_mass_g > 4000" -head 3
 ```
-
-> [!NOTE]
-> Following Python's *"one and only one obvious way"*, `pytae` strictly uses `and`, `or`, and `not`. Bitwise `&`, `|`, `~`, and C-style `!` are disallowed, and commas `,` are strictly punctuation for function arguments and lists, not boolean operators. Using `&`, `|`, `~`, or `!` raises clear, actionable errors guiding you to the canonical English keywords.
 
 ### Chained Comparisons & LHS Arithmetic Expressions
 
@@ -117,10 +113,10 @@ Filter expressions support chained comparisons and arithmetic operations:
 
 ```bash
 # Chained mathematical intervals
-pytae penguins.parquet -filter "3000 <= body_mass_g <= 4500"
+pytae penguins.parquet -filter "3000 <= c.body_mass_g <= 4500"
 
 # Arithmetic expressions
-pytae penguins.parquet -filter "bill_length_mm * 2 > 80"
+pytae penguins.parquet -filter "c.bill_length_mm * 2 > 80"
 ```
 
 <a id="column-to-column-comparisons-col_a--col_b"></a>

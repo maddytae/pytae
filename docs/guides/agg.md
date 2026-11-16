@@ -48,7 +48,7 @@ Supported function names: `mean`, `sum`, `std`, `min`, `max`, `median`, `count` 
 Average body mass by species (specify the metric directly in `-agg` without a pre-`-select`):
 
 ```bash
-pytae penguins.parquet -by species -agg body_mass_g=mean -round 1
+pytae penguins.parquet -by c.species -agg "body_mass_g = c.body_mass_g.mean()" -round 1
 ```
 
 **Output:**
@@ -64,7 +64,7 @@ pytae penguins.parquet -by species -agg body_mass_g=mean -round 1
 Compute mean and sample size simultaneously:
 
 ```bash
-pytae penguins.parquet -by species -agg "body_mass_g=mean, n=count" -round 1
+pytae penguins.parquet -by c.species -agg "body_mass_g = c.body_mass_g.mean(), n = count()" -round 1
 ```
 
 **Output:**
@@ -81,8 +81,8 @@ Assign different aggregate functions to specific columns:
 
 ```bash
 pytae penguins.parquet \
-  -by species \
-  -agg "body_mass_g = mean, flipper_length_mm = max, n = count" \
+  -by c.species \
+  -agg "body_mass_g = c.body_mass_g.mean(), flipper_length_mm = c.flipper_length_mm.max(), n = count()" \
   -round 1
 ```
 
@@ -96,12 +96,12 @@ pytae penguins.parquet \
 
 ### Named Outputs (`total = col:aggfunc`)
 
-Rename aggregated outputs cleanly using `new_name = col:aggfunc`:
+Rename aggregated outputs cleanly using `new_name = c.col.aggfunc()`:
 
 ```bash
 pytae penguins.parquet \
-  -by species \
-  -agg "avg_mass = body_mass_g:mean, max_mass = body_mass_g:max, count = count" \
+  -by c.species \
+  -agg "avg_mass = c.body_mass_g.mean(), max_mass = c.body_mass_g.max(), count = count()" \
   -round 1
 ```
 
@@ -140,9 +140,9 @@ To compute group-level metrics and then filter for the top $N$ entities within a
 
 ```bash
 pytae sample:penguins \
-  -by island,species -agg "avg_mass=mean(body_mass_g)" \
-  -arrange "island, avg_mass desc" \
-  -by island -head 2
+  -by c.island, c.species -agg "avg_mass = c.body_mass_g.mean()" \
+  -arrange "c.island, c.avg_mass.desc()" \
+  -by c.island -head 2
 ```
 
 **Output:**
@@ -218,9 +218,9 @@ Grouped mutations are evaluated per group by combining `-by` with `-mutate`:
 ```bash
 # Calculate maximum species mass and deviation from maximum without collapsing rows
 pytae penguins.parquet \
-  -select "species,sex,body_mass_g" \
-  -by species \
-  -mutate "max_mass = max(body_mass_g), diff = body_mass_g - max_mass" \
+  -select "c.species, c.sex, c.body_mass_g" \
+  -by c.species \
+  -mutate "max_mass = max(c.body_mass_g), diff = c.body_mass_g - max_mass" \
   -head 4
 ```
 
@@ -244,7 +244,7 @@ By default, missing values (`NaN`) in group columns form their own group (`dropn
 
 ```bash
 # Keep missing sex as its own group (default)
-pytae penguins.parquet -by sex -agg "body_mass_g=mean, dropna=false" -round 1
+pytae penguins.parquet -by c.sex -agg "body_mass_g = c.body_mass_g.mean(), dropna = false" -round 1
 ```
 
 **Output:**
@@ -259,7 +259,7 @@ To drop rows with missing group keys, either specify `dropna=true` inside the `-
 
 ```bash
 # In-spec dropna=true
-pytae penguins.parquet -by sex -agg "body_mass_g=mean, dropna=true" -round 1
+pytae penguins.parquet -by c.sex -agg "body_mass_g = c.body_mass_g.mean(), dropna = true" -round 1
 ```
 
 **Output:**
@@ -271,7 +271,7 @@ pytae penguins.parquet -by sex -agg "body_mass_g=mean, dropna=true" -round 1
 
 ```bash
 # Or chain -dropna beforehand
-pytae penguins.parquet -dropna sex -by sex -agg mean -round 1
+pytae penguins.parquet -dropna c.sex -by c.sex -agg mean -round 1
 ```
 
 **Output:**

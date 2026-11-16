@@ -103,7 +103,13 @@ def unquote_name(raw: str) -> str:
     changed = True
     while changed and len(raw) >= 2:
         changed = False
-        if raw[0] in "'\"`" and _is_enclosed_pair(raw, raw[0], raw[0]):
+        if raw.startswith("c.") and len(raw) > 2:
+            raw = raw[2:].strip()
+            changed = True
+        elif raw.startswith("c[") and len(raw) > 3 and _is_enclosed_pair(raw[1:], "[", "]"):
+            raw = raw[2:-1].strip()
+            changed = True
+        elif raw[0] in "'\"`" and _is_enclosed_pair(raw, raw[0], raw[0]):
             raw = raw[1:-1].strip()
             changed = True
         elif raw[0] == "[" and _is_enclosed_pair(raw, "[", "]"):

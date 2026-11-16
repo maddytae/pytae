@@ -76,19 +76,19 @@ import pytae as pt
 penguins = pt.read("penguins.parquet")
 
 report = (
-    penguins.filter("body_mass_g > 3500 & sex.is_not_null()")
+    penguins.filter(c.body_mass_g > 3500, c.sex.is_not_null())
     .mutate(
-        body_mass_kg="body_mass_g / 1000",
-        bill_ratio="bill_length_mm / bill_depth_mm",
-        status="'verified'"
+        body_mass_kg=c.body_mass_g / 1000,
+        bill_ratio=c.bill_length_mm / c.bill_depth_mm,
+        status="'verified'",
     )
-    .by("species", "island")
+    .by(c.species, c.island)
     .agg(
-        n="count",
-        avg_mass_kg="body_mass_kg:mean",
-        max_ratio="bill_ratio:max"
+        n=c.species.count(),
+        avg_mass_kg=c.body_mass_kg.mean(),
+        max_ratio=c.bill_ratio.max(),
     )
-    .arrange("avg_mass_kg desc")
+    .arrange(c.avg_mass_kg.desc())
 )
 
 # Export results
@@ -100,11 +100,11 @@ The exact same logic translates directly to the terminal:
 
 ```bash
 pytae penguins.parquet \
-  -filter "body_mass_g > 3500 and sex.is_not_null()" \
-  -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm, status = 'verified'" \
-  -by species,island \
-  -agg "n = count, avg_mass_kg = body_mass_kg:mean, max_ratio = bill_ratio:max" \
-  -arrange "avg_mass_kg desc" \
+  -filter "c.body_mass_g > 3500 and c.sex.is_not_null()" \
+  -mutate "body_mass_kg = c.body_mass_g / 1000, bill_ratio = c.bill_length_mm / c.bill_depth_mm, status = 'verified'" \
+  -by c.species, c.island \
+  -agg "n = count(), avg_mass_kg = c.body_mass_kg.mean(), max_ratio = c.bill_ratio.max()" \
+  -arrange "c.avg_mass_kg.desc()" \
   -o summary.parquet
 ```
 
@@ -130,9 +130,9 @@ Grouping in Pytae is an execution modifier, not a persistent object state:
 # Multi-scope grouping in a single fluent pipeline:
 (
     df
-    .by("region").mutate(regional_avg="mean(sales)")
-    .mutate(global_avg="mean(sales)")
-    .by("dept").mutate(dept_avg="mean(sales)")
+    .by(c.region).mutate(regional_avg=c.sales.mean())
+    .mutate(global_avg=c.sales.mean())
+    .by(c.dept).mutate(dept_avg=c.sales.mean())
 )
 ```
 
@@ -192,11 +192,11 @@ Whether you are writing a production Python service, conducting exploratory anal
           import pytae as pt                         $ pytae file.parquet
      df = pt.read("file.parquet")                              │
                       │                                       │
-      df.filter("sales > 100")                        -filter "sales > 100"
-        .mutate(tax="sales * 0.08")                   -mutate "tax = sales * 0.08"
-        .by("region")                                 -by region
-        .agg(total_rev="sum(sales)", n="count")       -agg "total_rev = sum(sales), n = count"
-        .arrange("total_rev desc")                    -arrange "total_rev desc"
+      df.filter(c.sales > 100)                        -filter "c.sales > 100"
+        .mutate(tax=c.sales * 0.08)                   -mutate "tax = c.sales * 0.08"
+        .by(c.region)                                 -by c.region
+        .agg(total_rev=c.sales.sum(), n=c.sales.count()) -agg "total_rev = c.sales.sum(), n = count()"
+        .arrange(c.total_rev.desc())                  -arrange "c.total_rev.desc()"
                       │                                       │
                       ▼                                       ▼
               In-Memory Result                          Stdout / Export
@@ -263,12 +263,12 @@ eager_from_lazy = lazy_df.collect()   # Explicitly materialize lazy -> eager
 When running on a lazy DataFrame, Pytae defers execution until results are required. Polars' underlying Rust optimizer analyzes the entire computational graph and applies physical query optimizations:
 
 1. **Predicate Pushdown (Filter Pushdown)**:
-   - When you write `.filter("status == 'completed' & amount > 100")`, Pytae does not read all rows and filter in Python.
+   - When you write `.filter(c.status == 'completed', c.amount > 100)`, Pytae does not read all rows and filter in Python.
    - It pushes the filter criteria directly down into the file reader. For Parquet files, entire row groups are skipped at the disk level using Parquet block metadata and statistics, reading only matching rows into memory.
 2. **Projection Pushdown (Column Selection)**:
-   - When you write `.select("customer_id", "total_spend")`, Pytae reads **only those two columns** from storage. The remaining 50+ columns in the file are never touched, dramatically reducing disk I/O and memory bandwidth.
+   - When you write `.select(c.customer_id, c.total_spend)`, Pytae reads **only those two columns** from storage. The remaining 50+ columns in the file are never touched, dramatically reducing disk I/O and memory bandwidth.
 3. **Slice / Limit Pushdown**:
-   - Calling `.head(10)` or `.arrange("sales desc").head(5)` avoids scanning the remainder of the file once the threshold is satisfied.
+   - Calling `.head(10)` or `.arrange(c.sales.desc()).head(5)` avoids scanning the remainder of the file once the threshold is satisfied.
 
 #### Inspecting the Execution Plan with `df.explain()`
 You can inspect the exact physical and logical optimizations performed by Pytae using `.explain()`:
@@ -276,9 +276,9 @@ You can inspect the exact physical and logical optimizations performed by Pytae 
 ```python
 plan = (
     pt.scan("sales.parquet")
-    .filter("region == 'East' & sales > 500")
-    .mutate(tax="sales * 0.08")
-    .select("order_id", "sales", "tax")
+    .filter(c.region == 'East', c.sales > 500)
+    .mutate(tax=c.sales * 0.08)
+    .select(c.order_id, c.sales, c.tax)
     .explain()
 )
 print(plan)
