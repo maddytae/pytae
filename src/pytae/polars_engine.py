@@ -27,6 +27,7 @@ from pytae._parsing import (
 )
 from pytae._text import _ColRef
 from pytae._text import unquote_name as _unquote_name
+from pytae.expr import ColumnExpr
 from pytae.select import resolve_select_columns
 
 
@@ -575,10 +576,21 @@ def explode_polars(df: Any, *cols: Any) -> Any:
     return df.explode(resolved)
 
 
-def select_polars(df: Any, names: list[str], kwargs: dict) -> Any:
+def select_polars(df: Any, names: list[Any], kwargs: dict) -> Any:
     """Select and order columns in a Polars DataFrame or LazyFrame using pytae selection syntax."""
-    target_cols = resolve_select_columns(_df_columns(df), _df_schema(df), *names, **kwargs)
-    return df.select(target_cols)
+    col_renames: dict[str, ColumnExpr] = {}
+    criteria_kwargs: dict[str, Any] = {}
+    for k, v in kwargs.items():
+        if isinstance(v, ColumnExpr):
+            col_renames[k] = v
+        else:
+            criteria_kwargs[k] = v
+
+    target_cols = resolve_select_columns(_df_columns(df), _df_schema(df), *names, **criteria_kwargs)
+    exprs: list[pl.Expr] = [pl.col(c) for c in target_cols]
+    for new_name, col_expr in col_renames.items():
+        exprs.append(col_expr.to_polars().alias(new_name))
+    return df.select(exprs)
 
 
 def arrange_polars(df: Any, spec: str, na_last: bool = True) -> Any:
@@ -2434,6 +2446,9 @@ def agg_polars(
     if active_kwargs:
         for out_name, val in active_kwargs.items():
             clean_out = _unquote_name(out_name)
+            if isinstance(val, ColumnExpr):
+                _add_expr(val.to_polars(), clean_out)
+                continue
             val_str = val.strip() if isinstance(val, str) else ""
             val_norm = re.sub(r"\(\s*\)$", "", val_str).lower() if val_str else ""
 

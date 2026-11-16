@@ -7,6 +7,7 @@ from typing import Any
 
 from pytae._text import tokenize as _tokenize
 from pytae._text import unquote_name as _unquote_name
+from pytae.expr import ColumnExpr, ExclusionExpr, RangeExpr
 
 
 class _EverythingMeta(type):
@@ -166,7 +167,25 @@ def resolve_select_columns(
         )
 
     for arg in args:
-        if arg is everything or isinstance(arg, everything):
+        if isinstance(arg, ExclusionExpr):
+            excluded_cols.update(arg.resolve_exclusions(all_cols))
+        elif isinstance(arg, RangeExpr):
+            for col_name in arg.resolve(all_cols):
+                selected_cols.add(col_name)
+                if col_name not in ordered_cols:
+                    ordered_cols.append(col_name)
+        elif isinstance(arg, ColumnExpr):
+            if not arg.name:
+                raise ValueError(f"Cannot select unnamed computed expression: {arg}")
+            clean_col = arg.name
+            if clean_col not in all_cols:
+                close = difflib.get_close_matches(str(clean_col), [str(c) for c in all_cols], n=1)
+                hint = f" (did you mean '{close[0]}'?)" if close else ""
+                raise KeyError(f"Column not found: '{clean_col}'{hint}")
+            selected_cols.add(clean_col)
+            if clean_col not in ordered_cols:
+                ordered_cols.append(clean_col)
+        elif arg is everything or isinstance(arg, everything):
             everything_requested = True
         elif isinstance(arg, list):
             for col in arg:
@@ -179,10 +198,12 @@ def resolve_select_columns(
                     selected_cols.add(clean_col)
                     if clean_col not in ordered_cols:
                         ordered_cols.append(clean_col)
-                elif isinstance(col, str) and col.startswith(("-", "~")):
+                elif isinstance(col, str) and col.startswith("~"):
+                    excluded_cols.update(_resolve_negation(col[1:]))
+                elif isinstance(col, str) and col.startswith("-"):
                     raise ValueError(
-                        f"select(): '{col[0]}col' negation is retired in favor of '!col'. "
-                        f"Use '!{col[1:]}' instead: e.g. select('!{col[1:]}')."
+                        f"select(): '-col' negation is retired in favor of '~col'. "
+                        f"Use '~{col[1:]}' instead: e.g. select('~{col[1:]}')."
                     )
                 elif isinstance(col, str) and col.startswith("!"):
                     excluded_cols.update(_resolve_negation(col[1:]))
@@ -200,10 +221,12 @@ def resolve_select_columns(
                 selected_cols.add(clean_arg)
                 if clean_arg not in ordered_cols:
                     ordered_cols.append(clean_arg)
-            elif arg.startswith(("-", "~")):
+            elif arg.startswith("~"):
+                excluded_cols.update(_resolve_negation(arg[1:]))
+            elif arg.startswith("-"):
                 raise ValueError(
-                    f"select(): '{arg[0]}col' negation is retired in favor of '!col'. "
-                    f"Use '!{arg[1:]}' instead: e.g. select('!{arg[1:]}')."
+                    f"select(): '-col' negation is retired in favor of '~col'. "
+                    f"Use '~{arg[1:]}' instead: e.g. select('~{arg[1:]}')."
                 )
             elif "," in arg:
                 for sub_token in _tokenize(arg, ",", track_brackets=True):
@@ -228,10 +251,12 @@ def resolve_select_columns(
                             "select(): 'endswith=' is retired in favor of canonical 'ends_with='. "
                             f"Use 'ends_with={clean_sub[9:]}' instead."
                         )
-                    elif sub_token.startswith(("-", "~")):
+                    elif sub_token.startswith("~"):
+                        excluded_cols.update(_resolve_negation(sub_token[1:]))
+                    elif sub_token.startswith("-"):
                         raise ValueError(
-                            f"select(): '{sub_token[0]}col' negation is retired in favor of '!col'. "
-                            f"Use '!{sub_token[1:]}' instead: e.g. select('!{sub_token[1:]}')."
+                            f"select(): '-col' negation is retired in favor of '~col'. "
+                            f"Use '~{sub_token[1:]}' instead: e.g. select('~{sub_token[1:]}')."
                         )
                     elif sub_token.startswith("!"):
                         excluded_cols.update(_resolve_negation(sub_token[1:]))

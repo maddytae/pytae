@@ -13,6 +13,11 @@ import polars as pl
 
 from pytae._parsing import _extract_arrange_specs, _parse_filter_string, _parse_mutate_spec_entries
 from pytae._text import unquote_name as _unquote_name
+from pytae.expr import (
+    ColumnExpr,
+    FillExpr,
+    SortExpr,
+)
 from pytae.polars_engine import (
     _df_columns,
     _df_schema,
@@ -765,7 +770,11 @@ class DataFrame:
     # -------------------------------------------------------------------------
 
     def filter(self, *conditions: Any, params: dict[str, Any] | None = None, **kwargs: Any) -> DataFrame:
-        """Filter rows using conditions (string expressions or dictionaries)."""
+        """Filter rows using conditions (ColumnExpr or string expressions)."""
+        if conditions and all(isinstance(c, (ColumnExpr, pl.Expr)) for c in conditions):
+            pl_exprs = [c.to_polars() if isinstance(c, ColumnExpr) else c for c in conditions]
+            return DataFrame(self._df.filter(*pl_exprs), orig_col_map=self._orig_col_map)
+
         if any(callable(c) for c in conditions):
             if kwargs or params or len(conditions) > 1:
                 raise TypeError("callable/lambda predicates cannot be mixed with other filter arguments")
@@ -896,9 +905,33 @@ class DataFrame:
         """Select, reorder, slice, and drop columns using Pytae selection grammar."""
         return DataFrame(select_polars(self._df, list(names), kwargs), orig_col_map=self._orig_col_map)
 
-    def arrange(self, *specs: str, na_last: bool = True) -> DataFrame:
-        """Sort rows by one or more column expressions (e.g. 'col1, -col2 desc')."""
-        spec_str = ",".join(specs)
+    def arrange(self, *specs: Any, na_last: bool = True) -> DataFrame:
+        """Sort rows by one or more column expressions (e.g. c.dept.asc(), c.salary.desc())."""
+        if specs and all(isinstance(s, (SortExpr, ColumnExpr, pl.Expr)) for s in specs):
+            sort_exprs: list[pl.Expr] = []
+            descending: list[bool] = []
+            cols: list[str] = []
+            for s in specs:
+                if isinstance(s, SortExpr):
+                    sort_exprs.append(s.column_expr.to_polars())
+                    descending.append(s.descending)
+                    if s.name:
+                        cols.append(s.name)
+                elif isinstance(s, ColumnExpr):
+                    sort_exprs.append(s.to_polars())
+                    descending.append(False)
+                    if s.name:
+                        cols.append(s.name)
+                elif isinstance(s, pl.Expr):
+                    sort_exprs.append(s)
+                    descending.append(False)
+            sorted_df = self._df.sort(sort_exprs, descending=descending, nulls_last=na_last)
+            res = DataFrame(sorted_df, orig_col_map=self._orig_col_map)
+            res._last_sort_cols = cols
+            res._last_sort_desc = descending
+            return res
+
+        spec_str = ",".join(str(s) for s in specs)
         cols, asc = _extract_arrange_specs((spec_str,), available_cols=set(_df_columns(self._df)))
         descending = [not a for a in asc]
         sorted_df = arrange_polars(self._df, spec_str, na_last=na_last)
@@ -909,18 +942,25 @@ class DataFrame:
 
     def distinct(self, *cols: Any, keep: str = "first") -> DataFrame:
         """Deduplicate rows across all or specific columns with keep='first'|'last'|'none'."""
+        resolved_cols: list[str] = []
         for c in cols:
-            if isinstance(c, (list, tuple, set)):
+            if isinstance(c, ColumnExpr):
+                if not c.name:
+                    raise ValueError(f"distinct column must be a named column: {c}")
+                resolved_cols.append(c.name)
+            elif isinstance(c, (list, tuple, set)):
                 raise TypeError(
                     f"distinct() takes column names as positional arguments, e.g. distinct('a', 'b'). "
                     f"Lists are not accepted, got {type(c).__name__}."
                 )
-        if cols:
+            else:
+                resolved_cols.append(str(c))
+        if resolved_cols:
             avail = set(self.columns)
-            missing = [str(c) for c in cols if str(c) not in avail]
+            missing = [str(c) for c in resolved_cols if str(c) not in avail]
             if missing:
                 raise KeyError(f"distinct: column(s) {missing} not found in DataFrame")
-        return DataFrame(distinct_polars(self._df, list(cols), keep=keep))
+        return DataFrame(distinct_polars(self._df, resolved_cols or None, keep=keep))
 
     def count(self, *cols: Any, sort: bool = True, name: str = "n") -> DataFrame:
         """Count occurrences of unique combinations of columns (or total rows).
@@ -942,7 +982,11 @@ class DataFrame:
                 )
         resolved: list[str] = []
         for c in cols:
-            if isinstance(c, str):
+            if isinstance(c, ColumnExpr):
+                if not c.name:
+                    raise ValueError(f"Grouping column must be a named column: {c}")
+                resolved.append(c.name)
+            elif isinstance(c, str):
                 if "," in c:
                     resolved.extend([_unquote_name(part.strip()) for part in c.split(",") if part.strip()])
                 else:
@@ -980,7 +1024,11 @@ class DataFrame:
         if raw_target is not None:
             resolved = []
             for c in raw_target:
-                if isinstance(c, str) and "," in c:
+                if isinstance(c, ColumnExpr):
+                    if not c.name:
+                        raise ValueError(f"dropna column must be a named column: {c}")
+                    resolved.append(c.name)
+                elif isinstance(c, str) and "," in c:
                     resolved.extend([part.strip() for part in c.split(",") if part.strip()])
                 else:
                     resolved.append(str(c).strip())
@@ -1012,6 +1060,11 @@ class DataFrame:
         **kwargs : Any
             Per-column fill values as keyword arguments (e.g. ``df.fillna(a=0, b="N/A")``).
         """
+        fill_items = [value] + list(cols) if value is not None else list(cols)
+        if fill_items and all(isinstance(f, FillExpr) for f in fill_items):
+            exprs = [f.to_polars().alias(f.name) for f in fill_items if f.name]
+            return DataFrame(self._df.with_columns(exprs), orig_col_map=self._orig_col_map)
+
         if nans is not None or "nans" in kwargs or "fill_nans" in kwargs or "drop_nans" in kwargs:
             raise ValueError(
                 "fillna(): 'nans' is retired. Pytae normalizes all missing and non-finite values to null uniformly. Use fillna() without 'nans'."
@@ -1025,7 +1078,11 @@ class DataFrame:
         if raw_target is not None:
             resolved = []
             for c in raw_target:
-                if isinstance(c, str) and "," in c:
+                if isinstance(c, ColumnExpr):
+                    if not c.name:
+                        raise ValueError(f"dropna column must be a named column: {c}")
+                    resolved.append(c.name)
+                elif isinstance(c, str) and "," in c:
                     resolved.extend([part.strip() for part in c.split(",") if part.strip()])
                 else:
                     resolved.append(str(c).strip())
@@ -1089,7 +1146,11 @@ class DataFrame:
                 )
         resolved: list[str] = []
         for c in cols:
-            if isinstance(c, str):
+            if isinstance(c, ColumnExpr):
+                if not c.name:
+                    raise ValueError(f"Grouping column must be a named column: {c}")
+                resolved.append(c.name)
+            elif isinstance(c, str):
                 if "," in c:
                     resolved.extend([_unquote_name(part.strip()) for part in c.split(",") if part.strip()])
                 else:
@@ -1145,6 +1206,18 @@ class DataFrame:
             raise ValueError(
                 'mutate() expects at least one column specification (kwargs or string expressions), e.g. "col = expr"'
             )
+
+        if kwargs and not specs and any(isinstance(v, (ColumnExpr, pl.Expr)) for v in kwargs.values()):
+            curr_df = self._df
+            for k, v in kwargs.items():
+                if isinstance(v, ColumnExpr):
+                    expr = v.to_polars().alias(k)
+                elif isinstance(v, pl.Expr):
+                    expr = v.alias(k)
+                else:
+                    expr = pl.lit(v).alias(k)
+                curr_df = curr_df.with_columns(expr)
+            return DataFrame(curr_df, orig_col_map=self._orig_col_map)
 
         import inspect
 
@@ -1799,6 +1872,18 @@ class GroupedDataFrame:
                 'mutate() expects at least one column specification (kwargs or string expressions), e.g. "col = expr"'
             )
 
+        if kwargs and not specs and any(isinstance(v, (ColumnExpr, pl.Expr)) for v in kwargs.values()):
+            curr_df = self._df
+            for k, v in kwargs.items():
+                if isinstance(v, ColumnExpr):
+                    expr = v.to_polars().alias(k)
+                elif isinstance(v, pl.Expr):
+                    expr = v.alias(k)
+                else:
+                    expr = pl.lit(v).alias(k)
+                curr_df = curr_df.with_columns(expr)
+            return DataFrame(curr_df, orig_col_map=self._orig_col_map)
+
         dropna = kwargs.pop("dropna", False)
 
         import inspect
@@ -1968,7 +2053,11 @@ class GroupedDataFrame:
         if raw_target is not None:
             resolved = []
             for c in raw_target:
-                if isinstance(c, str) and "," in c:
+                if isinstance(c, ColumnExpr):
+                    if not c.name:
+                        raise ValueError(f"dropna column must be a named column: {c}")
+                    resolved.append(c.name)
+                elif isinstance(c, str) and "," in c:
                     resolved.extend([part.strip() for part in c.split(",") if part.strip()])
                 else:
                     resolved.append(str(c).strip())
@@ -2008,7 +2097,11 @@ class GroupedDataFrame:
         if raw_target is not None:
             resolved = []
             for c in raw_target:
-                if isinstance(c, str) and "," in c:
+                if isinstance(c, ColumnExpr):
+                    if not c.name:
+                        raise ValueError(f"dropna column must be a named column: {c}")
+                    resolved.append(c.name)
+                elif isinstance(c, str) and "," in c:
                     resolved.extend([part.strip() for part in c.split(",") if part.strip()])
                 else:
                     resolved.append(str(c).strip())

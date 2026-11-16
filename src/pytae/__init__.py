@@ -19,6 +19,15 @@ from typing import Any
 
 from pytae.accessor import PandasPtAccessor, PolarsPtAccessor
 from pytae.dataframe import DataFrame, GroupedDataFrame
+from pytae.expr import (
+    ColumnExpr,
+    ExclusionExpr,
+    FillExpr,
+    RangeExpr,
+    SortExpr,
+    c,
+    col,
+)
 from pytae.other_utilities import format_glimpse
 from pytae.readers import (
     read,
@@ -566,6 +575,13 @@ __all__ = [
     "clear",
     "doc",
     "everything",
+    "c",
+    "col",
+    "ColumnExpr",
+    "RangeExpr",
+    "ExclusionExpr",
+    "SortExpr",
+    "FillExpr",
     "validate_pipeline",
     "PipelineValidationError",
     "check_dsl_string",
