@@ -181,7 +181,8 @@ def browse_dataframe(
 
             # Calculate visible column slice based on terminal width
             idx_w = len(f"{total_rows:,}") + 2
-            rem_w = term_w - idx_w - 2
+            # Leave space for row index column plus gap
+            rem_w = term_w - idx_w - 1
 
             col_names = display_df.columns
             col_widths: list[int] = []
@@ -192,11 +193,13 @@ def browse_dataframe(
                 c_name = col_names[c_idx]
                 # Column width heuristic: max of name length and standard data snippet
                 cw = max(len(c_name), 10) + 2
-                if curr_w + cw > rem_w and visible_cols:
+                # Account for space separator between columns
+                space_needed = cw if not visible_cols else (cw + 1)
+                if curr_w + space_needed > rem_w and visible_cols:
                     break
                 visible_cols.append(c_idx)
                 col_widths.append(cw)
-                curr_w += cw
+                curr_w += space_needed
 
             if selected_col_idx >= col_offset + len(visible_cols) and visible_cols:
                 col_offset = selected_col_idx - len(visible_cols) + 1
@@ -206,11 +209,12 @@ def browse_dataframe(
                 for c_idx in range(col_offset, total_cols):
                     c_name = col_names[c_idx]
                     cw = max(len(c_name), 10) + 2
-                    if curr_w + cw > rem_w and visible_cols:
+                    space_needed = cw if not visible_cols else (cw + 1)
+                    if curr_w + space_needed > rem_w and visible_cols:
                         break
                     visible_cols.append(c_idx)
                     col_widths.append(cw)
-                    curr_w += cw
+                    curr_w += space_needed
 
             # Slice current visible viewport chunk
             chunk = display_df.slice(row_offset, visible_data_rows)
@@ -225,7 +229,7 @@ def browse_dataframe(
                 else " | Natural Order"
             )
             banner = f" PYTAE WORKBENCH BROWSER :: {title} ({total_rows:,} rows x {total_cols} cols){sort_label}"
-            out.append(f"\x1b[7m{banner.ljust(term_w)[:term_w]}\x1b[0m\n")
+            out.append(f"\x1b[2K\x1b[7m{banner.ljust(term_w)[:term_w]}\x1b[0m\n")
 
             # 2. Sticky Header Columns
             idx_header = "#".rjust(idx_w)
@@ -251,9 +255,9 @@ def browse_dataframe(
                     header_parts.append(f"\x1b[1;37m{disp_name}\x1b[0m")
                     dtype_parts.append(f"\x1b[90m{disp_dtype}\x1b[0m")
 
-            out.append(" ".join(header_parts) + "\n")
-            out.append(" ".join(dtype_parts) + "\n")
-            out.append(f"\x1b[90m{'─' * term_w}\x1b[0m\n")
+            out.append(f"\x1b[2K{' '.join(header_parts)}\n")
+            out.append(f"\x1b[2K{' '.join(dtype_parts)}\n")
+            out.append(f"\x1b[2K\x1b[90m{'─' * term_w}\x1b[0m\n")
 
             # 3. Data Rows
             chunk_rows = chunk.shape[0]
@@ -273,9 +277,9 @@ def browse_dataframe(
                             row_parts.append(f"\x1b[90m{disp_val}\x1b[0m")
                         else:
                             row_parts.append(disp_val)
-                    out.append(" ".join(row_parts) + "\n")
+                    out.append(f"\x1b[2K{' '.join(row_parts)}\n")
                 else:
-                    out.append(f"\x1b[90m{'~'.rjust(idx_w)}\x1b[0m\n")
+                    out.append(f"\x1b[2K\x1b[90m{'~'.rjust(idx_w)}\x1b[0m\n")
 
             # 4. Status Bar & Key Help
             cur_col_name = col_names[selected_col_idx]
@@ -285,10 +289,10 @@ def browse_dataframe(
                 f" Rows: {row_offset + 1:,}–{row_end:,} of {total_rows:,} | "
                 f"Col [{selected_col_idx + 1}/{total_cols}]: '{cur_col_name}' ({cur_dtype})"
             )
-            out.append(f"\x1b[7m{status_line.ljust(term_w)[:term_w]}\x1b[0m\n")
+            out.append(f"\x1b[2K\x1b[7m{status_line.ljust(term_w)[:term_w]}\x1b[0m\n")
 
             help_line = " [↑/↓/j/k]: Row | [←/→/h/l]: Col | [s]: Sort | [r]: Reset Sort | [q/Esc]: Exit"
-            out.append(f"\x1b[90m{help_line.ljust(term_w)[:term_w]}\x1b[0m")
+            out.append(f"\x1b[2K\x1b[90m{help_line.ljust(term_w)[:term_w]}\x1b[0m")
 
             sys.stdout.write("".join(out))
             sys.stdout.flush()
