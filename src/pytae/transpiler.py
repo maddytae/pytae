@@ -42,6 +42,12 @@ class _CTransformer(ast.NodeTransformer):
                 return ast.UnaryOp(op=ast.Invert(), operand=call_node)
         return node
 
+    def visit_UnaryOp(self, node: ast.UnaryOp) -> ast.AST:
+        node = self.generic_visit(node)  # type: ignore[assignment]
+        if isinstance(node.op, ast.Not):
+            return ast.UnaryOp(op=ast.Invert(), operand=node.operand)
+        return node
+
     def visit_BoolOp(self, node: ast.BoolOp) -> ast.AST:
         node = self.generic_visit(node)  # type: ignore[assignment]
         if isinstance(node.op, ast.And):

@@ -290,3 +290,14 @@ def test_transpile_filter_multi_and_comma_separated():
     ast.parse(py_code)
     assert "k = df.filter(c.sex == 'Male', c.body_mass_g > 4000)" in py_code
     assert "&" not in py_code
+
+
+def test_transpile_filter_mixed_and_or_not():
+    """Verify mixed and/or/not conditions transpile to comma-separated ANDs, | for OR, and ~ for NOT."""
+    entries = [
+        "df = penguins.parquet",
+        'k = df -filter "(island == \'Biscoe\' or island == \'Dream\') and not (sex == \'Female\') and body_mass_g > 4000"',
+    ]
+    py_code = _compile_history_to_python(entries)
+    ast.parse(py_code)
+    assert "k = df.filter((c.island == 'Biscoe') | (c.island == 'Dream'), ~(c.sex == 'Female'), c.body_mass_g > 4000)" in py_code
