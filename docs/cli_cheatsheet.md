@@ -87,9 +87,11 @@ pytae data.parquet -filter "[counterparty class (irb)].is_not_null()"
 pytae data.parquet -assert "body_mass_g > 0 and id.is_not_null()"
 pytae orders.parquet -assert "order_id.is_not_null() and amount >= 0" -o valid.parquet
 
-# Drop rows containing missing values
-pytae data.parquet -dropna
-pytae data.parquet -dropna "body_mass_g, sex"
+# Drop rows containing missing values (Zero Data Loss: bare flag defaults to how='all')
+pytae data.parquet -dropna                               # Drops only 100% empty rows (how='all')
+pytae data.parquet -dropna how=any                       # Drops rows missing ANY column (strict complete cases)
+pytae data.parquet -dropna "body_mass_g, sex"            # Drops rows missing body_mass_g OR sex (how='any')
+pytae data.parquet -dropna "body_mass_g, sex, how=all"   # Drops rows missing BOTH body_mass_g AND sex (how='all')
 ```
 
 ---

@@ -152,15 +152,32 @@ pytae penguins.parquet -fillna "sex:Unknown" -head 5
 ```
 
 ### Dropping Missing Values (`-dropna`)
+Pytae adheres to a **Zero Data Loss by Default** philosophy:
+- **Bare `-dropna` / `df.dropna()`**: Defaults to `how='all'`. Drops only 100% empty rows where all columns are null.
+- **Targeted `-dropna "col1, col2"`**: Defaults to `how='any'`. Drops rows missing any of the specified columns.
+- **Whole-table `how=any`**: Drops rows with any missing value in any column.
+- **Targeted `how=all`**: Drops rows only when all specified columns are null simultaneously.
+
+| Invocation (CLI) | Scope | Effective `how` | Description |
+|:---|:---|:---:|:---|
+| `pytae data.parquet -dropna` | All columns | `how='all'` | Drops only 100% blank rows (Safe default) |
+| `pytae data.parquet -dropna how=any` | All columns | `how='any'` | Complete cases: drops if ANY column is null |
+| `pytae data.parquet -dropna how=all` | All columns | `how='all'` | Explicit equivalent of bare `-dropna` |
+| `pytae data.parquet -dropna "col1, col2"` | Targeted | `how='any'` | Drops if `col1` OR `col2` is null (Target default) |
+| `pytae data.parquet -dropna "col1, col2, how=all"` | Targeted | `how='all'` | Drops only if BOTH `col1` AND `col2` are null |
+
 ```bash
-# Bare flag defaults to how='all' (Zero Data Loss: keeps partially populated rows)
+# 1. Bare flag defaults to how='all' (Zero Data Loss: keeps partially populated rows)
 pytae penguins.parquet -dropna -shape
 
-# Drop rows missing specific column values
-pytae penguins.parquet -dropna "sex,body_mass_g" -shape
+# 2. Targeted columns default to how='any' (drops rows missing sex OR body_mass_g)
+pytae penguins.parquet -dropna "sex, body_mass_g" -shape
 
-# Explicit how=any drops rows with any missing value
+# 3. Explicit how=any across whole table drops rows with any missing value
 pytae penguins.parquet -dropna how=any -shape
+
+# 4. Explicit how=all on targeted columns drops rows only if BOTH columns are missing
+pytae penguins.parquet -dropna "sex, body_mass_g, how=all" -shape
 ```
 
 ### Renaming Columns (`-rename`)

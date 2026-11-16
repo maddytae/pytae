@@ -759,20 +759,25 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         name="dropna",
         flag="-dropna [COLS]",
         syntax='pytae <path> -dropna ["col1,col2"]',
-        summary="Drop rows containing missing (NaN) values.",
+        summary="Drop rows containing missing (NaN/null) values.",
         description=(
             "Zero-Data-Loss safety default: Bare -dropna defaults to how='all' (drops only 100% blank rows);\n"
-            "-dropna 'col1,col2' drops rows missing any specified column; -dropna how=any drops rows with any missing value."
+            "-dropna 'col1,col2' drops rows missing any specified column (how='any');\n"
+            "-dropna how=any drops rows with any missing value across the entire dataset;\n"
+            "-dropna 'col1,col2,how=all' drops rows only if all specified columns are missing."
         ),
         options=[
             "Bare flag : Drop row only if ALL columns contain null (how='all', Zero Data Loss default).",
-            '"col1,col2" : Drop row if specified columns contain null (how=\'any\').',
-            "how=any : Drop row if ANY column contains null.",
+            '"col1,col2" : Drop row if ANY specified column contains null (how=\'any\', target default).',
+            "how=any : Drop row if ANY column across the table contains null (complete cases).",
+            "how=all : Drop row only if ALL columns across the table are null (bare flag equivalent).",
+            '"col1,col2,how=all" : Drop row only if ALL specified columns contain null simultaneously.',
         ],
         examples=[
             "pytae penguins.parquet -dropna",
             'pytae penguins.parquet -dropna "sex, body_mass_g"',
             "pytae penguins.parquet -dropna how=any",
+            'pytae penguins.parquet -dropna "sex, body_mass_g, how=all"',
         ],
         see_also=["-fillna", "-nulls"],
     ),
