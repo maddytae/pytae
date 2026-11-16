@@ -48,16 +48,18 @@ def test_scan_csv(sample_csv: Path):
     assert df.shape == (5, 4)
 
     # Chaining preserves laziness
-    filtered = df.filter("score > 12")
+    from pytae import c
+
+    filtered = df.filter(c.score > 12)
     assert filtered.is_lazy
 
-    mutated = filtered.mutate(doubled="score * 2")
+    mutated = filtered.mutate(doubled=c.score * 2)
     assert mutated.is_lazy
 
-    arranged = mutated.arrange("doubled desc")
+    arranged = mutated.arrange(c.doubled.desc())
     assert arranged.is_lazy
 
-    selected = arranged.select("id", "group", "doubled")
+    selected = arranged.select(c.id, c.group, c.doubled)
     assert selected.is_lazy
 
     # Materialize
@@ -69,6 +71,8 @@ def test_scan_csv(sample_csv: Path):
 
 
 def test_scan_parquet(sample_parquet: Path):
+    from pytae import c
+
     df = pt.scan(sample_parquet)
     assert df.is_lazy
     assert df.columns == ["id", "category", "val1", "val2"]
@@ -76,10 +80,10 @@ def test_scan_parquet(sample_parquet: Path):
     assert len(df) == 5
 
     res = (
-        df.filter("category in ['A', 'B']")
-        .mutate(total="val1 + val2")
-        .arrange("total desc")
-        .select("id", "total")
+        df.filter(c.category.is_in(["A", "B"]))
+        .mutate(total=c.val1 + c.val2)
+        .arrange(c.total.desc())
+        .select(c.id, c.total)
         .collect()
     )
     assert not res.is_lazy
@@ -88,7 +92,9 @@ def test_scan_parquet(sample_parquet: Path):
 
 
 def test_lazy_explain(sample_parquet: Path):
-    df = pt.scan(sample_parquet).filter("val1 > 20").select("id", "category")
+    from pytae import c
+
+    df = pt.scan(sample_parquet).filter(c.val1 > 20).select(c.id, c.category)
     assert df.is_lazy
     explanation = df.explain()
     assert isinstance(explanation, str)
@@ -109,6 +115,8 @@ def test_lazy_conversion():
 
 
 def test_lazy_verbs(sample_parquet: Path):
+    from pytae import c
+
     df = pt.scan(sample_parquet)
 
     # distinct
@@ -125,7 +133,7 @@ def test_lazy_verbs(sample_parquet: Path):
     assert len(df.dropna(how="any").collect()) == 5
 
     # arrange + head
-    p = df.arrange("val1 desc").head(2)
+    p = df.arrange(c.val1.desc()).head(2)
     assert p.is_lazy
     assert len(p.collect()) == 2
     assert p.collect()["val1"].to_list() == [50, 40]
@@ -142,10 +150,12 @@ def test_lazy_verbs(sample_parquet: Path):
 
 
 def test_lazy_grouped_operations(sample_parquet: Path):
+    from pytae import c
+
     df = pt.scan(sample_parquet)
 
     # Grouped mutate on LazyFrame
-    g_mut = df.by("category").mutate(mean_val1="mean(val1)")
+    g_mut = df.by("category").mutate(mean_val1=c.val1.mean())
     assert g_mut.is_lazy
     collected_mut = g_mut.collect()
     assert "mean_val1" in collected_mut.columns
@@ -160,7 +170,9 @@ def test_lazy_grouped_operations(sample_parquet: Path):
 
 
 def test_lazy_sinking(tmp_path: Path, sample_parquet: Path):
-    df = pt.scan(sample_parquet).filter("val1 >= 30")
+    from pytae import c
+
+    df = pt.scan(sample_parquet).filter(c.val1 >= 30)
     assert df.is_lazy
 
     out_pq = tmp_path / "output.parquet"

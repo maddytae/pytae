@@ -5313,12 +5313,15 @@ class PytaeRepl:
             except ImportError:
                 pd = None
             import pytae as pt
+            from pytae import c
             from pytae.accessor import _BasePtAccessor
             from pytae.dataframe import DataFrame as PytaeDataFrame
             from pytae.dataframe import GroupedDataFrame as PytaeGroupedDataFrame
 
             self._py_env["pl"] = pl
             self._py_env["pt"] = pt
+            self._py_env["c"] = c
+            self._py_env["col"] = c
             self._py_env["DataFrame"] = PytaeDataFrame
             if pd is not None:
                 self._py_env["pd"] = pd
@@ -5351,7 +5354,7 @@ class PytaeRepl:
             orig_persisted = {
                 k: v
                 for k, v in self._py_env.items()
-                if k not in ("df", "pldf", "pl", "pt", "pd", "DataFrame", "__builtins__")
+                if k not in ("df", "pldf", "pl", "pt", "pd", "DataFrame", "c", "col", "__builtins__")
                 and k not in orig_table_instances
                 and k not in injected_cp_keys
                 and k not in injected_var_keys
@@ -5747,12 +5750,17 @@ class PytaeRepl:
                 import pandas as pd
             except ImportError:
                 pd = None
+            from pytae import c
             from pytae.dataframe import DataFrame as PytaeDataFrame
 
             if "pl" not in py_scope:
                 py_scope["pl"] = pl
             if "pt" not in py_scope:
                 py_scope["pt"] = pt
+            if "c" not in py_scope:
+                py_scope["c"] = c
+            if "col" not in py_scope:
+                py_scope["col"] = c
             if pd is not None and "pd" not in py_scope:
                 py_scope["pd"] = pd
             if "DataFrame" not in py_scope:

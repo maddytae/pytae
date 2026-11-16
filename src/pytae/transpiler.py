@@ -17,6 +17,109 @@ from pytae.repl_utils import (
 )
 
 
+class _CTransformer(ast.NodeTransformer):
+    def visit_Name(self, node: ast.Name) -> ast.AST:
+        if node.id in ("True", "False", "None", "c", "col"):
+            return node
+        return ast.Attribute(value=ast.Name(id="c", ctx=ast.Load()), attr=node.id, ctx=node.ctx)
+
+    def visit_Compare(self, node: ast.Compare) -> ast.AST:
+        node = self.generic_visit(node)  # type: ignore[assignment]
+        if len(node.ops) == 1:
+            if isinstance(node.ops[0], ast.In):
+                return ast.Call(
+                    func=ast.Attribute(value=node.left, attr="is_in", ctx=ast.Load()),
+                    args=[node.comparators[0]],
+                    keywords=[],
+                )
+            elif isinstance(node.ops[0], ast.NotIn):
+                call_node = ast.Call(
+                    func=ast.Attribute(value=node.left, attr="is_in", ctx=ast.Load()),
+                    args=[node.comparators[0]],
+                    keywords=[],
+                )
+                return ast.UnaryOp(op=ast.Invert(), operand=call_node)
+        return node
+
+    def visit_BoolOp(self, node: ast.BoolOp) -> ast.AST:
+        node = self.generic_visit(node)  # type: ignore[assignment]
+        if isinstance(node.op, ast.And):
+            res = node.values[0]
+            for v in node.values[1:]:
+                res = ast.BinOp(left=res, op=ast.BitAnd(), right=v)
+            return res
+        elif isinstance(node.op, ast.Or):
+            res = node.values[0]
+            for v in node.values[1:]:
+                res = ast.BinOp(left=res, op=ast.BitOr(), right=v)
+            return res
+        return node
+
+
+def _transpile_filter_expr(expr_str: str) -> str:
+    try:
+        clean = expr_str.strip()
+        tree = ast.parse(clean, mode="eval")
+        tree = _CTransformer().visit(tree)
+        return ast.unparse(tree)
+    except Exception:
+        return repr(expr_str)
+
+
+def _transpile_mutate_spec(spec_str: str) -> str:
+    try:
+        parts = [p.strip() for p in spec_str.split(",") if p.strip()]
+        kw_parts: list[str] = []
+        for p in parts:
+            if "=" in p:
+                target, rhs = p.split("=", 1)
+                target = target.strip()
+                rhs = rhs.strip()
+                tree = ast.parse(rhs, mode="eval")
+                tree = _CTransformer().visit(tree)
+                rhs_code = ast.unparse(tree)
+                if target.isidentifier():
+                    kw_parts.append(f"{target}={rhs_code}")
+                else:
+                    kw_parts.append(f"**{{{repr(target)}: {rhs_code}}}")
+            else:
+                return repr(spec_str)
+        return ", ".join(kw_parts)
+    except Exception:
+        return repr(spec_str)
+
+
+def _transpile_select_spec(cols_val: str) -> str:
+    parts = [c.strip() for c in cols_val.split(",") if c.strip()]
+    res: list[str] = []
+    for p in parts:
+        if p.startswith(("!", "~", "-")):
+            col = p[1:].strip()
+            res.append(f"~c.{col}" if col.isidentifier() else f"~c[{repr(col)}]")
+        elif ":" in p:
+            start, end = p.split(":", 1)
+            start, end = start.strip(), end.strip()
+            s_expr = f"c.{start}" if start.isidentifier() else f"c[{repr(start)}]"
+            e_expr = f"c.{end}" if end.isidentifier() else f"c[{repr(end)}]"
+            res.append(f"{s_expr}.to({e_expr})")
+        else:
+            res.append(f"c.{p}" if p.isidentifier() else f"c[{repr(p)}]")
+    return ", ".join(res)
+
+
+def _transpile_arrange_spec(col_val: str, desc: bool = False) -> str:
+    parts = [p.strip() for p in col_val.split(",") if p.strip()]
+    res: list[str] = []
+    for p in parts:
+        toks = p.split()
+        col = toks[0]
+        is_desc = desc or (len(toks) > 1 and toks[1].lower() in ("desc", "descending"))
+        c_expr = f"c.{col}" if col.isidentifier() else f"c[{repr(col)}]"
+        method = "desc()" if is_desc else "asc()"
+        res.append(f"{c_expr}.{method}")
+    return ", ".join(res)
+
+
 def _transpile_pipeline_tokens_to_python(tokens: list[str]) -> str:
     """Convert REPL pipeline tokens into Python method chaining syntax."""
     calls: list[str] = []
@@ -28,22 +131,19 @@ def _transpile_pipeline_tokens_to_python(tokens: list[str]) -> str:
 
         # -filter <expr>
         if low in ("-filter", "--filter") and i + 1 < n:
-            calls.append(f".filter({repr(tokens[i + 1])})")
+            calls.append(f".filter({_transpile_filter_expr(tokens[i + 1])})")
             i += 2
             continue
 
         # -select <cols>
         if low in ("-select", "--select") and i + 1 < n:
-            cols_val = tokens[i + 1]
-            col_parts = [c.strip() for c in cols_val.split(",") if c.strip()]
-            formatted_cols = ", ".join(repr(c) for c in col_parts)
-            calls.append(f".select({formatted_cols})")
+            calls.append(f".select({_transpile_select_spec(tokens[i + 1])})")
             i += 2
             continue
 
         # -mutate <expr>
         if low in ("-mutate", "--mutate") and i + 1 < n:
-            calls.append(f".mutate({repr(tokens[i + 1])})")
+            calls.append(f".mutate({_transpile_mutate_spec(tokens[i + 1])})")
             i += 2
             continue
 
@@ -102,10 +202,10 @@ def _transpile_pipeline_tokens_to_python(tokens: list[str]) -> str:
         if low in ("-sort", "--sort", "-arrange", "--arrange") and i + 1 < n:
             col_val = tokens[i + 1]
             if i + 2 < n and tokens[i + 2].lower() in ("desc", "descending"):
-                calls.append(f".arrange({repr(col_val + ' desc')})")
+                calls.append(f".arrange({_transpile_arrange_spec(col_val, desc=True)})")
                 i += 3
             else:
-                calls.append(f".arrange({repr(col_val)})")
+                calls.append(f".arrange({_transpile_arrange_spec(col_val)})")
                 i += 2
             continue
 
@@ -609,6 +709,7 @@ def _compile_history_to_python(
         "import pandas as pd",
         "import polars as pl",
         "import pytae as pt",
+        "from pytae import c",
         "",
     ]
 
@@ -617,6 +718,7 @@ def _compile_history_to_python(
         ("import", "pandas", "pd"),
         ("import", "polars", "pl"),
         ("import", "pytae", "pt"),
+        ("from", "pytae", 0, "c", None),
     }
 
     if table_sources:
@@ -771,7 +873,12 @@ def _compile_history_to_python(
                                 seen_imports = {
                                     imp
                                     for imp in seen_imports
-                                    if (imp[2] or imp[1].split(".")[0] if imp[0] == "import" else imp[4] or imp[3]) != tgt.id
+                                    if (
+                                        (imp[2] or imp[1].split(".")[0])
+                                        if imp[0] == "import"
+                                        else (imp[4] or imp[3] if len(imp) >= 5 else imp[-1])
+                                    )
+                                    != tgt.id
                                 }
                     if line_replacements:
                         rebuilt: list[str] = []

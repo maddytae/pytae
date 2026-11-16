@@ -30,8 +30,10 @@ def test_pt_accessor_agg_df_removed():
 
 
 def test_pt_select_then_pandas_head():
+    from pytae import c
+
     penguins = pt.sample("penguins")
-    out = penguins.pt.select("species", "body_mass_g").head(3)
+    out = penguins.pt.select(c.species, c.body_mass_g).head(3)
     assert list(out.columns) == ["species", "body_mass_g"]
     assert len(out) == 3
 
@@ -123,9 +125,11 @@ def test_pt_sample_datasets_and_row_sampling():
 def test_polars_lazyframe_pt_accessor():
     import polars as pl
 
+    from pytae import c
+
     ldf = pl.LazyFrame({"a": [1, 2, 3], "b": [10, 20, 30]})
     # Test entering Pytae from native pl.LazyFrame via .pt
-    plan = ldf.pt.mutate(c="a + b").with_columns(d=pl.col("c") * 2).filter("d > 30").arrange("d desc").select("a", "d")
+    plan = ldf.pt.mutate(c_val=c.a + c.b).with_columns(d=pl.col("c_val") * 2).filter(c.d > 30).arrange(c.d.desc()).select(c.a, c.d)
     assert plan.is_lazy
     collected = plan.collect()
     assert isinstance(collected, pt.DataFrame)
@@ -138,9 +142,11 @@ def test_polars_lazyframe_pt_accessor():
 def test_polars_pt_accessor_first_call_native_verb():
     import polars as pl
 
+    from pytae import c
+
     pldf = pl.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]})
     # Calling native Polars verb directly on .pt accessor enters pytae.DataFrame
-    out = pldf.pt.with_columns(z=pl.col("x") + pl.col("y")).mutate(double_z="z * 2")
+    out = pldf.pt.with_columns(z=pl.col("x") + pl.col("y")).mutate(double_z=c.z * 2)
     assert isinstance(out, pt.DataFrame)
     assert list(out.columns) == ["x", "y", "z", "double_z"]
     assert list(out["double_z"]) == [10, 14, 18]
@@ -148,6 +154,8 @@ def test_polars_pt_accessor_first_call_native_verb():
 
 def test_pt_accessor_by_auto_ungroups(tmp_path):
     import pytest
+
+    from pytae import c
 
     parquet_path = tmp_path / "data.parquet"
     df_raw = pd.DataFrame({"species": ["A", "A", "B", "B"], "mass": [10.0, 20.0, 100.0, 200.0]})
@@ -162,7 +170,7 @@ def test_pt_accessor_by_auto_ungroups(tmp_path):
         k.by()
 
     # 3. .by() scopes the immediate next mutate, which automatically returns an ungrouped DataFrame
-    k_res = k.by("species").mutate(group_mean="mean(mass)").mutate(overall_mean="mean(mass)")
+    k_res = k.by("species").mutate(group_mean=c.mass.mean()).mutate(overall_mean=c.mass.mean())
     assert isinstance(k_res, pt.DataFrame)
     assert k_res["group_mean"].to_list() == [15.0, 15.0, 150.0, 150.0]
     assert k_res["overall_mean"].to_list() == [82.5, 82.5, 82.5, 82.5]
@@ -171,6 +179,8 @@ def test_pt_accessor_by_auto_ungroups(tmp_path):
 def test_pt_accessor_comprehensive_shared_verbs(capsys):
     import polars as pl
     import pytest
+
+    from pytae import c
 
     sample_pl = pl.DataFrame(
         {
@@ -186,16 +196,16 @@ def test_pt_accessor_comprehensive_shared_verbs(capsys):
         def _collect(res):
             return res.collect() if res.is_lazy else res
 
-        assert len(_collect(obj.pt.filter("id > 2"))) == 2
-        assert list(_collect(obj.pt.select("id, grp")).columns) == ["id", "grp"]
-        assert _collect(obj.pt.arrange("id desc"))["id"].to_list() == [4, 3, 2, 1]
+        assert len(_collect(obj.pt.filter(c.id > 2))) == 2
+        assert list(_collect(obj.pt.select(c.id, c.grp)).columns) == ["id", "grp"]
+        assert _collect(obj.pt.arrange(c.id.desc()))["id"].to_list() == [4, 3, 2, 1]
         assert len(_collect(obj.pt.distinct("grp"))) == 2
         assert _collect(obj.pt.count("grp"))["n"].to_list() == [2, 2]
         assert len(_collect(obj.pt.dropna("val"))) == 3
         assert _collect(obj.pt.fillna(0.0, "val"))["val"].to_list() == [10.0, 20.0, 0.0, 40.0]
         assert len(_collect(obj.pt.head(2))) == 2
         assert len(_collect(obj.pt.tail(2))) == 2
-        assert _collect(obj.pt.mutate("doubled = other * 2"))["doubled"].to_list() == [2.0, 4.0, 6.0, 8.0]
+        assert _collect(obj.pt.mutate(doubled=c.other * 2))["doubled"].to_list() == [2.0, 4.0, 6.0, 8.0]
         assert list(_collect(obj.pt.rename("grp:group")).columns) == ["id", "group", "val", "other"]
         assert _collect(obj.pt.by("grp").agg("s = sum(other)")).shape == (2, 2)
         assert _collect(obj.pt.agg("s = sum(other)"))["s"].to_list() == [10.0]

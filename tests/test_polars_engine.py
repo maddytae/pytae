@@ -3,7 +3,7 @@ import polars as pl
 import pytest
 
 import pytae as pt
-from pytae import cli
+from pytae import c, cli
 from pytae.polars_engine import (
     arrange_polars,
     clean_columns_polars,
@@ -658,17 +658,17 @@ def test_filter_polars_dt_and_str_methods():
             "sku": ["PROD-A-01", "TEST-B-02", "PROD-C-03"],
         }
     )
+    # String expressions in filter() raise TypeError
+    with pytest.raises(TypeError, match="String expressions in filter\\(\\) are retired"):
+        df.filter("sku.str.starts_with('PROD')")
+
     # str.starts_with
-    res_str = df.filter("sku.str.starts_with('PROD')")
+    res_str = df.filter(c.sku.str.starts_with("PROD"))
     assert len(res_str) == 2
     assert list(res_str["sku"]) == ["PROD-A-01", "PROD-C-03"]
 
-    # Retired startswith raises ValueError
-    with pytest.raises(ValueError, match="'startswith\\(\\)' is retired in favor of canonical 'starts_with\\(\\)'"):
-        df.filter("sku.str.startswith('PROD')")
-
     # dt.month
-    res_dt = df.filter("date(order_date).dt.month() > 6")
+    res_dt = df.filter(c.order_date.str.to_date().dt.month() > 6)
     assert len(res_dt) == 2
     assert list(res_dt["sku"]) == ["TEST-B-02", "PROD-C-03"]
 
@@ -682,36 +682,32 @@ def test_filter_string_column_type_enforcement():
     with pytest.raises(TypeError, match=r"filter\(\): keyword arguments are not supported"):
         df.filter(id="9")
 
-    # Single '=' raises ValueError
-    with pytest.raises(ValueError, match=r"use '==' for equality comparisons"):
+    # String expression in filter() raises TypeError
+    with pytest.raises(TypeError, match="String expressions in filter\\(\\) are retired"):
         df.filter("id = 9")
+
+    with pytest.raises(TypeError, match="String expressions in filter\\(\\) are retired"):
+        df.filter("id == 9")
 
     # Dict with unquoted int raises TypeError
     with pytest.raises(TypeError, match=r"column 'id' has String type, but received int 9"):
         df.filter({"id": 9})
 
-    # String expression with unquoted int raises TypeError
-    with pytest.raises(TypeError, match=r"column 'id' has String type, but received int 9"):
-        df.filter("id == 9")
-
-    with pytest.raises(TypeError, match=r"column 'id' has String type, but received int 9"):
-        df.filter("id > 9")
-
     # List of unquoted ints in dict raises TypeError
     with pytest.raises(TypeError, match=r"column 'id' has String type, but received int"):
         df.filter({"id": [1, 9]})
 
-    # Quoted string values in dict and string succeed
+    # Quoted string values in dict and c expressions succeed
     res_dict = df.filter({"id": "9"})
     assert res_dict["id"].to_list() == ["9"]
 
-    res_eq = df.filter("id == '9'")
+    res_eq = df.filter(c.id == "9")
     assert res_eq["id"].to_list() == ["9"]
 
     res_list = df.filter({"id": ["1", "9"]})
     assert res_list["id"].to_list() == ["1", "9"]
 
-    res_in = df.filter("id in ['1', '9']")
+    res_in = df.filter(c.id.is_in(["1", "9"]))
     assert res_in["id"].to_list() == ["1", "9"]
 
 
@@ -723,18 +719,15 @@ def test_consistent_is_null_and_is_nan_across_dict_and_non_dict():
         }
     )
 
-    # 1. Non-dict strings: The one and only obvious way (null checks)
-    assert len(df.filter("sex.is_null()")) == 2
-    assert len(df.filter("sex.is_not_null()")) == 2
-    assert len(df.filter("score.is_null()")) == 1
-    assert len(df.filter("score.is_not_null()")) == 3
+    # 1. Non-dict strings: retired in Python API
+    with pytest.raises(TypeError, match="String expressions in filter\\(\\) are retired"):
+        df.filter("sex.is_null()")
 
-    # is_nan() and is_not_nan() are retired
-    with pytest.raises(ValueError, match="retired in favor of canonical"):
-        df.filter("score.is_nan()")
-
-    with pytest.raises(ValueError, match="retired in favor of canonical"):
-        df.filter("score.is_not_nan()")
+    # Canonical c expressions
+    assert len(df.filter(c.sex.is_null())) == 2
+    assert len(df.filter(c.sex.is_not_null())) == 2
+    assert len(df.filter(c.score.is_null())) == 1
+    assert len(df.filter(c.score.is_not_null())) == 3
 
     # 2. Dictionaries with canonical method tokens 'is_null()' and 'is_not_null()'
     assert len(df.filter({"sex": "is_null()"})) == 2

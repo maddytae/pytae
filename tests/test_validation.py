@@ -13,10 +13,12 @@ from pytae.validation import (
 
 
 def test_validate_pipeline_dict_schema():
+    from pytae import c
+
     schema = {"weight": float, "height": float, "species": str}
 
     def pipeline(df):
-        return df.filter("species == 'Adelie'").mutate("bmi = weight / (height ** 2)").select("species", "bmi")
+        return df.filter(c.species == "Adelie").mutate(bmi=c.weight / (c.height ** 2)).select(c.species, c.bmi)
 
     res = validate_pipeline(pipeline, schema)
     assert res.columns == ["species", "bmi"]
@@ -24,10 +26,12 @@ def test_validate_pipeline_dict_schema():
 
 
 def test_validate_pipeline_polars_schema():
+    from pytae import c
+
     schema = pl.Schema({"a": pl.Int64, "b": pl.Float64})
 
     def pipeline(df):
-        return df.mutate("c = a + b").select("c")
+        return df.mutate(c=c.a + c.b).select(c.c)
 
     res = validate_pipeline(pipeline, schema)
     assert res.columns == ["c"]
@@ -35,43 +39,49 @@ def test_validate_pipeline_polars_schema():
 
 
 def test_validate_pipeline_parquet_source(tmp_path):
+    from pytae import c
+
     parquet_path = tmp_path / "sample.parquet"
     pl.DataFrame({"x": [1.0, 2.0], "y": [3.0, 4.0]}).write_parquet(parquet_path)
 
     def pipeline(df):
-        return df.mutate("z = x * y").filter("z > 0")
+        return df.mutate(z=c.x * c.y).filter(c.z > 0)
 
     res = validate_pipeline(pipeline, parquet_path)
     assert res.columns == ["x", "y", "z"]
 
 
 def test_validate_pipeline_dataframe_source():
+    from pytae import c
+
     df = pt.DataFrame({"name": ["Alice", "Bob"], "age": [25, 30]})
 
     def pipeline(d):
-        return d.mutate("is_adult = age >= 18")
+        return d.mutate(is_adult=c.age >= 18)
 
     res = validate_pipeline(pipeline, df)
     assert "is_adult" in res.columns
 
 
 def test_validate_pipeline_catches_column_typo():
+    from pytae import c
+
     schema = {"weight": float, "height": float}
 
     def bad_pipeline(df):
-        return df.mutate("bmi = weigt / (height ** 2)")
+        return df.mutate(bmi=c.weigt / (c.height ** 2))
 
-    with pytest.raises(PipelineValidationError, match=r"column 'weigt' not found"):
+    with pytest.raises(PipelineValidationError, match=r"unable to find column"):
         validate_pipeline(bad_pipeline, schema)
 
 
-def test_validate_pipeline_catches_syntax_error():
+def test_validate_pipeline_catches_retired_string_syntax():
     schema = {"weight": float, "height": float}
 
     def bad_syntax(df):
-        return df.mutate("bmi = weight / (height ** 2")
+        return df.mutate("bmi = weight / (height ** 2)")
 
-    with pytest.raises(PipelineValidationError, match=r"was never closed"):
+    with pytest.raises(PipelineValidationError, match=r"retired"):
         validate_pipeline(bad_syntax, schema)
 
 
@@ -191,6 +201,8 @@ df = df.select(exclude='val')
 
 
 def test_validate_pipeline_txt_and_feather_sources(tmp_path):
+    from pytae import c
+
     txt_path = tmp_path / "sample.txt"
     txt_path.write_text("x\ty\n1.0\t3.0\n2.0\t4.0\n")
 
@@ -198,7 +210,7 @@ def test_validate_pipeline_txt_and_feather_sources(tmp_path):
     pl.DataFrame({"x": [1.0, 2.0], "y": [3.0, 4.0]}).write_ipc(feather_path)
 
     def pipeline(df):
-        return df.mutate("z = x + y").select("x", "z")
+        return df.mutate(z=c.x + c.y).select(c.x, c.z)
 
     res_txt = validate_pipeline(pipeline, txt_path)
     assert res_txt.columns == ["x", "z"]

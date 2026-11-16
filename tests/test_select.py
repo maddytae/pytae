@@ -7,6 +7,7 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 import pytae as pt
+from pytae import c
 
 
 def test_select_regex_kwarg():
@@ -32,7 +33,10 @@ def test_select_regex_additive_with_explicit_name():
         }
     )
 
-    result = pt.select(df, "species", regex="bill|body")
+    with pytest.raises(TypeError, match="String column names in select\\(\\) are retired"):
+        pt.select(df, "species", regex="bill|body")
+
+    result = pt.select(df, c.species, regex="bill|body")
     assert list(result.columns) == ["species", "bill_length_mm", "body_mass_g"]
 
 
@@ -64,7 +68,9 @@ def test_select_dtype_accepts_tuple():
 
 def test_select_colon_column_name_exact_match_wins():
     df = pd.DataFrame({"a:b": [1, 2], "c": [3, 4]})
-    assert pt.select(df, "a:b").columns.tolist() == ["a:b"]
+    with pytest.raises(TypeError, match="String column names in select\\(\\) are retired"):
+        pt.select(df, "a:b")
+    assert pt.select(df, c["a:b"]).columns.tolist() == ["a:b"]
 
 
 def test_select_integer_column_names_with_contains_startswith():
@@ -111,26 +117,24 @@ def test_select_exclude_dtype_numeric_vs_non_numeric():
 def test_select_exclude_dtype_cannot_combine():
     df = pd.DataFrame({"name": ["a"], "n": [1]})
     with pytest.raises(ValueError, match="exclude_dtype cannot be combined"):
-        pt.select(df, "name", exclude_dtype="numeric")
+        pt.select(df, c.name, exclude_dtype="numeric")
 
 
 def test_select_slice_and_missing_list():
     df = _wide()
-    assert list(pt.select(df, "species:bill_length_mm").columns) == [
+    assert list(pt.select(df, c.species.to(c.bill_length_mm)).columns) == [
         "species",
         "island",
         "bill_length_mm",
     ]
-    with pytest.raises(KeyError, match="not found"):
-        pt.select(df, ["nope"])
-    with pytest.raises(KeyError, match=r"Column not found: '\^bill'"):
-        pt.select(df, "^bill")
+    with pytest.raises(TypeError, match="String column names in select\\(\\) are retired"):
+        pt.select(df, "species:bill_length_mm")
 
 
 def test_select_unknown_exact_name_does_not_skip():
     df = pd.DataFrame({"a": [1], "b": [2], "c": [3]})
     with pytest.raises(KeyError, match=r"Column not found: 'd'"):
-        pt.select(df, "d", "a", "b")
+        pt.select(df, c.d, c.a, c.b)
 
 
 def test_select_everything():
@@ -138,28 +142,31 @@ def test_select_everything():
 
     df = _wide()
     # Both everything() instance and everything class
-    assert list(pt.select(df, "species", everything()).columns) == list(df.columns)
-    assert list(pt.select(df, "species", everything).columns) == list(df.columns)
-    assert list(pt.select(df, "species", pt.everything).columns) == list(df.columns)
+    assert list(pt.select(df, c.species, everything()).columns) == list(df.columns)
+    assert list(pt.select(df, c.species, everything).columns) == list(df.columns)
+    assert list(pt.select(df, c.species, pt.everything).columns) == list(df.columns)
 
 
 def test_select_negative_column_syntax():
     df = _wide()
+    with pytest.raises(TypeError, match="String column names in select\\(\\) are retired"):
+        pt.select(df, "!species")
+
     # Single negative column
-    assert list(pt.select(df, "!species").columns) == [
+    assert list(pt.select(df, ~c.species).columns) == [
         "island",
         "bill_length_mm",
         "bill_depth_mm",
         "body_mass_g",
     ]
     # Multiple negative columns
-    assert list(pt.select(df, "!species", "!island").columns) == [
+    assert list(pt.select(df, ~c.species, ~c.island).columns) == [
         "bill_length_mm",
         "bill_depth_mm",
         "body_mass_g",
     ]
     # Negative column slice
-    assert list(pt.select(df, "!bill_length_mm:body_mass_g").columns) == [
+    assert list(pt.select(df, ~c.bill_length_mm.to(c.body_mass_g)).columns) == [
         "species",
         "island",
     ]
@@ -167,19 +174,19 @@ def test_select_negative_column_syntax():
 
 def test_select_exclude_kwarg_retired():
     df = _wide()
-    with pytest.raises(ValueError, match=r"select\(\): 'exclude=' is retired in favor of '!' negation"):
+    with pytest.raises(ValueError, match=r"select\(\): 'exclude=' is retired"):
         pt.select(df, exclude="species")
-    with pytest.raises(ValueError, match=r"select\(\): 'exclude=' is retired in favor of '!' negation"):
+    with pytest.raises(ValueError, match=r"select\(\): 'exclude=' is retired"):
         pt.select(df, exclude=["species", "island"])
 
-    # Canonical '!' negation works cleanly
-    assert list(pt.select(df, "!species").columns) == [
+    # Canonical '~' negation works cleanly
+    assert list(pt.select(df, ~c.species).columns) == [
         "island",
         "bill_length_mm",
         "bill_depth_mm",
         "body_mass_g",
     ]
-    assert list(pt.select(df, "!species", "!island").columns) == [
+    assert list(pt.select(df, ~c.species, ~c.island).columns) == [
         "bill_length_mm",
         "bill_depth_mm",
         "body_mass_g",
@@ -189,7 +196,7 @@ def test_select_exclude_kwarg_retired():
 def test_select_positive_and_negative_combination():
     df = _wide()
     # Positive slice minus one column
-    res = pt.select(df, "species:body_mass_g", "!island")
+    res = pt.select(df, c.species.to(c.body_mass_g), ~c.island)
     assert list(res.columns) == [
         "species",
         "bill_length_mm",
@@ -200,16 +207,15 @@ def test_select_positive_and_negative_combination():
 
 def test_select_negative_typo_raises_hint():
     df = _wide()
-    with pytest.raises(KeyError, match=r"Column to exclude not found: 'speceis' \(did you mean 'species'\?\)"):
-        pt.select(df, "!speceis")
+    with pytest.raises(KeyError, match=r"Column to exclude not found: 'speceis'"):
+        pt.select(df, ~c.speceis)
 
 
 def test_select_legacy_hyphen_negation_retired_and_tilde_allowed():
     df = _wide()
-    with pytest.raises(ValueError, match=r"select\(\): '-col' negation is retired in favor of '~col'"):
+    with pytest.raises(TypeError, match="String column names in select\\(\\) are retired"):
         pt.select(df, "-island")
-    # ~island is now supported and drops the column
-    res = pt.select(df, "~island")
+    res = pt.select(df, ~c.island)
     assert "island" not in res.columns
     assert "species" in res.columns
 
@@ -224,19 +230,19 @@ def test_select_bracketed_names_and_slices():
         }
     )
     # Single bracketed name
-    assert list(pt.select(df, "[island name]").columns) == ["island name"]
+    assert list(pt.select(df, c["island name"]).columns) == ["island name"]
     # Multiple bracketed names
-    assert list(pt.select(df, "[island name]", "[body mass g]").columns) == ["island name", "body mass g"]
-    # Comma-separated bracketed string
-    assert list(pt.select(df, "species, [bill length mm]").columns) == ["species", "bill length mm"]
+    assert list(pt.select(df, c["island name"], c["body mass g"]).columns) == ["island name", "body mass g"]
+    # Comma-separated bracketed names
+    assert list(pt.select(df, c.species, c["bill length mm"]).columns) == ["species", "bill length mm"]
     # Bracketed slice
-    assert list(pt.select(df, "[island name]:[body mass g]").columns) == [
+    assert list(pt.select(df, c["island name"].to(c["body mass g"])).columns) == [
         "island name",
         "bill length mm",
         "body mass g",
     ]
     # Bracketed negation
-    assert list(pt.select(df, "![island name]").columns) == ["species", "bill length mm", "body mass g"]
+    assert list(pt.select(df, ~c["island name"]).columns) == ["species", "bill length mm", "body mass g"]
 
 
 def test_select_contains_startswith_endswith_tuples():
@@ -255,7 +261,7 @@ def test_select_contains_startswith_endswith_tuples():
 def test_select_negation_bracketed_string():
     # Negation with bracketed names
     df = pd.DataFrame({"col a": [1], "col b": [2], "keep": [3]})
-    res = pt.select(df, "![col a]", "![col b]")
+    res = pt.select(df, ~c["col a"], ~c["col b"])
     assert list(res.columns) == ["keep"]
 
 
@@ -375,8 +381,8 @@ def test_select_startswith_endswith_retired():
         pt.select(df, startswith="bill")
     with pytest.raises(ValueError, match="select\\(\\): 'endswith' is retired in favor of canonical 'ends_with'"):
         pt.select(df, endswith="_mm")
-    with pytest.raises(ValueError, match="select\\(\\): 'startswith=' is retired in favor of canonical 'starts_with='"):
+    with pytest.raises(TypeError, match="String column names in select\\(\\) are retired"):
         pt.select(df, "startswith=bill")
-    with pytest.raises(ValueError, match="select\\(\\): 'endswith=' is retired in favor of canonical 'ends_with='"):
+    with pytest.raises(TypeError, match="String column names in select\\(\\) are retired"):
         pt.select(df, "endswith=_mm")
 

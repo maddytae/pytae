@@ -26,7 +26,10 @@ from pytae.expr import (
     RangeExpr,
     SortExpr,
     c,
+    case_when,
+    coalesce,
     col,
+    if_else,
 )
 from pytae.other_utilities import format_glimpse
 from pytae.readers import (
@@ -577,6 +580,9 @@ __all__ = [
     "everything",
     "c",
     "col",
+    "if_else",
+    "case_when",
+    "coalesce",
     "ColumnExpr",
     "RangeExpr",
     "ExclusionExpr",

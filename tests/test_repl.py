@@ -3986,7 +3986,7 @@ def test_export_script_pt_and_py_e2e(tmp_path, monkeypatch):
     # Assert Python syntax is valid and methods are chained
     ast.parse(py_text)
     assert "import pytae as pt" in py_text
-    assert "filter(\"species == 'Adelie'\")" in py_text or 'filter("species == \'Adelie\'")' in py_text
+    assert "filter(c.species == 'Adelie')" in py_text or 'filter(c.species == "Adelie")' in py_text
     assert "df['mass_kg'] = df['body_mass_g'] / 1000.0" in py_text
 
     # 4. Test run_script_file on pipeline.pt

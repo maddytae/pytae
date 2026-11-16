@@ -39,11 +39,13 @@ def test_grouped_stratified_sample() -> None:
 
 
 def test_sample_clears_grouping() -> None:
+    from pytae import c
+
     df = pt.DataFrame({
         "dept": ["Engineering"] * 10 + ["Sales"] * 10,
         "salary": [100.0] * 20,
     })
     # Grouping should be consumed by sample, leaving subsequent operations ungrouped
-    res = df.by("dept").sample(n=2, seed=42).mutate(total_count="count()")
+    res = df.by("dept").sample(n=2, seed=42).mutate(total_count=c.salary.count())
     assert len(res) == 4
     assert res["total_count"].to_list() == [4, 4, 4, 4]

@@ -11,10 +11,11 @@ from typing import Any
 
 import polars as pl
 
-from pytae._parsing import _extract_arrange_specs, _parse_filter_string, _parse_mutate_spec_entries
+from pytae._parsing import _extract_arrange_specs, _parse_filter_string
 from pytae._text import unquote_name as _unquote_name
 from pytae.expr import (
     ColumnExpr,
+    ExclusionExpr,
     FillExpr,
     SortExpr,
 )
@@ -35,7 +36,6 @@ from pytae.polars_engine import (
     filter_polars,
     join_polars,
     long_polars,
-    mutate_polars,
     pivot_polars,
     select_polars,
     slice_head_polars,
@@ -428,7 +428,7 @@ class DataFrame:
             matched = [c for c in matched if _matches_dtype(schema[c], include)]
         if exclude is not None:
             matched = [c for c in matched if not _matches_dtype(schema[c], exclude)]
-        return self.select(*matched)
+        return DataFrame(self._df.select(matched), orig_col_map=self._orig_col_map)
 
     def safe_reset_index(self) -> DataFrame:
         """Polars DataFrames have no index; returns self."""
@@ -770,9 +770,21 @@ class DataFrame:
     # -------------------------------------------------------------------------
 
     def filter(self, *conditions: Any, params: dict[str, Any] | None = None, **kwargs: Any) -> DataFrame:
-        """Filter rows using conditions (ColumnExpr or string expressions)."""
-        if conditions and all(isinstance(c, (ColumnExpr, pl.Expr)) for c in conditions):
-            pl_exprs = [c.to_polars() if isinstance(c, ColumnExpr) else c for c in conditions]
+        """Filter rows using conditions (ColumnExpr or callable)."""
+        if kwargs:
+            first_k = next(iter(kwargs))
+            raise TypeError(
+                f"filter(): keyword arguments are not supported (received {list(kwargs.keys())}). "
+                f"Equality comparisons strictly require '==' to avoid '=' assignment ambiguity. "
+                f"Use canonical c expressions, e.g. df.filter(c.{first_k} == ...)"
+            )
+        if any(isinstance(c, str) for c in conditions):
+            raise TypeError(
+                "String expressions in filter() are retired. "
+                "Use canonical c expressions, e.g. df.filter(c.species == 'Adelie', c.body_mass_g > 3500)"
+            )
+        if conditions and all(isinstance(c, (ColumnExpr, pl.Expr, ExclusionExpr)) for c in conditions):
+            pl_exprs = [c.to_polars() if isinstance(c, (ColumnExpr, ExclusionExpr)) else c for c in conditions]
             return DataFrame(self._df.filter(*pl_exprs), orig_col_map=self._orig_col_map)
 
         if any(callable(c) for c in conditions):
@@ -903,10 +915,20 @@ class DataFrame:
 
     def select(self, *names: Any, **kwargs: Any) -> DataFrame:
         """Select, reorder, slice, and drop columns using Pytae selection grammar."""
+        if any(isinstance(n, str) for n in names):
+            raise TypeError(
+                "String column names in select() are retired. "
+                "Use canonical c expressions, e.g. df.select(c.species, c.island) or range df.select(c.a.to(c.b))"
+            )
         return DataFrame(select_polars(self._df, list(names), kwargs), orig_col_map=self._orig_col_map)
 
     def arrange(self, *specs: Any, na_last: bool = True) -> DataFrame:
         """Sort rows by one or more column expressions (e.g. c.dept.asc(), c.salary.desc())."""
+        if any(isinstance(s, str) for s in specs):
+            raise TypeError(
+                "String specifications in arrange() are retired. "
+                "Use canonical c expressions, e.g. df.arrange(c.dept.asc(), c.salary.desc())"
+            )
         if specs and all(isinstance(s, (SortExpr, ColumnExpr, pl.Expr)) for s in specs):
             sort_exprs: list[pl.Expr] = []
             descending: list[bool] = []
@@ -1204,97 +1226,43 @@ class DataFrame:
 
         if not specs and not kwargs:
             raise ValueError(
-                'mutate() expects at least one column specification (kwargs or string expressions), e.g. "col = expr"'
+                'mutate() expects at least one column specification, e.g. df.mutate(col=c.a + c.b)'
             )
 
-        if kwargs and not specs and any(isinstance(v, (ColumnExpr, pl.Expr)) for v in kwargs.values()):
-            curr_df = self._df
-            for k, v in kwargs.items():
-                if isinstance(v, ColumnExpr):
-                    expr = v.to_polars().alias(k)
-                elif isinstance(v, pl.Expr):
-                    expr = v.alias(k)
-                else:
-                    expr = pl.lit(v).alias(k)
-                curr_df = curr_df.with_columns(expr)
-            return DataFrame(curr_df, orig_col_map=self._orig_col_map)
-
-        import inspect
-
-        _here = inspect.currentframe()
-        caller_frame = None if _here is None else _here.f_back
-        del _here
-        while caller_frame is not None:
-            name = caller_frame.f_globals.get("__name__") or ""
-            if name != "pytae" and not name.startswith("pytae."):
-                break
-            caller_frame = caller_frame.f_back
-        frame_vars: dict[str, Any] = {}
-        if caller_frame is not None:
-            frame_vars.update(caller_frame.f_globals)
-            frame_vars.update(caller_frame.f_locals)
-        del caller_frame
-
-        params = kwargs.pop("_params", None)
-        if params is None and "params" in kwargs and isinstance(kwargs["params"], dict):
-            params = kwargs.pop("params")
-
-        merged_params = dict(frame_vars)
-        if params:
-            merged_params.update(params)
-
-        steps: list[tuple[str, Any]] = []
-        current_spec: dict[str, Any] = {}
-
-        for s in specs:
-            if isinstance(s, str):
-                entries = _parse_mutate_spec_entries(s)
-                for k, v, _ in entries:
-                    current_spec[k] = v
-            elif isinstance(s, dict):
-                for k, v in s.items():
-                    current_spec[str(k)] = v
-            elif callable(s):
-                raise TypeError(
-                    "mutate() expects callables as keyword arguments with the column name, "
-                    "e.g. df.pt.mutate(new_col=lambda d: d['x'] * 2)"
-                )
-            else:
-                raise TypeError(f"mutate() received unexpected positional argument of type {type(s).__name__}.")
+        if specs:
+            raise TypeError(
+                "Positional specifications in mutate() are retired. "
+                "Use keyword arguments with canonical c expressions, e.g. df.mutate(mass_kg=c.body_mass_g / 1000)"
+            )
 
         for k, v in kwargs.items():
-            if callable(v):
-                if current_spec:
-                    steps.append(("spec", current_spec))
-                    current_spec = {}
-                steps.append(("callable", (k, v)))
-            else:
-                current_spec[k] = v
+            if isinstance(v, str):
+                if any(op in v for op in (" ", "+", "-", "*", "/", "**", "%", "//", "==", "!=", ">", "<", ">=", "<=", "&", "|", "(", ")")) or v in self.columns:
+                    raise TypeError(
+                        f"String formula '{v}' in mutate() is retired. "
+                        f"Use canonical c expressions, e.g. df.mutate({k}=c...)"
+                    )
 
-        if current_spec:
-            steps.append(("spec", current_spec))
-
-        res = self
-        for step_type, step_data in steps:
-            if step_type == "spec":
-                res_df = mutate_polars(res._df, step_data, by=None, params=merged_params) if step_data else res._df
-                res = DataFrame(res_df, orig_col_map=res._orig_col_map)
-                res._orig_index = self._orig_index
-            elif step_type == "callable":
-                col_name, fn = step_data
-                col_res = fn(res)
-                if isinstance(col_res, (pl.Series, pl.Expr)):
-                    new_series = col_res.alias(col_name)
-                elif hasattr(col_res, "to_numpy"):
-                    new_series = pl.Series(col_name, col_res.to_numpy())
+        curr_df = self._df
+        for k, v in kwargs.items():
+            if isinstance(v, (ColumnExpr, FillExpr)):
+                expr = v.to_polars().alias(k)
+            elif isinstance(v, pl.Expr):
+                expr = v.alias(k)
+            elif callable(v):
+                res = v(DataFrame(curr_df))
+                if isinstance(res, pl.Series):
+                    s = res.rename(k)
+                elif hasattr(res, "values"):
+                    s = pl.Series(k, res.values)
                 else:
-                    new_series = pl.Series(col_name, list(col_res))
-                new_map = dict(res._orig_col_map)
-                new_map[col_name] = col_name
-                res = DataFrame(res._df.with_columns(new_series), orig_col_map=new_map)
-                res._orig_index = self._orig_index
-
-        return res
+                    s = pl.Series(k, list(res))
+                curr_df = curr_df.with_columns(s)
+                continue
+            else:
+                expr = pl.lit(v).alias(k)
+            curr_df = curr_df.with_columns(expr)
+        return DataFrame(curr_df, orig_col_map=self._orig_col_map)
 
     def rename(self, *args: Any, columns: dict[str, str] | None = None, **kwargs: Any) -> DataFrame:
         """Rename columns using string mapping ('old:new, old2:new2'), dict, or keyword arguments."""
@@ -1840,25 +1808,45 @@ class GroupedDataFrame:
             return wrapper
         return attr
 
-    def arrange(self, *specs: str, na_last: bool = True) -> GroupedDataFrame:
+    def arrange(self, *specs: Any, na_last: bool = True) -> GroupedDataFrame:
         """Sort rows within groups or across groups while preserving grouping context."""
-        spec_str = ",".join(specs)
-        cols, asc = _extract_arrange_specs((spec_str,), available_cols=set(_df_columns(self._df)))
-        descending = [not a for a in asc]
-        by_desc = [descending[cols.index(c)] if c in cols else False for c in self._by]
-        rest_cols = [c for c in cols if c not in self._by]
-        rest_desc = [descending[cols.index(c)] for c in rest_cols]
-        all_cols = self._by + rest_cols
-        all_desc = by_desc + rest_desc
-        sorted_df = self._df.sort(all_cols, descending=all_desc, nulls_last=na_last)
-        return GroupedDataFrame(
-            sorted_df,
-            by_cols=self._by,
-            orig_col_map=self._orig_col_map,
-            orig_index=self._orig_index,
-            _last_sort_cols=cols,
-            _last_sort_desc=descending,
-        )
+        if any(isinstance(s, str) for s in specs):
+            raise TypeError(
+                "String specifications in arrange() are retired. "
+                "Use canonical c expressions, e.g. df.arrange(c.dept.asc(), c.salary.desc())"
+            )
+        if specs and all(isinstance(s, (SortExpr, ColumnExpr, pl.Expr)) for s in specs):
+            sort_exprs: list[pl.Expr] = []
+            descending: list[bool] = []
+            cols: list[str] = []
+            for s in specs:
+                if isinstance(s, SortExpr):
+                    sort_exprs.append(s.column_expr.to_polars())
+                    descending.append(s.descending)
+                    if s.name:
+                        cols.append(s.name)
+                elif isinstance(s, ColumnExpr):
+                    sort_exprs.append(s.to_polars())
+                    descending.append(False)
+                    if s.name:
+                        cols.append(s.name)
+                elif isinstance(s, pl.Expr):
+                    sort_exprs.append(s)
+                    descending.append(False)
+
+            by_unspecified = [c for c in self._by if c not in cols]
+            by_exprs = [pl.col(c) for c in by_unspecified]
+            all_exprs = by_exprs + sort_exprs
+            all_desc = [False] * len(by_unspecified) + descending
+            sorted_df = self._df.sort(all_exprs, descending=all_desc, nulls_last=na_last)
+            return GroupedDataFrame(
+                sorted_df,
+                by_cols=self._by,
+                orig_col_map=self._orig_col_map,
+                orig_index=self._orig_index,
+                _last_sort_cols=cols,
+                _last_sort_desc=descending,
+            )
 
     def mutate(self, *specs: Any, **kwargs: Any) -> DataFrame:
         """Calculate windowed mutations across the established groups."""
@@ -1869,112 +1857,66 @@ class GroupedDataFrame:
 
         if not specs and not kwargs:
             raise ValueError(
-                'mutate() expects at least one column specification (kwargs or string expressions), e.g. "col = expr"'
+                'mutate() expects at least one column specification, e.g. df.mutate(col=c.a + c.b)'
             )
 
-        if kwargs and not specs and any(isinstance(v, (ColumnExpr, pl.Expr)) for v in kwargs.values()):
-            curr_df = self._df
-            for k, v in kwargs.items():
-                if isinstance(v, ColumnExpr):
-                    expr = v.to_polars().alias(k)
-                elif isinstance(v, pl.Expr):
-                    expr = v.alias(k)
-                else:
-                    expr = pl.lit(v).alias(k)
-                curr_df = curr_df.with_columns(expr)
-            return DataFrame(curr_df, orig_col_map=self._orig_col_map)
-
-        dropna = kwargs.pop("dropna", False)
-
-        import inspect
-
-        _here = inspect.currentframe()
-        caller_frame = None if _here is None else _here.f_back
-        del _here
-        while caller_frame is not None:
-            name = caller_frame.f_globals.get("__name__") or ""
-            if name != "pytae" and not name.startswith("pytae."):
-                break
-            caller_frame = caller_frame.f_back
-        frame_vars: dict[str, Any] = {}
-        if caller_frame is not None:
-            frame_vars.update(caller_frame.f_globals)
-            frame_vars.update(caller_frame.f_locals)
-        del caller_frame
-
-        params = kwargs.pop("_params", None)
-        if params is None and "params" in kwargs and isinstance(kwargs["params"], dict):
-            params = kwargs.pop("params")
-
-        merged_params = dict(frame_vars)
-        if params:
-            merged_params.update(params)
-
-        steps: list[tuple[str, Any]] = []
-        current_spec: dict[str, Any] = {}
-
-        for s in specs:
-            if isinstance(s, str):
-                entries = _parse_mutate_spec_entries(s)
-                for k, v, _ in entries:
-                    current_spec[k] = v
-            elif isinstance(s, dict):
-                for k, v in s.items():
-                    current_spec[str(k)] = v
-            elif callable(s):
-                raise TypeError(
-                    "mutate() expects callables as keyword arguments with the column name, "
-                    "e.g. df.pt.mutate(new_col=lambda d: d['x'] * 2)"
-                )
-            else:
-                raise TypeError(f"mutate() received unexpected positional argument of type {type(s).__name__}.")
+        if specs:
+            raise TypeError(
+                "Positional specifications in mutate() are retired. "
+                "Use keyword arguments with canonical c expressions, e.g. df.mutate(mass_kg=c.body_mass_g / 1000)"
+            )
 
         for k, v in kwargs.items():
-            if callable(v):
-                if current_spec:
-                    steps.append(("spec", current_spec))
-                    current_spec = {}
-                steps.append(("callable", (k, v)))
-            else:
-                current_spec[k] = v
+            if isinstance(v, str):
+                if any(op in v for op in (" ", "+", "-", "*", "/", "**", "%", "//", "==", "!=", ">", "<", ">=", "<=", "&", "|", "(", ")")) or v in self._df.columns:
+                    raise TypeError(
+                        f"String formula '{v}' in mutate() is retired. "
+                        f"Use canonical c expressions, e.g. df.mutate({k}=c...)"
+                    )
 
-        if current_spec:
-            steps.append(("spec", current_spec))
-
-        res = DataFrame(self._df, orig_col_map=self._orig_col_map)
-        res._orig_index = self._orig_index
-
-        for step_type, step_data in steps:
-            if step_type == "spec":
-                res_df = (
-                    mutate_polars(res._df, step_data, by=self._by, params=merged_params, dropna=dropna)
-                    if step_data
-                    else res._df
-                )
-                res = DataFrame(res_df, orig_col_map=res._orig_col_map)
-                res._orig_index = self._orig_index
-            elif step_type == "callable":
-                col_name, fn = step_data
-                pdf = res._to_pandas_internal()
-                pieces = []
-                for _, group in pdf.groupby(self._by, sort=False, dropna=dropna):
-                    import pandas as pd
-
-                    part_res = fn(group)
-                    if isinstance(part_res, pd.Series):
-                        pieces.append(part_res)
-                    elif hasattr(part_res, "__iter__") and not isinstance(part_res, (str, bytes)):
-                        pieces.append(pd.Series(list(part_res), index=group.index))
-                    else:
-                        pieces.append(pd.Series([part_res] * len(group), index=group.index))
+        dropna = kwargs.pop("dropna", False)
+        curr_df = self._df
+        for k, v in kwargs.items():
+            if isinstance(v, (ColumnExpr, FillExpr)):
+                expr = v.to_polars().over(self._by).alias(k)
+            elif isinstance(v, pl.Expr):
+                expr = v.over(self._by).alias(k)
+            elif callable(v):
                 import pandas as pd
 
-                full_col = pd.concat(pieces).reindex(pdf.index)
-                new_map = dict(res._orig_col_map)
-                new_map[col_name] = col_name
-                res = DataFrame(res._df.with_columns(pl.Series(col_name, full_col.to_numpy())), orig_col_map=new_map)
-                res._orig_index = self._orig_index
-
+                eager = curr_df.collect() if hasattr(curr_df, "collect") else curr_df
+                pdf = eager.to_pandas()
+                if self._orig_index is not None and len(self._orig_index) == len(pdf):
+                    pdf.index = pd.Index(self._orig_index)
+                pieces = []
+                for _, g in pdf.groupby(self._by, sort=False, dropna=dropna):
+                    try:
+                        res = v(DataFrame(g))
+                    except TypeError:
+                        res = v(g)
+                    if isinstance(res, (int, float, str, bool)):
+                        pieces.append(pd.Series([res] * len(g), index=g.index))
+                    elif isinstance(res, pl.Series):
+                        pieces.append(pd.Series(res.to_list(), index=g.index))
+                    elif hasattr(res, "values"):
+                        pieces.append(pd.Series(list(res.values), index=g.index))
+                    elif hasattr(res, "__iter__") and not isinstance(res, (str, bytes)):
+                        pieces.append(pd.Series(list(res), index=g.index))
+                    elif hasattr(res, "item") and callable(getattr(res, "item")):
+                        pieces.append(pd.Series([res.item()] * len(g), index=g.index))
+                    else:
+                        pieces.append(pd.Series([res] * len(g), index=g.index))
+                s = pd.concat(pieces).reindex(pdf.index)
+                curr_df = eager.with_columns(pl.Series(k, s.to_list()))
+                continue
+            else:
+                expr = pl.lit(v).alias(k)
+            if dropna:
+                not_null_mask = pl.all_horizontal([pl.col(b).is_not_null() for b in self._by])
+                expr = pl.when(not_null_mask).then(expr).otherwise(None).alias(k)
+            curr_df = curr_df.with_columns(expr)
+        res = DataFrame(curr_df, orig_col_map=self._orig_col_map)
+        res._orig_index = self._orig_index
         return res
 
     def agg(self, *specs: Any, a: Any = None, dropna: bool = False, **kwargs: Any) -> DataFrame:

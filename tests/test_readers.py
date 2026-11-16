@@ -459,7 +459,8 @@ def test_lazy_dataframe_methods_and_accessors(tmp_path):
     assert set(long_pd.columns) == {"id", "variable", "value"}
 
     # pt.DataFrame.glimpse() returns pytae.DataFrame for chaining, while .pt.glimpse() returns self._obj
-    chained_pt = edf.glimpse().mutate("c = a + 1")
+    from pytae import c
+    chained_pt = edf.glimpse().mutate(c=c.a + 1)
     assert isinstance(chained_pt, pt.DataFrame)
     assert "c" in chained_pt.columns
     assert raw_pl.pt.glimpse() is raw_pl
@@ -632,7 +633,8 @@ def test_assert_verb_python_accessor_and_cli(tmp_path, capsys):
     df = pt.DataFrame({"id": [1, 2, 3], "amount": [10.0, 25.0, 50.0]})
 
     # Passing assertions return self unchanged
-    res = df.assert_("amount > 0 and id.is_not_null()").mutate("doubled = amount * 2")
+    from pytae import c
+    res = df.assert_("amount > 0 and id.is_not_null()").mutate(doubled=c.amount * 2)
     assert res.shape == (3, 3)
     assert pt.assert_(df, "amount >= 10").shape == (3, 2)
     assert df.to("polars").pt.assert_("amount <= 100").shape == (3, 2)

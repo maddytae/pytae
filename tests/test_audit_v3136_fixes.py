@@ -155,7 +155,7 @@ def test_repl_transpiler_all_operations():
         ".clean_columns()"
         ".rename('old_col:new_col')"
         ".count('user_id')"
-        ".arrange('count desc')"
+        ".arrange(c.count.desc())"
         ".to('output.parquet')"
     )
     assert code == expected

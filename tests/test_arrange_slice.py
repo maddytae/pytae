@@ -12,6 +12,8 @@ from tests.cli_helpers import _write_csv
 
 
 def test_library_arrange_basic_and_directions():
+    from pytae import c
+
     df = pd.DataFrame(
         {
             "grp": ["b", "a", "b", "a"],
@@ -21,25 +23,27 @@ def test_library_arrange_basic_and_directions():
     )
 
     # Default asc
-    res1 = df.pt.arrange("grp", "val")
+    res1 = df.pt.arrange(c.grp.asc(), c.val.asc())
     assert list(res1["grp"]) == ["a", "a", "b", "b"]
     assert list(res1["val"]) == [20, 40, 10, 30]
 
     # Mixed directions
-    res2 = df.pt.arrange("grp asc", "val desc")
+    res2 = df.pt.arrange(c.grp.asc(), c.val.desc())
     assert list(res2["grp"]) == ["a", "a", "b", "b"]
     assert list(res2["val"]) == [40, 20, 30, 10]
 
-    # Leading '-' is rejected in line with 'one and only one obvious way'
-    with pytest.raises(ValueError, match=r"leading '-' is not supported"):
-        df.pt.arrange("-grp", "val")
+    # String specifications raise TypeError
+    with pytest.raises(TypeError, match=r"String specifications in arrange\(\) are retired"):
+        df.pt.arrange("grp", "val")
 
     # pt.arrange standalone function
-    res4 = pt.arrange(df, "val desc")
+    res4 = pt.arrange(df, c.val.desc())
     assert list(res4["val"]) == [40, 30, 20, 10]
 
 
 def test_library_arrange_bracket_spaced_columns():
+    from pytae import c
+
     df = pd.DataFrame(
         {
             "first name": ["Charlie", "Alice", "Bob"],
@@ -47,16 +51,18 @@ def test_library_arrange_bracket_spaced_columns():
         }
     )
 
-    res = df.pt.arrange("[annual salary] desc")
+    res = df.pt.arrange(c["annual salary"].desc())
     assert list(res["first name"]) == ["Alice", "Bob", "Charlie"]
     assert list(res["annual salary"]) == [70000, 60000, 50000]
 
     # Comma string with brackets
-    res2 = df.pt.arrange("[annual salary] asc, [first name]")
+    res2 = df.pt.arrange(c["annual salary"].asc(), c["first name"].asc())
     assert list(res2["first name"]) == ["Charlie", "Bob", "Alice"]
 
 
 def test_library_arrange_and_head_canonical():
+    from pytae import c
+
     df = pd.DataFrame(
         {
             "species": ["Adelie", "Adelie", "Adelie", "Gentoo", "Gentoo"],
@@ -65,27 +71,27 @@ def test_library_arrange_and_head_canonical():
     )
 
     # Global top 1
-    top1 = df.pt.arrange("body_mass_g desc").head(1)
+    top1 = df.pt.arrange(c.body_mass_g.desc()).head(1)
     assert len(top1) == 1
     assert top1["body_mass_g"].iloc[0] == 5500
 
     # Grouped top 1 per group
-    top_per_grp = df.pt.by("species").arrange("body_mass_g desc").head(1)
+    top_per_grp = df.pt.by("species").arrange(c.body_mass_g.desc()).head(1)
     assert len(top_per_grp) == 2
     assert set(top_per_grp["body_mass_g"]) == {4000, 5500}
 
     # Grouped bottom 1 per group via arrange asc
-    bot_per_grp = df.pt.by("species").arrange("body_mass_g").head(1)
+    bot_per_grp = df.pt.by("species").arrange(c.body_mass_g.asc()).head(1)
     assert len(bot_per_grp) == 2
     assert set(bot_per_grp["body_mass_g"]) == {3000, 5000}
 
     # Grouped bottom 1 per group via tail
-    bot_per_grp_tail = df.pt.by("species").arrange("body_mass_g desc").tail(1)
+    bot_per_grp_tail = df.pt.by("species").arrange(c.body_mass_g.desc()).tail(1)
     assert len(bot_per_grp_tail) == 2
     assert set(bot_per_grp_tail["body_mass_g"]) == {3000, 5000}
 
     # Standalone function pt.head
-    sorted_df = pt.arrange(df, "body_mass_g desc")
+    sorted_df = pt.arrange(df, c.body_mass_g.desc())
     assert pt.head(sorted_df, 2).iloc[0]["body_mass_g"] == 5500
     assert pt.tail(sorted_df, 2).iloc[-1]["body_mass_g"] == 3000
 
@@ -186,14 +192,16 @@ def test_head_with_nan_by_keys():
             "val": [10, 20, 100, 200],
         }
     )
+    from pytae import c
+
     # top 1 per group
-    res_max = df.pt.by("group").arrange("val desc").head(1)
+    res_max = df.pt.by("group").arrange(c.val.desc()).head(1)
     assert len(res_max) == 2
     assert set(res_max["val"]) == {20, 200}
     assert res_max["group"].isna().sum() == 1
 
     # bottom 1 per group
-    res_min = df.pt.by("group").arrange("val").head(1)
+    res_min = df.pt.by("group").arrange(c.val.asc()).head(1)
     assert len(res_min) == 2
     assert set(res_min["val"]) == {10, 100}
     assert res_min["group"].isna().sum() == 1
@@ -205,11 +213,13 @@ def test_head_with_nan_by_keys():
             "val": [20, 20, 200, 200],
         }
     )
-    res_max_ties = df_ties.pt.by("group").arrange("val desc").head(1, with_ties=True)
+    res_max_ties = df_ties.pt.by("group").arrange(c.val.desc()).head(1, with_ties=True)
     assert len(res_max_ties) == 4
 
 
 def test_head_edge_cases():
+    from pytae import c
+
     df = pd.DataFrame(
         {
             "val": [10, 20, None],
@@ -221,7 +231,7 @@ def test_head_edge_cases():
     assert list(res.columns) == ["val"]
 
     # na_last=False puts NaN at top
-    res_na_first = df.pt.arrange("val desc", na_last=False).head(1)
+    res_na_first = df.pt.arrange(c.val.desc(), na_last=False).head(1)
     assert pd.isna(res_na_first["val"].iloc[0])
 
     # with_ties requires arrange
@@ -230,6 +240,8 @@ def test_head_edge_cases():
 
 
 def test_head_tail_prop():
+    from pytae import c
+
     df = pd.DataFrame(
         {
             "group": ["A"] * 10 + ["B"] * 20,
@@ -237,18 +249,18 @@ def test_head_tail_prop():
         }
     )
     # Overall 10% of 30 is 3
-    res_top = df.pt.arrange("val desc").head(prop=0.1)
+    res_top = df.pt.arrange(c.val.desc()).head(prop=0.1)
     assert len(res_top) == 3
     assert list(res_top["val"]) == [19, 18, 17]
 
     # Grouped 10%: A gets 1 row (10 * 0.1), B gets 2 rows (20 * 0.1)
-    res_grp = df.pt.by("group").arrange("val desc").head(prop=0.1)
+    res_grp = df.pt.by("group").arrange(c.val.desc()).head(prop=0.1)
     assert len(res_grp) == 3
     assert list(res_grp[res_grp["group"] == "A"]["val"]) == [9]
     assert list(res_grp[res_grp["group"] == "B"]["val"]) == [19, 18]
 
     # bottom 10% per group
-    res_min_grp = df.pt.by("group").arrange("val").head(prop=0.1)
+    res_min_grp = df.pt.by("group").arrange(c.val.asc()).head(prop=0.1)
     assert list(res_min_grp[res_min_grp["group"] == "A"]["val"]) == [0]
     assert list(res_min_grp[res_min_grp["group"] == "B"]["val"]) == [0, 1]
 

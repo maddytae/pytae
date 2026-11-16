@@ -242,10 +242,12 @@ def test_agg_df_whole_frame_string_spec():
 
 
 def test_agg_df_user_pipeline_tips():
+    from pytae import c
+
     tips = pt.sample("tips")
     res = (
-        tips.pt.filter("day in ['Sat', 'Sun'] and time == 'Dinner' and size >= 2 and total_bill > 10")
-        .pt.select("smoker", "tip", "total_bill")
+        tips.pt.filter(c.day.is_in(["Sat", "Sun"]), c.time == "Dinner", c.size >= 2, c.total_bill > 10)
+        .pt.select(c.smoker, c.tip, c.total_bill)
         .rename(columns={"total_bill": "total bill"})
         .pt.by("smoker")
         .pt.agg("tip = mean, [total bill] = mean, n = n")

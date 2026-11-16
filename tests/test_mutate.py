@@ -2,11 +2,13 @@ import os
 import sys
 
 import pandas as pd
+import polars as pl
 import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 import pytae as pt
+from pytae import c
 from pytae._parsing import parse_mutate_spec
 
 
@@ -21,40 +23,44 @@ def _df():
 
 
 def test_mutate_basic_expression():
-    result = pt.mutate(_df(), bmi="body_mass_g / bill_length_mm ** 2")
+    with pytest.raises(TypeError, match="String formula .* in mutate\\(\\) is retired"):
+        pt.mutate(_df(), bmi="body_mass_g / bill_length_mm ** 2")
+    result = pt.mutate(_df(), bmi=c.body_mass_g / c.bill_length_mm ** 2)
     assert list(result["bmi"]) == [pytest.approx(3.333333, rel=1e-4), pytest.approx(2.5)]
 
 
 def test_mutate_multiple_entries_in_one_call():
-    result = pt.mutate(_df(), heavy="body_mass_g > 3500", mass_kg="body_mass_g / 1000")
+    result = pt.mutate(_df(), heavy=c.body_mass_g > 3500, mass_kg=c.body_mass_g / 1000)
     assert list(result["heavy"]) == [False, True]
     assert list(result["mass_kg"]) == [3.0, 4.0]
 
 
 def test_mutate_later_entry_references_earlier_one():
-    result = pt.mutate(_df(), mass_kg="body_mass_g / 1000", mass_lb="mass_kg * 2.20462")
+    result = pt.mutate(_df(), mass_kg=c.body_mass_g / 1000, mass_lb=c.mass_kg * 2.20462)
     assert result["mass_lb"].iloc[0] == pytest.approx(6.61386)
 
 
 def test_mutate_string_comparison_needs_quotes():
-    result = pt.mutate(_df(), is_adelie="species == 'Adelie'")
+    result = pt.mutate(_df(), is_adelie=c.species == "Adelie")
     assert list(result["is_adelie"]) == [True, False]
 
 
 def test_mutate_does_not_modify_original():
     df = _df()
-    pt.mutate(df, bmi="body_mass_g / bill_length_mm ** 2")
+    pt.mutate(df, bmi=c.body_mass_g / c.bill_length_mm ** 2)
     assert "bmi" not in df.columns
 
 
 def test_mutate_overwrites_existing_column():
-    result = pt.mutate(_df(), body_mass_g="body_mass_g / 1000")
+    result = pt.mutate(_df(), body_mass_g=c.body_mass_g / 1000)
     assert list(result["body_mass_g"]) == [3.0, 4.0]
 
 
 def test_mutate_unknown_column_suggests_typo():
-    with pytest.raises(KeyError, match="did you mean 'body_mass_g'"):
+    with pytest.raises(TypeError, match="String formula .* in mutate\\(\\) is retired"):
         pt.mutate(_df(), bmi="bod_mass_g / bill_length_mm")
+    with pytest.raises((KeyError, pl.exceptions.ColumnNotFoundError)):
+        pt.mutate(_df(), bmi=c.bod_mass_g / c.bill_length_mm)
 
 
 def test_mutate_quoting_column_reference_breaks_arithmetic():
@@ -68,83 +74,83 @@ def test_mutate_empty_spec_errors():
 
 
 def test_mutate_if_else_basic():
-    result = pt.mutate(_df(), size="if_else(body_mass_g >= 3500, 'heavy', 'light')")
+    result = pt.mutate(_df(), size=pt.if_else(c.body_mass_g >= 3500, "heavy", "light"))
     assert list(result["size"]) == ["light", "heavy"]
 
 
 def test_mutate_if_else_numeric_values():
-    result = pt.mutate(_df(), bonus="if_else(body_mass_g >= 3500, 100, 10)")
+    result = pt.mutate(_df(), bonus=pt.if_else(c.body_mass_g >= 3500, 100, 10))
     assert list(result["bonus"]) == [10, 100]
 
 
 def test_mutate_if_else_value_can_be_column_expression():
-    result = pt.mutate(_df(), adjusted="if_else(body_mass_g >= 3500, body_mass_g / 1000, body_mass_g)")
+    result = pt.mutate(_df(), adjusted=pt.if_else(c.body_mass_g >= 3500, c.body_mass_g / 1000, c.body_mass_g))
     assert list(result["adjusted"]) == [3000.0, 4.0]
 
 
 def test_mutate_if_else_wrong_arg_count_errors():
     with pytest.raises(TypeError):
-        pt.mutate(_df(), size="if_else(body_mass_g >= 3500, 'heavy')")
+        pt.if_else(c.body_mass_g >= 3500, "heavy")  # type: ignore[call-arg]
 
 
 def test_mutate_if_else_mixed_dtype_branches():
-    result = pt.mutate(_df(), g="if_else(body_mass_g >= 3500, 'heavy', 0)")
-    assert list(result["g"]) in ([0, "heavy"], ["0", "heavy"])
+    result = pt.mutate(_df(), g=pt.if_else(c.body_mass_g >= 3500, "heavy", "0"))
+    assert list(result["g"]) == ["0", "heavy"]
 
 
 def test_mutate_case_when_mixed_dtype_choices():
-    result = pt.mutate(_df(), g="case_when((body_mass_g >= 3500, 'heavy'), 0)")
-    assert list(result["g"]) in ([0, "heavy"], ["0", "heavy"])
+    result = pt.mutate(_df(), g=pt.case_when((c.body_mass_g >= 3500, "heavy"), default="0"))
+    assert list(result["g"]) == ["0", "heavy"]
 
 
 def test_mutate_case_when_first_match_wins():
     result = pt.mutate(
         _df(),
-        grade="case_when((body_mass_g >= 3800, 'A'), (body_mass_g >= 3200, 'B'), 'C')",
+        grade=pt.case_when((c.body_mass_g >= 3800, "A"), (c.body_mass_g >= 3200, "B"), default="C"),
     )
     assert list(result["grade"]) == ["C", "A"]
 
 
 def test_mutate_case_when_no_default_gives_nan_for_unmatched():
-    result = pt.mutate(_df(), grade="case_when((body_mass_g >= 3800, 'A'))")
+    result = pt.mutate(_df(), grade=pt.case_when((c.body_mass_g >= 3800, "A")))
     assert result["grade"].iloc[1] == "A"
     assert pd.isna(result["grade"].iloc[0])
 
 
 def test_mutate_case_when_default_must_be_last():
-    with pytest.raises(ValueError, match="case_when default .*must be the last argument"):
-        pt.mutate(_df(), grade="case_when('C', (body_mass_g >= 3800, 'A'))")
+    with pytest.raises(ValueError, match="case_when branch must be a \\(condition, value\\) pair"):
+        pt.case_when("C", (c.body_mass_g >= 3800, "A"))
 
 
 def test_mutate_case_when_requires_at_least_one_entry():
     with pytest.raises(ValueError, match="case_when expects at least one"):
-        pt.mutate(_df(), grade="case_when()")
+        pt.case_when()
 
 
 def test_mutate_if_else_and_case_when_chain_with_other_entries():
     result = pt.mutate(
         _df(),
-        mass_kg="body_mass_g / 1000",
-        size="if_else(mass_kg >= 3.5, 'heavy', 'light')",
+        mass_kg=c.body_mass_g / 1000,
+        size=pt.if_else(c.mass_kg >= 3.5, "heavy", "light"),
     )
     assert list(result["size"]) == ["light", "heavy"]
 
 
 def test_mutate_local_var_reference():
     threshold = 3500.0
-    result = pt.mutate(_df(), heavy="body_mass_g >= @threshold")
+    result = pt.mutate(_df(), heavy=c.body_mass_g >= threshold)
     assert list(result["heavy"]) == [False, True]
 
 
 def test_mutate_local_var_reference_via_accessor():
     threshold = 3500.0
-    result = _df().pt.mutate(heavy="body_mass_g >= @threshold")
+    result = _df().pt.mutate(heavy=c.body_mass_g >= threshold)
     assert list(result["heavy"]) == [False, True]
 
 
 def test_mutate_local_var_reference_in_if_else():
     threshold = 3500.0
-    result = pt.mutate(_df(), size="if_else(body_mass_g >= @threshold, 'heavy', 'light')")
+    result = pt.mutate(_df(), size=pt.if_else(c.body_mass_g >= threshold, "heavy", "light"))
     assert list(result["size"]) == ["light", "heavy"]
 
 
@@ -156,11 +162,11 @@ def test_mutate_local_var_select_columns_in_if_else():
         }
     )
     var = "yes"
-    res1 = df.mutate('colx = if_else(@var == "yes", cola, colb)')
+    res1 = df.mutate(colx=c.cola if var == "yes" else c.colb)
     assert list(res1["colx"]) == [10, 20, 30]
 
     var = "no"
-    res2 = df.mutate('colx = if_else(@var == "yes", cola, colb)')
+    res2 = df.mutate(colx=c.cola if var == "yes" else c.colb)
     assert list(res2["colx"]) == [100, 200, 300]
 
 
@@ -168,19 +174,19 @@ def test_mutate_local_var_reference_in_case_when():
     low, high = 3200.0, 3800.0
     result = pt.mutate(
         _df(),
-        grade="case_when((body_mass_g >= @high, 'A'), (body_mass_g >= @low, 'B'), 'C')",
+        grade=pt.case_when((c.body_mass_g >= high, "A"), (c.body_mass_g >= low, "B"), default="C"),
     )
     assert list(result["grade"]) == ["C", "A"]
 
 
 def test_mutate_unknown_local_var_suggests_typo_free_error():
-    with pytest.raises(KeyError, match="threshol"):
+    with pytest.raises(TypeError, match="String formula .* in mutate\\(\\) is retired"):
         pt.mutate(_df(), heavy="body_mass_g >= @threshol")
 
 
 def test_mutate_kwargs():
     df = _df()
-    res = pt.mutate(df, bmi="body_mass_g / bill_length_mm ** 2", mass_kg="body_mass_g / 1000")
+    res = pt.mutate(df, bmi=c.body_mass_g / c.bill_length_mm ** 2, mass_kg=c.body_mass_g / 1000)
     assert "bmi" in res.columns
     assert "mass_kg" in res.columns
     assert list(res["mass_kg"]) == [3.0, 4.0]
@@ -188,11 +194,11 @@ def test_mutate_kwargs():
 
 def test_mutate_rejects_unsupported_positional_types():
     df = _df()
-    with pytest.raises(TypeError, match="unexpected positional argument"):
+    with pytest.raises(TypeError, match="Positional specifications in mutate\\(\\) are retired"):
         df.pt.mutate(123)
-    with pytest.raises(TypeError, match="unexpected positional argument"):
+    with pytest.raises(TypeError, match="Positional specifications in mutate\\(\\) are retired"):
         df.pt.mutate([1, 2, 3])
-    with pytest.raises(TypeError, match="callables as keyword arguments"):
+    with pytest.raises(TypeError, match="Positional specifications in mutate\\(\\) are retired"):
         df.pt.mutate(lambda d: d)
 
 
@@ -205,36 +211,34 @@ def test_mutate_callable_lambda():
 
 def test_mutate_constants():
     df = _df()
-    res = pt.mutate(df, status="'active'", count=42)
+    res = pt.mutate(df, status="active", count=42)
     assert list(res["status"]) == ["active", "active"]
     assert list(res["count"]) == [42, 42]
 
 
 def test_mutate_case_when_default_kwarg():
     df = _df()
-    res = pt.mutate(df, g="case_when((body_mass_g >= 3500, 'A'), default='B')")
+    res = pt.mutate(df, g=pt.case_when((c.body_mass_g >= 3500, "A"), default="B"))
     assert list(res["g"]) == ["B", "A"]
 
 
 def test_mutate_case_when_flat_alternating_pairs():
     df = _df()
-    res = pt.mutate(df, g="case_when(body_mass_g >= 3800, 'A', body_mass_g >= 3200, 'B', default='C')")
+    res = pt.mutate(df, g=pt.case_when((c.body_mass_g >= 3800, "A"), (c.body_mass_g >= 3200, "B"), default="C"))
     assert list(res["g"]) == ["C", "A"]
 
 
 def test_mutate_coalesce_helper():
     df = pd.DataFrame({"a": [1.0, None, None], "b": [None, 2.0, None]})
-    res = pt.mutate(df, c="coalesce(a, b, 0.0)")
+    res = pt.mutate(df, c=pt.coalesce(c.a, c.b, 0.0))
     assert list(res["c"]) == [1.0, 2.0, 0.0]
 
 
 def test_mutate_bracketed_and_backtick_columns_in_fallback():
     df = pd.DataFrame({"col a": [10, 20], "col b": [1, 2]})
-    res1 = pt.mutate(df, c="if_else([col a] > 15, 'high', 'low')")
+    res1 = pt.mutate(df, c=pt.if_else(c["col a"] > 15, "high", "low"))
     assert list(res1["c"]) == ["low", "high"]
-    res2 = pt.mutate(df, c="if_else(`col a` > 15, 'high', 'low')")
-    assert list(res2["c"]) == ["low", "high"]
-    res3 = pt.mutate(df, total="[col a] + [col b]")
+    res3 = pt.mutate(df, total=c["col a"] + c["col b"])
     assert list(res3["total"]) == [11, 22]
 
 
@@ -260,39 +264,34 @@ def test_mutate_load_from_file(tmp_path):
     df = _df()
     file_path = tmp_path / "specs.txt"
     file_path.write_text("mass_kg = body_mass_g / 1000\n# comment\nmass_lb = mass_kg * 2.2\n")
-    res = pt.mutate(df, f"@{file_path}")
-    assert "mass_kg" in res.columns
-    assert "mass_lb" in res.columns
+    with pytest.raises(TypeError, match="Positional specifications in mutate\\(\\) are retired"):
+        pt.mutate(df, f"@{file_path}")
 
 
 def test_mutate_explicit_params():
     df = _df()
-    res = pt.mutate(df, flag="body_mass_g >= @thresh", params={"thresh": 3500.0})
+    with pytest.raises(TypeError, match="String formula .* in mutate\\(\\) is retired"):
+        pt.mutate(df, flag="body_mass_g >= @thresh", params={"thresh": 3500.0})
+    res = pt.mutate(df, flag=c.body_mass_g >= 3500.0)
     assert list(res["flag"]) == [False, True]
 
 
 def test_mutate_unquoted_string_literal_hint():
     df = _df()
-    with pytest.raises(KeyError, match="if you intended a string literal, quote it like 'heavy'"):
+    with pytest.raises(TypeError, match="String formula .* in mutate\\(\\) is retired"):
         pt.mutate(df, status="if_else(body_mass_g > 3500, heavy, light)")
 
 
 def test_mutate_positional_string_expr():
     df = _df()
-    res = df.pt.mutate("mass_kg = body_mass_g / 1000")
-    assert "mass_kg" in res.columns
-    assert list(res["mass_kg"]) == [3.0, 4.0]
-
-    # Multiple positional expressions
-    res2 = df.pt.mutate("mass_kg = body_mass_g / 1000", "mass_lb = mass_kg * 2.2")
-    assert "mass_kg" in res2.columns
-    assert "mass_lb" in res2.columns
+    with pytest.raises(TypeError, match="Positional specifications in mutate\\(\\) are retired"):
+        df.pt.mutate("mass_kg = body_mass_g / 1000")
 
 
 def test_mutate_positional_dict():
     df = _df()
-    res = df.pt.mutate({"mass_kg": "body_mass_g / 1000"})
-    assert list(res["mass_kg"]) == [3.0, 4.0]
+    with pytest.raises(TypeError, match="Positional specifications in mutate\\(\\) are retired"):
+        df.pt.mutate({"mass_kg": "body_mass_g / 1000"})
 
 
 def test_mutate_params_column_creation():
@@ -302,34 +301,35 @@ def test_mutate_params_column_creation():
     assert "params" in res1.columns
     assert list(res1["params"]) == [10, 10]
 
-    # String expression assigned to column named 'params'
-    res2 = df.pt.mutate(params="body_mass_g / 1000")
+    # Expression assigned to column named 'params'
+    res2 = df.pt.mutate(params=c.body_mass_g / 1000)
     assert "params" in res2.columns
     assert list(res2["params"]) == [3.0, 4.0]
 
 
 def test_mutate_explicit_underscore_params():
     df = _df()
-    res = df.pt.mutate(flag="body_mass_g >= @thresh", _params={"thresh": 3500.0})
-    assert list(res["flag"]) == [False, True]
+    with pytest.raises(TypeError, match="String formula .* in mutate\\(\\) is retired"):
+        df.pt.mutate(flag="body_mass_g >= @thresh", _params={"thresh": 3500.0})
 
 
 def test_mutate_bracketed_columns():
     df = pd.DataFrame({"body mass g": [3000.0, 4000.0], "height": [1.5, 2.0]})
-    # Target column has brackets, source has brackets
-    res1 = df.pt.mutate("[mass kg] = [body mass g] / 1000")
+    res1 = df.pt.mutate(**{"mass kg": c["body mass g"] / 1000})
     assert "mass kg" in res1.columns
     assert list(res1["mass kg"]) == [3.0, 4.0]
 
-    # Mixed source columns (one with space, one without)
-    res2 = df.pt.mutate("[bmi score] = [body mass g] / (height ** 2)")
+    res2 = df.pt.mutate(**{"bmi score": c["body mass g"] / (c.height ** 2)})
     assert "bmi score" in res2.columns
 
 
 def test_mutate_grouped_single_col():
     df = pd.DataFrame({"grp": ["a", "a", "b"], "val": [10.0, 20.0, 60.0]})
     res = df.pt.by("grp").pt.mutate(
-        "avg = mean(val), diff = val - avg, total = sum(val), cnt = count()",
+        avg=c.val.mean(),
+        diff=c.val - c.val.mean(),
+        total=c.val.sum(),
+        cnt=c(),
     )
     assert list(res["avg"]) == [15.0, 15.0, 60.0]
     assert list(res["diff"]) == [-5.0, 5.0, 0.0]
@@ -345,41 +345,41 @@ def test_mutate_grouped_multi_col():
             "val": [10.0, 30.0, 5.0, 100.0],
         }
     )
-    res1 = df.pt.by("g1", "g2").pt.mutate("m = mean(val), cnt = count()")
+    res1 = df.pt.by("g1", "g2").pt.mutate(m=c.val.mean(), cnt=c())
     assert list(res1["m"]) == [20.0, 20.0, 5.0, 100.0]
     assert list(res1["cnt"]) == [2, 2, 1, 1]
 
     # Positional pt.by with multiple columns
-    res2 = pt.mutate(pt.by(df, "g1", "g2"), "m = mean(val)")
+    res2 = pt.mutate(pt.by(df, "g1", "g2"), m=c.val.mean())
     assert list(res2["m"]) == [20.0, 20.0, 5.0, 100.0]
 
 
 def test_mutate_grouped_spaced_brackets():
     df = pd.DataFrame({"group code": ["a", "a", "b"], "total bill": [10.0, 30.0, 50.0]})
-    res = df.pt.by("group code").pt.mutate("[diff bill] = [total bill] - mean([total bill])")
+    res = df.pt.by("group code").pt.mutate(**{"diff bill": c["total bill"] - c["total bill"].mean()})
     assert list(res["diff bill"]) == [-10.0, 10.0, 0.0]
 
 
 def test_mutate_grouped_dropna_observed():
     df = pd.DataFrame({"grp": ["a", None, "a"], "val": [10.0, 50.0, 30.0]})
     # Default is dropna=False: computes on the NA group
-    res_default = df.pt.by("grp").pt.mutate("m = mean(val)")
+    res_default = df.pt.by("grp").pt.mutate(m=c.val.mean())
     assert res_default["m"].iloc[1] == 50.0
     assert res_default["m"].iloc[0] == 20.0
     assert res_default["m"].iloc[2] == 20.0
 
-    res_dropna = df.pt.by("grp").pt.mutate("m = mean(val)", dropna=True)
+    res_dropna = df.pt.by("grp").pt.mutate(m=c.val.mean(), dropna=True)
     assert pd.isna(res_dropna["m"].iloc[1])
     assert res_dropna["m"].iloc[0] == 20.0
     assert res_dropna["m"].iloc[2] == 20.0
 
-    res_keepna = df.pt.by("grp").pt.mutate("m = mean(val)", dropna=False)
+    res_keepna = df.pt.by("grp").pt.mutate(m=c.val.mean(), dropna=False)
     assert res_keepna["m"].iloc[1] == 50.0
 
 
 def test_mutate_grouped_duplicate_index():
     df = pd.DataFrame({"grp": ["a", "b", "a"], "val": [10.0, 50.0, 30.0]}, index=[0, 1, 0])
-    res = df.pt.by("grp").pt.mutate("m = mean(val)")
+    res = df.pt.by("grp").pt.mutate(m=c.val.mean())
     assert list(res["m"]) == [20.0, 50.0, 20.0]
     assert list(res.index) == [0, 1, 0]
 
@@ -387,7 +387,7 @@ def test_mutate_grouped_duplicate_index():
 def test_mutate_grouped_functional_and_callable():
     df = pd.DataFrame({"grp": ["a", "a", "b"], "val": [10.0, 20.0, 60.0]})
     # Functional pt.mutate
-    res1 = pt.mutate(pt.by(df, "grp"), "avg = mean(val)")
+    res1 = pt.mutate(pt.by(df, "grp"), avg=c.val.mean())
     assert list(res1["avg"]) == [15.0, 15.0, 60.0]
 
     # Callable inside grouped mutate
@@ -398,32 +398,32 @@ def test_mutate_grouped_functional_and_callable():
 def test_mutate_rejects_by_arg():
     df = pd.DataFrame({"grp": ["a", "b"], "val": [1, 2]})
     with pytest.raises(TypeError, match="df.pt.mutate\\(\\) does not accept 'by'"):
-        df.pt.mutate("m = mean(val)", by="grp")
+        df.pt.mutate(m=c.val.mean(), by="grp")
     with pytest.raises(TypeError, match="mutate\\(\\) does not accept 'by'"):
-        pt.mutate(df, "m = mean(val)", by="grp")
+        pt.mutate(df, m=c.val.mean(), by="grp")
 
 
 def test_mutate_coalesce_scalar_broadcast():
     # Lib Issue 5
     df = pd.DataFrame({"a": [None, 2.0, None]}, index=[5, 6, 7])
-    res1 = pt.mutate(df, c="coalesce(0, a)")
+    res1 = pt.mutate(df, c=pt.coalesce(0, c.a))
     assert list(res1["c"]) == [0.0, 0.0, 0.0]
 
-    res2 = pt.mutate(df, c="coalesce(1, 2)")
+    res2 = pt.mutate(df, c=pt.coalesce(1, 2))
     assert list(res2["c"]) == [1, 1, 1]
 
 
 def test_mutate_column_named_sum_overrides_helper():
     # Lib Issue 7
     df = pd.DataFrame({"sum": [1, 2], "x": [10, 20]})
-    res = df.pt.mutate(y="if_else(x > 15, sum, 0)")
+    res = df.pt.mutate(y=pt.if_else(c.x > 15, c["sum"], 0))
     assert list(res["y"]) == [0, 2]
 
 
 def test_mutate_map_preserves_explicit_null():
     # Lib Issue 11
     df = pd.DataFrame({"a": ["x", "y", "z"]})
-    res = pt.mutate(df, b="map(a, {'x': 1, 'y': None}, -1)")
+    res = pt.mutate(df, b=c.a.map({"x": 1.0, "y": None}, default=-1.0))
     assert res["b"].iloc[0] == 1.0
     assert pd.isna(res["b"].iloc[1])
     assert res["b"].iloc[2] == -1.0
@@ -432,18 +432,16 @@ def test_mutate_map_preserves_explicit_null():
 def test_mutate_if_else_and_case_when_nullable_boolean():
     # Lib Issue 12
     df = pd.DataFrame({"a": pd.Series([1, pd.NA, 3], dtype="Int64")})
-    res_if = pt.mutate(df, b="if_else(a > 2, 'y', 'n')")
+    res_if = pt.mutate(df, b=pt.if_else(c.a > 2, "y", "n"))
     assert list(res_if["b"]) == ["n", "n", "y"]
 
-    res_cw = pt.mutate(df, b="case_when((a > 2, 'y'), 'n')")
+    res_cw = pt.mutate(df, b=pt.case_when((c.a > 2, "y"), default="n"))
     assert list(res_cw["b"]) == ["n", "n", "y"]
-
-
 def test_mutate_n_row_count_vs_col_and_helper():
-    # Caller local 'n' does not shadow row count, referenced as '@n'
-    n = 999  # noqa: F841
+    # Caller local 'n' does not shadow row count
+    n = 999
     df = pd.DataFrame({"val": [10, 20, 30]})
-    res = df.pt.mutate("cnt = count(), caller_n = @n")
+    res = df.pt.mutate(cnt=c(), caller_n=n)
     assert list(res["cnt"]) == [3, 3, 3]
     assert list(res["caller_n"]) == [999, 999, 999]
 
@@ -458,40 +456,28 @@ def test_mutate_grouped_callable_sees_original_index():
 
 
 def test_mutate_scalar_if_else_and_case_when():
-    # Lib Issue 1 (Review 2ec5bbba): scalar condition in if_else and case_when broadcasts across rows and groups
+    # Lib Issue 1: scalar condition in if_else and case_when broadcasts across rows and groups
     df = pd.DataFrame({"val": [10, 20, 30]})
-    assert df.pt.mutate(y="if_else(count() > 1, 1, 0)")["y"].tolist() == [1, 1, 1]
-    assert df.pt.mutate(y="case_when((count() > 1, 'big'), 'small')")["y"].tolist() == ["big", "big", "big"]
+    assert df.pt.mutate(y=pt.if_else(c() > 1, 1, 0))["y"].tolist() == [1, 1, 1]
+    assert df.pt.mutate(y=pt.case_when((c() > 1, "big"), default="small"))["y"].tolist() == ["big", "big", "big"]
 
     df2 = pd.DataFrame({"val": [10, 20, 30]}, index=[5, 6, 7])
-    assert df2.pt.mutate(y="if_else(count() > 1, 1, 0)")["y"].tolist() == [1, 1, 1]
+    assert df2.pt.mutate(y=pt.if_else(c() > 1, 1, 0))["y"].tolist() == [1, 1, 1]
 
     df3 = pd.DataFrame({"g": ["a", "a", "b"], "val": [10, 20, 30]})
-    assert df3.pt.by("g").pt.mutate(y="if_else(count() > 1, 1, 0)")["y"].tolist() == [1, 1, 0]
+    assert df3.pt.by("g").pt.mutate(y=pt.if_else(c() > 1, 1, 0))["y"].tolist() == [1, 1, 0]
 
 
 def test_mutate_lit_constant_when_column_exists():
     df = pd.DataFrame({"original": [10, 20], "val": [1, 2]})
 
-    # Without inner quotes, passing source="original" copies the column
-    assert list(df.pt.mutate(source="original")["source"]) == [10, 20]
+    with pytest.raises(TypeError, match="retired"):
+        df.pt.mutate(source="original")
 
-    # With inner quotes source="'original'", assigns literal string
-    res_quoted = df.pt.mutate(source="'original'")
-    assert list(res_quoted["source"]) == ["original", "original"]
+    # In c syntax:
+    assert list(df.pt.mutate(source=c.original)["source"]) == [10, 20]
 
-    # Positional string expression with inner quotes
-    res_pos = df.pt.mutate("source = 'original'")
-    assert list(res_pos["source"]) == ["original", "original"]
-
-    # Grouped mutation with quoted literal
-    res_grp = df.pt.by("val").pt.mutate(source="'original'")
-    assert list(res_grp["source"]) == ["original", "original"]
-
-    res_grp_str = df.pt.by("val").pt.mutate("source = 'original'")
-    assert list(res_grp_str["source"]) == ["original", "original"]
-
-    # Native Python non-string literals (int, float, bool)
+    # Non-column strings and numbers
     res_num = df.pt.mutate(source=42, flag=True)
     assert list(res_num["source"]) == [42, 42]
     assert list(res_num["flag"]) == [True, True]
@@ -510,9 +496,15 @@ def test_mutate_grouped_vectorized_all_stats():
         }
     )
     res = df.pt.by("grp").pt.mutate(
-        "avg = mean(val), tot = sum(val), med = median(val), "
-        "lo = min(val), hi = max(val), sd = std(val), vr = var(val), "
-        "cnt = count(), upper_name = name.str.upper()"
+        avg=c.val.mean(),
+        tot=c.val.sum(),
+        med=c.val.median(),
+        lo=c.val.min(),
+        hi=c.val.max(),
+        sd=c.val.std(),
+        vr=c.val.var(),
+        cnt=c(),
+        upper_name=c.name.str.to_uppercase(),
     )
     assert list(res["avg"]) == [20.0, 20.0, 20.0, 150.0, 150.0]
     assert list(res["tot"]) == [60.0, 60.0, 60.0, 300.0, 300.0]
@@ -524,15 +516,19 @@ def test_mutate_grouped_vectorized_all_stats():
 
 
 def test_mutate_grouped_fallback_series_method():
-    # Expressions calling custom Series methods like .cumsum() fall back to per-group evaluation
     df = pd.DataFrame({"grp": ["a", "a", "b", "b"], "val": [1, 2, 10, 20]})
-    res = df.pt.by("grp").pt.mutate("cs = val.cumsum()")
+    res = df.pt.by("grp").pt.mutate(cs=c.val.cumsum())
     assert list(res["cs"]) == [1, 3, 10, 30]
 
 
 def test_mutate_multi_col_in_place_and_chaining():
     df = pd.DataFrame({"rev": [100.0, 200.0], "cost": [40.0, 80.0], "tax": [10.0, 20.0]})
-    res = df.pt.mutate("(rev, cost, tax) = _ * 1.5, profit = rev - cost - tax")
+    res = df.pt.mutate(
+        rev=c.rev * 1.5,
+        cost=c.cost * 1.5,
+        tax=c.tax * 1.5,
+        profit=c.rev - c.cost - c.tax,
+    )
     assert list(res["rev"]) == [150.0, 300.0]
     assert list(res["cost"]) == [60.0, 120.0]
     assert list(res["tax"]) == [15.0, 30.0]
@@ -541,14 +537,12 @@ def test_mutate_multi_col_in_place_and_chaining():
 
 def test_mutate_multi_col_suffix_and_prefix():
     df = pd.DataFrame({"rev": [100.0, 200.0], "cost": [50.0, 100.0]})
-    res_suf = df.pt.mutate("(rev, cost)_usd = _ * 1.08")
+    with pytest.raises(TypeError, match="Positional specifications in mutate\\(\\) are retired"):
+        df.pt.mutate("(rev, cost)_usd = _ * 1.08")
+    res_suf = df.pt.mutate(rev_usd=c.rev * 1.08, cost_usd=c.cost * 1.08)
     assert list(res_suf["rev"]) == [100.0, 200.0]
     assert list(res_suf["rev_usd"]) == [pytest.approx(108.0), pytest.approx(216.0)]
     assert list(res_suf["cost_usd"]) == [pytest.approx(54.0), pytest.approx(108.0)]
-
-    res_pre = df.pt.mutate("norm_(rev, cost) = _ / max(_)")
-    assert list(res_pre["norm_rev"]) == [0.5, 1.0]
-    assert list(res_pre["norm_cost"]) == [0.5, 1.0]
 
 
 def test_mutate_multi_col_selectors_and_grouped():
@@ -559,35 +553,34 @@ def test_mutate_multi_col_selectors_and_grouped():
             "bill_depth_mm": [10.0, 20.0, 15.0, 25.0],
         }
     )
-    res_sw = df.pt.mutate("(starts_with=bill_) = _ / 10")
+    with pytest.raises(TypeError, match="Positional specifications in mutate\\(\\) are retired"):
+        df.pt.mutate("(starts_with=bill_) = _ / 10")
+    res_sw = df.pt.mutate(bill_length_mm=c.bill_length_mm / 10, bill_depth_mm=c.bill_depth_mm / 10)
     assert list(res_sw["bill_length_mm"]) == [3.0, 5.0, 4.0, 6.0]
     assert list(res_sw["bill_depth_mm"]) == [1.0, 2.0, 1.5, 2.5]
-
-    # Grouped dtype=numeric selector (automatically excludes grouping columns)
-    res_grp = df.pt.by("species").pt.mutate("(dtype=numeric) = _ - mean(_)")
-    assert list(res_grp["bill_length_mm"]) == [-10.0, 10.0, -10.0, 10.0]
-    assert list(res_grp["bill_depth_mm"]) == [-5.0, 5.0, -5.0, 5.0]
 
 
 def test_mutate_multi_col_spaced_columns():
     df = pd.DataFrame({"col a": [10, 20], "col b": [30, 40]})
-    res = df.pt.mutate("([col a], [col b]) = _ + 5")
+    with pytest.raises(TypeError, match="Positional specifications in mutate\\(\\) are retired"):
+        df.pt.mutate("([col a], [col b]) = _ + 5")
+    res = df.pt.mutate(**{"col a": c["col a"] + 5, "col b": c["col b"] + 5})
     assert list(res["col a"]) == [15, 25]
     assert list(res["col b"]) == [35, 45]
 
 
 def test_mutate_map_with_spaced_columns():
     df = pd.DataFrame({"island name": ["Biscoe", "Dream", "Torgersen"]})
-    res = df.pt.mutate("[island code] = map([island name], {'Biscoe': 'BIS', 'Dream': 'DRM'}, 'TOR')")
+    res = df.pt.mutate(**{"island code": c["island name"].map({"Biscoe": "BIS", "Dream": "DRM"}, default="TOR")})
     assert list(res["island code"]) == ["BIS", "DRM", "TOR"]
 
 
 def test_mutate_disallow_dot_map_method_syntax():
     df = pd.DataFrame({"species": ["Adelie", "Gentoo"], "island name": ["Biscoe", "Dream"]})
-    with pytest.raises(ValueError, match="'.map\\(\\)' method syntax is not supported"):
+    with pytest.raises(TypeError, match="Positional specifications in mutate\\(\\) are retired"):
         df.pt.mutate("code = species.map({'Adelie': 'AD'})")
 
-    with pytest.raises(ValueError, match="'.map\\(\\)' method syntax is not supported"):
+    with pytest.raises(TypeError, match="Positional specifications in mutate\\(\\) are retired"):
         df.pt.mutate("[code] = [island name].map({'Biscoe': 'BIS'})")
 
 
@@ -599,19 +592,19 @@ def test_mutate_map_column_and_expr_defaults():
         }
     )
     # 1. Fallback to column itself (preserves unmapped values)
-    r1 = df.mutate(mapped="map(species, {'Adelie': 'AD'}, species)")
+    r1 = df.mutate(mapped=c.species.map({"Adelie": "AD"}, default=c.species))
     assert list(r1["mapped"]) == ["AD", "Gentoo", "Chinstrap"]
 
     # 2. 2-argument map (unmapped values are preserved)
-    r2 = df.mutate(mapped="map(species, {'Adelie': 'AD'})")
+    r2 = df.mutate(mapped=c.species.map({"Adelie": "AD"}))
     assert list(r2["mapped"]) == ["AD", "Gentoo", "Chinstrap"]
 
     # 3. Fallback to another column
-    r3 = df.mutate(mapped="map(species, {'Adelie': 'AD'}, alt_name)")
+    r3 = df.mutate(mapped=c.species.map({"Adelie": "AD"}, default=c.alt_name))
     assert list(r3["mapped"]) == ["AD", "Penguin G", "Penguin C"]
 
     # 4. Keyword default=...
-    r4 = df.mutate(mapped="map(species, {'Adelie': 'AD'}, default=species)")
+    r4 = df.mutate(mapped=c.species.map({"Adelie": "AD"}, default=c.species))
     assert list(r4["mapped"]) == ["AD", "Gentoo", "Chinstrap"]
 
 
@@ -623,25 +616,11 @@ def test_mutate_smart_fillna():
         }
     )
 
-    # 1. fillna(col, val) -> fills both NaN and null by default (nans=True)
-    r1 = df.mutate(clean="fillna(flt, 0.0)")
+    r1 = df.mutate(clean=c.flt.fillna(0.0))
     assert list(r1["clean"]) == [1.0, 0.0, 0.0]
 
-    # 2. fillna(col, val, nans=False) -> raises ValueError because nans is retired
-    with pytest.raises(ValueError, match="'nans' is retired"):
-        df.mutate(clean="fillna(flt, 0.0, nans=False)")
-
-    # 3. Method syntax col.fillna(0.0)
-    r3 = df.mutate(clean="flt.fillna(0.0)")
-    assert list(r3["clean"]) == [1.0, 0.0, 0.0]
-
-    # 4. fillna on string column (safely fills null without is_nan error)
-    r4 = df.mutate(clean="fillna(str_col, 'MISSING')")
+    r4 = df.mutate(clean=c.str_col.fillna("MISSING"))
     assert list(r4["clean"]) == ["alpha", "MISSING", "gamma"]
-
-    # 5. Method syntax str_col.fillna('MISSING')
-    r5 = df.mutate(clean="str_col.fillna('MISSING')")
-    assert list(r5["clean"]) == ["alpha", "MISSING", "gamma"]
 
 
 def test_fillna_cleans_float_nans():
@@ -663,11 +642,10 @@ def test_mutate_dt_and_str_methods():
         }
     )
     res = df.mutate(
-        d="date(dt_str)",
-        yr="date(dt_str).dt.year()",
-        mo="date(dt_str).dt.month()",
-        title_name="name.str.title()",
-        rep="name.str.replace('john', 'jack')",
+        yr=c.dt_str.str.to_datetime().dt.year(),
+        mo=c.dt_str.str.to_datetime().dt.month(),
+        title_name=c.name.str.to_titlecase(),
+        rep=c.name.str.replace("john", "jack"),
     )
     assert list(res["yr"]) == [2026, 2026]
     assert list(res["mo"]) == [3, 4]
@@ -677,16 +655,15 @@ def test_mutate_dt_and_str_methods():
 
 def test_mutate_interleaved_callable_and_string_expression():
     df = pt.DataFrame({"x": [1, 2, 3]})
-    # String expression 'b' references column 'a' created by callable in the same mutate call
-    res = df.mutate(a=lambda d: d["x"] * 2, b="a + 10")
+    # Expression 'b' references column 'a' created by callable in the same mutate call
+    res = df.mutate(a=lambda d: d["x"] * 2, b=c.a + 10)
     assert list(res["a"]) == [2, 4, 6]
     assert list(res["b"]) == [12, 14, 16]
 
 
 def test_mutate_interleaved_string_callable_string():
     df = pt.DataFrame({"x": [1, 2, 3]})
-    # String 'a', Callable 'b' using 'a', String 'c' using 'b'
-    res = df.mutate("a = x * 2", b=lambda d: d["a"] + 5, c="b * 10")
+    res = df.mutate(a=c.x * 2, b=lambda d: d["a"] + 5, c=c.b * 10)
     assert list(res["a"]) == [2, 4, 6]
     assert list(res["b"]) == [7, 9, 11]
     assert list(res["c"]) == [70, 90, 110]
@@ -694,8 +671,7 @@ def test_mutate_interleaved_string_callable_string():
 
 def test_mutate_grouped_interleaved_callable_and_string():
     df = pt.DataFrame({"grp": ["k", "k", "m"], "x": [1, 2, 3]})
-    # Grouped mutate: callable 'a' then string 'b' referencing 'a'
-    res = df.by("grp").mutate(a=lambda g: g["x"] * 2, b="a + 10")
+    res = df.by("grp").mutate(a=lambda g: g["x"] * 2, b=c.a + 10)
     assert list(res["a"]) == [2, 4, 6]
     assert list(res["b"]) == [12, 14, 16]
 
@@ -735,22 +711,20 @@ def test_mutate_str_methods_and_null_checks_case_when():
         }
     )
     res = df.mutate(
-        shipping_mode="""
-        case_when(
-            (origin_hub == dest_code, 'Local Courier'),
-            (dest_code.str.contains('-EXP-') | hazmat_class.is_not_null(), 'Special Freight'),
-            'Standard Ground'
+        shipping_mode=pt.case_when(
+            (c.origin_hub == c.dest_code, "Local Courier"),
+            (c.dest_code.str.contains("-EXP-") | c.hazmat_class.is_not_null(), "Special Freight"),
+            default="Standard Ground",
         )
-        """
     )
     assert list(res["shipping_mode"]) == ["Local Courier", "Special Freight", "Special Freight", "Standard Ground"]
 
-    # Also test functional is_not_null and starts_with / ends_with
+    # Also test starts_with / ends_with
     res2 = df.mutate(
-        is_exp=lambda d: d["dest_code"].str.contains("-EXP-"),
-        has_hazmat=df.mutate("has_hazmat = is_not_null(hazmat_class)")["has_hazmat"],
-        prefix="dest_code.str.starts_with('MIA')",
-        suffix="dest_code.str.ends_with('9')",
+        is_exp=c.dest_code.str.contains("-EXP-"),
+        has_hazmat=c.hazmat_class.is_not_null(),
+        prefix=c.dest_code.str.starts_with("MIA"),
+        suffix=c.dest_code.str.ends_with("9"),
     )
     assert list(res2["prefix"]) == [False, True, False, False]
     assert list(res2["suffix"]) == [False, True, False, False]
@@ -779,12 +753,11 @@ def test_mutate_custom_function_lambda_vectorized_and_map():
         }
     )
 
-    # Row-wise map() and vectorized direct call in the same mutate, plus interleaved string formula
     res = df.mutate(
-        shipping_mode=lambda d: map(route_shipment, d["origin_hub"], d["dest_code"], d["hazmat_class"]),
+        shipping_mode=lambda d: list(map(route_shipment, d["origin_hub"], d["dest_code"], d["hazmat_class"])),
         metric=lambda d: calc_metric(d["a"], d["b"]),
         max_ab=lambda d: np.maximum(d["a"], d["b"]),
-        combined="metric + max_ab",
+        combined=c.metric + c.max_ab,
     )
     assert list(res["shipping_mode"]) == ["Local Courier", "Special Freight", "Special Freight", "Standard Ground"]
     assert list(res["metric"]) == [12.5, 5.0, 27.5, 10.0]
@@ -813,7 +786,7 @@ def test_mutate_custom_function_grouped_and_unknown_string_func_raises():
 
     res = df.mutate(
         scaled=lambda d: scale_with_offset(d["x"], 3.0, offset=0.5),
-        tag=lambda d: map(lambda v: scalar_tag(v, prefix="item"), d["x"]),
+        tag=lambda d: list(map(lambda v: scalar_tag(v, prefix="item"), d["x"])),
     )
     assert list(res["scaled"]) == [6.5, 24.5, 12.5, 30.5]
     assert list(res["tag"]) == ["item_low", "item_high", "item_low", "item_high"]
@@ -822,8 +795,8 @@ def test_mutate_custom_function_grouped_and_unknown_string_func_raises():
     res_grp = df.by("grp").mutate(demeaned=lambda g: group_demeaned(g["x"]))
     assert list(res_grp["demeaned"]) == [-3.0, 3.0, -3.0, 3.0]
 
-    # Unknown function inside string expression raises ValueError
-    with pytest.raises(ValueError, match="Unsupported AST node"):
+    # String formula raises TypeError
+    with pytest.raises(TypeError, match="String formula .* in mutate\\(\\) is retired"):
         df.mutate(bad="scale_with_offset(x)")
 
 
@@ -838,13 +811,12 @@ def test_mutate_inline_cast_python_types():
         }
     )
 
-    # int(x), float(x), str(x), bool(x)
     res = df.mutate(
-        i_from_s="int(s_num)",
-        i_from_f="int(f_num)",
-        f_from_s="float(s_num)",
-        s_from_f="str(f_num)",
-        b_from_i="bool(i_num)",
+        i_from_s=c.s_num.cast(int),
+        i_from_f=c.f_num.cast(int),
+        f_from_s=c.s_num.cast(float),
+        s_from_f=c.f_num.cast(str),
+        b_from_i=c.i_num.cast(bool),
     )
     assert res.schema["i_from_s"] == pl.Int64
     assert res.schema["i_from_f"] == pl.Int64
@@ -863,10 +835,10 @@ def test_mutate_inline_cast_sized_types():
 
     df = pt.DataFrame({"val": ["100", "200"]})
     res = df.mutate(
-        i32_cast="int32(val)",
-        f32_cast="float32(val)",
-        i16_cast="int16(val)",
-        u32_cast="uint32(val)",
+        i32_cast=c.val.cast(pl.Int32),
+        f32_cast=c.val.cast(pl.Float32),
+        i16_cast=c.val.cast(pl.Int16),
+        u32_cast=c.val.cast(pl.UInt32),
     )
     assert res.schema["i32_cast"] == pl.Int32
     assert res.schema["f32_cast"] == pl.Float32
@@ -880,7 +852,7 @@ def test_mutate_multi_column_cast():
     import polars as pl
 
     df = pt.DataFrame({"a": ["1", "2"], "b": ["3", "4"]})
-    res = df.mutate("(a, b) = int(_)")
+    res = df.mutate(a=c.a.cast(int), b=c.b.cast(int))
     assert res.schema["a"] == pl.Int64
     assert res.schema["b"] == pl.Int64
     assert res["a"].to_list() == [1, 2]
@@ -896,22 +868,18 @@ def test_mutate_first_last_window():
         }
     )
     res = df.by("ticker").mutate(
-        base="first(price)",
-        last_val="last(price)",
-        base_method="price.first()",
-        last_method="price.last()",
-        drift="price - first(price)",
+        base=c.price.first(),
+        last_val=c.price.last(),
+        drift=c.price - c.price.first(),
     )
     assert res["base"].to_list() == [150.0, 150.0, 150.0, 300.0, 300.0]
     assert res["last_val"].to_list() == [160.0, 160.0, 160.0, 310.0, 310.0]
-    assert res["base_method"].to_list() == [150.0, 150.0, 150.0, 300.0, 300.0]
-    assert res["last_method"].to_list() == [160.0, 160.0, 160.0, 310.0, 310.0]
     assert res["drift"].to_list() == [0.0, 5.0, 10.0, 0.0, 10.0]
 
     # 2. Whole-table (ungrouped)
     res_all = df.mutate(
-        first_all="first(price)",
-        last_all="last(price)",
+        first_all=c.price.first(),
+        last_all=c.price.last(),
     )
     assert res_all["first_all"].to_list() == [150.0, 150.0, 150.0, 150.0, 150.0]
     assert res_all["last_all"].to_list() == [310.0, 310.0, 310.0, 310.0, 310.0]

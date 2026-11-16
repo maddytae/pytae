@@ -248,7 +248,8 @@ def test_extra_in_memory_export_targets():
     assert table.num_rows == 2
 
     # to("numpy") / to("np")
-    arr = df.select("col_a").to("numpy")
+    from pytae import c
+    arr = df.select(c.col_a).to("numpy")
     import numpy as np
     assert isinstance(arr, np.ndarray)
 

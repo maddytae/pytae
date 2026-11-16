@@ -12,6 +12,7 @@ import polars as pl
 import pytest
 
 import pytae as pt
+from pytae import c
 
 # =============================================================================
 # Issue 3: DataFrame Constructor with list of dicts
@@ -48,7 +49,10 @@ def test_filter_column_to_column_equality():
             "deal_id": ["T1", "D2", "T3", "D4"],
         }
     )
-    res = df.filter("tranche_id == deal_id")
+    with pytest.raises(TypeError, match="String expressions in filter\\(\\) are retired"):
+        df.filter("tranche_id == deal_id")
+
+    res = df.filter(c.tranche_id == c.deal_id)
     assert len(res) == 2
     assert list(res["tranche_id"]) == ["T1", "T3"]
 
@@ -61,40 +65,43 @@ def test_filter_column_to_column_inequality_and_ordering():
         }
     )
     # Greater than
-    gt = df.filter("amount > limit")
+    gt = df.filter(c.amount > c.limit)
     assert len(gt) == 2
     assert list(gt["amount"]) == [200, 400]
 
     # Less than or equal
-    lte = df.filter("amount <= limit")
+    lte = df.filter(c.amount <= c.limit)
     assert len(lte) == 2
     assert list(lte["amount"]) == [100, 300]
 
     # Not equal
-    neq = df.filter("amount != limit")
+    neq = df.filter(c.amount != c.limit)
     assert len(neq) == 4
 
 
 def test_filter_unquoted_non_column_raises_keyerror():
     df = pt.DataFrame({"species": ["Adelie", "Gentoo", "Chinstrap"]})
-    with pytest.raises(KeyError) as exc_info:
+    with pytest.raises(TypeError, match="String expressions in filter\\(\\) are retired"):
         df.filter("species == Gentoo")
-    msg = str(exc_info.value)
-    assert "column 'Gentoo' not found in DataFrame" in msg
-    assert "quote it like 'Gentoo'" in msg
 
 
 def test_filter_quoted_scalar_still_matches():
     df = pt.DataFrame({"species": ["Adelie", "Gentoo", "Chinstrap"]})
-    res = df.filter("species == 'Gentoo'")
+    with pytest.raises(TypeError, match="String expressions in filter\\(\\) are retired"):
+        df.filter("species == 'Gentoo'")
+
+    res = df.filter(c.species == "Gentoo")
     assert len(res) == 1
     assert res["species"][0] == "Gentoo"
 
 
 def test_filter_with_at_var_scalar():
     df = pt.DataFrame({"amount": [10, 50, 100, 200]})
-    threshold = 50  # noqa: F841
-    res = df.filter("amount > @threshold")
+    threshold = 50
+    with pytest.raises(TypeError, match="String expressions in filter\\(\\) are retired"):
+        df.filter("amount > @threshold")
+
+    res = df.filter(c.amount > threshold)
     assert len(res) == 2
     assert list(res["amount"]) == [100, 200]
 
@@ -106,8 +113,11 @@ def test_filter_with_at_var_column_via_col():
             "deal_id": ["T1", "X2", "T3"],
         }
     )
-    target = "deal_id"  # noqa: F841
-    res = df.filter("tranche_id == col(@target)")
+    target = "deal_id"
+    with pytest.raises(TypeError, match="String expressions in filter\\(\\) are retired"):
+        df.filter("tranche_id == col(@target)")
+
+    res = df.filter(c.tranche_id == c[target])
     assert len(res) == 2
     assert list(res["tranche_id"]) == ["T1", "T3"]
 
@@ -119,14 +129,14 @@ def test_filter_with_at_var_column_via_col():
 
 def test_map_returns_boolean_series():
     df = pt.DataFrame({"code": ["2B", "3C", "4D"]})
-    res = df.mutate("flag = map(code, {'2B': False, '3C': True}, default=False)")
+    res = df.mutate(flag=c.code.map({"2B": False, "3C": True}, default=False))
     assert res["flag"].dtype == pl.Boolean
     assert list(res["flag"]) == [False, True, False]
 
 
 def test_map_boolean_without_default_fills_nulls():
     df = pt.DataFrame({"code": ["2B", "3C", "4D"]})
-    res = df.mutate("flag = map(code, {'2B': False, '3C': True})")
+    res = df.mutate(flag=c.code.map({"2B": False, "3C": True}))
     assert res["flag"].dtype == pl.Boolean
     assert res["flag"][0] is False
     assert res["flag"][1] is True
@@ -135,30 +145,27 @@ def test_map_boolean_without_default_fills_nulls():
 
 def test_map_mixed_mapping_values_raises_typeerror():
     df = pt.DataFrame({"code": ["2B", "3C"]})
-    with pytest.raises(TypeError) as exc_info:
-        df.mutate("flag = map(code, {'2B': 'SC', '3C': False})")
-    assert "cannot mix boolean and non-boolean" in str(exc_info.value)
+    with pytest.raises(TypeError, match="cannot mix boolean and non-boolean"):
+        df.mutate(flag=c.code.map({"2B": "SC", "3C": False}))
 
 
 def test_map_string_values_with_boolean_default_raises_typeerror():
     df = pt.DataFrame({"code": ["2B", "3C"]})
-    with pytest.raises(TypeError) as exc_info:
-        df.mutate("flag = map(code, {'2B': 'SC'}, default=False)")
-    assert "cannot mix non-boolean mapping values with boolean default" in str(exc_info.value)
+    with pytest.raises(TypeError, match="cannot mix non-boolean mapping values with boolean default"):
+        df.mutate(flag=c.code.map({"2B": "SC"}, default=False))
 
 
 def test_map_boolean_values_with_string_default_raises_typeerror():
     df = pt.DataFrame({"code": ["2B", "3C"]})
-    with pytest.raises(TypeError) as exc_info:
-        df.mutate("flag = map(code, {'2B': False}, default='SC')")
-    assert "cannot mix boolean mapping values with non-boolean default" in str(exc_info.value)
+    with pytest.raises(TypeError, match="cannot mix boolean mapping values with non-boolean default"):
+        df.mutate(flag=c.code.map({"2B": False}, default="SC"))
 
 
 def test_map_normal_strings_and_numbers_preserved():
     df = pt.DataFrame({"code": ["2B", "3C", "9Z"]})
     res = df.mutate(
-        "s_code = map(code, {'2B': 'Senior', '3C': 'Mezz'}, default='Junior')",
-        "n_code = map(code, {'2B': 1, '3C': 2}, default=0)",
+        s_code=c.code.map({"2B": "Senior", "3C": "Mezz"}, default="Junior"),
+        n_code=c.code.map({"2B": 1, "3C": 2}, default=0),
     )
     assert list(res["s_code"]) == ["Senior", "Mezz", "Junior"]
     assert list(res["n_code"]) == [1, 2, 0]
@@ -171,13 +178,19 @@ def test_map_normal_strings_and_numbers_preserved():
 
 def test_special_column_names_in_mutate():
     df = pt.DataFrame({"irba_unsecured_lgd_(1g00)": [0.2, 0.7, 0.4]})
-    res = df.mutate("scaled = irba_unsecured_lgd_(1g00) * 100")
+    with pytest.raises(TypeError, match="Positional specifications in mutate\\(\\) are retired"):
+        df.mutate("scaled = irba_unsecured_lgd_(1g00) * 100")
+
+    res = df.mutate(scaled=c["irba_unsecured_lgd_(1g00)"] * 100)
     assert list(res["scaled"]) == [20.0, 70.0, 40.0]
 
 
 def test_special_column_names_in_filter():
     df = pt.DataFrame({"irba_unsecured_lgd_(1g00)": [0.2, 0.7, 0.4]})
-    res = df.filter("irba_unsecured_lgd_(1g00) > 0.5")
+    with pytest.raises(TypeError, match="String expressions in filter\\(\\) are retired"):
+        df.filter("irba_unsecured_lgd_(1g00) > 0.5")
+
+    res = df.filter(c["irba_unsecured_lgd_(1g00)"] > 0.5)
     assert len(res) == 1
     assert res["irba_unsecured_lgd_(1g00)"][0] == 0.7
 
@@ -190,8 +203,8 @@ def test_multiple_special_columns_in_complex_mutate():
         }
     )
     res = df.mutate(
-        "diff = irba_unsecured_lgd_(1g00) - post_crm_lgd_(2a)",
-        "chosen = if_else(irba_unsecured_lgd_(1g00) > 0.5, post_crm_lgd_(2a), 0.0)",
+        diff=c["irba_unsecured_lgd_(1g00)"] - c["post_crm_lgd_(2a)"],
+        chosen=pt.if_else(c["irba_unsecured_lgd_(1g00)"] > 0.5, c["post_crm_lgd_(2a)"], 0.0),
     )
     assert len(res) == 3
     assert list(res["chosen"]) == [0.0, 0.9, 0.0]
@@ -204,30 +217,36 @@ def test_multiple_special_columns_in_complex_mutate():
 
 def test_col_dynamic_variable_in_mutate():
     df = pt.DataFrame({"sales_2023": [10, 20], "sales_2024": [30, 40]})
-    target = "sales_2024"  # noqa: F841
-    res = df.mutate("growth = col(@target) * 1.1")
+    target = "sales_2024"
+    with pytest.raises(TypeError, match="Positional specifications in mutate\\(\\) are retired"):
+        df.mutate("growth = col(@target) * 1.1")
+
+    res = df.mutate(growth=c[target] * 1.1)
     assert [round(x, 1) for x in res["growth"]] == [33.0, 44.0]
 
 
 def test_col_literal_string_in_mutate():
     df = pt.DataFrame({"sales": [100, 200]})
-    res = df.mutate("out = col('sales') / 2")
+    with pytest.raises(TypeError, match="Positional specifications in mutate\\(\\) are retired"):
+        df.mutate("out = col('sales') / 2")
+
+    res = df.mutate(out=c["sales"] / 2)
     assert list(res["out"]) == [50.0, 100.0]
 
 
 def test_col_bare_name_in_mutate():
     df = pt.DataFrame({"sales": [100, 200]})
-    res = df.mutate("out = col(sales) / 2")
+    with pytest.raises(TypeError, match="Positional specifications in mutate\\(\\) are retired"):
+        df.mutate("out = col(sales) / 2")
+
+    res = df.mutate(out=c.sales / 2)
     assert list(res["out"]) == [50.0, 100.0]
 
 
 def test_col_with_unknown_name_raises_keyerror_with_hint():
     df = pt.DataFrame({"revenue": [100, 200]})
-    with pytest.raises(KeyError) as exc_info:
+    with pytest.raises(TypeError, match="Positional specifications in mutate\\(\\) are retired"):
         df.mutate("out = col('revenu') * 2")
-    msg = str(exc_info.value)
-    assert "column 'revenu' not found in DataFrame" in msg
-    assert "did you mean 'revenue'?" in msg
 
 
 def test_special_column_names_with_null_predicates():
@@ -237,27 +256,21 @@ def test_special_column_names_with_null_predicates():
             "counterparty class (irb)": ["Gov", "Bank", None],
         }
     )
-    assert len(df.filter("counterparty_class_(irb).is_not_null()")) == 2
-    assert len(df.filter("counterparty_class_(irb).is_null()")) == 1
-    assert len(df.filter("[counterparty class (irb)].is_not_null()")) == 2
-    assert len(df.filter("[counterparty class (irb)].is_null()")) == 1
+    with pytest.raises(TypeError, match="String expressions in filter\\(\\) are retired"):
+        df.filter("counterparty_class_(irb).is_not_null()")
 
-    # SQL 'is null' syntax in filter raises explicit guidance
-    with pytest.raises(ValueError) as exc:
-        df.filter("counterparty_class_(irb) is null")
-    assert "use 'counterparty_class_(irb).is_null()'" in str(exc.value)
-
-    with pytest.raises(ValueError) as exc2:
-        df.filter("counterparty_class_(irb) is not null")
-    assert "use 'counterparty_class_(irb).is_not_null()'" in str(exc2.value)
+    assert len(df.filter(c["counterparty_class_(irb)"].is_not_null())) == 2
+    assert len(df.filter(c["counterparty_class_(irb)"].is_null())) == 1
+    assert len(df.filter(c["counterparty class (irb)"].is_not_null())) == 2
+    assert len(df.filter(c["counterparty class (irb)"].is_null())) == 1
 
 
 def test_map_empty_dict_with_boolean_default():
     df = pt.DataFrame({"post_crm_brr": ["A", "B", "C"]})
-    res_false = df.mutate("flag = map(post_crm_brr, {}, default=False)")
+    res_false = df.mutate(flag=c.post_crm_brr.map({}, default=False))
     assert res_false["flag"].dtype == pl.Boolean
     assert list(res_false["flag"]) == [False, False, False]
 
-    res_true = df.mutate("flag = map(post_crm_brr, {}, True)")
+    res_true = df.mutate(flag=c.post_crm_brr.map({}, default=True))
     assert res_true["flag"].dtype == pl.Boolean
     assert list(res_true["flag"]) == [True, True, True]

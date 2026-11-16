@@ -13,6 +13,7 @@ import pandas as pd
 import pytest
 
 import pytae as pt
+from pytae import c
 
 # ==============================================================================
 # 1. Zero Data Loss & Missing Data Safety Contracts
@@ -148,9 +149,9 @@ def test_pandas_single_shot_grouping_reset_contract():
     # Calculate dept average, then global average, then dept max in ONE chain
     res = (
         ptdf
-        .by("dept").mutate(dept_avg="mean(salary)")
-        .mutate(global_avg="mean(salary)")
-        .by("dept").mutate(dept_max="max(salary)")
+        .by("dept").mutate(dept_avg=c.salary.mean())
+        .mutate(global_avg=c.salary.mean())
+        .by("dept").mutate(dept_max=c.salary.max())
     )
     p_res = res.to("pandas")
 
@@ -175,7 +176,7 @@ def test_pandas_filtering_parity():
     ptdf = pt.DataFrame(pdf)
 
     # 1. Compound boolean logic: age > 30 and (score > 80 or status == 'active')
-    f1 = ptdf.filter("age > 30 and (score > 80 or status == 'active')")
+    f1 = ptdf.filter((c.age > 30) & ((c.score > 80) | (c.status == "active")))
     assert list(f1["name"]) == ["Bob Jones", "Charlie Brown"]
 
     # 2. Interval / between parity (df['age'].between(30, 50))
@@ -183,15 +184,15 @@ def test_pandas_filtering_parity():
     assert list(f2["name"]) == ["Bob Jones", "Charlie Brown"]
 
     # 3. Set membership parity (df['status'].isin(['active', 'pending']))
-    f3 = ptdf.filter("status in ['active', 'pending']")
+    f3 = ptdf.filter(c.status.is_in(["active", "pending"]))
     assert len(f3) == 3
     assert "David Smith" not in list(f3["name"])
 
     # 4. String startswith and contains
-    f4 = ptdf.filter("name.starts_with('A')")
+    f4 = ptdf.filter(c.name.str.starts_with("A"))
     assert list(f4["name"]) == ["Alice Smith"]
 
-    f5 = ptdf.filter("name.contains('Smith')")
+    f5 = ptdf.filter(c.name.str.contains("Smith"))
     assert list(f5["name"]) == ["Alice Smith", "David Smith"]
 
     # 5. Lambda predicate
@@ -214,23 +215,30 @@ def test_pandas_mutate_feature_engineering_parity():
     ptdf = pt.DataFrame(pdf)
 
     # Sequential derivations in a single call (where step 2 uses step 1)
-    res1 = ptdf.mutate(doubled="val * 2", quadrupled="doubled * 2")
+    res1 = ptdf.mutate(doubled=c.val * 2, quadrupled=c.doubled * 2)
     assert list(res1["quadrupled"]) == [40, 80, 120, 160]
 
     # Conditional logic: if_else parity with np.where
-    res2 = ptdf.mutate(passed="if_else(score >= 75, 'yes', 'no')")
+    res2 = ptdf.mutate(passed=pt.if_else(c.score >= 75, "yes", "no"))
     assert list(res2["passed"]) == ["no", "yes", "yes", "no"]
 
     # Multi-branch logic: case_when parity with np.select
-    res3 = ptdf.mutate(grade="case_when(score >= 90, 'A', score >= 80, 'B', score >= 70, 'C', 'F')")
+    res3 = ptdf.mutate(
+        grade=pt.case_when(
+            (c.score >= 90, "A"),
+            (c.score >= 80, "B"),
+            (c.score >= 70, "C"),
+            default="F",
+        )
+    )
     assert list(res3["grade"]) == ["C", "B", "A", "F"]
 
     # Cumulative operations: cumsum parity
-    res4 = ptdf.mutate(running_total="cumsum(val)")
+    res4 = ptdf.mutate(running_total=c.val.cumsum())
     assert list(res4["running_total"]) == [10, 30, 60, 100]
 
     # Grouped window lag (shift)
-    res5 = ptdf.by("dept").mutate(prev_val="shift(val, 1)")
+    res5 = ptdf.by("dept").mutate(prev_val=c.val.shift(1))
     p_res5 = res5.to("pandas")
     assert pd.isna(p_res5["prev_val"][0])
     assert p_res5["prev_val"][1] == 10
@@ -253,8 +261,8 @@ def test_pandas_select_and_rename_parity():
     })
     ptdf = pt.DataFrame(pdf)
 
-    # Drop columns via negation (!col)
-    res_drop = ptdf.select("!cust_id", "!order_date")
+    # Drop columns via negation (~c.col)
+    res_drop = ptdf.select(~c.cust_id, ~c.order_date)
     assert list(res_drop.columns) == ["cust_name", "order_amt"]
 
     # Pattern match (contains)
@@ -265,8 +273,8 @@ def test_pandas_select_and_rename_parity():
     res_prefix = ptdf.select(starts_with="cust")
     assert list(res_prefix.columns) == ["cust_id", "cust_name"]
 
-    # Slicing columns (a:b)
-    res_slice = ptdf.select("cust_name:order_amt")
+    # Slicing columns (c.start.to(c.end))
+    res_slice = ptdf.select(c.cust_name.to(c.order_amt))
     assert list(res_slice.columns) == ["cust_name", "order_amt"]
 
     # Dedicated rename
@@ -290,16 +298,16 @@ def test_pandas_sorting_and_extremes_parity():
     ptdf = pt.DataFrame(pdf)
 
     # Multi-column sorting: dept asc, score desc
-    res_sorted = ptdf.arrange("dept", "score desc")
+    res_sorted = ptdf.arrange(c.dept, c.score.desc())
     assert list(res_sorted["emp"]) == ["D1", "D2", "D3", "D4"]
 
     # Top N overall (nlargest)
-    top2 = ptdf.arrange("score desc").head(2)
+    top2 = ptdf.arrange(c.score.desc()).head(2)
     assert len(top2) == 2
     assert set(top2["emp"]) == {"D1", "D2"}
 
     # Top N per group
-    top_per_dept = ptdf.by("dept").arrange("score desc").head(1)
+    top_per_dept = ptdf.by("dept").arrange(c.score.desc()).head(1)
     p_top = top_per_dept.to("pandas")
     assert len(p_top) == 2
     assert set(p_top["emp"]) == {"D1", "D3"}
@@ -418,10 +426,10 @@ def test_pandas_accessor_pt_seamless_operations():
     # Fluent pipeline on raw pandas DataFrame via .pt accessor
     res = (
         pdf.pt
-        .filter("salary >= 95")
+        .filter(c.salary >= 95)
         .by("dept")
         .agg(avg_sal="salary:mean")
-        .arrange("avg_sal desc")
+        .arrange(c.avg_sal.desc())
     )
     p_res = res.to("pandas")
     assert len(p_res) == 1

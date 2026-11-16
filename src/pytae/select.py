@@ -442,7 +442,7 @@ def select(
             ends_with=ends_with,
             regex=regex,
         )
-        return df.select(*target_cols)
+        return DataFrame(df._df.select(target_cols))
 
     import polars as pl
 

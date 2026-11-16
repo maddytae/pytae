@@ -21,13 +21,15 @@ from pytae.repl import PytaeRepl
 
 def test_grouped_arrange_descending_group_column():
     """Bug 2: GroupedDataFrame.arrange() must respect 'desc' on grouping keys."""
+    from pytae import c
+
     df = pt.DataFrame(
         {
             "species": ["Adelie", "Gentoo", "Chinstrap"],
             "val": [10, 20, 30],
         }
     )
-    g = df.by("species").arrange("species desc")
+    g = df.by("species").arrange(c.species.desc())
     with pytest.raises(AttributeError):
         g.to_pandas()
     res = g.to("pandas")
@@ -59,6 +61,8 @@ def test_grouped_count_with_extra_columns():
 
 def test_grouped_select_drops_group_key_returns_flat_dataframe():
     """Bug 4: Dropping grouping keys via select() must return a flat DataFrame instead of a corrupted GroupedDataFrame."""
+    from pytae import c
+
     df = pt.DataFrame(
         {
             "species": ["Adelie", "Gentoo", "Adelie"],
@@ -66,7 +70,7 @@ def test_grouped_select_drops_group_key_returns_flat_dataframe():
         }
     )
     # Project away the grouping column 'species'
-    projected = df.by("species").select("val")
+    projected = df.by("species").select(c.val)
     assert isinstance(projected, pt.DataFrame)
     assert not isinstance(projected, pt.dataframe.GroupedDataFrame)
     assert "species" not in projected.columns
@@ -92,6 +96,8 @@ def test_cli_flags_single_hyphen_ready_and_verbose():
 
 def test_with_ties_mixed_directions_raises_value_error():
     """Bug 5: with_ties=True across multiple sort columns with opposite directions raises clean ValueError."""
+    from pytae import c
+
     df = pt.DataFrame(
         {
             "cat": ["A", "A", "B", "B"],
@@ -99,7 +105,7 @@ def test_with_ties_mixed_directions_raises_value_error():
         }
     )
     with pytest.raises(ValueError, match="with_ties=True across multiple sort columns"):
-        df.pt.arrange("cat asc, score desc").head(2, with_ties=True)
+        df.pt.arrange(c.cat.asc(), c.score.desc()).head(2, with_ties=True)
 
 
 def test_plotter_show_non_interactive_no_warning():
@@ -181,7 +187,7 @@ def test_repl_py_model_a_explicit_registration_and_cleanup():
 
     # 5. Updating active df explicitly with .pt: updates active table
     outs.clear()
-    r.execute_line("py { df = df.filter('x > 10') }", output_fn=outs.append)
+    r.execute_line("py { df = df.filter(c.x > 10) }", output_fn=outs.append)
     assert any("Updated active table 'df'" in o for o in outs)
     assert r.current_df.shape == (2, 2)
 

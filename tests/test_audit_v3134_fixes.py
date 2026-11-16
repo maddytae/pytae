@@ -58,8 +58,10 @@ def test_audit_bug3_wide_no_id_columns():
 
 def test_audit_bug4_date_mutate_helper_datetime_strings():
     """Bug 4: date() mutate helper extracts date from full datetime strings."""
+    from pytae import c
+
     df = pt.DataFrame({"dt_str": ["2026-03-15 14:30:00", "2026-04-20 09:15:00"]})
-    res = df.mutate(d="date(dt_str)")
+    res = df.mutate(d=c.dt_str.str.to_datetime().dt.date())
     assert str(res["d"][0]) == "2026-03-15"
     assert str(res["d"][1]) == "2026-04-20"
 
@@ -76,11 +78,13 @@ def test_audit_bug5_repl_cols_substring_filter():
 
 def test_audit_bug6_glimpse_fluent_method_chaining():
     """Bug 6: pt.DataFrame.glimpse() returns DataFrame for chaining, while .pt.glimpse() preserves underlying object."""
+    from pytae import c
+
     df = pt.DataFrame({"a": [1, 2], "b": [3, 4]})
-    chained = df.glimpse().mutate("c = a + b")
+    chained = df.glimpse().mutate(c_col=c.a + c.b)
     assert isinstance(chained, DataFrame)
-    assert "c" in chained.columns
-    assert list(chained["c"]) == [4, 6]
+    assert "c_col" in chained.columns
+    assert list(chained["c_col"]) == [4, 6]
 
     raw_pl = pl.DataFrame({"a": [1, 2]})
     assert raw_pl.pt.glimpse() is raw_pl

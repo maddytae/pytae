@@ -5,6 +5,7 @@ import polars as pl
 import pytest
 
 import pytae as pt
+from pytae import c
 from pytae._parsing import _parse_filter_string, _split_mutate_entries, parse_rename_spec
 from pytae._text import _is_enclosed_pair as is_enclosed_pair
 from pytae.readers import read_uri
@@ -22,9 +23,11 @@ def test_is_enclosed_pair_escaped_quotes_and_brackets():
 
 
 def test_grouped_dataframe_rename_string_spec():
+    from pytae import c
+
     df = pt.DataFrame({"grp": ["a", "a", "b"], "val": [1, 2, 3]})
     grouped = df.by("grp").rename("grp:group, val:value")
-    res = grouped.agg("total = value:sum").arrange("group")
+    res = grouped.agg("total = value:sum").arrange(c.group.asc())
     assert res.columns == ["group", "total"]
     assert res["group"].to_list() == ["a", "b"]
     assert res["total"].to_list() == [3, 3]
@@ -42,23 +45,30 @@ def test_at_param_backslash_and_quote_safety():
     win_path = r"C:\Users\admin\node"
     df = pt.DataFrame({"path": [win_path, "other"], "tag": ["@win_path", "ok"]})
 
-    # Backslashes in @var should not trigger re.sub escape errors in filter or mutate
-    filtered = df.filter("path == @win_path", params={"win_path": win_path})
+    with pytest.raises(TypeError, match="String expressions in filter\\(\\) are retired"):
+        df.filter("path == @win_path", params={"win_path": win_path})
+
+    with pytest.raises(TypeError, match="Positional specifications in mutate\\(\\) are retired"):
+        df.mutate("norm = @win_path", params={"win_path": win_path})
+
+    filtered = df.filter(c.path == win_path)
     assert len(filtered) == 1
     assert filtered["path"].to_list() == [win_path]
 
-    mutated = df.mutate("norm = @win_path", params={"win_path": win_path})
+    mutated = df.mutate(norm=win_path)
     assert mutated["norm"].to_list() == [win_path, win_path]
 
-    # @var inside string literal should not be expanded
-    literal_filtered = df.filter("tag == '@win_path'", params={"win_path": win_path})
+    literal_filtered = df.filter(c.tag == "@win_path")
     assert len(literal_filtered) == 1
     assert literal_filtered["tag"].to_list() == ["@win_path"]
 
 
 def test_filter_bracketed_column_with_colon():
     df = pt.DataFrame({"a:b": [1, 2, 3], "x": [10, 20, 30]})
-    res = df.filter("[a:b] >= 2")
+    with pytest.raises(TypeError, match="String expressions in filter\\(\\) are retired"):
+        df.filter("[a:b] >= 2")
+
+    res = df.filter(c["a:b"] >= 2)
     assert res["x"].to_list() == [20, 30]
 
     node = _parse_filter_string("`a:b` == 1")

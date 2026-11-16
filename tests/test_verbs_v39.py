@@ -35,25 +35,28 @@ def test_filter_callable_lambda():
 
 
 def test_filter_rejects_kwargs():
-    df = _sample_df()
-    with pytest.raises(TypeError, match="filter\\(\\): keyword arguments are not supported"):
-        df.pt.filter("mass > 4000", species="Gentoo")
+    from pytae import c
 
-    # String expression with 'and' and '==' succeeds
-    res_str = df.pt.filter("mass > 4000 and species == 'Gentoo'")
+    df = _sample_df()
+    with pytest.raises(TypeError):
+        df.pt.filter(c.mass > 4000, species="Gentoo")
+
+    # Canonical c expression with & succeeds
+    res_str = df.pt.filter((c.mass > 4000) & (c.species == "Gentoo"))
     assert len(res_str) == 2
     assert list(res_str["species"]) == ["Gentoo", "Gentoo"]
 
-    # String + dict succeeds
-    res_dict = df.pt.filter("mass > 4000", {"species": "Gentoo"})
-    assert len(res_dict) == 2
-    assert list(res_dict["species"]) == ["Gentoo", "Gentoo"]
+    # String expression raises TypeError
+    with pytest.raises(TypeError, match="retired"):
+        df.pt.filter("mass > 4000 and species == 'Gentoo'")
 
 
 def test_filter_rejects_mixing_callable():
+    from pytae import c
+
     df = _sample_df()
     with pytest.raises(TypeError, match="callable/lambda predicates cannot be mixed"):
-        df.pt.filter(lambda d: d["mass"] > 4000, "mass > 4000")
+        df.pt.filter(lambda d: d["mass"] > 4000, c.mass > 4000)
 
 
 # ==============================================================================
@@ -154,9 +157,10 @@ def test_by_requires_args():
 
 
 def test_by_chains_into_mutate():
+    from pytae import c
+
     df = _sample_df()
-    # df.pt.by("species").pt.mutate("mean_mass = mean(mass)")
-    res = df.pt.by("species").pt.mutate("mean_mass = mean(mass)")
+    res = df.pt.by("species").pt.mutate(mean_mass=c.mass.mean())
     assert "mean_mass" in res.columns
     # Adelie mass mean: (3800 + 4200) / 2 = 4000
     assert res.loc[res["species"] == "Adelie", "mean_mass"].iloc[0] == 4000.0
@@ -183,16 +187,20 @@ def test_by_overwritten_by_second_by():
 
 
 def test_by_auto_clears_after_operation():
+    from pytae import c
+
     df = _sample_df()
     grouped = df.pt.by("species", "island")
     assert "_pt_by" in grouped.attrs
     assert "_pt_by" not in df.attrs
-    result = grouped.pt.mutate(m="mean(mass)")
+    result = grouped.pt.mutate(m=c.mass.mean())
     assert "_pt_by" not in result.attrs
     assert isinstance(result, pt.DataFrame)
 
 
 def test_by_non_destructive_input_isolation():
+    from pytae import c
+
     df = _sample_df()
     grouped = pt.by(df, "species")
     assert grouped is not df
@@ -206,15 +214,17 @@ def test_by_non_destructive_input_isolation():
     assert "_pt_by" not in df.attrs
 
     # arrange + head does not touch input attrs, clears on output
-    res_head = pt.head(pt.arrange(grouped, "mass desc"), n=1)
+    res_head = pt.head(pt.arrange(grouped, c.mass.desc()), n=1)
     assert "_pt_by" not in res_head.attrs
     assert "_pt_by" in grouped.attrs
     assert "_pt_by" not in df.attrs
 
 
 def test_by_chains_into_arrange_head():
+    from pytae import c
+
     df = _sample_df()
-    res = df.pt.by("species").arrange("mass desc").head(1)
+    res = df.pt.by("species").arrange(c.mass.desc()).head(1)
     assert len(res) == 3
     # Check max per species
     assert set(res["mass"]) == {4200, 5200, 3900}
@@ -223,14 +233,16 @@ def test_by_chains_into_arrange_head():
 
 
 def test_pytae_dataframe_direct_operations_no_pt():
+    from pytae import c
+
     pt_df = pt.sample("penguins")
     # All fluent operations work directly without needing .pt
     res = (
-        pt_df.filter("body_mass_g > 3000")
-        .mutate(mass_kg="body_mass_g / 1000")
-        .select("species", "island", "mass_kg")
-        .arrange("mass_kg desc")
-        .distinct("species", "island")
+        pt_df.filter(c.body_mass_g > 3000)
+        .mutate(mass_kg=c.body_mass_g / 1000)
+        .select(c.species, c.island, c.mass_kg)
+        .arrange(c.mass_kg.desc())
+        .distinct(c.species, c.island)
     )
     assert len(res) > 0
     assert "mass_kg" in res.columns
@@ -242,23 +254,25 @@ def test_pytae_dataframe_direct_operations_no_pt():
     assert "species" in grouped.columns
 
     # Direct grouped mutate
-    mut = grouped.mutate(c="body_mass_g - mean(body_mass_g)")
-    assert "c" in mut.columns
+    mut = grouped.mutate(c_val=c.body_mass_g - c.body_mass_g.mean())
+    assert "c_val" in mut.columns
 
     # Direct grouped agg
     summary = grouped.agg("mean")
     assert len(summary) == 3
 
     # Direct grouped arrange + head
-    top = grouped.arrange("body_mass_g desc").head(1)
+    top = grouped.arrange(c.body_mass_g.desc()).head(1)
     assert len(top) == 3
 
     # Chaining from grouped through delegated DataFrame methods
-    filtered_summary = grouped.filter("body_mass_g > 4000").agg("mean")
+    filtered_summary = grouped.filter(c.body_mass_g > 4000).agg("mean")
     assert len(filtered_summary) == 3
 
 
 def test_filter_notna_spaced_column():
+    from pytae import c
+
     df = pt.DataFrame(
         {
             "bill length mm": [39.1, None, 40.5, None, 45.2],
@@ -266,26 +280,15 @@ def test_filter_notna_spaced_column():
         }
     )
 
-    # 1. Bracket notation
-    assert len(df.filter("[bill length mm].notna()")) == 3
-    assert len(df.filter("[bill length mm].is_not_null()")) == 3
+    # 1. c["..."] notation
+    assert len(df.filter(c["bill length mm"].is_not_null())) == 3
 
-    # 2. SQL style is disallowed in filter()
-    with pytest.raises(ValueError) as exc:
-        df.filter("[bill length mm] is not null")
-    assert "use '[bill length mm].is_not_null()'" in str(exc.value)
+    # 2. String expressions raise TypeError
+    with pytest.raises(TypeError, match="retired"):
+        df.filter("[bill length mm].is_not_null()")
 
-    with pytest.raises(ValueError) as exc2:
-        df.filter("[bill length mm] is not na")
-    assert "use '[bill length mm].is_not_null()'" in str(exc2.value)
-
-    # 3. Functional call
-    assert len(df.filter("notna([bill length mm])")) == 3
-    assert len(df.filter("is_not_null([bill length mm])")) == 3
-
-    # 4. Inequality with None/null
-    assert len(df.filter("[bill length mm] != None")) == 3
-    assert len(df.filter("[bill length mm] != null")) == 3
+    with pytest.raises(TypeError, match="retired"):
+        df.filter("notna([bill length mm])")
 
     # 5. Dict syntax with canonical 'is_not_null()' succeeds
     assert len(df.filter({"bill length mm": "is_not_null()"})) == 3

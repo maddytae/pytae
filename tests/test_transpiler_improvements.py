@@ -26,8 +26,8 @@ def test_transpile_shorthand_inplace_flag_assignment():
     py_code = _compile_history_to_python(entries)
     ast.parse(py_code)
     assert "df = pt.read('test.csv')" in py_code
-    assert "df = df.filter('x > 1')" in py_code
-    assert "df = df.mutate('y = x * 2')" in py_code
+    assert "df = df.filter(c.x > 1)" in py_code
+    assert "df = df.mutate(y=c.x * 2)" in py_code
 
 
 def test_transpile_output_command_preserves_pipeline():
@@ -39,7 +39,7 @@ def test_transpile_output_command_preserves_pipeline():
     py_code = _compile_history_to_python(entries)
     ast.parse(py_code)
     assert "df = pt.read('test.csv')" in py_code
-    assert "df.filter('x > 1').select('a', 'b').to('out.parquet')" in py_code
+    assert "df.filter(c.x > 1).select(c.a, c.b).to('out.parquet')" in py_code
 
 
 def test_transpile_bare_output_command_defaults_to_df():
@@ -50,7 +50,7 @@ def test_transpile_bare_output_command_defaults_to_df():
     ]
     py_code = _compile_history_to_python(entries)
     ast.parse(py_code)
-    assert "df.filter('x > 1').to('out.parquet')" in py_code
+    assert "df.filter(c.x > 1).to('out.parquet')" in py_code
 
 
 def test_transpile_concat():
@@ -118,7 +118,7 @@ def test_table_sources_preloaded_when_not_in_history():
     py_code = _compile_history_to_python(entries, table_sources=sources)
     ast.parse(py_code)
     assert "df = pt.read('data/users.csv')" in py_code
-    assert "df = df.filter(\"status == 'active'\")" in py_code
+    assert "df = df.filter(c.status == 'active')" in py_code
 
     pt_code = _compile_history_to_pt(entries, "out.pt", table_sources=sources)
     assert "load data/users.csv" in pt_code

@@ -12,12 +12,14 @@ import pytae as pt
 
 
 def test_df_join_inner_and_chaining():
+    from pytae import c
+
     df1 = pt.DataFrame({"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"], "score": [80, 95, 70]})
     df2 = pt.DataFrame({"id": [2, 3, 4], "dept": ["Eng", "HR", "Sales"]})
 
     # Join and continue chaining Pytae fluent verbs
     res = (
-        df1.join(df2, on="id", how="inner").filter("score >= 80").mutate(score_bonus="score + 10").arrange("score desc")
+        df1.join(df2, on="id", how="inner").filter(c.score >= 80).mutate(score_bonus=c.score + 10).arrange(c.score.desc())
     )
     assert isinstance(res, pt.DataFrame)
     assert list(res.columns) == ["id", "name", "score", "dept", "score_bonus"]
@@ -113,13 +115,15 @@ def test_pt_accessor_join_pandas_and_polars():
 
 
 def test_lazy_join_preserves_lazy_execution():
+    from pytae import c
+
     lf1 = pl.DataFrame({"id": [1, 2, 3], "val": [10, 20, 30]}).lazy()
     lf2 = pl.DataFrame({"id": [2, 3, 4], "bonus": [100, 200, 300]}).lazy()
 
     df_lazy1 = pt.DataFrame(lf1)
     df_lazy2 = pt.DataFrame(lf2)
 
-    joined_lazy = df_lazy1.join(df_lazy2, on="id", how="inner").filter("val > 10")
+    joined_lazy = df_lazy1.join(df_lazy2, on="id", how="inner").filter(c.val > 10)
     assert joined_lazy.is_lazy
 
     collected = joined_lazy.collect()
@@ -160,16 +164,18 @@ def test_concat_horizontal():
 
 
 def test_dynamic_polars_forwarding_in_chain():
+    from pytae import c
+
     df = pt.DataFrame({"id": [1, 2, 3, 4], "amt": [10, 25, 30, 45], "cat": ["a", "b", "a", "b"]})
 
     # with_columns is a native Polars method!
     # Because of transparent forwarding, it executes and wraps result back into pytae.DataFrame:
     res = (
         df.with_columns(tax=pl.col("amt") * 0.1)
-        .filter("tax > 2")
+        .filter(c.tax > 2)
         .by("cat")
-        .mutate(total="sum(amt)")
-        .arrange("total desc")
+        .mutate(total=c.amt.sum())
+        .arrange(c.total.desc())
     )
     assert isinstance(res, pt.DataFrame)
     assert "tax" in res.columns
