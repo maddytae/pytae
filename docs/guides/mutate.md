@@ -236,7 +236,7 @@ pytae tips.parquet \
 
 ### Example 3: Compound Conditions with `and` / `or`
 
-Combine multiple conditions naturally using `and`, `or`, or `&`, `|`:
+Combine multiple conditions naturally using `and` and `or`:
 
 ```bash
 pytae tips.parquet \
