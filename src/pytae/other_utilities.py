@@ -8,8 +8,10 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import polars as pl
 
 from pytae._text import unquote_name as _unquote_name
+from pytae.polars_engine import _df_columns, _df_schema, _ensure_eager
 
 
 def safe_reset_index(df: pd.DataFrame) -> pd.DataFrame:
@@ -145,16 +147,15 @@ def format_glimpse(df: Any, width: int | None = None) -> str:
 
         underlying = df._df if isinstance(df, DataFrame) else df
         if isinstance(underlying, (pl.DataFrame, pl.LazyFrame)):
+            schema = _df_schema(underlying)
             if isinstance(underlying, pl.LazyFrame):
                 try:
                     n_rows = underlying.select(pl.len()).collect().item()
                 except Exception:
                     n_rows = len(underlying.collect())
-                schema = underlying.collect_schema()
                 preview = underlying.limit(25).collect()
             else:
                 n_rows = underlying.height
-                schema = underlying.schema
                 preview = underlying.head(25)
 
             col_names = [str(c) for c in schema.names()]
@@ -226,20 +227,8 @@ def format_glimpse(df: Any, width: int | None = None) -> str:
 
 def schema_dataframe(df: Any) -> Any:
     """Extract DataFrame schema summary as a 4-column Polars DataFrame: Column, Type, Nulls, Unique."""
-    import polars as pl
 
-    from pytae.dataframe import DataFrame as PytaeDataFrame
-
-    underlying = df._df if isinstance(df, PytaeDataFrame) else df
-    if isinstance(underlying, pl.LazyFrame):
-        pldf = underlying.collect()
-    elif isinstance(underlying, pl.DataFrame):
-        pldf = underlying
-    else:
-        try:
-            pldf = pl.from_pandas(underlying) if hasattr(underlying, "to_pandas") else pl.DataFrame(underlying)
-        except Exception:
-            pldf = pl.DataFrame(underlying)
+    pldf = _ensure_eager(df)
 
     total = len(pldf)
     if total == 0:
@@ -264,20 +253,8 @@ def schema_dataframe(df: Any) -> Any:
 
 def _extract_schema_info(df: Any) -> tuple[list[tuple[str, str, int]], int]:
     """Return ([(col_name, polars_dtype_str, null_count), ...], total_rows) for a dataset."""
-    import polars as pl
 
-    from pytae.dataframe import DataFrame as PytaeDataFrame
-
-    underlying = df._df if isinstance(df, PytaeDataFrame) else df
-    if isinstance(underlying, pl.LazyFrame):
-        pldf = underlying.collect()
-    elif isinstance(underlying, pl.DataFrame):
-        pldf = underlying
-    else:
-        try:
-            pldf = pl.from_pandas(underlying) if hasattr(underlying, "to_pandas") else pl.DataFrame(underlying)
-        except Exception:
-            pldf = pl.DataFrame(underlying)
+    pldf = _ensure_eager(df)
 
     total = len(pldf)
     if total == 0:
@@ -490,14 +467,13 @@ def format_schema(
     if fmt is not None and fmt.strip().lower() not in ("", "table", "default", "summary"):
         return _generate_schema_ddl(df, fmt=fmt, table_name=table_name)
 
-    import polars as pl
 
     from pytae.cli_run import _format_table
     from pytae.dataframe import DataFrame as PytaeDataFrame
 
     underlying = df._df if isinstance(df, PytaeDataFrame) else df
-    total = len(underlying) if not isinstance(underlying, pl.LazyFrame) else len(underlying.collect())
-    num_cols = len(underlying.columns)
+    total = underlying.select(pl.len()).collect().item() if isinstance(underlying, pl.LazyFrame) else len(underlying)
+    num_cols = len(_df_columns(underlying))
     schema_df = schema_dataframe(df)
 
     header = f"Columns: {num_cols} | Rows: {total:,}\n"
@@ -549,25 +525,10 @@ def freq(
     DataFrame
         DataFrame with columns `[col, 'Count', 'Distribution']`.
     """
-    import polars as pl
 
     from pytae.dataframe import DataFrame
 
-    if isinstance(df, pl.LazyFrame):
-        pldf = df.collect()
-    elif isinstance(df, pl.DataFrame):
-        pldf = df
-    elif hasattr(df, "_df"):
-        inner = df._df
-        pldf = inner.collect() if isinstance(inner, pl.LazyFrame) else inner
-    else:
-        try:
-            if isinstance(df, pd.DataFrame):
-                pldf = pl.from_pandas(df)
-            else:
-                pldf = pl.DataFrame(df)
-        except Exception:
-            pldf = pl.DataFrame(df)
+    pldf = _ensure_eager(df)
 
     cols = list(pldf.columns)
     if col is None or (isinstance(col, str) and not col.strip()):
@@ -645,28 +606,13 @@ def hist(
     DataFrame
         DataFrame with columns `['Range', 'Count', 'Distribution']`.
     """
-    import polars as pl
 
     from pytae.dataframe import DataFrame
 
     raw = col.strip() if isinstance(col, str) else ""
     target_col: str | None = None
 
-    if isinstance(df, pl.LazyFrame):
-        pldf = df.collect()
-    elif isinstance(df, pl.DataFrame):
-        pldf = df
-    elif hasattr(df, "_df"):
-        inner = df._df
-        pldf = inner.collect() if isinstance(inner, pl.LazyFrame) else inner
-    else:
-        try:
-            if isinstance(df, pd.DataFrame):
-                pldf = pl.from_pandas(df)
-            else:
-                pldf = pl.DataFrame(df)
-        except Exception:
-            pldf = pl.DataFrame(df)
+    pldf = _ensure_eager(df)
 
     cols = list(pldf.columns)
     if ":" in raw:
@@ -711,8 +657,8 @@ def hist(
     if len(s_clean) == 0:
         return DataFrame(pl.DataFrame(schema={"Range": pl.String, "Count": pl.Int64, "Distribution": pl.String}))
 
-    min_val = float(s_clean.min())  # type: ignore[arg-type]
-    max_val = float(s_clean.max())  # type: ignore[arg-type]
+    min_val = float(s_clean.min())
+    max_val = float(s_clean.max())
     total = len(s_clean)
 
     if min_val == max_val:
@@ -801,25 +747,9 @@ def bar(
     """
     import math
 
-    import polars as pl
-
     from pytae.dataframe import DataFrame
 
-    if isinstance(df, pl.LazyFrame):
-        pldf = df.collect()
-    elif isinstance(df, pl.DataFrame):
-        pldf = df
-    elif hasattr(df, "_df"):
-        inner = df._df
-        pldf = inner.collect() if isinstance(inner, pl.LazyFrame) else inner
-    else:
-        try:
-            if isinstance(df, pd.DataFrame):
-                pldf = pl.from_pandas(df)
-            else:
-                pldf = pl.DataFrame(df)
-        except Exception:
-            pldf = pl.DataFrame(df)
+    pldf = _ensure_eager(df)
 
     cols = list(pldf.columns)
     if not cols:
@@ -979,23 +909,8 @@ def scatter(
     """
     import math
 
-    import polars as pl
 
-    if isinstance(df, pl.LazyFrame):
-        pldf = df.collect()
-    elif isinstance(df, pl.DataFrame):
-        pldf = df
-    elif hasattr(df, "_df"):
-        inner = df._df
-        pldf = inner.collect() if isinstance(inner, pl.LazyFrame) else inner
-    else:
-        try:
-            if isinstance(df, pd.DataFrame):
-                pldf = pl.from_pandas(df)
-            else:
-                pldf = pl.DataFrame(df)
-        except Exception:
-            pldf = pl.DataFrame(df)
+    pldf = _ensure_eager(df)
 
     cols = list(pldf.columns)
     x_col: str | None = None
@@ -1150,25 +1065,9 @@ def corr(
     """
     import math
 
-    import polars as pl
-
     from pytae.dataframe import DataFrame
 
-    if isinstance(df, pl.LazyFrame):
-        pldf = df.collect()
-    elif isinstance(df, pl.DataFrame):
-        pldf = df
-    elif hasattr(df, "_df"):
-        inner = df._df
-        pldf = inner.collect() if isinstance(inner, pl.LazyFrame) else inner
-    else:
-        try:
-            if isinstance(df, pd.DataFrame):
-                pldf = pl.from_pandas(df)
-            else:
-                pldf = pl.DataFrame(df)
-        except Exception:
-            pldf = pl.DataFrame(df)
+    pldf = _ensure_eager(df)
 
     all_num_cols = [c for c in pldf.columns if pldf[c].dtype.is_numeric()]
     if cols is not None:

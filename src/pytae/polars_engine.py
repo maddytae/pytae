@@ -30,16 +30,48 @@ from pytae._text import unquote_name as _unquote_name
 from pytae.select import resolve_select_columns
 
 
+def _unwrap_frame(df: Any) -> Any:
+    """Unwrap inner frame from pytae DataFrame or wrapper objects."""
+    if hasattr(df, "_df") and not isinstance(df, (pl.DataFrame, pl.LazyFrame)):
+        return df._df
+    return df
+
+
 def _df_columns(df: Any) -> list[str]:
+    """Return column names of any frame (LazyFrame, DataFrame, or wrapper) without materializing rows."""
+    df = _unwrap_frame(df)
     if isinstance(df, pl.LazyFrame):
         return df.collect_schema().names()
-    return list(df.columns)
+    if hasattr(df, "columns"):
+        cols = df.columns
+        return list(cols() if callable(cols) else cols)
+    return list(_df_schema(df).names())
 
 
 def _df_schema(df: Any) -> pl.Schema:
+    """Return the Polars schema of any frame (LazyFrame, DataFrame, or wrapper) without materializing rows."""
+    df = _unwrap_frame(df)
     if isinstance(df, pl.LazyFrame):
         return df.collect_schema()
-    return df.schema
+    if hasattr(df, "schema") and isinstance(df.schema, pl.Schema):
+        return df.schema
+    import pandas as pd
+
+    if isinstance(df, pd.DataFrame):
+        return pl.from_pandas(df.head(0)).schema
+    return pl.DataFrame(df).schema
+
+
+def _ensure_eager(df: Any) -> Any:
+    """Ensure a Polars LazyFrame or pytae Lazy wrapper is materialized as an eager DataFrame."""
+    if hasattr(df, "_df") and not isinstance(df, (pl.DataFrame, pl.LazyFrame)):
+        inner = df._df
+        if isinstance(inner, pl.LazyFrame):
+            return inner.collect()
+        return inner
+    if isinstance(df, pl.LazyFrame):
+        return df.collect()
+    return df
 
 
 def _cond_to_polars_expr(col: str, cond: Any, schema: pl.Schema | None = None) -> pl.Expr:
@@ -492,7 +524,7 @@ def assert_polars(df: Any, conditions: Any, raw_desc: str = "") -> Any:
     if combined_expr is None:
         return df
 
-    materialized = df.collect() if isinstance(df, pl.LazyFrame) else df
+    materialized = _ensure_eager(df)
     total_rows = len(materialized)
     if total_rows == 0:
         return df
@@ -848,8 +880,7 @@ def pivot_polars(
             f"{_func_name}() got unexpected keyword argument(s): {list(kwargs.keys())}; only r, c, v, a, dropna, f_v are accepted"
         )
 
-    if isinstance(df, pl.LazyFrame):
-        df = df.collect()
+    df = _ensure_eager(df)
 
     all_cols = list(df.columns)
 
@@ -2211,8 +2242,7 @@ def wide_polars(
     **kwargs: Any,
 ) -> pl.DataFrame:
     """Reshape a long Polars DataFrame into wide format (1-to-1 pivot)."""
-    if isinstance(df, pl.LazyFrame):
-        df = df.collect()
+    df = _ensure_eager(df)
     for bad_arg in ("a", "agg", "aggfunc", "dropna"):
         if bad_arg in kwargs:
             raise ValueError(
@@ -2779,8 +2809,8 @@ def _fuzzy_join_polars(
     import difflib
 
     is_lazy = isinstance(left_pl, pl.LazyFrame) or isinstance(right_pl, pl.LazyFrame)
-    left_eager = left_pl.collect() if isinstance(left_pl, pl.LazyFrame) else left_pl
-    right_eager = right_pl.collect() if isinstance(right_pl, pl.LazyFrame) else right_pl
+    left_eager = _ensure_eager(left_pl)
+    right_eager = _ensure_eager(right_pl)
 
     left_vals = left_eager[l_key].drop_nulls().unique().to_list()
     right_vals = right_eager[r_key].drop_nulls().unique().to_list()

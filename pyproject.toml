@@ -83,5 +83,7 @@ module = [
     "pytae.polars_engine",
     "pytae.readers",
     "pytae.repl",
+    "pytae.repl_utils",
+    "pytae.transpiler",
 ]
 ignore_errors = true

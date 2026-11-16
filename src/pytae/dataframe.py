@@ -15,6 +15,8 @@ from pytae._parsing import _extract_arrange_specs, _parse_filter_string, _parse_
 from pytae._text import unquote_name as _unquote_name
 from pytae.polars_engine import (
     _df_columns,
+    _df_schema,
+    _ensure_eager,
     agg_polars,
     arrange_polars,
     assert_polars,
@@ -57,7 +59,7 @@ def _normalize_dict_nans(d: Any) -> Any:
 def _clean_nans_to_null(df: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame | pl.LazyFrame:
     """Ensure all floating-point NaNs are normalized to Arrow nulls."""
     try:
-        schema = df.collect_schema() if isinstance(df, pl.LazyFrame) else df.schema
+        schema = _df_schema(df)
         float_cols = [c for c, dt in schema.items() if dt.is_float()]
         if float_cols:
             return df.with_columns([pl.col(c).fill_nan(None).alias(c) for c in float_cols])
@@ -111,7 +113,7 @@ class _IlocIndexer:
 
     def _eager_df(self) -> pl.DataFrame:
         raw = self._df._df
-        return raw.collect() if isinstance(raw, pl.LazyFrame) else raw
+        return _ensure_eager(raw)
 
     def __getitem__(self, item: Any) -> Any:
         edf = self._eager_df()
@@ -393,8 +395,8 @@ class DataFrame:
 
     def equals(self, other: Any) -> bool:
         if isinstance(other, DataFrame):
-            left = self._df.collect() if isinstance(self._df, pl.LazyFrame) else self._df
-            right = other._df.collect() if isinstance(other._df, pl.LazyFrame) else other._df
+            left = _ensure_eager(self._df)
+            right = _ensure_eager(other._df)
             return left.equals(right)
         try:
             return self._to_pandas_internal().equals(other)
@@ -406,7 +408,7 @@ class DataFrame:
         return self.to_numpy()
 
     def to_numpy(self, *args: Any, **kwargs: Any) -> Any:
-        edf = self._df.collect() if isinstance(self._df, pl.LazyFrame) else self._df
+        edf = _ensure_eager(self._df)
         return edf.to_numpy(*args, **kwargs)
 
     def select_dtypes(self, *args: Any, **kwargs: Any) -> DataFrame:
@@ -2132,7 +2134,7 @@ class GroupedDataFrame:
         effective_replace = with_replacement or replace
         n_val = 5 if n is None and effective_frac is None else n
 
-        eager_df = self._df.collect() if isinstance(self._df, pl.LazyFrame) else self._df
+        eager_df = _ensure_eager(self._df)
         parts = []
         for _, sub_df in eager_df.group_by(self._by):
             if effective_frac is not None:

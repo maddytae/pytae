@@ -1100,9 +1100,12 @@ def main(argv: list[str] | None = None) -> int:
         ),
         (
             ("-session", "--session"),
-            "'-session' has been removed; start REPL with 'pytae -i' and use 'set load_session = <name>' inside",
+            "'-session' has been removed; start REPL with 'pytae -i' and use 'checkpoint <name>' for in-memory undo, or replay pipelines via scripts",
         ),
-        (("-s",), "'-s' is not recognized; start REPL with 'pytae -i' and use 'set load_session = <name>' inside"),
+        (
+            ("-s",),
+            "'-s' is not recognized; start REPL with 'pytae -i' and use 'checkpoint <name>' for in-memory undo, or replay pipelines via scripts",
+        ),
         (("-opt",), "'-opt' is not recognized; use '-opts' instead"),
         (("-frac",), "-frac is deprecated and removed; use '-sample <val>' (e.g. -sample 0.05 or -sample 5%)"),
         (
@@ -1326,7 +1329,7 @@ def main(argv: list[str] | None = None) -> int:
         and args.count is None
         and args.sample is None
     ):
-        parser.error("-by requires -agg, -mutate, -head, -tail, -count, or -sample")
+        parser.error("-by requires -agg, -mutate, -head, -tail, -count, or -sample to follow it")
     if args.tol is not None and args.diff is None:
         parser.error("-tol requires -diff")
     if args.unmask is not None and not args.key and not args.vault:

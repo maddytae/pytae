@@ -411,8 +411,10 @@ def select(
 
     import polars as pl
 
+    from pytae.polars_engine import _df_schema
+
     if isinstance(df, (pl.DataFrame, pl.LazyFrame)):
-        schema = df.collect_schema() if isinstance(df, pl.LazyFrame) else df.schema
+        schema = _df_schema(df)
         target_cols = resolve_select_columns(
             list(schema.names()),
             schema,

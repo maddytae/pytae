@@ -1848,13 +1848,13 @@ def test_cli_rejects_dash_s_and_session_cli_flags(tmp_path, monkeypatch, capsys)
     with pytest.raises(SystemExit):
         cli.main(["-s", "analysis"])
     captured_err = capsys.readouterr()
-    assert "'-s' is not recognized; start REPL with 'pytae -i' and use 'set load_session = <name>' inside" in captured_err.err
+    assert "'-s' is not recognized; start REPL with 'pytae -i' and use 'checkpoint <name>' for in-memory undo, or replay pipelines via scripts" in captured_err.err
 
     # Test pytae -session is rejected directing to pytae -i
     with pytest.raises(SystemExit):
         cli.main(["-session", "analysis"])
     captured_err = capsys.readouterr()
-    assert "'-session' has been removed; start REPL with 'pytae -i' and use 'set load_session = <name>' inside" in captured_err.err
+    assert "'-session' has been removed; start REPL with 'pytae -i' and use 'checkpoint <name>' for in-memory undo, or replay pipelines via scripts" in captured_err.err
 
 
 def test_repl_preview_by_default_and_assignment_mutation():
@@ -2908,24 +2908,19 @@ def test_list_saved_sessions_output_and_directories(tmp_path, monkeypatch) -> No
     """Verify that list_saved_sessions outputs retirement notice and directories are located correctly."""
     from pytae.repl import (
         _get_history_dir,
-        get_commands_dir,
-        get_sessions_dir,
+        get_code_dir,
         list_saved_sessions,
     )
 
     # 1. Verify directory paths under ~/.pytae
     monkeypatch.delenv("PYTAE_HISTORY_DIR", raising=False)
-    monkeypatch.delenv("PYTAE_SESSIONS_DIR", raising=False)
     hist_dir = _get_history_dir()
     assert hist_dir.name == "history"
     assert hist_dir.parent.name == ".pytae"
 
-    cmd_dir = get_commands_dir()
+    cmd_dir = get_code_dir()
     assert cmd_dir.name in ("code", "commands", "history")
     assert cmd_dir.parent.name == ".pytae"
-
-    sess_dir = get_sessions_dir()
-    assert sess_dir.exists()
 
     # 2. Test list_saved_sessions outputs retirement notice
     outputs: list[str] = []
@@ -3504,14 +3499,13 @@ def test_session_load_various_path_formats(tmp_path, monkeypatch):
     r.close()
 
 
-def test_session_markers_and_directory_exploration(tmp_path):
-    """Verify list_saved_sessions prints retirement notice and is_session_dir behaves safely."""
-    from pytae.repl import is_session_dir, list_saved_sessions
+def test_session_markers_and_directory_exploration():
+    """Verify list_saved_sessions prints retirement notice."""
+    from pytae.repl import list_saved_sessions
 
     outputs: list[str] = []
     list_saved_sessions(outputs.append)
     assert any("persistent disk sessions have been retired" in o for o in outputs)
-    assert not is_session_dir(tmp_path)
 
 
 def test_win_console_input_tab_completion_single_match():
