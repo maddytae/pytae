@@ -102,20 +102,44 @@ Pytae adheres to a **Zero Data Loss by Default** philosophy for missing values:
 
 - **Bare `-dropna` / `df.dropna()`**: Defaults to `how="all"`. Drops **only completely empty rows** (rows where every column is null), preserving partially populated rows from accidental loss.
 - **Targeted `-dropna "col1, col2"` / `df.dropna("col1", "col2")`**: Defaults to `how="any"`. Drops rows missing *any* of the specified columns.
-- **Explicit `how=any`**: Drops rows containing *any* missing value across all columns.
+- **Explicit `how=any` across whole table**: Drops rows containing *any* missing value across all columns.
+- **Explicit `how=all` on targeted columns**: Drops rows only if *all* of the specified columns are missing simultaneously.
+
+### The Complete Matrix of `how` Cases
+
+| Invocation (Python) | Invocation (CLI) | Scope | Effective `how` | Row Dropping Rule |
+|:---|:---|:---|:---:|:---|
+| `df.dropna()` | `pytae -dropna` | All columns | `how='all'` | Drops **only 100% empty rows** (all columns null). Safe default. |
+| `df.dropna(how="any")` | `pytae -dropna how=any` | All columns | `how='any'` | Drops rows missing **any** column (strict complete-cases filter). |
+| `df.dropna(how="all")` | `pytae -dropna how=all` | All columns | `how='all'` | Explicit equivalent of bare `df.dropna()`. |
+| `df.dropna(c.a, c.b)` | `pytae -dropna "a, b"` | Columns `a, b` | `how='any'` | Drops rows missing **either** `a` OR `b`. Target default. |
+| `df.dropna(c.a, c.b, how="any")` | `pytae -dropna "a, b, how=any"` | Columns `a, b` | `how='any'` | Explicit equivalent of `df.dropna(c.a, c.b)`. |
+| `df.dropna(c.a, c.b, how="all")` | `pytae -dropna "a, b, how=all"` | Columns `a, b` | `how='all'` | Drops rows only if **both** `a` AND `b` are missing. |
 
 ```bash
-# Bare flag defaults to how='all' (Zero Data Loss: keeps 344 rows in penguins)
+# 1. Bare flag defaults to how='all' (Zero Data Loss: keeps 344 rows in penguins)
 pytae penguins.parquet -dropna -shape
 # (344, 7)
 
-# Drop rows missing specific required columns (344 -> 342 rows)
+# 2. Targeted columns default to how='any' (344 -> 342 rows)
 pytae penguins.parquet -dropna body_mass_g -shape
 # (342, 7)
 
-# Explicit how=any drops rows with any missing value (344 -> 333 rows)
+# 3. Explicit how=any across whole table drops rows with any missing value (344 -> 333 rows)
 pytae penguins.parquet -dropna how=any -shape
 # (333, 7)
+
+# 4. Explicit how=all on targeted columns drops rows only if BOTH columns are missing
+pytae penguins.parquet -dropna "sex, body_mass_g, how=all" -shape
+# (344, 7)
+```
+
+```python
+# In Python API:
+df.dropna()                            # Case 1: Drops only 100% blank rows (how='all')
+df.dropna(how="any")                   # Case 2: Drops rows missing ANY column across the table
+df.dropna(c.sex, c.body_mass_g)        # Case 3: Drops rows missing sex OR body_mass_g (how='any')
+df.dropna(c.sex, c.body_mass_g, how="all") # Case 4: Drops rows missing BOTH sex AND body_mass_g
 ```
 
 > [!NOTE]
