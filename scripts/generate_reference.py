@@ -1008,7 +1008,7 @@ Column Transformation Flags:
   -clean_columns SPECS  Clean headers: "strip=True, fill='_', case='lower', dedupe=True"
 
 Aggregation & Reshaping Flags:
-  -by COLS              Grouping columns for -agg, -mutate, -head, -tail (e.g. -by species -arrange "mass desc" -head 1)
+  -by COLS              Grouping columns for -agg, -mutate, -head, -tail (e.g. -by species -arrange "mass.desc()" -head 1)
   -agg [SPECS]          Aggregate columns (e.g. -by species -agg "body_mass_g=mean, total=count" or -agg mean).
                         When -by is omitted, -agg computes a whole-table summary!
   -long [SPECS]         Melt numeric columns to rows: "c=variable, v=value"
@@ -1187,10 +1187,10 @@ its own new line:
 ```python
 (
     penguins
-    .by("species")
-    .arrange("body_mass_g desc")
+    .by(c.species)
+    .arrange(c.body_mass_g.desc())
     .head(1)
-    .select("species", "island", "body_mass_g")
+    .select(c.species, c.island, c.body_mass_g)
 )
 ```
 This ensures readable git diffs, clean execution tracebacks, and syntactic consistency.
@@ -1277,22 +1277,22 @@ Example: Get top 2 species by average body mass for each island from the penguin
 ```bash
 pytae sample:penguins \
   -by island,species -agg "avg_mass=mean(body_mass_g)" \
-  -arrange "island, avg_mass desc" \
+  -arrange "island, avg_mass.desc()" \
   -by island -head 2
 ```
 How it executes:
 1. `-by island,species -agg "avg_mass=mean(body_mass_g)"`: Aggregates and collapses to island-species pairs. Grouping auto-resets.
-2. `-arrange "island, avg_mass desc"`: Sorts globally by island and descending average mass.
+2. `-arrange "island, avg_mass.desc()"`: Sorts globally by island and descending average mass.
 3. `-by island -head 2`: Slices top 2 species for each island, then auto-resets.
 
 In Python:
 ```python
 (
     pt.sample("penguins")
-    .by("island", "species")
-    .agg(avg_mass="body_mass_g:mean")
-    .arrange("island", "avg_mass desc")
-    .by("island")
+    .by(c.island, c.species)
+    .agg(avg_mass=c.body_mass_g.mean())
+    .arrange(c.island, c.avg_mass.desc())
+    .by(c.island)
     .head(2)
 )
 ```
@@ -1365,7 +1365,7 @@ When encountering an error in Pytae, consult this catalog for the root cause and
 
 | Exact Error Output | Root Cause | Immediate Fix |
 |---|---|---|
-| `unrecognized arguments: -sort` or `-sort_by` | Used deprecated/invalid sort flag | Use `-arrange "col desc"` |
+| `unrecognized arguments: -sort` or `-sort_by` | Used deprecated/invalid sort flag | Use `-arrange "col.desc()"` |
 | `unrecognized arguments: -qry` or `-query` | Used deprecated query flag | Use `-filter "expr"` |
 | `unrecognized arguments: -dedupe` | Used deprecated dedupe flag | Use `-distinct "cols"` |
 | `ColumnNotFound: column 'XYZ' not found` | Column name misspelled, wrong casing, or string literal unquoted | Check `-cols`; quote string values (`col == 'XYZ'`); use `[col name]` if name has spaces |
@@ -1556,19 +1556,19 @@ tips = pt.sample("tips")
 # 1. Heaviest tip per day via method chaining
 top_daily = (
     tips
-    .by("day")
-    .arrange("tip desc")
+    .by(c.day)
+    .arrange(c.tip.desc())
     .head(1)
-    .select("day", "total_bill", "tip")
+    .select(c.day, c.total_bill, c.tip)
 )
 
 # 2. Standalone functional slice overall
-top_bill = pt.head(pt.arrange(tips, "total_bill desc"), 1)[["day", "total_bill", "tip"]]
+top_bill = pt.head(pt.arrange(tips, c.total_bill.desc()), 1)[["day", "total_bill", "tip"]]
 ```
 
 ```bash
 # Equivalent CLI:
-pytae tips.parquet -by day -arrange "tip desc" -head 1 -select "day,total_bill,tip"
+pytae tips.parquet -by day -arrange "tip.desc()" -head 1 -select "day,total_bill,tip"
 ```
 
 Recipe 4: Polars SQL Query in CLI Pipeline
@@ -1621,7 +1621,7 @@ pytae penguins.parquet -freq species
 pytae penguins.parquet -hist body_mass_g:8
 
 # 4. Sort and view top rows
-pytae penguins.parquet -arrange "body_mass_g desc" -head 5
+pytae penguins.parquet -arrange "body_mass_g.desc()" -head 5
 ```
 
 Recipe 7: Multi-Panel Dashboard with Secondary Y-Axis and Faceting
@@ -1686,7 +1686,7 @@ CLI Pipeline (Sequential -by):
 ```bash
 pytae sample:penguins \
   -by island,species -agg "avg_mass=mean(body_mass_g)" \
-  -arrange "island, avg_mass desc" \
+  -arrange "island, avg_mass.desc()" \
   -by island -head 2
 ```
 
@@ -1705,10 +1705,10 @@ import pytae as pt
 
 top_species = (
     pt.sample("penguins")
-    .by("island", "species")
-    .agg(avg_mass="body_mass_g:mean")
-    .arrange("island", "avg_mass desc")
-    .by("island")
+    .by(c.island, c.species)
+    .agg(avg_mass=c.body_mass_g.mean())
+    .arrange(c.island, c.avg_mass.desc())
+    .by(c.island)
     .head(2)
 )
 ```
@@ -1739,7 +1739,7 @@ pytae "\\\\server\\risk_share\\rwa\\deals_latest.parquet" -schema
 pytae "\\\\server\\risk_share\\rwa\\deals_latest.parquet" \
   -filter "pd > 0.02 and ead > 5000000" \
   -select "deal_id,counterparty_name,internal_rating,ead,pd,lgd,rwa_irba" \
-  -arrange "rwa_irba desc" \
+  -arrange "rwa_irba.desc()" \
   -head 10 \
   -o "Z:\\reports\\high_risk_deals.csv"
 ```
@@ -1761,7 +1761,7 @@ pytae data.parquet \
   -filter "reporting_date >= '2026-06-30' and asset_class in ['Large Corporate', 'SME'] and (pd > 0.03 or lgd >= 0.50)" \
   -by asset_class \
   -agg "count=count, total_ead=sum(ead), avg_pd=mean(pd)" \
-  -arrange "total_ead desc"
+  -arrange "total_ead.desc()"
 ```
 
 Recipe 13: Excel Multi-Sheet Ingestion with Strict -opts
