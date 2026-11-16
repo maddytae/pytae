@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.14.7] - 2026-11-15
+
+### Fixed & Enhanced
+- **CLI & REPL Transpiler Improvements (`src/pytae/transpiler.py`, `src/pytae/repl.py`)**:
+  - **Intermediate Pipeline Preservation**: Fixed bug where intermediate pipeline stages before `-o` (e.g. `data.csv -filter "x > 1" -o out.csv`) were omitted from transpiled Python code. All transformations are now chained cleanly into `df.to(...)`.
+  - **In-Place Shorthand Assignments**: Supported in-place reassignment commands like `df = -filter "x > 1"`, generating idiomatic `df = df.filter("x > 1")` without falsely wrapping `-filter` as a non-existent file source in `pt.read()`.
+  - **Full Argument Support for Pipelines**: Added keyword argument parsing and code generation for `-distinct` (`keep`, `subset`), `-dropna` (`how`, `subset`, `thresh`), and `-clean_columns` (`case`, `replace`, `drop_cols`).
+  - **Fuzzy and Multi-Key Join Generation**: Added full parameter support for `-join` in code generation, correctly transpiling `fuzzy`, `score`, and composite join keys (`left_on`/`right_on` lists).
+  - **`-concat` Pipeline Code Generation**: Added transpiler support for concatenation pipelines (`df.concat(...)`).
+  - **Session Preloaded Table Export**: REPL session exports (`ctrl+c` / `export`) now automatically emit `pt.read(...)` statements for loaded tables tracked in `table_sources`, and cleanly alias `df` to avoid runtime `NameError`s.
+
+### Added & Validated
+- **Comprehensive Pandas Parity & Pytae Contract Test Suite (`tests/test_pandas_parity_and_contracts.py`)**:
+  - Implemented comprehensive test coverage comparing Pytae against core Pandas idioms across filtering, grouping, aggregation, window functions, and pivoting.
+  - Enforced and validated Pytae core contracts: Arrow `null` missing value normalization across inputs, clean Excel exports without `Unnamed: 0` index, single canonical verbs (`.to()`, `.fillna()`), `starts_with`/`ends_with` snake_case naming, and strict boolean negation with `not`.
+
 ## [3.14.6] - 2026-11-14
 
 ### Added & Standardized
