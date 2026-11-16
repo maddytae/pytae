@@ -318,3 +318,37 @@ def test_cli_multi_by_agg_and_head(tmp_path, capsys):
     assert "Dream" in out
     assert "Chinstrap" in out
     assert "Torgersen" in out
+
+
+def test_sequential_by_single_shot_scoping(tmp_path, capsys):
+    # Tests that each -by scopes only the immediately following verb, then cleanly resets to global
+    df = pd.DataFrame(
+        {
+            "region": ["East", "East", "West", "West"],
+            "sales": [10.0, 30.0, 100.0, 200.0],
+        }
+    )
+    path = _write_csv(tmp_path, df)
+
+    exit_code = cli.main(
+        [
+            path,
+            "-by",
+            "region",
+            "-mutate",
+            "regional_mean = mean(sales)",
+            "-mutate",
+            "global_mean = mean(sales)",
+            "-select",
+            "region,sales,regional_mean,global_mean",
+            "-head",
+            "4",
+        ]
+    )
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    # Regional means: East is 20.0, West is 150.0
+    # Global mean: (10 + 30 + 100 + 200) / 4 = 85.0
+    assert "20.0" in out
+    assert "150.0" in out
+    assert "85.0" in out

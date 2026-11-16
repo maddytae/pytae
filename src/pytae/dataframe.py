@@ -57,7 +57,8 @@ def _normalize_dict_nans(d: Any) -> Any:
 def _clean_nans_to_null(df: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame | pl.LazyFrame:
     """Ensure all floating-point NaNs are normalized to Arrow nulls."""
     try:
-        float_cols = [c for c, dt in df.schema.items() if dt.is_float()]
+        schema = df.collect_schema() if isinstance(df, pl.LazyFrame) else df.schema
+        float_cols = [c for c, dt in schema.items() if dt.is_float()]
         if float_cols:
             return df.with_columns([pl.col(c).fill_nan(None).alias(c) for c in float_cols])
     except Exception:

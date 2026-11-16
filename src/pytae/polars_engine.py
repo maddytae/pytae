@@ -1956,7 +1956,7 @@ def mutate_polars(
                     null_mask = pl.any_horizontal([pl.col(c).is_null() for c in by])
                     expr = pl.when(null_mask).then(pl.lit(None)).otherwise(expr)
                 cur = cur.with_columns(expr.alias(col_name))
-                if cur.schema.get(col_name, pl.Null).is_float():
+                if _df_schema(cur).get(col_name, pl.Null).is_float():
                     cur = cur.with_columns(pl.col(col_name).fill_nan(None).alias(col_name))
             except (pl.exceptions.InvalidOperationError, pl.exceptions.ComputeError) as exc:
                 msg = str(exc).lower()

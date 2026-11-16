@@ -1158,6 +1158,7 @@ def _process_path(
                 current_by = parse_columns(by_val) if isinstance(by_val, str) else list(by_val)
             else:
                 current_by = None
+            legacy_by = None
         elif op == "select":
             names, kwargs = next(select_iter)
             err = pipeline.apply_select(names, kwargs)
@@ -1198,6 +1199,7 @@ def _process_path(
                     return _fail(parser, batch, unknown_columns_message("-by", by_cols, avail_cols))
             err = pipeline.apply_mutate(next(mutate_iter), by=by_cols, dropna=False)
             current_by = None
+            legacy_by = None
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -1520,6 +1522,7 @@ def _process_path(
             count_val = _next_op_val("count", getattr(args, "count", None))
             err = pipeline.apply_count(count_val, by_cols=by_cols)
             current_by = None
+            legacy_by = None
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
@@ -1539,6 +1542,7 @@ def _process_path(
             except Exception as exc:
                 return _fail(parser, batch, f"-head: {exc}")
             current_by = None
+            legacy_by = None
             if hasattr(frame, "collect"):
                 frame = frame.collect()
             if should_print(idx):
@@ -1568,6 +1572,7 @@ def _process_path(
             except Exception as exc:
                 return _fail(parser, batch, f"-tail: {exc}")
             current_by = None
+            legacy_by = None
             if hasattr(frame, "collect"):
                 frame = frame.collect()
             if should_print(idx):
@@ -1600,6 +1605,7 @@ def _process_path(
                 sample_n, sample_frac = (int(sample_val) if sample_val is not None else 5), None
             sampled = pipeline.sample(sample_n or 5, seed=args.seed, frac=sample_frac, by_cols=by_cols)
             current_by = None
+            legacy_by = None
             n = len(sampled)
             if should_print(idx):
                 _output_text(
@@ -1634,6 +1640,7 @@ def _process_path(
             except Exception as e:
                 return _fail(parser, batch, str(e))
             current_by = None
+            legacy_by = None
             emit_frame(idx)
         elif op == "fillna":
             val_str = _next_op_val("fillna", args.fillna)
