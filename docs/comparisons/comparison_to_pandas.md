@@ -180,7 +180,7 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 |:---|:---|:---|:---|
 | **Basic Formula** | `df.assign(y=df['a'] / df['b'])` | `df.mutate(y=c.a / c.b)` | `-mutate "y = c.a / c.b"` |
 | **Sequential Calculations**| Chained `.assign(a=...).assign(b=lambda ...)` | `df.mutate(a=1, b=c.a * 2)` | `-mutate "a=1, b=c.a*2"` |
-| **If / Else** | `np.where(df['x'] > 0, 'pos', 'neg')` | `df.mutate(f=c.x.when(c.x > 0, 'pos', 'neg'))` | `-mutate "f=if_else(c.x>0,'pos','neg')"` |
+| **If / Else** | `np.where(df['x'] > 0, 'pos', 'neg')` | `df.mutate(f=if_else(c.x > 0, 'pos', 'neg'))` | `-mutate "f=if_else(c.x>0,'pos','neg')"` |
 | **Multi-Column Transform**| Loop over columns or complex `apply` | `df.mutate("(a, b) = _ * 10")` | `-mutate "(a, b) = _ * 10"` |
 | **Multi-Column + Suffix**| Loop + dictionary comprehension | `df.mutate("(a, b)_cm = _ * 10")` | `-mutate "(a, b)_cm = _ * 10"` |
 | **Grouped Window Calculation**| `df.groupby('g')['x'].transform('mean')` | `df.by(c.g).mutate(m=c.x.mean())` | `-by c.g -mutate "m = c.x.mean()"` |

@@ -16212,7 +16212,7 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 |:---|:---|:---|:---|
 | **Basic Formula** | `df.assign(y=df['a'] / df['b'])` | `df.mutate(y=c.a / c.b)` | `-mutate "y = c.a / c.b"` |
 | **Sequential Calculations**| Chained `.assign(a=...).assign(b=lambda ...)` | `df.mutate(a=1, b=c.a * 2)` | `-mutate "a=1, b=c.a*2"` |
-| **If / Else** | `np.where(df['x'] > 0, 'pos', 'neg')` | `df.mutate(f=c.x.when(c.x > 0, 'pos', 'neg'))` | `-mutate "f=if_else(c.x>0,'pos','neg')"` |
+| **If / Else** | `np.where(df['x'] > 0, 'pos', 'neg')` | `df.mutate(f=if_else(c.x > 0, 'pos', 'neg'))` | `-mutate "f=if_else(c.x>0,'pos','neg')"` |
 | **Multi-Column Transform**| Loop over columns or complex `apply` | `df.mutate("(a, b) = _ * 10")` | `-mutate "(a, b) = _ * 10"` |
 | **Multi-Column + Suffix**| Loop + dictionary comprehension | `df.mutate("(a, b)_cm = _ * 10")` | `-mutate "(a, b)_cm = _ * 10"` |
 | **Grouped Window Calculation**| `df.groupby('g')['x'].transform('mean')` | `df.by(c.g).mutate(m=c.x.mean())` | `-by c.g -mutate "m = c.x.mean()"` |
@@ -16563,7 +16563,7 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 |:---|:---|:---|:---|
 | **Simple Derivation** | `mutate(df, y = a / b)` | `df.mutate(y=c.a / c.b)` | `-mutate "y = c.a / c.b"` |
 | **Sequential Calculations**| `mutate(df, a = 1, b = a * 2)` | `df.mutate(a=1, b=c.a * 2)` | `-mutate "a=1, b=c.a*2"` |
-| **Conditional (If/Else)** | `mutate(df, f = if_else(x > 0, "pos", "neg"))` | `df.mutate(f=c.x.when(c.x > 0, 'pos', 'neg'))` | `-mutate "f=if_else(c.x>0,'pos','neg')"` |
+| **Conditional (If/Else)** | `mutate(df, f = if_else(x > 0, "pos", "neg"))` | `df.mutate(f=if_else(c.x > 0, 'pos', 'neg'))` | `-mutate "f=if_else(c.x>0,'pos','neg')"` |
 | **Lag / Lead** | `mutate(df, prev = lag(x, 1))` | `df.mutate(prev=c.x.shift(1))` | `-mutate "prev = c.x.shift(1)"` |
 
 ### 3. Column Selection & Exclusion (`select`, `rename`)
@@ -16956,7 +16956,7 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 |:---|:---|:---|:---|
 | **Simple Math** | `y = a / b;` | `df.mutate(y=c.a / c.b)` | `-mutate "y = c.a / c.b"` |
 | **Sequential Calculations**| `a = 1; b = a * 2;` | `df.mutate(a=1, b=c.a * 2)` | `-mutate "a=1, b=c.a*2"` |
-| **Conditional (If/Else)** | `IF x > 0 THEN f='pos'; ELSE f='neg';` | `df.mutate(f=c.x.when(c.x > 0, 'pos', 'neg'))` | `-mutate "f=if_else(c.x>0,'pos','neg')"` |
+| **Conditional (If/Else)** | `IF x > 0 THEN f='pos'; ELSE f='neg';` | `df.mutate(f=if_else(c.x > 0, 'pos', 'neg'))` | `-mutate "f=if_else(c.x>0,'pos','neg')"` |
 | **Lag / Previous Row** | `prev = LAG(x);` | `df.mutate(prev=c.x.shift(1))` | `-mutate "prev = c.x.shift(1)"` |
 
 ### 4. Column Selection & Renaming (`select`, `rename`)

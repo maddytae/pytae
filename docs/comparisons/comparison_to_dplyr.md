@@ -159,7 +159,7 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 |:---|:---|:---|:---|
 | **Simple Derivation** | `mutate(df, y = a / b)` | `df.mutate(y=c.a / c.b)` | `-mutate "y = c.a / c.b"` |
 | **Sequential Calculations**| `mutate(df, a = 1, b = a * 2)` | `df.mutate(a=1, b=c.a * 2)` | `-mutate "a=1, b=c.a*2"` |
-| **Conditional (If/Else)** | `mutate(df, f = if_else(x > 0, "pos", "neg"))` | `df.mutate(f=c.x.when(c.x > 0, 'pos', 'neg'))` | `-mutate "f=if_else(c.x>0,'pos','neg')"` |
+| **Conditional (If/Else)** | `mutate(df, f = if_else(x > 0, "pos", "neg"))` | `df.mutate(f=if_else(c.x > 0, 'pos', 'neg'))` | `-mutate "f=if_else(c.x>0,'pos','neg')"` |
 | **Lag / Lead** | `mutate(df, prev = lag(x, 1))` | `df.mutate(prev=c.x.shift(1))` | `-mutate "prev = c.x.shift(1)"` |
 
 ### 3. Column Selection & Exclusion (`select`, `rename`)

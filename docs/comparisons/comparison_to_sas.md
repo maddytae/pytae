@@ -238,7 +238,7 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 |:---|:---|:---|:---|
 | **Simple Math** | `y = a / b;` | `df.mutate(y=c.a / c.b)` | `-mutate "y = c.a / c.b"` |
 | **Sequential Calculations**| `a = 1; b = a * 2;` | `df.mutate(a=1, b=c.a * 2)` | `-mutate "a=1, b=c.a*2"` |
-| **Conditional (If/Else)** | `IF x > 0 THEN f='pos'; ELSE f='neg';` | `df.mutate(f=c.x.when(c.x > 0, 'pos', 'neg'))` | `-mutate "f=if_else(c.x>0,'pos','neg')"` |
+| **Conditional (If/Else)** | `IF x > 0 THEN f='pos'; ELSE f='neg';` | `df.mutate(f=if_else(c.x > 0, 'pos', 'neg'))` | `-mutate "f=if_else(c.x>0,'pos','neg')"` |
 | **Lag / Previous Row** | `prev = LAG(x);` | `df.mutate(prev=c.x.shift(1))` | `-mutate "prev = c.x.shift(1)"` |
 
 ### 4. Column Selection & Renaming (`select`, `rename`)

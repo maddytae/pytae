@@ -311,11 +311,6 @@ class ColumnExpr:
     def last(self) -> ColumnExpr:
         return ColumnExpr(self._expr.last())
 
-    def when(self, then_val: Any, otherwise_val: Any) -> ColumnExpr:
-        t = then_val.to_polars() if isinstance(then_val, ColumnExpr) else pl.lit(then_val)
-        f = otherwise_val.to_polars() if isinstance(otherwise_val, ColumnExpr) else pl.lit(otherwise_val)
-        return ColumnExpr(pl.when(self._expr).then(t).otherwise(f))
-
     def map(self, mapping: dict[Any, Any], default: Any = None) -> ColumnExpr:
         has_bool_val = any(isinstance(v, bool) for v in mapping.values())
         has_non_bool_val = any(not isinstance(v, bool) for v in mapping.values())
