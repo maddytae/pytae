@@ -464,11 +464,21 @@ def _parse_filter_node(raw_expr: str) -> FilterNode:
             if ch == ",":
                 raise SystemExit(
                     f"invalid filter condition '{s}': comma ',' is not supported as a boolean operator. "
-                    f"Use 'and' or '&' instead."
+                    f"Use 'and' instead."
+                )
+            if ch == "&":
+                raise SystemExit(
+                    f"invalid filter condition '{s}': '&' is not supported in filter. "
+                    f"In line with 'one obvious way', use 'and' instead."
+                )
+            if ch == "|":
+                raise SystemExit(
+                    f"invalid filter condition '{s}': '|' is not supported in filter. "
+                    f"In line with 'one obvious way', use 'or' instead."
                 )
 
     # Split OR (lowest precedence)
-    or_parts = _split_top_level(s, ["or", "|"])
+    or_parts = _split_top_level(s, ["or"])
     if len(or_parts) > 1:
         node = _parse_filter_node(or_parts[0])
         for part in or_parts[1:]:
@@ -476,7 +486,7 @@ def _parse_filter_node(raw_expr: str) -> FilterNode:
         return node
 
     # Split AND (higher precedence than OR)
-    and_parts = _split_top_level(s, ["and", "&"])
+    and_parts = _split_top_level(s, ["and"])
     if len(and_parts) > 1:
         node = _parse_filter_node(and_parts[0])
         for part in and_parts[1:]:

@@ -39,7 +39,7 @@ Key Rules:
 1. Column names inside the expression are bare identifiers: `mass_kg = body_mass_g / 1000`.
 2. Column names containing spaces use brackets: `bmi = [body mass g] / ([bill length mm] ** 2)`.
 3. Separate multiple new column definitions with commas: `"col1 = a + b, col2 = a * 2"`.
-4. In string expressions, use natural English `or` and `and`, or bitwise `|` and `&`.
+4. In string expressions, use natural English `or`, `and`, and `not`.
 
 ---
 

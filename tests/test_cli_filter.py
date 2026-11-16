@@ -136,14 +136,14 @@ def test_filter_comma_raises_error(tmp_path):
         cli.main([path, "-filter", "species == 'Gentoo', mass > 4000", "-shape"])
 
 
-def test_filter_bitwise_symbols_supported(tmp_path, capsys):
+def test_filter_bitwise_symbols_rejected(tmp_path):
     path = _write_csv(tmp_path, pd.DataFrame({"species": ["Adelie", "Gentoo"], "mass": [3000, 5000]}))
 
-    cli.main([path, "-filter", "species == 'Gentoo' & mass > 4000", "-shape"])
-    assert capsys.readouterr().out.strip() == "(1, 2)"
+    with pytest.raises(SystemExit, match=r"'&' is not supported in filter"):
+        cli.main([path, "-filter", "species == 'Gentoo' & mass > 4000", "-shape"])
 
-    cli.main([path, "-filter", "species == 'Gentoo' | mass < 4000", "-shape"])
-    assert capsys.readouterr().out.strip() == "(2, 2)"
+    with pytest.raises(SystemExit, match=r"'\|' is not supported in filter"):
+        cli.main([path, "-filter", "species == 'Gentoo' | mass < 4000", "-shape"])
 
 
 def test_filter_cli_bracket_interval_errors(tmp_path):
