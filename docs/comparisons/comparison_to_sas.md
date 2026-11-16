@@ -83,8 +83,8 @@ RUN;
 ### The Pytae Safe Null Model
 In Pytae, missing values adhere to strict three-valued logic and IEEE-754 semantics:
 - A comparison with missing (`null` or `NaN`) always evaluates to missing / false.
-- Filtering `df.filter("age < 18")` **never** includes null or NaN records.
-- Null checks are explicit and readable: `df.filter("age.is_not_null()")` or `df.filter("age.is_null()")`.
+- Filtering `df.filter(c.age < 18)` **never** includes null or NaN records.
+- Null checks are explicit and readable: `df.filter(c.age.is_not_null())` or `df.filter(c.age.is_null())`.
 
 ---
 
@@ -225,58 +225,58 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 ### 2. Row Filtering
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Simple Filter** | `WHERE sales > 100;` (or `IF sales > 100;`) | `df.filter(c.sales > 100)` | `-filter "c.sales > 100"` |
-| **Multiple Conditions** | `WHERE a > 1 AND b = 'East';` | `df.filter(c.a > 1, c.b == 'East')` | `-filter "c.a > 1 and c.b == 'East'"` |
-| **Mathematical Range** | `WHERE 10 <= x <= 20;` | `df.filter(10 <= c.x, c.x <= 20)` | `-filter "10 <= c.x <= 20"` |
-| **Set Membership** | `WHERE cat IN ('A', 'B');` | `df.filter(c.cat.is_in(['A', 'B']))` | `-filter "c.cat in ['A', 'B']"` |
-| **Spaced Column Name** | `WHERE 'gross sales'n > 50;` | `df.filter(c['gross sales'] > 50)` | `-filter "c['gross sales'] > 50"` |
-| **String Prefix Match**| `WHERE name LIKE 'A%';` | `df.filter(c.name.str.starts_with('A'))` | `-filter "c.name.str.starts_with('A')"` |
-| **Non-Missing Check** | `WHERE col IS NOT MISSING;` | `df.filter(c.col.is_not_null())` | `-filter "c.col.is_not_null()"` |
+| **Simple Filter** | `WHERE sales > 100;` (or `IF sales > 100;`) | `df.filter(c.sales > 100)` | `-filter "sales > 100"` |
+| **Multiple Conditions** | `WHERE a > 1 AND b = 'East';` | `df.filter(c.a > 1, c.b == 'East')` | `-filter "a > 1 and b == 'East'"` |
+| **Mathematical Range** | `WHERE 10 <= x <= 20;` | `df.filter(10 <= c.x, c.x <= 20)` | `-filter "10 <= x <= 20"` |
+| **Set Membership** | `WHERE cat IN ('A', 'B');` | `df.filter(c.cat.is_in(['A', 'B']))` | `-filter "cat in ['A', 'B']"` |
+| **Spaced Column Name** | `WHERE 'gross sales'n > 50;` | `df.filter(c['gross sales'] > 50)` | `-filter "[gross sales] > 50"` |
+| **String Prefix Match**| `WHERE name LIKE 'A%';` | `df.filter(c.name.str.starts_with('A'))` | `-filter "name.str.starts_with('A')"` |
+| **Non-Missing Check** | `WHERE col IS NOT MISSING;` | `df.filter(c.col.is_not_null())` | `-filter "col.is_not_null()"` |
 
 ### 3. Column Derivations & Feature Engineering (`mutate`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Simple Math** | `y = a / b;` | `df.mutate(y=c.a / c.b)` | `-mutate "y = c.a / c.b"` |
-| **Sequential Calculations**| `a = 1; b = a * 2;` | `df.mutate(a=1, b=c.a * 2)` | `-mutate "a=1, b=c.a*2"` |
-| **Conditional (If/Else)** | `IF x > 0 THEN f='pos'; ELSE f='neg';` | `df.mutate(f=if_else(c.x > 0, 'pos', 'neg'))` | `-mutate "f=if_else(c.x>0,'pos','neg')"` |
-| **Lag / Previous Row** | `prev = LAG(x);` | `df.mutate(prev=c.x.shift(1))` | `-mutate "prev = c.x.shift(1)"` |
+| **Simple Math** | `y = a / b;` | `df.mutate(y=c.a / c.b)` | `-mutate "y = a / b"` |
+| **Sequential Calculations**| `a = 1; b = a * 2;` | `df.mutate(a=1, b=c.a * 2)` | `-mutate "a=1, b=a*2"` |
+| **Conditional (If/Else)** | `IF x > 0 THEN f='pos'; ELSE f='neg';` | `df.mutate(f=if_else(c.x > 0, 'pos', 'neg'))` | `-mutate "f=if_else(x>0,'pos','neg')"` |
+| **Lag / Previous Row** | `prev = LAG(x);` | `df.mutate(prev=c.x.shift(1))` | `-mutate "prev = x.shift(1)"` |
 
 ### 4. Column Selection & Renaming (`select`, `rename`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Keep Columns** | `KEEP a b;` (or `SET in (KEEP=a b);`) | `df.select(c.a, c.b)` | `-select "c.a, c.b"` |
-| **Drop Columns** | `DROP c d;` (or `SET in (DROP=c d);`) | `df.select(~c.c, ~c.d)` | `-select "~c.c, ~c.d"` |
+| **Keep Columns** | `KEEP a b;` (or `SET in (KEEP=a b);`) | `df.select(c.a, c.b)` | `-select "a, b"` |
+| **Drop Columns** | `DROP c d;` (or `SET in (DROP=c d);`) | `df.select(~c.c, ~c.d)` | `-select "~c, ~d"` |
 | **Rename Variables** | `RENAME old=new;` | `df.rename("old:new")` | `-rename "old:new"` |
-| **Inline Select & Rename**| `SET in (KEEP=a RENAME=(a=b));` | `df.select(b=c.a)` | `-select "b=c.a"` |
+| **Inline Select & Rename**| `SET in (KEEP=a RENAME=(a=b));` | `df.select(b=c.a)` | `-select "b=a"` |
 
 ### 5. Row Sorting (`arrange`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Ascending Sort** | `PROC SORT; BY sales; RUN;` | `df.arrange(c.sales.asc())` | `-arrange c.sales` |
-| **Descending Sort** | `PROC SORT; BY DESCENDING sales; RUN;` | `df.arrange(c.sales.desc())` | `-arrange "c.sales.desc()"` |
-| **Multi-Column Sort** | `PROC SORT; BY a DESCENDING b; RUN;` | `df.arrange(c.a.asc(), c.b.desc())` | `-arrange "c.a, c.b.desc()"` |
+| **Ascending Sort** | `PROC SORT; BY sales; RUN;` | `df.arrange(c.sales.asc())` | `-arrange sales` |
+| **Descending Sort** | `PROC SORT; BY DESCENDING sales; RUN;` | `df.arrange(c.sales.desc())` | `-arrange "sales desc"` |
+| **Multi-Column Sort** | `PROC SORT; BY a DESCENDING b; RUN;` | `df.arrange(c.a.asc(), c.b.desc())` | `-arrange "a, b desc"` |
 
 ### 6. Grouped Summaries & Counting (`count`, `by` + `agg`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Frequency Count** | `PROC FREQ; TABLES g; RUN;` | `df.count("g")` | `-count g` |
-| **Group Mean** | `PROC MEANS NWAY NOPRINT; CLASS g; VAR x; OUTPUT OUT=out MEAN=m; RUN;` | `df.by("g").agg(m="x:mean")` | `-by g -agg m=x:mean` |
-| **Observation Count** | `OUTPUT OUT=out N=n;` | `df.by("g").agg(total="count")` | `-by g -agg total=count` |
-| **Multiple Metrics** | `OUTPUT OUT=out MEAN=m SUM=s MIN=mn MAX=mx;` | `df.by("g").agg(m="x:mean", s="x:sum")` | `-by g -agg "m=x:mean,s=x:sum"` |
+| **Frequency Count** | `PROC FREQ; TABLES g; RUN;` | `df.count(c.g)` | `-count g` |
+| **Group Mean** | `PROC MEANS NWAY NOPRINT; CLASS g; VAR x; OUTPUT OUT=out MEAN=m; RUN;` | `df.by(c.g).agg(m=c.x.mean())` | `-by g -agg "m = x.mean()"` |
+| **Observation Count** | `OUTPUT OUT=out N=n;` | `df.by(c.g).agg(total=c.g.count())` | `-by g -agg "total = count()"` |
+| **Multiple Metrics** | `OUTPUT OUT=out MEAN=m SUM=s MIN=mn MAX=mx;` | `df.by(c.g).agg(m=c.x.mean(), s=c.x.sum())` | `-by g -agg "m=x.mean(),s=x.sum()"` |
 | **Preserve Missing Groups**| `PROC MEANS MISSING;` *(Defaults to dropping!)*| Default behavior (`dropna=False`) | Default behavior |
 
 ### 7. Deduplication (`distinct`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
 | **Deduplicate Table** | `PROC SORT NODUPRECS; BY _ALL_; RUN;` | `df.distinct()` | `-distinct` |
-| **Deduplicate by Keys** | `PROC SORT NODUPKEY; BY a b; RUN;` | `df.distinct("a", "b")` | `-distinct "a,b"` |
+| **Deduplicate by Keys** | `PROC SORT NODUPKEY; BY a b; RUN;` | `df.distinct(c.a, c.b)` | `-distinct "a,b"` |
 
 ### 8. Extreme Record Slicing (`arrange` + `head` / `tail`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Top N Records** | `PROC SORT; BY DESCENDING x; DATA out; SET in; IF _N_ <= 5; RUN;` | `df.arrange("x desc").head(5)` | `-arrange "x desc" -head 5` |
-| **Bottom N Records** | `PROC SORT; BY x; DATA out; SET in; IF _N_ <= 5; RUN;` | `df.arrange("x").head(5)` | `-arrange x -head 5` |
-| **Top N per Group** | `PROC SORT; BY g DESCENDING x; DATA out; SET in; BY g; IF FIRST.g; RUN;` | `df.by("g").arrange("x desc").head(1)` | `-by g -arrange "x desc" -head 1` |
+| **Top N Records** | `PROC SORT; BY DESCENDING x; DATA out; SET in; IF _N_ <= 5; RUN;` | `df.arrange(c.x.desc()).head(5)` | `-arrange "x desc" -head 5` |
+| **Bottom N Records** | `PROC SORT; BY x; DATA out; SET in; IF _N_ <= 5; RUN;` | `df.arrange(c.x.asc()).head(5)` | `-arrange x -head 5` |
+| **Top N per Group** | `PROC SORT; BY g DESCENDING x; DATA out; SET in; BY g; IF FIRST.g; RUN;` | `df.by(c.g).arrange(c.x.desc()).head(1)` | `-by g -arrange "x desc" -head 1` |
 
 ### 9. Reshaping & Pivoting (`wide`, `long`, `pivot`)
 | Task | SAS | Pytae (Python) | Pytae CLI |
@@ -361,29 +361,30 @@ RUN;
 ```python
 import pandas as pd
 import pytae as pt
+from pytae import c
 
 # Ingest directly from SAS datasets or Parquet
 vsl = pt.DataFrame(pd.read_sas("vsl.sas7bdat"))
 dm = pt.DataFrame(pd.read_sas("dm.sas7bdat"))
 
 summary = (
-    vsl.filter("VISIT == 'Baseline' & SYSBP.is_not_null() & DIABP.is_not_null()")
+    vsl.filter(c.VISIT == 'Baseline', c.SYSBP.is_not_null(), c.DIABP.is_not_null())
     .join(dm, on="USUBJID", how="inner")
     .mutate(
-        pulse_pressure="SYSBP - DIABP",
-        htn_tier="case_when("
-            "SYSBP >= 140 | DIABP >= 90, 'Stage 2', "
-            "SYSBP >= 130 | DIABP >= 80, 'Stage 1', "
-            "'Normal'"
-        ")"
+        pulse_pressure=c.SYSBP - c.DIABP,
+        htn_tier=pt.case_when(
+            (c.SYSBP >= 140) | (c.DIABP >= 90), 'Stage 2',
+            (c.SYSBP >= 130) | (c.DIABP >= 80), 'Stage 1',
+            default='Normal'
+        )
     )
-    .by("TRTP", "SEX")
+    .by(c.TRTP, c.SEX)
     .agg(
-        n_subjects="count",
-        mean_sysbp="SYSBP:mean",
-        mean_pp="pulse_pressure:mean"
+        n_subjects=c.USUBJID.count(),
+        mean_sysbp=c.SYSBP.mean(),
+        mean_pp=c.pulse_pressure.mean()
     )
-    .arrange("mean_sysbp desc")
+    .arrange(c.mean_sysbp.desc())
 )
 
 # Export clean result to Parquet or CSV
@@ -395,9 +396,9 @@ summary.to("summary.parquet")
 pytae vsl.sas7bdat \
   -filter "VISIT == 'Baseline' and SYSBP.is_not_null() and DIABP.is_not_null()" \
   -join "dm.sas7bdat,on=USUBJID,how=inner" \
-  -mutate "pulse_pressure = SYSBP - DIABP, htn_tier = case_when(SYSBP >= 140 | DIABP >= 90, 'Stage 2', SYSBP >= 130 | DIABP >= 80, 'Stage 1', 'Normal')" \
+  -mutate "pulse_pressure = SYSBP - DIABP, htn_tier = case_when(SYSBP >= 140 | DIABP >= 90, 'Stage 2', SYSBP >= 130 | DIABP >= 80, 'Stage 1', default='Normal')" \
   -by TRTP,SEX \
-  -agg "n_subjects = count, mean_sysbp = mean(SYSBP), mean_pp = mean(pulse_pressure)" \
+  -agg "n_subjects = count(), mean_sysbp = SYSBP.mean(), mean_pp = pulse_pressure.mean()" \
   -arrange "mean_sysbp desc" \
   -o summary.parquet
 ```

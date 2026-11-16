@@ -37,10 +37,10 @@ In R, `dplyr` relies heavily on Non-Standard Evaluation (NSE). While `filter(df,
 - Passing column names dynamically requires switching between `all_of()`, `any_of()`, and `.data[[col]]`.
 
 ### The Pytae Solution
-In Pytae, column expressions are cleanly expressed as readable strings or Python callables:
-- Interactive code is concise: `df.filter("mass > 100")`
-- Dynamic variables integrate cleanly using standard Python f-strings: `df.filter(f"{col} > {threshold}")`
-- In-memory variables are referenced directly via `@var`: `df.filter("mass > @min_mass")`
+In Pytae, column expressions are cleanly expressed using type-safe, autocomplete-friendly `c.` column objects in Python:
+- Interactive code is concise: `df.filter(c.mass > 100)`
+- Dynamic variables integrate cleanly using standard Python: `df.filter(c[col] > threshold)`
+- In-memory variables are referenced directly via standard Python scope.
 - Complex business logic can always drop back to native Python callables: `df.filter(lambda d: custom_func(d['mass']))`
 
 ---
@@ -146,50 +146,50 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 ### 1. Row Filtering
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Simple Filter** | `filter(df, sales > 100)` | `df.filter(c.sales > 100)` | `-filter "c.sales > 100"` |
-| **Multiple Conditions** | `filter(df, a > 1, b == "E")` | `df.filter(c.a > 1, c.b == 'E')` | `-filter "c.a > 1 and c.b == 'E'"` |
-| **Interval / Range** | `filter(df, between(x, 10, 20))` | `df.filter(10 <= c.x, c.x <= 20)` | `-filter "10 <= c.x <= 20"` |
-| **Set Membership** | `filter(df, cat %in% c("A", "B"))` | `df.filter(c.cat.is_in(['A', 'B']))` | `-filter "c.cat in ['A', 'B']"` |
-| **Spaced Columns** | `filter(df, \`gross sales\` > 50)` | `df.filter(c['gross sales'] > 50)` | `-filter "c['gross sales'] > 50"` |
-| **Prefix Match** | `filter(df, str_starts(name, "A"))`| `df.filter(c.name.str.starts_with('A'))`| `-filter "c.name.str.starts_with('A')"` |
-| **Null Row Check** | `filter(df, !is.na(col))` | `df.filter(c.col.is_not_null())` | `-filter "c.col.is_not_null()"` |
+| **Simple Filter** | `filter(df, sales > 100)` | `df.filter(c.sales > 100)` | `-filter "sales > 100"` |
+| **Multiple Conditions** | `filter(df, a > 1, b == "E")` | `df.filter(c.a > 1, c.b == 'E')` | `-filter "a > 1 and b == 'E'"` |
+| **Interval / Range** | `filter(df, between(x, 10, 20))` | `df.filter(10 <= c.x, c.x <= 20)` | `-filter "10 <= x <= 20"` |
+| **Set Membership** | `filter(df, cat %in% c("A", "B"))` | `df.filter(c.cat.is_in(['A', 'B']))` | `-filter "cat in ['A', 'B']"` |
+| **Spaced Columns** | `filter(df, \`gross sales\` > 50)` | `df.filter(c['gross sales'] > 50)` | `-filter "[gross sales] > 50"` |
+| **Prefix Match** | `filter(df, str_starts(name, "A"))`| `df.filter(c.name.str.starts_with('A'))`| `-filter "name.str.starts_with('A')"` |
+| **Null Row Check** | `filter(df, !is.na(col))` | `df.filter(c.col.is_not_null())` | `-filter "col.is_not_null()"` |
 
 ### 2. Feature Engineering & Column Derivations (`mutate`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Simple Derivation** | `mutate(df, y = a / b)` | `df.mutate(y=c.a / c.b)` | `-mutate "y = c.a / c.b"` |
-| **Sequential Calculations**| `mutate(df, a = 1, b = a * 2)` | `df.mutate(a=1, b=c.a * 2)` | `-mutate "a=1, b=c.a*2"` |
-| **Conditional (If/Else)** | `mutate(df, f = if_else(x > 0, "pos", "neg"))` | `df.mutate(f=if_else(c.x > 0, 'pos', 'neg'))` | `-mutate "f=if_else(c.x>0,'pos','neg')"` |
-| **Lag / Lead** | `mutate(df, prev = lag(x, 1))` | `df.mutate(prev=c.x.shift(1))` | `-mutate "prev = c.x.shift(1)"` |
+| **Simple Derivation** | `mutate(df, y = a / b)` | `df.mutate(y=c.a / c.b)` | `-mutate "y = a / b"` |
+| **Sequential Calculations**| `mutate(df, a = 1, b = a * 2)` | `df.mutate(a=1, b=c.a * 2)` | `-mutate "a=1, b=a*2"` |
+| **Conditional (If/Else)** | `mutate(df, f = if_else(x > 0, "pos", "neg"))` | `df.mutate(f=if_else(c.x > 0, 'pos', 'neg'))` | `-mutate "f=if_else(x>0,'pos','neg')"` |
+| **Lag / Lead** | `mutate(df, prev = lag(x, 1))` | `df.mutate(prev=c.x.shift(1))` | `-mutate "prev = x.shift(1)"` |
 
 ### 3. Column Selection & Exclusion (`select`, `rename`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Select Columns** | `select(df, a, b)` | `df.select(c.a, c.b)` | `-select "c.a, c.b"` |
-| **Drop Columns** | `select(df, -c, -d)` | `df.select(~c.c, ~c.d)` | `-select "~c.c, ~c.d"` |
+| **Select Columns** | `select(df, a, b)` | `df.select(c.a, c.b)` | `-select "a, b"` |
+| **Drop Columns** | `select(df, -c, -d)` | `df.select(~c.c, ~c.d)` | `-select "~c, ~d"` |
 | **Pattern Match** | `select(df, contains("bill"))` | `df.select(contains="bill")` | `-select "contains=bill"` |
 | **Prefix Match** | `select(df, starts_with("b"))` | `df.select(starts_with="b")` | `-select "starts_with=b"` |
-| **Inline Rename** | `select(df, new_b = a)` | `df.select(new_b=c.a)` | `-select "new_b=c.a"` |
+| **Inline Rename** | `select(df, new_b = a)` | `df.select(new_b=c.a)` | `-select "new_b=a"` |
 | **Dedicated Rename** | `rename(df, new_b = a)` | `df.rename("a:new_b")` | `-rename "a:new_b"` |
 | **Reorder with Rest** | `select(df, lead, everything())` | `df.select(c.lead, pt.everything)` | N/A |
 
 ### 4. Row Sorting (`arrange`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Ascending** | `arrange(df, sales)` | `df.arrange(c.sales.asc())` | `-arrange c.sales` |
-| **Descending** | `arrange(df, desc(sales))` | `df.arrange(c.sales.desc())` | `-arrange "c.sales.desc()"` |
-| **Multi-Column Mixed** | `arrange(df, a, desc(b))` | `df.arrange(c.a.asc(), c.b.desc())` | `-arrange "c.a, c.b.desc()"` |
-| **Spaced Columns** | `arrange(df, desc(\`gross sales\`))` | `df.arrange(c['gross sales'].desc())` | `-arrange "c['gross sales'].desc()"` |
+| **Ascending** | `arrange(df, sales)` | `df.arrange(c.sales.asc())` | `-arrange sales` |
+| **Descending** | `arrange(df, desc(sales))` | `df.arrange(c.sales.desc())` | `-arrange "sales desc"` |
+| **Multi-Column Mixed** | `arrange(df, a, desc(b))` | `df.arrange(c.a.asc(), c.b.desc())` | `-arrange "a, b desc"` |
+| **Spaced Columns** | `arrange(df, desc(\`gross sales\`))` | `df.arrange(c['gross sales'].desc())` | `-arrange "[gross sales] desc"` |
 
 ### 5. Grouped Summaries & Counting (`count`, `by` + `agg`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Count Frequencies** | `count(df, g, sort = TRUE)` | `df.count("g")` | `-count g` |
-| **Group Row Count** | `df %>% group_by(g) %>% count()` | `df.by("g").count()` | `-by g -count` |
-| **Group Summary** | `df %>% group_by(g) %>% summarise(m = mean(x)) %>% ungroup()` | `df.by("g").agg(m="x:mean")` | `-by g -agg m=x:mean` |
-| **Summary with Count** | `summarise(df, total = n(), m = mean(x))` | `df.by("g").agg(total="count", m="x:mean")` | `-by g -agg "total=count,m=x:mean"` |
-| **Multiple Metrics** | `summarise(df, m = mean(x), s = sum(x))` | `df.by("g").agg(m="x:mean", s="x:sum")` | `-by g -agg "m=x:mean,s=x:sum"` |
-| **Whole-Table Summary**| `summarise(df, m = mean(x))` | `df.agg(m="x:mean", n="count")` | `-agg "m=x:mean,n=count"` |
+| **Count Frequencies** | `count(df, g, sort = TRUE)` | `df.count(c.g)` | `-count g` |
+| **Group Row Count** | `df %>% group_by(g) %>% count()` | `df.by(c.g).count()` | `-by g -count` |
+| **Group Summary** | `df %>% group_by(g) %>% summarise(m = mean(x)) %>% ungroup()` | `df.by(c.g).agg(m=c.x.mean())` | `-by g -agg "m = x.mean()"` |
+| **Summary with Count** | `summarise(df, total = n(), m = mean(x))` | `df.by(c.g).agg(total=c.g.count(), m=c.x.mean())` | `-by g -agg "total=count(),m=x.mean()"` |
+| **Multiple Metrics** | `summarise(df, m = mean(x), s = sum(x))` | `df.by(c.g).agg(m=c.x.mean(), s=c.x.sum())` | `-by g -agg "m=x.mean(),s=x.sum()"` |
+| **Whole-Table Summary**| `summarise(df, m = mean(x))` | `df.agg(m=c.x.mean(), n=c.x.count())` | `-agg "m=x.mean(),n=count()"` |
 
 ### 6. Slicing Top / Bottom Records (`arrange` + `head` / `tail`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
@@ -247,11 +247,11 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 ### 13. Grouped Window Calculations & Lag/Lead
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Group Mean Window** | `df %>% group_by(g) %>% mutate(m = mean(x)) %>% ungroup()` | `df.by("g").mutate(m="mean(x)")` | `-by g -mutate "m = mean(x)"` |
-| **Within-Group Percentage** | `df %>% group_by(g) %>% mutate(pct = x / sum(x)) %>% ungroup()` | `df.by("g").mutate(pct="x / sum(x)")` | `-by g -mutate "pct = x / sum(x)"` |
-| **Within-Group Rank** | `df %>% group_by(g) %>% mutate(r = min_rank(x)) %>% ungroup()` | `df.by("g").mutate(r="rank(x)")` | `-by g -mutate "r = rank(x)"` |
-| **Grouped Shift / Lag** | `df %>% group_by(g) %>% mutate(prev = lag(x)) %>% ungroup()` | `df.by("g").mutate(prev="shift(x, 1)")` | `-by g -mutate "prev = shift(x, 1)"` |
-| **Grouped Cumulative Sum** | `df %>% group_by(g) %>% mutate(cum = cumsum(x)) %>% ungroup()` | `df.by("g").mutate(cum="x.cumsum()")` | `-by g -mutate "cum = x.cumsum()"` |
+| **Group Mean Window** | `df %>% group_by(g) %>% mutate(m = mean(x)) %>% ungroup()` | `df.by(c.g).mutate(m=c.x.mean())` | `-by g -mutate "m = mean(x)"` |
+| **Within-Group Percentage** | `df %>% group_by(g) %>% mutate(pct = x / sum(x)) %>% ungroup()` | `df.by(c.g).mutate(pct=c.x / c.x.sum())` | `-by g -mutate "pct = x / sum(x)"` |
+| **Within-Group Rank** | `df %>% group_by(g) %>% mutate(r = min_rank(x)) %>% ungroup()` | `df.by(c.g).mutate(r=c.x.rank())` | `-by g -mutate "r = rank(x)"` |
+| **Grouped Shift / Lag** | `df %>% group_by(g) %>% mutate(prev = lag(x)) %>% ungroup()` | `df.by(c.g).mutate(prev=c.x.shift(1))` | `-by g -mutate "prev = shift(x, 1)"` |
+| **Grouped Cumulative Sum** | `df %>% group_by(g) %>% mutate(cum = cumsum(x)) %>% ungroup()` | `df.by(c.g).mutate(cum=c.x.cumsum())` | `-by g -mutate "cum = x.cumsum()"` |
 
 ---
 
@@ -283,14 +283,15 @@ write_parquet(summary_report, "summary.parquet")
 ### In Pytae (Python Library):
 ```python
 import pytae as pt
+from pytae import c
 
 (
     pt.read("penguins.parquet")
-    .filter("body_mass_g > 3500 & sex.is_not_null()")
-    .mutate(body_mass_kg="body_mass_g / 1000", bill_ratio="bill_length_mm / bill_depth_mm")
-    .by("species", "island")
-    .agg(n="count", avg_mass_kg="body_mass_kg:mean", max_ratio="bill_ratio:max")
-    .arrange("avg_mass_kg desc")
+    .filter(c.body_mass_g > 3500, c.sex.is_not_null())
+    .mutate(body_mass_kg=c.body_mass_g / 1000, bill_ratio=c.bill_length_mm / c.bill_depth_mm)
+    .by(c.species, c.island)
+    .agg(n=c.species.count(), avg_mass_kg=c.body_mass_kg.mean(), max_ratio=c.bill_ratio.max())
+    .arrange(c.avg_mass_kg.desc())
     .to("summary.parquet")
 )
 ```
@@ -301,7 +302,7 @@ pytae penguins.parquet \
   -filter "body_mass_g > 3500 and sex.is_not_null()" \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm" \
   -by species,island \
-  -agg "n = count, avg_mass_kg = body_mass_kg:mean, max_ratio = bill_ratio:max" \
+  -agg "n = count(), avg_mass_kg = body_mass_kg.mean(), max_ratio = bill_ratio.max()" \
   -arrange "avg_mass_kg desc" \
   -o summary.parquet
 ```

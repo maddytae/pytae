@@ -46,18 +46,18 @@ Pytae's `-filter` compiles expressions directly into Polars native engine filter
 String values inside `-filter` must be enclosed in single quotes `'value'`, and equality comparisons strictly require `==`:
 
 ```bash
-pytae penguins.parquet -filter "c.species == 'Gentoo'" -head 3
+pytae penguins.parquet -filter "species == 'Gentoo'" -head 3
 ```
 
 > [!IMPORTANT]
 > **Strict Equality and String Quoting Requirements**:
 > - **Strict `==`**: Equality comparisons require `==`. Single `=` is reserved exclusively for column assignments in `-mutate`. Using `=` in `-filter` produces an immediate error guiding you to use `==`.
-> - **Quoted String Literals**: String literals must always be quoted (e.g. `'Gentoo'`, `'9'`). If an unquoted literal or number is passed when filtering a string column (e.g. `c.species == Gentoo`), `pytae` raises an explicit error guiding you to quote the string.
+> - **Quoted String Literals**: String literals must always be quoted (e.g. `'Gentoo'`, `'9'`). If an unquoted literal or number is passed when filtering a string column (e.g. `species == Gentoo`), `pytae` raises an explicit error guiding you to quote the string.
 >
 > **Shell Quoting Rule (Single Quotes Inside Double Quotes)**:
 > In bash, zsh, or PowerShell, wrap the `-filter` argument in outer double quotes and use **single quotes** for string literals:
 > ```bash
-> pytae data.parquet -filter "c.currency == 'CAD' and c.reporting_date in ['2026-09-30']"
+> pytae data.parquet -filter "currency == 'CAD' and reporting_date in ['2026-09-30']"
 > ```
 
 **Output:**
@@ -74,7 +74,7 @@ pytae penguins.parquet -filter "c.species == 'Gentoo'" -head 3
 Standard mathematical comparison operators are supported:
 
 ```bash
-pytae penguins.parquet -filter "c.body_mass_g > 5500" -select "c.species, c.island, c.body_mass_g" -head 3
+pytae penguins.parquet -filter "body_mass_g > 5500" -select "species, island, body_mass_g" -head 3
 ```
 
 **Output:**
@@ -92,19 +92,19 @@ Filter expressions support full boolean logic with `and`, `or`, `not`, bitwise o
 
 ```bash
 # Conjunction with 'and' or '&'
-pytae penguins.parquet -filter "c.species == 'Gentoo' and c.body_mass_g > 5500" -select "c.species, c.body_mass_g" -head 3
+pytae penguins.parquet -filter "species == 'Gentoo' and body_mass_g > 5500" -select "species, body_mass_g" -head 3
 
 # Disjunction with 'or' or '|'
-pytae penguins.parquet -filter "c.island == 'Dream' or c.island == 'Torgersen'" -select "c.species, c.island" -head 3
+pytae penguins.parquet -filter "island == 'Dream' or island == 'Torgersen'" -select "species, island" -head 3
 
 # Negation with 'not'
-pytae penguins.parquet -filter "not (c.body_mass_g > 4000)" -head 3
+pytae penguins.parquet -filter "not (body_mass_g > 4000)" -head 3
 
 # Bare boolean columns
-pytae loans.parquet -filter "c.is_active and not c.is_delinquent"
+pytae loans.parquet -filter "is_active and not is_delinquent"
 
 # Grouping and precedence with nested parentheses:
-pytae penguins.parquet -filter "(c.species == 'Adelie' or c.species == 'Chinstrap') and c.body_mass_g > 4000" -head 3
+pytae penguins.parquet -filter "(species == 'Adelie' or species == 'Chinstrap') and body_mass_g > 4000" -head 3
 ```
 
 ### Chained Comparisons & LHS Arithmetic Expressions
@@ -113,22 +113,26 @@ Filter expressions support chained comparisons and arithmetic operations:
 
 ```bash
 # Chained mathematical intervals
-pytae penguins.parquet -filter "3000 <= c.body_mass_g <= 4500"
+pytae penguins.parquet -filter "3000 <= body_mass_g <= 4500"
 
 # Arithmetic expressions
-pytae penguins.parquet -filter "c.bill_length_mm * 2 > 80"
+pytae penguins.parquet -filter "bill_length_mm * 2 > 80"
 ```
 
 <a id="column-to-column-comparisons-col_a--col_b"></a>
 ### Column-to-Column Comparisons (`col_a == col_b`)
 
-You can compare two columns directly against each other (e.g. reconciling IDs, detecting limit breaches) in both Python and CLI using bare column names:
+You can compare two columns directly against each other (e.g. reconciling IDs, detecting limit breaches) using `c.` in Python and bare column names in CLI:
+
+```python
+# In Python API (type-safe c. expressions)
+from pytae import c
+
+df.filter(c.tranche_id == c.deal_id)
+df.filter(c.amount > c.limit)
+```
 
 ```bash
-# In Python API
-df.filter("tranche_id == deal_id")
-df.filter("amount > limit")
-
 # In CLI (bare column names on both sides)
 pytae loans.parquet -filter "tranche_id == deal_id"
 pytae loans.parquet -filter "amount > limit"
@@ -328,23 +332,24 @@ pytae raw_events.parquet \
 
 ```python
 import pytae as pt
+from pytae import c
 
 df = pt.read("penguins.parquet")
 
 # Method chaining:
 validated = (
     df
-    .filter("body_mass_g > 3000")
-    .assert_("species in ['Adelie', 'Gentoo', 'Chinstrap']")
-    .mutate("mass_kg = body_mass_g / 1000")
-    .assert_("mass_kg > 3.0")
+    .filter(c.body_mass_g > 3000)
+    .assert_(c.species.is_in(['Adelie', 'Gentoo', 'Chinstrap']))
+    .mutate(mass_kg=c.body_mass_g / 1000)
+    .assert_(c.mass_kg > 3.0)
 )
 
 # Functional API:
-pt.assert_(df, "bill_length_mm > 0", "sex.is_not_null()")
+pt.assert_(df, c.bill_length_mm > 0, c.sex.is_not_null())
 
 # Accessor API:
-df.pt.assert_("body_mass_g > 0")
+df.pt.assert_(c.body_mass_g > 0)
 ```
 
 ---

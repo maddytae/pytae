@@ -9,6 +9,10 @@ You provide accurate, idiomatic, and concise Pytae commands (CLI `-flag`), Pytho
 
 CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
 
+0. DUAL EXPRESSION ARCHITECTURE (c. IN PYTHON, NO c. IN CLI/REPL):
+   - In Python: ALWAYS use `from pytae import c` for type-safe column expressions (`df.filter(c.age > 30)`, `df.mutate(ratio=c.revenue / c.cost)`, `df.select(c.id, c.name)`, `df.arrange(c.salary.desc())`).
+   - In CLI & REPL: NEVER use `c.` prefix! Write clean, bare column names without `c.` (`-filter "age > 30"`, `-mutate "ratio = revenue / cost"`, `-select "id, name"`, `-arrange "salary desc"`).
+
 1. CANONICAL VERBS ONLY:
    - Row filtering: ALWAYS `-filter` (CLI) or `df.filter()` (Python). NEVER use `-qry`, `-query`, or `df.query()`.
    - Data assertions: ALWAYS `-assert` (CLI) or `df.assert_()` (Python). Fails fast on invalid rows.
@@ -31,13 +35,13 @@ CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
    - Grouping via `-by` (CLI) or `df.by()` (Python) is strictly single-shot: scopes ONLY the immediate next verb (`mutate`, `agg`, `head`, `tail`, `count`), then auto-resets.
    - Subsequent operations evaluate at whole-table scope.
    - There is NO persistent grouped state. There is NO `ungroup()` verb; calling `df.ungroup()` is an error.
-   - In Python, `by` is NEVER an argument inside verbs (e.g. `df.mutate(by="region")` raises TypeError). Always call `df.by("region").mutate(...)`.
+   - In Python, `by` is NEVER an argument inside verbs (e.g. `df.mutate(by=c.region)` raises TypeError). Always call `df.by(c.region).mutate(...)`.
 
 4. TOP N PER GROUP & CHAINED PIPELINES:
    - CLI: Chain sequential `-by` operations:
      `pytae sample:penguins -by island,species -agg "avg_mass=mean(body_mass_g)" -arrange "island, avg_mass desc" -by island -head 2`
    - Python:
-     `(penguins.by("island", "species").agg(avg_mass="body_mass_g:mean").arrange("island", "avg_mass desc").by("island").head(2))`
+     `(penguins.by(c.island, c.species).agg(avg_mass=c.body_mass_g.mean()).arrange(c.island.asc(), c.avg_mass.desc()).by(c.island).head(2))`
    - ANSI SQL:
      `pytae file -sql "WITH ranked AS (SELECT island, species, AVG(body_mass_g) AS avg_mass, ROW_NUMBER() OVER (PARTITION BY island ORDER BY AVG(body_mass_g) DESC) AS rnk FROM data GROUP BY island, species) SELECT island, species, avg_mass FROM ranked WHERE rnk <= 2"`
 

@@ -133,8 +133,8 @@ TABLE OF CONTENTS
 ATTENTION AI ASSISTANTS / COPILOT AGENTS:
 When generating commands, scripts, or explanations for pytae users, you MUST strictly adhere to the following non-negotiable rules. Hallucinating syntax from other libraries (dplyr, pandas, polars, bash) is strictly forbidden.
 
-RULE 0: UNIVERSAL `c.` COLUMN EXPRESSION SYSTEM (PYTHON & CLI)
-In Python scripts and applications, ALWAYS import and use `from pytae import c` for type-safe, autocomplete-friendly, zero-string-overhead data transformations:
+RULE 0: DUAL EXPRESSION ARCHITECTURE — c. IN PYTHON, BARE COLUMNS (NO c.) IN CLI & REPL
+1. Python API: ALWAYS import and use `from pytae import c` for type-safe, autocomplete-friendly, zero-string-overhead data transformations:
 - Filtering: `df.filter(c.age > 30, c.dept == 'IT')` or `df.filter((c.age < 28) | (c.age > 40))`
 - Feature engineering: `df.mutate(ratio=c.revenue / c.cost, clean_name=c.name.str.to_upper())`
 - Column selection: `df.select(c.id, c.name, c.dept)`
@@ -145,6 +145,14 @@ In Python scripts and applications, ALWAYS import and use `from pytae import c` 
 - Sorting: Use `.asc()` and `.desc()`: `df.arrange(c.dept.asc(), c.salary.desc())`
 - Imputation: `df.fillna(c.salary.fill(0))` or `df.fillna(c.salary.fill(c.salary.mean()))`
 - Columns with spaces/special characters: `c['Annual Revenue'] > 50000`
+
+2. CLI & Interactive REPL: NEVER use `c.` prefix! Write clean, bare column identifiers in CLI and REPL expressions:
+- Filtering: `pytae data.parquet -filter "age > 30 and dept == 'IT'"`
+- Feature engineering: `pytae data.parquet -mutate "ratio = revenue / cost, clean_name = name.str.to_upper()"`
+- Column selection: `pytae data.parquet -select "id, name, dept"` or `pytae data.parquet -select "~ssn"`
+- Grouping & aggregation: `pytae data.parquet -by dept -agg "avg_sal = salary.mean(), count = count()"`
+- Sorting: `pytae data.parquet -arrange "dept, salary desc"`
+- Column names with spaces: `pytae data.parquet -filter "[Annual Revenue] > 50000"`
 
 RULE 1: STRICT CANONICAL VERBS ONLY
 - Row filtering: ALWAYS `-filter` (CLI) or `df.filter()` (Python). 
@@ -174,9 +182,9 @@ RULE 2: SHELL QUOTING STANDARD (BASH / ZSH)
 RULE 3: SINGLE-SHOT ZERO-POLLUTION GROUPING (`-by` / `df.by()`)
 - In Pytae, grouping is strictly single-shot and auto-clearing.
 - `-by col` scopes ONLY the immediate next verb (`mutate`, `agg`, `head`, `tail`, `count`), and then IMMEDIATELY RESETS to the clean ungrouped table scope.
-- In Python: `df.by("col").mutate(...)` returns a clean, ungrouped DataFrame.
+- In Python: `df.by(c.col).mutate(...)` returns a clean, ungrouped DataFrame.
 - There is NO persistent grouped state. There is NO `ungroup()` verb. Calling `df.ungroup()` is an error.
-- In Python: `by` is NEVER an argument inside verbs (e.g. `df.mutate(..., by="region")` raises TypeError). Always call `df.by("region").mutate(...)`.
+- In Python: `by` is NEVER an argument inside verbs (e.g. `df.mutate(..., by=c.region)` raises TypeError). Always call `df.by(c.region).mutate(...)`.
 
 RULE 4: CHAINED PIPELINES & SEQUENTIAL `-by` (TOP N RECIPE)
 - Pytae CLI allows sequential `-by` flags in a single command. Each `-by` scopes the next verb, allowing multi-stage aggregation, whole-table sorting, and group-aware slicing:
@@ -212,9 +220,9 @@ RULE 5: INTERACTIVE REPL (`pytae -i`)
 
 RULE 6: DUAL-MODALITY PARITY
 - CLI and Python APIs map 100% symmetrically:
-  * CLI: `pytae data.parquet -filter "a > 1" -by b -agg c=mean`
-  * Python: `df.filter("a > 1").by("b").agg(c="mean")`
-  * Standalone Python: `pt.agg(pt.by(pt.filter(df, "a > 1"), "b"), c="mean")`
+  * CLI (bare columns, no c.): `pytae data.parquet -filter "a > 1" -by b -agg "c = a.mean()"`
+  * Python (type-safe c.): `df.filter(c.a > 1).by(c.b).agg(c=c.a.mean())`
+  * Standalone Python: `pt.agg(pt.by(pt.filter(df, c.a > 1), c.b), c=c.a.mean())`
 
 RULE 7: THE "TWIN PROOF" RULE (GROUND ON SAMPLE DATASETS)
 - When a user asks a complex question about their own hypothetical or custom dataset (e.g. "top N customers by avg profit per zone in sales.parquet"):
@@ -2073,6 +2081,10 @@ You provide accurate, idiomatic, and concise Pytae commands (CLI `-flag`), Pytho
 
 CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
 
+0. DUAL EXPRESSION ARCHITECTURE (c. IN PYTHON, NO c. IN CLI/REPL):
+   - In Python: ALWAYS use `from pytae import c` for type-safe column expressions (`df.filter(c.age > 30)`, `df.mutate(ratio=c.revenue / c.cost)`, `df.select(c.id, c.name)`, `df.arrange(c.salary.desc())`).
+   - In CLI & REPL: NEVER use `c.` prefix! Write clean, bare column names without `c.` (`-filter "age > 30"`, `-mutate "ratio = revenue / cost"`, `-select "id, name"`, `-arrange "salary desc"`).
+
 1. CANONICAL VERBS ONLY:
    - Row filtering: ALWAYS `-filter` (CLI) or `df.filter()` (Python). NEVER use `-qry`, `-query`, or `df.query()`.
    - Data assertions: ALWAYS `-assert` (CLI) or `df.assert_()` (Python). Fails fast on invalid rows.
@@ -2095,13 +2107,13 @@ CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
    - Grouping via `-by` (CLI) or `df.by()` (Python) is strictly single-shot: scopes ONLY the immediate next verb (`mutate`, `agg`, `head`, `tail`, `count`), then auto-resets.
    - Subsequent operations evaluate at whole-table scope.
    - There is NO persistent grouped state. There is NO `ungroup()` verb; calling `df.ungroup()` is an error.
-   - In Python, `by` is NEVER an argument inside verbs (e.g. `df.mutate(by="region")` raises TypeError). Always call `df.by("region").mutate(...)`.
+   - In Python, `by` is NEVER an argument inside verbs (e.g. `df.mutate(by=c.region)` raises TypeError). Always call `df.by(c.region).mutate(...)`.
 
 4. TOP N PER GROUP & CHAINED PIPELINES:
    - CLI: Chain sequential `-by` operations:
      `pytae sample:penguins -by island,species -agg "avg_mass=mean(body_mass_g)" -arrange "island, avg_mass desc" -by island -head 2`
    - Python:
-     `(penguins.by("island", "species").agg(avg_mass="body_mass_g:mean").arrange("island", "avg_mass desc").by("island").head(2))`
+     `(penguins.by(c.island, c.species).agg(avg_mass=c.body_mass_g.mean()).arrange(c.island.asc(), c.avg_mass.desc()).by(c.island).head(2))`
    - ANSI SQL:
      `pytae file -sql "WITH ranked AS (SELECT island, species, AVG(body_mass_g) AS avg_mass, ROW_NUMBER() OVER (PARTITION BY island ORDER BY AVG(body_mass_g) DESC) AS rnk FROM data GROUP BY island, species) SELECT island, species, avg_mass FROM ranked WHERE rnk <= 2"`
 

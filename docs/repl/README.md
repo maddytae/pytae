@@ -50,10 +50,10 @@ pytae [orders: 100,000x6]> cust = customers.csv
 Loaded customers.csv as 'cust' (15,000 rows x 5 cols).
 
 # 2. Safe, non-destructive preview
-pytae [orders, cust]> -filter "c.amount > 500" -head 3
+pytae [orders, cust]> -filter "amount > 500" -head 3
 
 # 3. Explicit state mutation
-pytae [orders, cust]> orders = -filter "c.amount > 500" -mutate "tax = c.amount * 0.08"
+pytae [orders, cust]> orders = -filter "amount > 500" -mutate "tax = amount * 0.08"
 
 # 4. Instant named snapshot (0 MB RAM overhead)
 pytae [orders, cust]> checkpoint baseline

@@ -94,10 +94,10 @@ pytae penguins.parquet -distinct "species,island"
 ```bash
 # Filter rows -> select subset -> distinct -> sort -> output
 pytae penguins.parquet \
-  -filter "c.body_mass_g > 4000" \
-  -select "c.species, c.island" \
+  -filter "body_mass_g > 4000" \
+  -select "species, island" \
   -distinct \
-  -arrange c.species
+  -arrange species
 ```
 
 **Output:**

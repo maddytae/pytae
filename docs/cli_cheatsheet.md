@@ -57,39 +57,39 @@ Filter rows cleanly using operator expressions, ranges, set membership, or colum
 
 ```bash
 # Exact match (strict '==' enforced; string values must be quoted with single quotes inside double quotes)
-pytae data.parquet -filter "c.species == 'Gentoo'"
-pytae data.parquet -filter "c.currency == 'CAD' and c.reporting_date in ['2026-09-30', '2026-08-31']"
+pytae data.parquet -filter "species == 'Gentoo'"
+pytae data.parquet -filter "currency == 'CAD' and reporting_date in ['2026-09-30', '2026-08-31']"
 
 # Numeric comparison operators (>, <, >=, <=, !=) and boolean logic (and, or, &, |, parens)
-pytae data.parquet -filter "c.body_mass_g > 5000"
-pytae data.parquet -filter "c.body_mass_g >= 3500 and c.flipper_length_mm < 210"
-pytae data.parquet -filter "(c.species == 'Adelie' or c.species == 'Chinstrap') and c.body_mass_g > 4000"
+pytae data.parquet -filter "body_mass_g > 5000"
+pytae data.parquet -filter "body_mass_g >= 3500 and flipper_length_mm < 210"
+pytae data.parquet -filter "(species == 'Adelie' or species == 'Chinstrap') and body_mass_g > 4000"
 
 # Column-to-column comparison (reconcile IDs, detect limit breaches)
-pytae loans.parquet -filter "c.exposure > c.limit"
-pytae loans.parquet -filter "c.tranche_id == c.deal_id"
+pytae loans.parquet -filter "exposure > limit"
+pytae loans.parquet -filter "tranche_id == deal_id"
 
 # Ranges & Intervals
-pytae data.parquet -filter "3000 <= c.body_mass_g <= 3500"
+pytae data.parquet -filter "3000 <= body_mass_g <= 3500"
 
 # List set membership (in, not in)
-pytae data.parquet -filter "c.species in ['Adelie', 'Chinstrap']"
-pytae data.parquet -filter "c.species not in ['Gentoo']"
+pytae data.parquet -filter "species in ['Adelie', 'Chinstrap']"
+pytae data.parquet -filter "species not in ['Gentoo']"
 
 # Null checks (universal 'is_null()' / 'is_not_null()' in expressions)
-pytae data.parquet -filter "c.sex.is_not_null()"
-pytae data.parquet -filter "c.sex.is_null()"
+pytae data.parquet -filter "sex.is_not_null()"
+pytae data.parquet -filter "sex.is_null()"
 
 # Columns with parentheses or spaces
-pytae data.parquet -filter "c['counterparty class (irb)'].is_not_null()"
+pytae data.parquet -filter "[counterparty class (irb)].is_not_null()"
 
 # Inline assertions (validates all rows satisfy conditions; fails fast on violation)
-pytae data.parquet -assert "c.body_mass_g > 0 and c.id.is_not_null()"
-pytae orders.parquet -assert "c.order_id.is_not_null() and c.amount >= 0" -o valid.parquet
+pytae data.parquet -assert "body_mass_g > 0 and id.is_not_null()"
+pytae orders.parquet -assert "order_id.is_not_null() and amount >= 0" -o valid.parquet
 
 # Drop rows containing missing values
 pytae data.parquet -dropna
-pytae data.parquet -dropna "c.body_mass_g, c.sex"
+pytae data.parquet -dropna "body_mass_g, sex"
 ```
 
 ---
@@ -100,27 +100,27 @@ Derive and overwrite columns using vectorized Polars SIMD expressions:
 
 ```bash
 # Basic arithmetic formulas
-pytae data.parquet -mutate "mass_kg = c.body_mass_g / 1000.0"
+pytae data.parquet -mutate "mass_kg = body_mass_g / 1000.0"
 
 # Sequential assignments (later columns reference earlier ones)
-pytae data.parquet -mutate "mass_kg = c.body_mass_g / 1000.0, mass_lbs = c.mass_kg * 2.20462"
+pytae data.parquet -mutate "mass_kg = body_mass_g / 1000.0, mass_lbs = mass_kg * 2.20462"
 
 # Conditional branching: if_else(condition, true_val, false_val)
-pytae data.parquet -mutate "size = if_else(c.body_mass_g > 4000, 'Large', 'Small')"
+pytae data.parquet -mutate "size = if_else(body_mass_g > 4000, 'Large', 'Small')"
 
 # Multi-condition branching: case_when
-pytae data.parquet -mutate "tier = case_when(c.body_mass_g > 5000, 'Heavy', c.body_mass_g > 3500, 'Medium', default='Light')"
+pytae data.parquet -mutate "tier = case_when(body_mass_g > 5000, 'Heavy', body_mass_g > 3500, 'Medium', default='Light')"
 
 # Categorical mapping & recoding: map(col, {dict}, default=...)
 # (Strict boolean safety: mapping booleans preserves Boolean dtype)
-pytae data.parquet -mutate "is_heavy = map(c.species, {'Gentoo': True}, default=False)"
-pytae data.parquet -mutate "region = map(c.island, {'Biscoe': 'South', 'Dream': 'North'}, default='Other')"
+pytae data.parquet -mutate "is_heavy = map(species, {'Gentoo': True}, default=False)"
+pytae data.parquet -mutate "region = map(island, {'Biscoe': 'South', 'Dream': 'North'}, default='Other')"
 
 # String functions: .str.lower(), .str.upper(), .str.slice(), .str.replace()
-pytae data.parquet -mutate "species_lower = c.species.str.lower()"
+pytae data.parquet -mutate "species_lower = species.str.lower()"
 
 # Columns with spaces
-pytae data.parquet -mutate "diff = c['gross revenue'] - c['cost']"
+pytae data.parquet -mutate "diff = [gross revenue] - cost"
 ```
 
 ---
@@ -131,13 +131,13 @@ Select, reorder, and drop columns with flexible pattern matching:
 
 ```bash
 # Explicit column selection and reordering
-pytae data.parquet -select "c.species, c.island, c.body_mass_g"
+pytae data.parquet -select "species, island, body_mass_g"
 
 # Drop columns using tilde negation (~col)
-pytae data.parquet -select "~c.sex, ~c.year"
+pytae data.parquet -select "~sex, ~year"
 
 # Range selection
-pytae data.parquet -select "c.bill_length_mm.to(c.body_mass_g)"
+pytae data.parquet -select "bill_length_mm:body_mass_g"
 
 # Pattern and prefix matching
 pytae data.parquet -select "starts_with=bill_"
@@ -191,25 +191,25 @@ Perform blazing-fast grouped calculations:
 
 ```bash
 # Group-by count
-pytae data.parquet -by c.species -count
+pytae data.parquet -by species -count
 
 # Multiple aggregations per group
-pytae data.parquet -by c.species -agg "avg_mass = c.body_mass_g.mean(), max_flipper = c.flipper_length_mm.max(), total = count()"
+pytae data.parquet -by species -agg "avg_mass = body_mass_g.mean(), max_flipper = flipper_length_mm.max(), total = count()"
 
 # Multi-column grouping
-pytae data.parquet -by "c.species, c.island" -agg "mean_mass = c.body_mass_g.mean()"
+pytae data.parquet -by "species, island" -agg "mean_mass = body_mass_g.mean()"
 
 # Deduplicate rows across key columns
-pytae data.parquet -distinct "c.species, c.island"
+pytae data.parquet -distinct "species, island"
 
 # Sort rows by multiple columns with directions
-pytae data.parquet -arrange "c.species.asc(), c.body_mass_g.desc()"
+pytae data.parquet -arrange "species, body_mass_g desc"
 
 # Sequential -by with single-shot zero-pollution scoping (each -by scopes the next verb, then resets)
-pytae sales.parquet -by c.region -mutate "regional_mean = c.sales.mean()" -mutate "global_mean = c.sales.mean()" -by c.dept -mutate "dept_mean = c.sales.mean()"
+pytae sales.parquet -by region -mutate "regional_mean = sales.mean()" -mutate "global_mean = sales.mean()" -by dept -mutate "dept_mean = sales.mean()"
 
 # Top N per group in a single CLI command (e.g. top 2 species by avg body mass for each island)
-pytae penguins.parquet -by c.island, c.species -agg "avg_mass = c.body_mass_g.mean()" -arrange "c.island, c.avg_mass.desc()" -by c.island -head 2
+pytae penguins.parquet -by island, species -agg "avg_mass = body_mass_g.mean()" -arrange "island, avg_mass desc" -by island -head 2
 ```
 
 ---

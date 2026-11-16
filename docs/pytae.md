@@ -100,11 +100,11 @@ The exact same logic translates directly to the terminal:
 
 ```bash
 pytae penguins.parquet \
-  -filter "c.body_mass_g > 3500 and c.sex.is_not_null()" \
-  -mutate "body_mass_kg = c.body_mass_g / 1000, bill_ratio = c.bill_length_mm / c.bill_depth_mm, status = 'verified'" \
-  -by c.species, c.island \
-  -agg "n = count(), avg_mass_kg = c.body_mass_kg.mean(), max_ratio = c.bill_ratio.max()" \
-  -arrange "c.avg_mass_kg.desc()" \
+  -filter "body_mass_g > 3500 and sex.is_not_null()" \
+  -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm, status = 'verified'" \
+  -by species, island \
+  -agg "n = count(), avg_mass_kg = body_mass_kg.mean(), max_ratio = bill_ratio.max()" \
+  -arrange "avg_mass_kg desc" \
   -o summary.parquet
 ```
 
@@ -159,7 +159,7 @@ Pytae establishes a single, uniform missing value architecture: **all missing va
 
 #### Architectural Rationale for Uniform `null`:
 1. **Elimination of the IEEE 754 Comparison Trap**:
-   In Polars, IEEE 754 floating-point numbers implement `total_cmp`, where `NaN > all numbers` (including $+\infty$). If `NaN` is preserved, an expression like `df.filter("score > 15")` silently evaluates to `True` for rows where `score` is `NaN`, unintentionally including non-finite values in the results. Under uniform `null`, `null > 15` evaluates to `null` and is dropped, eliminating this silent data corruption trap.
+   In Polars, IEEE 754 floating-point numbers implement `total_cmp`, where `NaN > all numbers` (including $+\infty$). If `NaN` is preserved, an expression like `df.filter(c.score > 15)` silently evaluates to `True` for rows where `score` is `NaN`, unintentionally including non-finite values in the results. Under uniform `null`, `null > 15` evaluates to `null` and is dropped, eliminating this silent data corruption trap.
 2. **"One and Only One Obvious Way"**:
    Retaining separate concepts for `null` and `NaN` led to duplicate APIs: `dropna()` vs. `dropna(nans=...)`, `fillna()` vs. `fill_nan()` vs. `fill_null()`, and `.is_null()` vs. `.is_nan()`. Users were constantly forced to wonder whether a missing cell was an unrecorded value or a float calculation artifact. Uniform `null` provides a single obvious verb for each operation: `.is_null()`, `.is_not_null()`, `.fillna()`, and `.dropna()`.
 3. **Native Nullable Integers from Python Dictionaries**:
@@ -192,11 +192,11 @@ Whether you are writing a production Python service, conducting exploratory anal
           import pytae as pt                         $ pytae file.parquet
      df = pt.read("file.parquet")                              │
                       │                                       │
-      df.filter(c.sales > 100)                        -filter "c.sales > 100"
-        .mutate(tax=c.sales * 0.08)                   -mutate "tax = c.sales * 0.08"
-        .by(c.region)                                 -by c.region
-        .agg(total_rev=c.sales.sum(), n=c.sales.count()) -agg "total_rev = c.sales.sum(), n = count()"
-        .arrange(c.total_rev.desc())                  -arrange "c.total_rev.desc()"
+      df.filter(c.sales > 100)                        -filter "sales > 100"
+        .mutate(tax=c.sales * 0.08)                   -mutate "tax = sales * 0.08"
+        .by(c.region)                                 -by region
+        .agg(total_rev=c.sales.sum(), n=c.sales.count()) -agg "total_rev = sales.sum(), n = count()"
+        .arrange(c.total_rev.desc())                  -arrange "total_rev desc"
                       │                                       │
                       ▼                                       ▼
               In-Memory Result                          Stdout / Export

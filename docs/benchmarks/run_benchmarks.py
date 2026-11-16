@@ -31,6 +31,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import pytae as pt
+from pytae import c
 
 
 def generate_benchmark_data(n: int, seed: int = 42) -> pd.DataFrame:
@@ -97,11 +98,11 @@ def run_benchmarks(num_rows: int = 5_000_000, runs: int = 3, output_md: bool = F
             t_start = time.perf_counter()
             pt_agg = (
                 pt.read(parquet_path)
-                .filter("body_mass > 4000 & bill_length > 40.0")
-                .mutate(bill_ratio="bill_length / bill_depth")
-                .by("species", "island")
-                .agg(n="count", avg_mass="body_mass:mean", max_mass="body_mass:max")
-                .arrange("avg_mass desc")
+                .filter(c.body_mass > 4000, c.bill_length > 40.0)
+                .mutate(bill_ratio=c.bill_length / c.bill_depth)
+                .by(c.species, c.island)
+                .agg(n=c.species.count(), avg_mass=c.body_mass.mean(), max_mass=c.body_mass.max())
+                .arrange(c.avg_mass.desc())
             )
             times_pt.append(time.perf_counter() - t_start)
         min_pt_eager = min(times_pt)
@@ -112,11 +113,11 @@ def run_benchmarks(num_rows: int = 5_000_000, runs: int = 3, output_md: bool = F
             t_start = time.perf_counter()
             pt_lazy = (
                 pt.scan(parquet_path)
-                .filter("body_mass > 4000 & bill_length > 40.0")
-                .mutate(bill_ratio="bill_length / bill_depth")
-                .by("species", "island")
-                .agg(n="count", avg_mass="body_mass:mean", max_mass="body_mass:max")
-                .arrange("avg_mass desc")
+                .filter(c.body_mass > 4000, c.bill_length > 40.0)
+                .mutate(bill_ratio=c.bill_length / c.bill_depth)
+                .by(c.species, c.island)
+                .agg(n=c.species.count(), avg_mass=c.body_mass.mean(), max_mass=c.body_mass.max())
+                .arrange(c.avg_mass.desc())
                 .collect()
             )
             times_pt_lazy.append(time.perf_counter() - t_start)
@@ -147,7 +148,7 @@ def run_benchmarks(num_rows: int = 5_000_000, runs: int = 3, output_md: bool = F
         times_pt_sort: list[float] = []
         for _ in range(runs):
             t_start = time.perf_counter()
-            _ = pt_df.arrange("species, body_mass desc")
+            _ = pt_df.arrange(c.species.asc(), c.body_mass.desc())
             times_pt_sort.append(time.perf_counter() - t_start)
         min_pt_sort = min(times_pt_sort)
 
@@ -177,10 +178,10 @@ def run_benchmarks(num_rows: int = 5_000_000, runs: int = 3, output_md: bool = F
         times_pt_agg: list[float] = []
         for _ in range(runs):
             t_start = time.perf_counter()
-            _ = pt_df.by("species", "island").agg(
-                n="count",
-                avg_mass="body_mass:mean",
-                max_mass="body_mass:max",
+            _ = pt_df.by(c.species, c.island).agg(
+                n=c.species.count(),
+                avg_mass=c.body_mass.mean(),
+                max_mass=c.body_mass.max(),
             )
             times_pt_agg.append(time.perf_counter() - t_start)
         min_pt_agg = min(times_pt_agg)

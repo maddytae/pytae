@@ -46,7 +46,7 @@ In Pytae, the interactive shell follows an ironclad rule: **Bare verbs never mut
 Running a verb directly against the prompt computes and renders an immediate terminal preview without altering the underlying table in memory:
 
 ```text
-pytae [df: 344x7]> -filter "c.species == 'Gentoo' and c.body_mass_g > 5000"
+pytae [df: 344x7]> -filter "species == 'Gentoo' and body_mass_g > 5000"
 shape: (61, 7)
 ┌─────────┬───────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
 │ species ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
@@ -66,10 +66,10 @@ pytae [df: 344x7]>
 To persist transformations, assign the pipeline result back to the table:
 
 ```text
-pytae [df: 344x7]> df = -filter "c.species in ['Adelie', 'Gentoo'] and c.body_mass_g >= 3500"
+pytae [df: 344x7]> df = -filter "species in ['Adelie', 'Gentoo'] and body_mass_g >= 3500"
 Updated 'df' (188 rows x 7 cols).
 
-pytae [df: 188x7]> df = -mutate "mass_kg = c.body_mass_g / 1000" -select "c.species, c.island, c.mass_kg"
+pytae [df: 188x7]> df = -mutate "mass_kg = body_mass_g / 1000" -select "species, island, mass_kg"
 Updated 'df' (188 rows x 3 cols).
 
 pytae [df: 188x3]> 
@@ -80,7 +80,7 @@ pytae [df: 188x3]>
 Create derived tables without modifying the original source:
 
 ```text
-pytae [orders, cust]> big_orders = orders -filter "c.total > 500"
+pytae [orders, cust]> big_orders = orders -filter "total > 500"
 Created 'big_orders' (12,400 rows x 6 cols).
 
 # Both 'orders' and 'big_orders' now exist independently in memory
@@ -98,11 +98,11 @@ All 19 Pytae CLI flags execute at native Polars multithreaded SIMD speeds direct
 Chain verbs from left to right as a continuous pipeline:
 
 ```text
-pytae [penguins]> -filter "c.body_mass_g > 3500" \
-                  -mutate "mass_kg = c.body_mass_g / 1000" \
-                  -by c.species, c.island \
-                  -agg "n = count(), avg_mass = c.mass_kg.mean()" \
-                  -arrange "c.avg_mass.desc()"
+pytae [penguins]> -filter "body_mass_g > 3500" \
+                  -mutate "mass_kg = body_mass_g / 1000" \
+                  -by species, island \
+                  -agg "n = count(), avg_mass = mass_kg.mean()" \
+                  -arrange "avg_mass desc"
 ```
 
 ### Multi-Line Pipeline Continuation (`\`)
@@ -110,9 +110,9 @@ pytae [penguins]> -filter "c.body_mass_g > 3500" \
 For long or complex transformation chains, terminate lines with a backslash `\` to continue input:
 
 ```text
-pytae [df: 10,000x8]> df = -filter "c.status == 'completed'" \
-                      -mutate "margin = c.revenue - c.cost" \
-                      -arrange "c.margin.desc()" \
+pytae [df: 10,000x8]> df = -filter "status == 'completed'" \
+                      -mutate "margin = revenue - cost" \
+                      -arrange "margin desc" \
                       -head 10
 Updated 'df' (10 rows x 9 cols).
 ```

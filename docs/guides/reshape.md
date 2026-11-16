@@ -40,7 +40,7 @@ Melts all numeric columns into row-wise key-value pairs (`variable` and `value`)
 
 ```bash
 pytae penguins.parquet \
-  -select "c.species, c.bill_length_mm, c.bill_depth_mm" \
+  -select "species, bill_length_mm, bill_depth_mm" \
   -long \
   -head 4
 ```

@@ -36,8 +36,8 @@ To keep the REPL mental model clean and unambiguous:
 | Scope | Rule | Example |
 | :--- | :--- | :--- |
 | **Session Variables** | **Always prefix LHS with `@`** | `@threshold = 5000`<br>`@path = "Z:\data\*.parquet"`<br>`@regions = ['North', 'West']` |
-| **Tables (DataFrames)** | **Always bare on LHS (no `@`)** | `df = orders.parquet`<br>`sales = sample:tips`<br>`heavy = df -filter "c.mass > 5000"` |
-| **Referencing Variables** | **Always use `@`** | `-filter "c.amount > @threshold"`<br>`df = @path`<br>`lazy_df = scan @path` |
+| **Tables (DataFrames)** | **Always bare on LHS (no `@`)** | `df = orders.parquet`<br>`sales = sample:tips`<br>`heavy = df -filter "mass > 5000"` |
+| **Referencing Variables** | **Always use `@`** | `-filter "amount > @threshold"`<br>`df = @path`<br>`lazy_df = scan @path` |
 
 > [!TIP]
 > Bare scalar definitions (e.g. `threshold = 5000`) continue to work as a silent fallback, but the recommended convention is to always use `@` on the left-hand side (`@threshold = 5000`).
@@ -147,10 +147,10 @@ Inject session variables directly into pipeline filter expressions, column deriv
 
 ```text
 # 1. Use in -filter
-pytae [orders]> -filter "c.amount >= @threshold and c.country in @target_countries"
+pytae [orders]> -filter "amount >= @threshold and country in @target_countries"
 
 # 2. Use in -mutate
-pytae [orders]> orders = -mutate "gross_amount = c.amount * (1 + @tax_rate)"
+pytae [orders]> orders = -mutate "gross_amount = amount * (1 + @tax_rate)"
 
 # 3. Use in ANSI SQL
 pytae [orders]> sql { SELECT * FROM orders WHERE amount > @thresholds.medium }

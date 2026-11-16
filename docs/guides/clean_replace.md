@@ -148,11 +148,11 @@ Recode cell values cleanly via vectorized dictionary mapping directly in `-mutat
 
 ```bash
 # 1. Two-argument: recode mapped values, preserve unmapped values intact
-pytae penguins.parquet -mutate "species_code = map(c.species, {'Adelie': 'AD', 'Gentoo': 'GEN'})" -head 5
+pytae penguins.parquet -mutate "species_code = map(species, {'Adelie': 'AD', 'Gentoo': 'GEN'})" -head 5
 
 # 2. Three-argument with constant fallback: replace unmapped rows with 'Other'
-pytae penguins.parquet -mutate "species_code = map(c.species, {'Adelie': 'AD'}, 'Other')" -head 5
+pytae penguins.parquet -mutate "species_code = map(species, {'Adelie': 'AD'}, 'Other')" -head 5
 
 # 3. Three-argument with column fallback: pull fallback value from another column
-pytae deals.parquet -mutate "broker = map(c.deal_type, {'Direct': 'DIR'}, c.broker_code)" -head 5
+pytae deals.parquet -mutate "broker = map(deal_type, {'Direct': 'DIR'}, broker_code)" -head 5
 ```

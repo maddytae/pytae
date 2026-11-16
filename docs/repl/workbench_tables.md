@@ -275,7 +275,7 @@ pytae [orders, cust]> cust -shape
 (15,000, 5)
 
 # Transform cust directly
-pytae [orders, cust]> cust -filter "c.country == 'US'"
+pytae [orders, cust]> cust -filter "country == 'US'"
 -> cust: 9,200 rows x 5 cols
 ```
 
@@ -336,9 +336,9 @@ The REPL maintains persistent command history saved in `~/.pytae_history`. Use <
 For complex pipelines or multi-step queries, span commands across multiple lines using a trailing backslash (`\`):
 
 ```text
-pytae [orders]> -filter "c.amount > 1000 and c.status == 'shipped'" \
-... -mutate "tax = c.amount * 0.08" \
-... -select "c.order_id, c.customer_id, c.tax, c.amount" \
+pytae [orders]> -filter "amount > 1000 and status == 'shipped'" \
+... -mutate "tax = amount * 0.08" \
+... -select "order_id, customer_id, tax, amount" \
 ... -head 5
 ```
 

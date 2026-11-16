@@ -347,7 +347,7 @@ pytae> df = sample:tips
 Loaded tips.parquet as 'df' (244 rows x 7 cols).
 
 # 2. Filter using CLI verbs
-pytae [df: 244x7]> df = -filter "c.total_bill > 10"
+pytae [df: 244x7]> df = -filter "total_bill > 10"
 
 # 3. Aggregate using ANSI SQL
 pytae [df: 226x7]> summary = sql { SELECT day, time, avg(tip) as avg_tip, count(*) as count FROM df GROUP BY 1, 2 }
@@ -369,7 +369,8 @@ Process RAM   : ~132.1 MB (PID 84912)
 
 # 5. Use the previously imported linregress function later without re-importing!
 pytae [df, summary]> py {
-... subset = df.filter("sex == 'Female'")
+... from pytae import c
+... subset = df.filter(c.sex == 'Female')
 ... female_res = linregress(subset['total_bill'].to_list(), subset['tip'].to_list())
 ... print(f"Female slope: {female_res.slope:.4f}")
 ... }

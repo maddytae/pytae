@@ -33,7 +33,7 @@ By default, `-arrange` sorts rows in ascending order:
 
 ```bash
 # Sort ascending by body mass
-pytae penguins.parquet -arrange c.body_mass_g -select "c.species, c.island, c.body_mass_g" -head 5
+pytae penguins.parquet -arrange body_mass_g -select "species, island, body_mass_g" -head 5
 ```
 
 **Output:**
@@ -50,11 +50,11 @@ pytae penguins.parquet -arrange c.body_mass_g -select "c.species, c.island, c.bo
 
 ## Descending Sort (`desc`)
 
-Specify descending order explicitly by calling `.desc()` on the column expression or appending `desc`:
+Specify descending order explicitly by appending `desc`:
 
 ```bash
-# Explicit 'desc()'
-pytae penguins.parquet -arrange "c.body_mass_g.desc()" -select "c.species, c.island, c.body_mass_g" -head 5
+# Explicit 'desc'
+pytae penguins.parquet -arrange "body_mass_g desc" -select "species, island, body_mass_g" -head 5
 ```
 
 **Output:**

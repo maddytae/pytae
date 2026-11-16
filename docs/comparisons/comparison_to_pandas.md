@@ -166,63 +166,63 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 ### 1. Row Filtering
 | Task | Pandas | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Boolean Mask** | `df[df['sales'] > 100]` | `df.filter(c.sales > 100)` | `-filter "c.sales > 100"` |
-| **Multiple Conditions** | `df[(df['a'] > 1) & (df['b'] == 'E')]` | `df.filter(c.a > 1, c.b == 'E')` | `-filter "c.a > 1 and c.b == 'E'"` |
-| **Interval / Range** | `df[df['x'].between(10, 20)]` | `df.filter(10 <= c.x, c.x <= 20)` | `-filter "10 <= c.x <= 20"` |
-| **Set Membership** | `df[df['cat'].isin(['A', 'B'])]` | `df.filter(c.cat.is_in(['A', 'B']))` | `-filter "c.cat in ['A', 'B']"` |
-| **Spaced Columns** | `df[df['gross sales'] > 50]` | `df.filter(c['gross sales'] > 50)` | `-filter "c['gross sales'] > 50"` |
-| **String Prefix** | `df[df['name'].str.startswith('A')]` | `df.filter(c.name.str.starts_with('A'))` | `-filter "c.name.str.starts_with('A')"` |
-| **Null Row Check** | `df[df['col'].notna()]` | `df.filter(c.col.is_not_null())` | `-filter "c.col.is_not_null()"` |
+| **Boolean Mask** | `df[df['sales'] > 100]` | `df.filter(c.sales > 100)` | `-filter "sales > 100"` |
+| **Multiple Conditions** | `df[(df['a'] > 1) & (df['b'] == 'E')]` | `df.filter(c.a > 1, c.b == 'E')` | `-filter "a > 1 and b == 'E'"` |
+| **Interval / Range** | `df[df['x'].between(10, 20)]` | `df.filter(10 <= c.x, c.x <= 20)` | `-filter "10 <= x <= 20"` |
+| **Set Membership** | `df[df['cat'].isin(['A', 'B'])]` | `df.filter(c.cat.is_in(['A', 'B']))` | `-filter "cat in ['A', 'B']"` |
+| **Spaced Columns** | `df[df['gross sales'] > 50]` | `df.filter(c['gross sales'] > 50)` | `-filter "[gross sales] > 50"` |
+| **String Prefix** | `df[df['name'].str.startswith('A')]` | `df.filter(c.name.str.starts_with('A'))` | `-filter "name.str.starts_with('A')"` |
+| **Null Row Check** | `df[df['col'].notna()]` | `df.filter(c.col.is_not_null())` | `-filter "col.is_not_null()"` |
 | **Callable / Lambda** | `df[lambda d: d['x'] > 5]` | `df.filter(lambda d: d['x'] > 5)` | N/A |
 
 ### 2. Feature Engineering & Column Derivations (`mutate`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Basic Formula** | `df.assign(y=df['a'] / df['b'])` | `df.mutate(y=c.a / c.b)` | `-mutate "y = c.a / c.b"` |
-| **Sequential Calculations**| Chained `.assign(a=...).assign(b=lambda ...)` | `df.mutate(a=1, b=c.a * 2)` | `-mutate "a=1, b=c.a*2"` |
-| **If / Else** | `np.where(df['x'] > 0, 'pos', 'neg')` | `df.mutate(f=if_else(c.x > 0, 'pos', 'neg'))` | `-mutate "f=if_else(c.x>0,'pos','neg')"` |
+| **Basic Formula** | `df.assign(y=df['a'] / df['b'])` | `df.mutate(y=c.a / c.b)` | `-mutate "y = a / b"` |
+| **Sequential Calculations**| Chained `.assign(a=...).assign(b=lambda ...)` | `df.mutate(a=1, b=c.a * 2)` | `-mutate "a=1, b=a*2"` |
+| **If / Else** | `np.where(df['x'] > 0, 'pos', 'neg')` | `df.mutate(f=if_else(c.x > 0, 'pos', 'neg'))` | `-mutate "f=if_else(x>0,'pos','neg')"` |
 | **Multi-Column Transform**| Loop over columns or complex `apply` | `df.mutate("(a, b) = _ * 10")` | `-mutate "(a, b) = _ * 10"` |
 | **Multi-Column + Suffix**| Loop + dictionary comprehension | `df.mutate("(a, b)_cm = _ * 10")` | `-mutate "(a, b)_cm = _ * 10"` |
-| **Grouped Window Calculation**| `df.groupby('g')['x'].transform('mean')` | `df.by(c.g).mutate(m=c.x.mean())` | `-by c.g -mutate "m = c.x.mean()"` |
-| **Lag / Shift** | `df.groupby('g')['x'].shift(1)` | `df.by(c.g).mutate(prev=c.x.shift(1))` | `-by c.g -mutate "prev=c.x.shift(1)"` |
+| **Grouped Window Calculation**| `df.groupby('g')['x'].transform('mean')` | `df.by(c.g).mutate(m=c.x.mean())` | `-by g -mutate "m = x.mean()"` |
+| **Lag / Shift** | `df.groupby('g')['x'].shift(1)` | `df.by(c.g).mutate(prev=c.x.shift(1))` | `-by g -mutate "prev=x.shift(1)"` |
 
 ### 3. Column Selection, Renaming & Exclusion (`select`, `rename`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Select Columns** | `df[['a', 'b']]` | `df.select(c.a, c.b)` | `-select "c.a, c.b"` |
-| **Drop Columns** | `df.drop(columns=['c', 'd'])` | `df.select(~c.c, ~c.d)` | `-select "~c.c, ~c.d"` |
+| **Select Columns** | `df[['a', 'b']]` | `df.select(c.a, c.b)` | `-select "a, b"` |
+| **Drop Columns** | `df.drop(columns=['c', 'd'])` | `df.select(~c.c, ~c.d)` | `-select "~c, ~d"` |
 | **Pattern Match** | `df.filter(like='bill')` | `df.select(contains="bill")` | `-select "contains=bill"` |
 | **Prefix Match** | `df[[c for c in df if c.startswith('b')]]`| `df.select(starts_with="b")` | `-select "starts_with=b"` |
-| **Column Slicing** | `df.loc[:, 'a':'b']` | `df.select(c.a.to(c.b))` | `-select "c.a.to(c.b)"` |
+| **Column Slicing** | `df.loc[:, 'a':'b']` | `df.select(c.a.to(c.b))` | `-select "a:b"` |
 | **Dedicated Rename** | `df.rename(columns={'a': 'b'})` | `df.rename("a:b")` | `-rename "a:b"` |
 | **Reorder with Rest** | `df[['lead'] + [c for c in df if c != 'lead']]` | `df.select(c.lead, pt.everything)` | N/A |
 
 ### 4. Row Sorting (`arrange`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Ascending** | `df.sort_values('sales')` | `df.arrange(c.sales.asc())` | `-arrange c.sales` |
-| **Descending** | `df.sort_values('sales', ascending=False)` | `df.arrange(c.sales.desc())` | `-arrange "c.sales.desc()"` |
-| **Multi-Column Mixed** | `df.sort_values(['a', 'b'], ascending=[True, False])` | `df.arrange(c.a.asc(), c.b.desc())` | `-arrange "c.a, c.b.desc()"` |
-| **Spaced Columns** | `df.sort_values('gross sales')` | `df.arrange(c['gross sales'].desc())` | `-arrange "c['gross sales'].desc()"` |
+| **Ascending** | `df.sort_values('sales')` | `df.arrange(c.sales.asc())` | `-arrange sales` |
+| **Descending** | `df.sort_values('sales', ascending=False)` | `df.arrange(c.sales.desc())` | `-arrange "sales desc"` |
+| **Multi-Column Mixed** | `df.sort_values(['a', 'b'], ascending=[True, False])` | `df.arrange(c.a.asc(), c.b.desc())` | `-arrange "a, b desc"` |
+| **Spaced Columns** | `df.sort_values('gross sales')` | `df.arrange(c['gross sales'].desc())` | `-arrange "[gross sales] desc"` |
 
 ### 5. Grouped Aggregation & Counting (`count`, `by` + `agg`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Count Frequencies** | `df['g'].value_counts().reset_index()` | `df.count("g")` | `-count g` |
-| **Group Row Count** | `df.groupby('g').size().reset_index(name='n')` | `df.by("g").count()` | `-by g -count` |
-| **Group & Summarize** | `df.groupby('g')['x'].mean().reset_index()` | `df.by("g").agg(m="x:mean")` | `-by g -agg m=x:mean` |
-| **Summary with Count** | `df.groupby('g').agg(n=('x','size'), m=('x','mean')).reset_index()` | `df.by("g").agg(total="count", m="x:mean")` | `-by g -agg "total=count,m=x:mean"` |
-| **Multiple Metrics** | `df.groupby('g').agg(m=('x','mean'), s=('x','sum')).reset_index()` | `df.by("g").agg(m="x:mean", s="x:sum")` | `-by g -agg "m=x:mean,s=x:sum"` |
+| **Count Frequencies** | `df['g'].value_counts().reset_index()` | `df.count(c.g)` | `-count g` |
+| **Group Row Count** | `df.groupby('g').size().reset_index(name='n')` | `df.by(c.g).count()` | `-by g -count` |
+| **Group & Summarize** | `df.groupby('g')['x'].mean().reset_index()` | `df.by(c.g).agg(m=c.x.mean())` | `-by g -agg "m = x.mean()"` |
+| **Summary with Count** | `df.groupby('g').agg(n=('x','size'), m=('x','mean')).reset_index()` | `df.by(c.g).agg(total=c.g.count(), m=c.x.mean())` | `-by g -agg "total=count(),m=x.mean()"` |
+| **Multiple Metrics** | `df.groupby('g').agg(m=('x','mean'), s=('x','sum')).reset_index()` | `df.by(c.g).agg(m=c.x.mean(), s=c.x.sum())` | `-by g -agg "m=x.mean(),s=x.sum()"` |
 | **Keep NA Groups** | `df.groupby('g', dropna=False).mean().reset_index()` | Default behavior (`dropna=False`) | Default behavior |
-| **Whole-Table Summary**| `df.agg({'x': 'mean'}).to_frame().T` | `df.agg(m="x:mean", n="count")` | `-agg "m=x:mean,n=count"` |
+| **Whole-Table Summary**| `df.agg({'x': 'mean'}).to_frame().T` | `df.agg(m=c.x.mean(), n=c.x.count())` | `-agg "m=x.mean(),n=count()"` |
 
 ### 6. Slicing Extreme Records (`arrange` + `head` / `tail`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Top N Records** | `df.nlargest(5, 'sales')` | `df.arrange("sales desc").head(5)` | `-arrange "sales desc" -head 5` |
-| **Bottom N Records** | `df.nsmallest(5, 'sales')` | `df.arrange("sales").head(5)` | `-arrange sales -head 5` |
-| **Top Percentage** | `df.nlargest(int(len(df)*0.1), 'sales')` | `df.arrange("sales desc").head(prop=0.1)` | `-arrange "sales desc" -head 10%` |
-| **Top N per Group** | `df.groupby('g').apply(lambda d: d.nlargest(3, 'x')).reset_index(drop=True)` | `df.by("g").arrange("x desc").head(3)` | `-by g -arrange "x desc" -head 3` |
+| **Top N Records** | `df.nlargest(5, 'sales')` | `df.arrange(c.sales.desc()).head(5)` | `-arrange "sales desc" -head 5` |
+| **Bottom N Records** | `df.nsmallest(5, 'sales')` | `df.arrange(c.sales.asc()).head(5)` | `-arrange sales -head 5` |
+| **Top Percentage** | `df.nlargest(int(len(df)*0.1), 'sales')` | `df.arrange(c.sales.desc()).head(prop=0.1)` | `-arrange "sales desc" -head 10%` |
+| **Top N per Group** | `df.groupby('g').apply(lambda d: d.nlargest(3, 'x')).reset_index(drop=True)` | `df.by(c.g).arrange(c.x.desc()).head(3)` | `-by g -arrange "x desc" -head 3` |
 
 ### 7. Deduplication (`distinct`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
@@ -277,11 +277,11 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 ### 13. Grouped Window Calculations & Lag/Lead
 | Task | Pandas | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
-| **Group Mean Window** | `df['m'] = df.groupby('g')['x'].transform('mean')` | `df.by("g").mutate(m="mean(x)")` | `-by g -mutate "m = mean(x)"` |
-| **Within-Group Percentage** | `df['pct'] = df['x'] / df.groupby('g')['x'].transform('sum')` | `df.by("g").mutate(pct="x / sum(x)")` | `-by g -mutate "pct = x / sum(x)"` |
-| **Within-Group Rank** | `df.groupby('g')['x'].rank()` | `df.by("g").mutate(r="rank(x)")` | `-by g -mutate "r = rank(x)"` |
-| **Grouped Shift / Lag** | `df.groupby('g')['x'].shift(1)` | `df.by("g").mutate(prev="shift(x, 1)")` | `-by g -mutate "prev = shift(x, 1)"` |
-| **Grouped Cumulative Sum** | `df.groupby('g')['x'].cumsum()` | `df.by("g").mutate(cum="cum_sum(x)")` | `-by g -mutate "cum = cum_sum(x)"` |
+| **Group Mean Window** | `df['m'] = df.groupby('g')['x'].transform('mean')` | `df.by(c.g).mutate(m=c.x.mean())` | `-by g -mutate "m = mean(x)"` |
+| **Within-Group Percentage** | `df['pct'] = df['x'] / df.groupby('g')['x'].transform('sum')` | `df.by(c.g).mutate(pct=c.x / c.x.sum())` | `-by g -mutate "pct = x / sum(x)"` |
+| **Within-Group Rank** | `df.groupby('g')['x'].rank()` | `df.by(c.g).mutate(r=c.x.rank())` | `-by g -mutate "r = rank(x)"` |
+| **Grouped Shift / Lag** | `df.groupby('g')['x'].shift(1)` | `df.by(c.g).mutate(prev=c.x.shift(1))` | `-by g -mutate "prev = shift(x, 1)"` |
+| **Grouped Cumulative Sum** | `df.groupby('g')['x'].cumsum()` | `df.by(c.g).mutate(cum=c.x.cumsum())` | `-by g -mutate "cum = cum_sum(x)"` |
 
 ### 14. Excel I/O & Workbook Management (`read`, `to`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
@@ -341,14 +341,15 @@ sorted_summary.to_parquet("summary.parquet", index=False)
 ### In Pytae (Python Library):
 ```python
 import pytae as pt
+from pytae import c
 
 (
     pt.read("penguins.parquet")
-    .filter("body_mass_g > 3500 and sex.is_not_null()")
-    .mutate(body_mass_kg="body_mass_g / 1000", bill_ratio="bill_length_mm / bill_depth_mm")
-    .by("species", "island")
-    .agg(n="count", avg_mass_kg="body_mass_kg:mean", max_ratio="bill_ratio:max")
-    .arrange("avg_mass_kg desc")
+    .filter(c.body_mass_g > 3500, c.sex.is_not_null())
+    .mutate(body_mass_kg=c.body_mass_g / 1000, bill_ratio=c.bill_length_mm / c.bill_depth_mm)
+    .by(c.species, c.island)
+    .agg(n=c.species.count(), avg_mass_kg=c.body_mass_kg.mean(), max_ratio=c.bill_ratio.max())
+    .arrange(c.avg_mass_kg.desc())
     .to("summary.parquet")
 )
 ```
@@ -359,7 +360,7 @@ pytae penguins.parquet \
   -filter "body_mass_g > 3500 and sex.is_not_null()" \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm" \
   -by species,island \
-  -agg "n = count, avg_mass_kg = body_mass_kg:mean, max_ratio = bill_ratio:max" \
+  -agg "n = count(), avg_mass_kg = body_mass_kg.mean(), max_ratio = bill_ratio.max()" \
   -arrange "avg_mass_kg desc" \
   -o summary.parquet
 ```

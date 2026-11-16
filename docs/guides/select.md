@@ -11,7 +11,7 @@ Select, filter, reorder, and exclude columns using names, negative prefixes, ran
 - [Overview](#overview)
 - [Selecting Explicit Columns](#selecting-explicit-columns)
 - [Negative Selection & Exclusion (`~col`, `~start:end`)](#negative-selection--exclusion)
-- [Slice Notation (`start:end` / `c.start.to(c.end)`)](#slice-notation-startend)
+- [Slice Notation (`start:end`)](#slice-notation-startend)
 - [Pattern Matching (`contains=`, `starts_with=`, `ends_with=`, `regex=`)](#pattern-matching)
 - [Data Type Filtering (`dtype=`, `exclude_dtype=`)](#data-type-filtering)
 - [Chaining `-select` in Pipelines](#chaining--select-in-pipelines)
@@ -24,10 +24,10 @@ Select, filter, reorder, and exclude columns using names, negative prefixes, ran
 
 | Capability | Syntax / Flag | Example |
 |---|---|---|
-| Explicit names | `col1,col2` or `c.col1, c.col2` | `-select "c.species, c.island, c.body_mass_g"` |
-| Negative selection | `~col` | `-select "~c.species"` or `-select "~c.sex, ~c.year"` |
-| Negative slices | `~start:end` / `~c.start.to(c.end)` | `-select "~c.bill_length_mm.to(c.flipper_length_mm)"` |
-| Column slice / range | `start:end` / `c.start.to(c.end)` | `-select "c.bill_length_mm.to(c.body_mass_g)"` |
+| Explicit names | `col1, col2` | `-select "species, island, body_mass_g"` |
+| Negative selection | `~col` | `-select "~species"` or `-select "~sex, ~year"` |
+| Negative slices | `~start:end` | `-select "~bill_length_mm:flipper_length_mm"` |
+| Column slice / range | `start:end` | `-select "bill_length_mm:body_mass_g"` |
 | Substring / prefix / suffix | `contains=`, `starts_with=`, `ends_with=` | `-select "contains=bill"` |
 | Regular expression | `regex=PATTERN` | `-select "regex=^bill_.*mm$"` |
 | Data type filter | `dtype=numeric` / `exclude_dtype=category` | `-select "dtype=numeric"` |
@@ -39,7 +39,7 @@ Select, filter, reorder, and exclude columns using names, negative prefixes, ran
 List column names separated by commas. The output DataFrame columns are ordered exactly as listed in the `-select` argument:
 
 ```bash
-pytae penguins.parquet -select "c.species, c.island, c.body_mass_g" -head 3
+pytae penguins.parquet -select "species, island, body_mass_g" -head 3
 ```
 
 **Output:**
@@ -52,7 +52,7 @@ pytae penguins.parquet -select "c.species, c.island, c.body_mass_g" -head 3
 
 Reorder columns on the fly:
 ```bash
-pytae penguins.parquet -select "c.body_mass_g, c.species" -head 3
+pytae penguins.parquet -select "body_mass_g, species" -head 3
 ```
 
 **Output:**
@@ -75,7 +75,7 @@ You can exclude specific columns, combinations, or slices directly within `-sele
 Prefix a column name with `~` to exclude it. Using `~` avoids any collision with CLI command flags and cleanly reserves `.desc()` for descending sort in `-arrange`:
 
 ```bash
-pytae penguins.parquet -select "~c.species" -head 3
+pytae penguins.parquet -select "~species" -head 3
 ```
 
 **Output:**
@@ -88,7 +88,7 @@ pytae penguins.parquet -select "~c.species" -head 3
 
 Multiple negated columns can be combined in quotes:
 ```bash
-pytae penguins.parquet -select "~c.species, ~c.island, ~c.sex" -head 3
+pytae penguins.parquet -select "~species, ~island, ~sex" -head 3
 ```
 
 **Output:**
@@ -103,7 +103,7 @@ pytae penguins.parquet -select "~c.species, ~c.island, ~c.sex" -head 3
 
 Exclude a contiguous range of columns:
 ```bash
-pytae penguins.parquet -select "~c.bill_length_mm.to(c.flipper_length_mm)" -head 3
+pytae penguins.parquet -select "~bill_length_mm:flipper_length_mm" -head 3
 ```
 
 **Output:**
@@ -116,12 +116,12 @@ pytae penguins.parquet -select "~c.bill_length_mm.to(c.flipper_length_mm)" -head
 
 ---
 
-## Slice Notation (`start:end` / `c.start.to(c.end)`)
+## Slice Notation (`start:end`)
 
 Select a contiguous range of columns from `start` up to and including `end`:
 
 ```bash
-pytae penguins.parquet -select "c.bill_length_mm.to(c.body_mass_g)" -head 3
+pytae penguins.parquet -select "bill_length_mm:body_mass_g" -head 3
 ```
 
 **Output:**
@@ -208,7 +208,7 @@ pytae penguins.parquet -select "dtype=numeric" -head 3
 
 ```bash
 # Select numeric columns, then subtract bill_depth_mm
-pytae penguins.parquet -select "dtype=numeric" -select "~c.bill_depth_mm" -head 3
+pytae penguins.parquet -select "dtype=numeric" -select "~bill_depth_mm" -head 3
 ```
 
 **Output:**
@@ -222,9 +222,9 @@ pytae penguins.parquet -select "dtype=numeric" -select "~c.bill_depth_mm" -head 
 ```bash
 # Narrowing output columns after an aggregation
 pytae penguins.parquet \
-  -by c.species \
-  -agg "avg_mass = c.body_mass_g.mean(), total = count()" \
-  -select "c.species, c.avg_mass"
+  -by species \
+  -agg "avg_mass = body_mass_g.mean(), total = count()" \
+  -select "species, avg_mass"
 ```
 
 **Output:**
