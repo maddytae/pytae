@@ -1693,7 +1693,7 @@ wheels = [
 
 [[package]]
 name = "pytae"
-version = "3.14.7"
+version = "3.14.8"
 source = { editable = "." }
 dependencies = [
     { name = "openpyxl" },

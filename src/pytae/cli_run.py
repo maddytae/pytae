@@ -882,7 +882,7 @@ def _fail(parser: argparse.ArgumentParser, batch: bool, msg: str) -> bool:
 _COMMON_ENCODINGS = ("utf-8", "utf-8-sig", "latin-1", "cp1252")
 
 
-def _encoding_error_message(path: Path, encoding: str | None, exc: UnicodeError) -> str:
+def _encoding_error_message(path: Path | str, encoding: str | None, exc: UnicodeError) -> str:
     used = encoding or "utf-8"
     suggestions = ", ".join(enc for enc in _COMMON_ENCODINGS if enc != used)
     return f"can't decode '{path}' with encoding '{used}'; try -encoding {suggestions}"
@@ -1343,7 +1343,7 @@ def _process_path(
             )
             tbl_name = (
                 getattr(args, "_table_name", None)
-                or (path.stem if path is not None and str(path) not in ("<memory>", "<joined>", "-") else "data")
+                or (Path(path).stem if path is not None and str(path) not in ("<memory>", "<joined>", "-") else "data")
             )
             schema_str = format_schema(
                 pipeline.polars_frame(),
@@ -1412,8 +1412,9 @@ def _process_path(
             if is_clip:
                 clip_action = lambda s=glimpse_str: _copy_to_clipboard(s)
         elif op == "meta":
+            path_for_meta = Path(path) if path is not None else Path("<joined>")
             meta_str = _extract_metadata(
-                path if path is not None else Path("<joined>"), sep=args.dlim, encoding=args.encoding
+                path_for_meta, sep=args.dlim, encoding=args.encoding
             )
             if should_print(idx):
                 _output_text(meta_str, args)
@@ -1442,7 +1443,7 @@ def _process_path(
             diff_str = _compute_diff(
                 left_source,
                 raw_diff_str,
-                path.name if path is not None else "<pipeline>",
+                Path(path).name if path is not None else "<pipeline>",
                 tol=diff_tol,
                 sep=args.dlim,
                 encoding=args.encoding,
@@ -1838,9 +1839,10 @@ def _process_path(
                     f"-o {out_target}: when reading from STDIN or -file mode, an explicit output file path is required",
                 )
             ext = ".parquet" if fmt == "pq" else f".{fmt}"
-            clean_name = path.name[:-3] if path.name.lower().endswith(".gz") else path.name
+            path_obj = Path(path) if path is not None else Path("<joined>")
+            clean_name = path_obj.name[:-3] if path_obj.name.lower().endswith(".gz") else path_obj.name
             dest_name = f"{Path(clean_name).stem}{ext}"
-            dest = (out_dir / dest_name) if out_dir is not None else path.with_name(dest_name)
+            dest = (out_dir / dest_name) if out_dir is not None else path_obj.with_name(dest_name)
         else:
             dest = Path(out_target)
             if out_dir is not None and not dest.is_absolute():
@@ -1861,7 +1863,7 @@ def _process_path(
         try:
             cmd_convert(
                 df_to_write,
-                path if path is not None else Path("<joined>"),
+                Path(path) if path is not None else Path("<joined>"),
                 dest,
                 sep=args.dlim,
                 encoding=args.encoding,

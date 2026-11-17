@@ -1,6 +1,6 @@
 ================================================================================
 PYTAE COMPREHENSIVE KNOWLEDGE BASE & AGENT TRAINING REFERENCE MANUAL
-RELEASE VERSION: 3.14.7
+RELEASE VERSION: 3.14.8
 ================================================================================
 
 TABLE OF CONTENTS
@@ -189,7 +189,7 @@ RULE 7: THE "TWIN PROOF" RULE (GROUND ON SAMPLE DATASETS)
 
 1. OVERVIEW & CORE PHILOSOPHY
 --------------------------------------------------------------------------------
-Package: pytae (Current Release Version: 3.14.7)
+Package: pytae (Current Release Version: 3.14.8)
 
 `pytae` is an ergonomic, high-performance tabular data manipulation library and 
 command-line tool powered by a 100% native multithreaded SIMD Polars engine with 
@@ -229,8 +229,8 @@ Key principles:
 
 2. PACKAGE ARCHITECTURE & IMPORT PATTERNS
 --------------------------------------------------------------------------------
-Installation (PyPI: https://pypi.org/project/pytae/3.14.7/):
-  pip install pytae==3.14.7
+Installation (PyPI: https://pypi.org/project/pytae/3.14.8/):
+  pip install pytae==3.14.8
   pip install 'pytae[plot]'    # includes matplotlib, scipy
 
 Importing:
@@ -11770,8 +11770,8 @@ shape: (5, 13)
 |---|---|---|
 | List | `['a','b']` | exact named columns |
 | String (name) | `'species'` | exact column |
-| Negative string | `'!species'`, `'!island'` | exclude named column |
-| Negative slice | `'!bill_length_mm:body_mass_g'` | exclude contiguous range |
+| Negative string | `'~species'`, `'~island'` | exclude named column |
+| Negative slice | `'~bill_length_mm:body_mass_g'` | exclude contiguous range |
 | String (slice) | `'bill_length_mm:body_mass_g'` | contiguous range |
 | `everything()` | after explicit cols | remaining columns |
 | callable | `lambda c: c.startswith('b')` | columns passing test |
@@ -12161,14 +12161,14 @@ shape: (4, 6)
 └─────────┴───────────┴─────┴────────────────┴───────────────┴───────────────────┘
 ```
 
-## Negative selection & exclusion — `!col`, negative slices
+## Negative selection & exclusion — `~col`, negative slices
 
-Drop or exclude columns by prefixing names with `!` (or `-` / `~`) or passing a negative slice (`'!start:end'`). Remaining columns preserve their original relative DataFrame order without needing a separate drop function.
+Drop or exclude columns by prefixing names with `~` or passing a negative slice (`'!start:end'`). Remaining columns preserve their original relative DataFrame order without needing a separate drop function.
 
 ```python
-# Drop single column by negating with '!'
+# Drop single column by negating with '~'
 (
-    penguins.select('!species')
+    penguins.select('~species')
     .head(3)
 )
 ```
@@ -12189,7 +12189,7 @@ shape: (3, 6)
 ```python
 # Drop multiple columns
 (
-    penguins.select('!species', '!island', '!sex')
+    penguins.select('~species', '~island', '~sex')
     .head(3)
 )
 ```
@@ -12210,7 +12210,7 @@ shape: (3, 4)
 ```python
 # Exclude a contiguous slice of columns
 (
-    penguins.select('!bill_length_mm:body_mass_g')
+    penguins.select('~bill_length_mm:body_mass_g')
     .head(3)
 )
 ```
@@ -12231,7 +12231,7 @@ shape: (3, 3)
 ```python
 # Exclude multiple columns with positional negation
 (
-    penguins.select('!species', '!island')
+    penguins.select('~species', '~island')
     .head(3)
 )
 ```
@@ -12253,7 +12253,7 @@ shape: (3, 5)
 # Combine positive selection with negative exclusion in a chain
 (penguins
  .select(dtype='numeric')
- .select('!bill_depth_mm')
+ .select('~bill_depth_mm')
  .head(3)
 )
 ```
@@ -12323,9 +12323,9 @@ shape: (5, 3)
 ```
 
 ```python
-# Drop a spaced column using negative bracket syntax ![col]
+# Drop a spaced column using negative bracket syntax ~[col]
 (
-    penguins_spaced.select('species', '[bill length mm]', '![bill length mm]')
+    penguins_spaced.select('species', '[bill length mm]', '~[bill length mm]')
     .head()
 )
 ```
@@ -17186,7 +17186,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.14.7"
+version = "3.14.8"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"

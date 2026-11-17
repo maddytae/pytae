@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.14.8] - 2026-11-16
+
+### Standardized & Enhanced
+- **Canonical Parentheses Syntax for Aggregations (`src/pytae/polars_engine.py`, `src/pytae/_parsing.py`)**:
+  - Enforced "one and only one obvious way" for aggregation functions: `mean(col)`, `sum(col)`, `count()`, `count(col)`, `n_unique(col)` across `agg()` and `pivot()`.
+  - Formally retired legacy colon syntax `col:func` (e.g. `body_mass_g:mean`, `sex:count`, `sales:sum`) with explicit, helpful `ValueError` messages directing users to canonical `func(col)`.
+  - Standardized whole-table row counting on `count()` (or `n = count()`).
+  - Multi-metric expressions support both individual functions `mean(Sales), sum(Sales)` and multi-function application `[mean, sum](Sales)`.
+- **Canonical Column Negation in `select` (`src/pytae/select.py`)**:
+  - Standardized column exclusion and range negation on `~col` and `~start:end` across CLI (`-select "~col"`), Python library (`df.select("~col")`), and pipeline transpilation.
+  - Formally retired `!col` and `-col` negation with actionable error messages recommending `~col`.
+- **TUI Browser & REPL Improvements (`src/pytae/tui/`)**:
+  - Fixed TUI file browser viewport row calculation to avoid bottom line truncation and terminal overflow on small viewports.
+  - Surface complete tracebacks and errors during REPL pipeline assignments instead of swallowing syntax issues.
+  - Direct execution of `.sql` scripts in CLI without requiring `@` prefix.
+- **Export & Windows Share Drive Hardening (`src/pytae/cli_run.py`)**:
+  - Resolved path mangling on Windows UNC share drives and mapped network paths.
+  - Restored full static type compliance under `mypy` for CLI runner routines.
+- **Documentation & Notebook Refresh**:
+  - Updated all reference guides, comparisons, CLI cheat sheets, benchmarks, and interactive tutorial notebooks to canonical `func(col)` and `~col` syntax.
+
 ## [3.14.7] - 2026-11-15
 
 ### Fixed & Enhanced
