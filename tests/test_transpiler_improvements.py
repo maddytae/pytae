@@ -259,3 +259,25 @@ def test_transpile_windows_unquoted_paths_preserved():
     pt_code = _compile_history_to_pt(entries, "pipeline.pt")
     assert "df = C:/Users/user/data/sales.csv" in pt_code
     assert "-o C:/Users/user/out/summary.parquet" in pt_code
+
+
+def test_transpile_filter_dict_and_execute():
+    """Verify dict-based filter transpiles faithfully and executes correctly in Python."""
+    entries = [
+        "df = sample:penguins",
+        'k = df -filter "{\'species\': \'Gentoo\', \'body_mass_g\': (\'between\', 3000, 5000), \'sex\': \'is_not_null()\'}" -mutate "mass_kg = body_mass_g / 1000"',
+    ]
+    py_code = _compile_history_to_python(entries)
+    ast.parse(py_code)
+    assert (
+        'k = df.filter("{\'species\': \'Gentoo\', \'body_mass_g\': (\'between\', 3000, 5000), \'sex\': \'is_not_null()\'}").mutate(\'mass_kg = body_mass_g / 1000\')'
+        in py_code
+    )
+
+    # Execute generated code to verify runtime validity
+    exec_scope: dict[str, Any] = {}
+    exec(py_code, exec_scope)
+    assert "k" in exec_scope
+    assert exec_scope["k"].shape[0] > 0
+    assert "mass_kg" in exec_scope["k"].columns
+

@@ -160,7 +160,7 @@ def _extract_doc_chunks() -> list[dict[str, str]]:
                 "Select, slice, reorder, or drop columns using names, ranges, prefixes, or negation.\n\n"
                 "### Patterns\n"
                 "- By name: df.select('species', 'body_mass_g')\n"
-                "- Inverted drop: df.select('!sex', '!year') or df.select('-sex')\n"
+                "- Inverted drop: df.select('~sex', '~year')\n"
                 "- Column slices: df.select('bill_length_mm:body_mass_g')\n"
                 "- Select and rename: df.select('species', mass='body_mass_g')\n"
                 "- Pattern matching: df.select('starts_with=bill', 'ends_with=mm')\n"

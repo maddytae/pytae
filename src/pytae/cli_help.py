@@ -78,14 +78,14 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         summary="Select, reorder, slice, or exclude columns.",
         description=(
             "Restricts and reorders columns at this point in the pipeline.\n"
-            "Supports explicit column lists, contiguous slice ranges (start:end), negative drops (!col),\n"
+            "Supports explicit column lists, contiguous slice ranges (start:end), negative drops (~col),\n"
             "and criteria matchers (contains=, starts_with=, ends_with=, regex=, dtype=)."
         ),
         options=[
             "col1,col2 : Keep specific columns in the exact order requested.",
             "start:end : Contiguous slice range (inclusive of both bounds).",
-            "!col : Exclude specified columns from output.",
-            "!start:end : Drop a contiguous range of columns.",
+            "~col : Exclude specified columns from output.",
+            "~start:end : Drop a contiguous range of columns.",
             "contains=substr : Match columns containing substring.",
             "starts_with=prefix : Match columns starting with prefix.",
             "ends_with=suffix : Match columns ending with suffix.",
@@ -96,7 +96,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         examples=[
             'pytae penguins.parquet -select "species,island,body_mass_g"',
             'pytae penguins.parquet -select "bill_length_mm:body_mass_g"',
-            'pytae penguins.parquet -select "!sex,!year"',
+            'pytae penguins.parquet -select "~sex,~year"',
             'pytae penguins.parquet -select "contains=bill, species"',
             'pytae penguins.parquet -select "dtype=numeric"',
         ],

@@ -146,20 +146,20 @@ def test_select_everything():
 def test_select_negative_column_syntax():
     df = _wide()
     # Single negative column
-    assert list(pt.select(df, "!species").columns) == [
+    assert list(pt.select(df, "~species").columns) == [
         "island",
         "bill_length_mm",
         "bill_depth_mm",
         "body_mass_g",
     ]
     # Multiple negative columns
-    assert list(pt.select(df, "!species", "!island").columns) == [
+    assert list(pt.select(df, "~species", "~island").columns) == [
         "bill_length_mm",
         "bill_depth_mm",
         "body_mass_g",
     ]
     # Negative column slice
-    assert list(pt.select(df, "!bill_length_mm:body_mass_g").columns) == [
+    assert list(pt.select(df, "~bill_length_mm:body_mass_g").columns) == [
         "species",
         "island",
     ]
@@ -167,19 +167,19 @@ def test_select_negative_column_syntax():
 
 def test_select_exclude_kwarg_retired():
     df = _wide()
-    with pytest.raises(ValueError, match=r"select\(\): 'exclude=' is retired in favor of '!' negation"):
+    with pytest.raises(ValueError, match=r"select\(\): 'exclude=' is retired in favor of '~' negation"):
         pt.select(df, exclude="species")
-    with pytest.raises(ValueError, match=r"select\(\): 'exclude=' is retired in favor of '!' negation"):
+    with pytest.raises(ValueError, match=r"select\(\): 'exclude=' is retired in favor of '~' negation"):
         pt.select(df, exclude=["species", "island"])
 
-    # Canonical '!' negation works cleanly
-    assert list(pt.select(df, "!species").columns) == [
+    # Canonical '~' negation works cleanly
+    assert list(pt.select(df, "~species").columns) == [
         "island",
         "bill_length_mm",
         "bill_depth_mm",
         "body_mass_g",
     ]
-    assert list(pt.select(df, "!species", "!island").columns) == [
+    assert list(pt.select(df, "~species", "~island").columns) == [
         "bill_length_mm",
         "bill_depth_mm",
         "body_mass_g",
@@ -189,7 +189,7 @@ def test_select_exclude_kwarg_retired():
 def test_select_positive_and_negative_combination():
     df = _wide()
     # Positive slice minus one column
-    res = pt.select(df, "species:body_mass_g", "!island")
+    res = pt.select(df, "species:body_mass_g", "~island")
     assert list(res.columns) == [
         "species",
         "bill_length_mm",
@@ -201,15 +201,15 @@ def test_select_positive_and_negative_combination():
 def test_select_negative_typo_raises_hint():
     df = _wide()
     with pytest.raises(KeyError, match=r"Column to exclude not found: 'speceis' \(did you mean 'species'\?\)"):
-        pt.select(df, "!speceis")
+        pt.select(df, "~speceis")
 
 
 def test_select_legacy_hyphen_tilde_negation_retired():
     df = _wide()
-    with pytest.raises(ValueError, match=r"select\(\): '-col' negation is retired in favor of '!col'"):
+    with pytest.raises(ValueError, match=r"select\(\): '-col' negation is retired in favor of '~col'"):
         pt.select(df, "-island")
-    with pytest.raises(ValueError, match=r"select\(\): '~col' negation is retired in favor of '!col'"):
-        pt.select(df, "~island")
+    with pytest.raises(ValueError, match=r"select\(\): '!col' negation is retired in favor of '~col'"):
+        pt.select(df, "!island")
 
 
 def test_select_bracketed_names_and_slices():
@@ -234,7 +234,7 @@ def test_select_bracketed_names_and_slices():
         "body mass g",
     ]
     # Bracketed negation
-    assert list(pt.select(df, "![island name]").columns) == ["species", "bill length mm", "body mass g"]
+    assert list(pt.select(df, "~[island name]").columns) == ["species", "bill length mm", "body mass g"]
 
 
 def test_select_contains_startswith_endswith_tuples():
@@ -253,7 +253,7 @@ def test_select_contains_startswith_endswith_tuples():
 def test_select_negation_bracketed_string():
     # Negation with bracketed names
     df = pd.DataFrame({"col a": [1], "col b": [2], "keep": [3]})
-    res = pt.select(df, "![col a]", "![col b]")
+    res = pt.select(df, "~[col a]", "~[col b]")
     assert list(res.columns) == ["keep"]
 
 
@@ -300,11 +300,11 @@ def test_select_polars_and_lazy_and_dtypes():
     assert select(pl_df, dtype="datetime").columns == ["dt"]
     assert select(pl_df, exclude_dtype="non_numeric").columns == ["id", "val"]
     assert select(pl_df, exclude_dtype="numeric").columns == ["flag", "cat", "txt", "dt"]
-    assert select(pl_df.lazy(), "!val:txt").collect().columns == ["id", "dt"]
+    assert select(pl_df.lazy(), "~val:txt").collect().columns == ["id", "dt"]
 
     # Callable column selector & comma-separated slices/negations
     assert select(pl_df, lambda c: len(c) == 2).columns == ["id", "dt"]
-    assert select(pl_df, "id:flag, !val").columns == ["id", "flag"]
+    assert select(pl_df, "id:flag, ~val").columns == ["id", "flag"]
 
 
 def test_select_error_paths_and_pandas_exclude_dtypes():
@@ -334,17 +334,21 @@ def test_select_error_paths_and_pandas_exclude_dtypes():
     with pytest.raises(KeyError, match="End column 'missing' not found"):
         select(df, "a:missing")
     with pytest.raises(KeyError, match="Start column 'missing' not found"):
-        select(df, "!missing:b")
+        select(df, "~missing:b")
     with pytest.raises(KeyError, match="End column 'missing' not found"):
-        select(df, "!a:missing")
+        select(df, "~a:missing")
     with pytest.raises(KeyError, match="Start column 'missing' not found"):
         select(df, "a, missing:b")
     with pytest.raises(KeyError, match="End column 'missing' not found"):
         select(df, "a, b:missing")
-    with pytest.raises(ValueError, match="retired in favor of '!col'"):
+    with pytest.raises(ValueError, match="retired in favor of '~col'"):
         select(df, "a, -b")
-    with pytest.raises(ValueError, match="retired in favor of '!col'"):
+    with pytest.raises(ValueError, match="retired in favor of '~col'"):
         select(df, ["-b"])
+    with pytest.raises(ValueError, match="retired in favor of '~col'"):
+        select(df, "a, !b")
+    with pytest.raises(ValueError, match="retired in favor of '~col'"):
+        select(df, ["!b"])
     with pytest.raises(KeyError, match="Column not found: 'z'"):
         select(df, "a, z")
 

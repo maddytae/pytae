@@ -337,8 +337,8 @@ def parse_select_spec(raw: str) -> tuple[list[str], dict]:
             value = value.strip()
             if key == "exclude":
                 raise SystemExit(
-                    "-select: 'exclude=' is retired in favor of '!' negation. "
-                    "Use -select '!col' or -select '!col1,!col2' instead."
+                    "-select: 'exclude=' is retired in favor of '~' negation. "
+                    "Use -select '~col' or -select '~col1,~col2' instead."
                 )
             if key in ("startswith", "endswith"):
                 canonical = "starts_with" if key == "startswith" else "ends_with"
@@ -370,12 +370,12 @@ def _select_unknown_names(tokens: list[str], available: list[str]) -> list[str]:
         clean = _unquote_name(token)
         if clean in available:
             continue
-        if token.startswith(("-", "~")):
+        if token.startswith(("-", "!")):
             raise SystemExit(
-                f"-select: '{token[0]}col' negation is retired in favor of '!col'. "
-                f"Use -select '!{token[1:]}' instead."
+                f"-select: '{token[0]}col' negation is retired in favor of '~col'. "
+                f"Use -select '~{token[1:]}' instead."
             )
-        if token.startswith("!"):
+        if token.startswith("~"):
             raw = _unquote_name(token[1:].strip())
             if raw in available:
                 continue

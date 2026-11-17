@@ -261,8 +261,8 @@ def check_dsl_string(verb: str, spec: str) -> list[str]:
         for token in tokens:
             t = token.strip()
             if t.startswith("exclude="):
-                errors.append("'exclude=' is retired in favor of '!' negation. Use '!col' or '!col1,!col2' instead.")
-            elif "=" in t and not t.startswith("!["):
+                errors.append("'exclude=' is retired in favor of '~' negation. Use '~col' or '~col1,~col2' instead.")
+            elif "=" in t and not t.startswith("~["):
                 k, _, _ = t.partition("=")
                 k = k.strip()
                 from pytae.cli_parsing import SELECT_KEYS
@@ -345,7 +345,7 @@ class _DSLVisitor(ast.NodeVisitor):
                                 col=node.col_offset,
                                 verb=verb,
                                 expression="exclude=...",
-                                message="'exclude=' is retired in favor of '!' negation. Use select('!col') instead.",
+                                message="'exclude=' is retired in favor of '~' negation. Use select('~col') instead.",
                             )
                         )
 

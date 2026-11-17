@@ -950,8 +950,8 @@ def test_repl_targeted_pipeline_active_sync(sample_df):
     r = PytaeRepl(df=sample_df)
     tbl_name = r.path_str or "df"
 
-    # Target the active table with assignment: tbl = tbl -select "!species"
-    r.execute_line(f'{tbl_name} = {tbl_name} -select "!species"', output_fn=outputs.append)
+    # Target the active table with assignment: tbl = tbl -select "~species"
+    r.execute_line(f'{tbl_name} = {tbl_name} -select "~species"', output_fn=outputs.append)
     assert "species" not in r.tables[tbl_name].columns
     assert "species" not in r.current_df.columns
     assert r.current_df.columns == ["id", "body_mass_g"]

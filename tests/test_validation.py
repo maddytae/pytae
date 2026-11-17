@@ -93,12 +93,12 @@ def test_check_dsl_string_mutate():
 
 def test_check_dsl_string_select():
     # Valid
-    assert check_dsl_string("select", "!col1, !col2") == []
+    assert check_dsl_string("select", "~col1, ~col2") == []
     assert check_dsl_string("select", "dtype=numeric") == []
 
     # Retired exclude=
     errs = check_dsl_string("select", "exclude=col1")
-    assert any("retired in favor of '!' negation" in e for e in errs)
+    assert any("retired in favor of '~' negation" in e for e in errs)
 
     # Unknown criteria
     errs = check_dsl_string("select", "foo=bar")
@@ -137,7 +137,7 @@ import pytae as pt
 
 def run():
     df = pt.scan_parquet('data.parquet')
-    return df.filter('age >= 18').mutate('is_adult = 1').select('!species')
+    return df.filter('age >= 18').mutate('is_adult = 1').select('~species')
 """
     )
 
@@ -158,7 +158,7 @@ def run():
     bad_diags = check_dsl_file(bad_file)
     assert len(bad_diags) == 2
     assert any("never closed" in d.message for d in bad_diags)
-    assert any("retired in favor of '!'" in d.message for d in bad_diags)
+    assert any("retired in favor of '~'" in d.message for d in bad_diags)
 
     num_files, all_diags = check_dsl_paths([tmp_path])
     assert num_files == 2

@@ -60,7 +60,7 @@ CHEATSHEET_TEXT = """\
 4. 🎯 COLUMN SELECTION & RENAMING (-select, -rename)
 --------------------------------------------------------------------------------
   pytae data.parquet -select "species,island,body_mass_g"
-  pytae data.parquet -select "!sex,!year"                         # Drop columns
+  pytae data.parquet -select "~sex,~year"                         # Drop columns
   pytae data.parquet -select "starts_with=bill_"                  # Prefix match
   pytae data.parquet -select "ends_with=_mm"                      # Suffix match
   pytae data.parquet -select "contains=length"                    # Substring match

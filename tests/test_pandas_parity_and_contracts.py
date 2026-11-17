@@ -253,8 +253,8 @@ def test_pandas_select_and_rename_parity():
     })
     ptdf = pt.DataFrame(pdf)
 
-    # Drop columns via negation (!col)
-    res_drop = ptdf.select("!cust_id", "!order_date")
+    # Drop columns via negation (~col)
+    res_drop = ptdf.select("~cust_id", "~order_date")
     assert list(res_drop.columns) == ["cust_name", "order_amt"]
 
     # Pattern match (contains)
