@@ -187,3 +187,32 @@ pytae c=customers.csv o=orders.parquet \
 | 1 | Alice | 2 | 400.0 |
 | 2 | Bob | 1 | 300.0 |
 | 3 | Charlie | 0 | NaN |
+
+---
+
+### Multi-Table SQL Joins from Files in REPL
+
+When joining tables in the interactive REPL using an external SQL file (`test.sql`), load the constituent tables into memory first under matching names:
+
+```sql
+-- test.sql
+SELECT x.a, y.a
+FROM x
+INNER JOIN y ON x.id = y.id;
+```
+
+```bash
+# 1. Load source tables into the REPL session:
+pytae> x = left_data.parquet
+pytae> y = right_data.parquet
+
+# 2. Preview the query without saving (non-destructive):
+pytae> sql test.sql
+
+# 3. Or save the result as a new working table 'k':
+pytae> k = sql test.sql
+Created 'k' from SQL query (850 rows x 2 cols).
+
+# 4. 'k' is now active in the prompt; chain verbs or run further SQL:
+pytae [k: 850x2]> -filter "a > 10" -head 5
+```
