@@ -599,7 +599,7 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         help="aggregate numeric columns using pytae agg; if -by is given, groups by those columns; "
         "without -by, computes a whole-table summary (grand total). "
         "Accepts a name (mean), a comma list (mean,sum,count), or column mappings "
-        "(v1 = sum, total = v1:sum, n = count). Defaults to sum.",
+        "(v1 = sum(), total = sum(v1), n = count()). Defaults to sum.",
     )
     parser.add_argument(
         "-fillna",

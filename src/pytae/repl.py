@@ -1193,7 +1193,7 @@ DATA TRANSFORMATION & PIPELINES:
   -mutate <expr>         : Add/modify columns, e.g. -mutate "mass_kg = body_mass_g / 1000"
   -select <cols>         : Column projection, e.g. -select "species,island,!mass_kg"
   -arrange <specs>       : Sort rows, e.g. -arrange "mass_kg desc"
-  -by <g> -agg <specs>   : Grouped aggregation, e.g. -by species -agg "m=mass:mean, n=count"
+  -by <g> -agg <specs>   : Grouped aggregation, e.g. -by species -agg "m=mean(mass), n=count()"
   -distinct <cols>       : Deduplicate rows
   -dropna [cols]         : Drop missing values
   -fillna <specs>        : Impute missing values

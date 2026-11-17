@@ -133,14 +133,14 @@ def test_library_freq_and_hist_width():
 
 def test_cli_bar_and_scatter_and_corr(sample_file, capsys):
     # CLI -bar
-    code = main([str(sample_file), "-by", "island", "-agg", "avg_mass=body_mass_g:mean", "-bar"])
+    code = main([str(sample_file), "-by", "island", "-agg", "avg_mass=mean(body_mass_g)", "-bar"])
     assert code == 0
     out = capsys.readouterr().out
     assert "Bar" in out
     assert "Biscoe" in out
 
     # CLI -bar with options
-    code = main([str(sample_file), "-by", "island", "-agg", "avg_mass=body_mass_g:mean", "-bar", "pct=true"])
+    code = main([str(sample_file), "-by", "island", "-agg", "avg_mass=mean(body_mass_g)", "-bar", "pct=true"])
     assert code == 0
     out = capsys.readouterr().out
     assert "%" in out

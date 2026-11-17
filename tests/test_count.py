@@ -130,7 +130,7 @@ def test_lazy_count():
 
 def test_agg_count_canonical(df):
     # agg(total="count")
-    res1 = df.by("species").agg(total="count", avg_mass="mass:mean")
+    res1 = df.by("species").agg(total="count", avg_mass="mean(mass)")
     assert list(res1.columns) == ["species", "total", "avg_mass"]
     assert res1["total"].to_list() == [3, 1, 2]
 

@@ -174,7 +174,7 @@ Stack multiple files or sheets sharing identical schemas into a single view:
 pytae q1=q1.parquet q2=q2.parquet q3=q3.parquet q4=q4.parquet \
   -concat \
   -by quarter \
-  -agg "total_revenue = amount:sum, order_count = count" \
+  -agg "total_revenue = sum(amount), order_count = count()" \
   -o annual_summary.csv
 
 # Stack multiple Excel sheets via targeted -opts
@@ -206,7 +206,7 @@ pytae o=orders.parquet c=customers.csv \
   -filter "region == 'West' and amount > 100" \
   -mutate "tax = amount * 0.0825, total = amount + tax" \
   -by customer_name \
-  -agg "spent = total:sum, orders = count" \
+  -agg "spent = sum(total), orders = count()" \
   -arrange "spent desc" \
   -head 10 \
   -o top_west_customers.parquet

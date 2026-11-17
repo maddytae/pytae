@@ -154,7 +154,7 @@ cells.append(nbf.v4.new_code_cell("""# Set membership via string expression
     penguins
     .filter("species in ['Adelie', 'Chinstrap'] and island in ['Dream', 'Biscoe']")
     .by('species', 'island')
-    .agg("n = count, mean_mass = body_mass_g:mean")
+    .agg("n = count(), mean_mass = mean(body_mass_g)")
 )"""))
 
 # Cell 13: Membership and exclusion in strings
@@ -224,7 +224,7 @@ cells.append(nbf.v4.new_code_cell("""# Complex nested logic:
     penguins
     .filter("((species == 'Gentoo' and island == 'Biscoe') or (species == 'Adelie' and island == 'Dream')) and body_mass_g >= 3500")
     .by('species', 'island')
-    .agg("n = count, mean_mass = body_mass_g:mean")
+    .agg("n = count(), mean_mass = mean(body_mass_g)")
 )"""))
 
 # Cell 20: Section 5 Markdown
@@ -555,7 +555,7 @@ cells.append(nbf.v4.new_code_cell("""# Tips dataset: weekend dinner parties of 2
     tips
     .filter("day in ['Sat', 'Sun'] and time == 'Dinner' and size >= 2 and total_bill > 15")
     .by('smoker')
-    .agg("mean_tip = tip:mean, mean_bill = total_bill:mean, total_diners = size:sum, n_tables = count")
+    .agg("mean_tip = mean(tip), mean_bill = mean(total_bill), total_diners = sum(size), n_tables = count()")
     .arrange("mean_tip desc")
 )"""))
 
@@ -566,7 +566,7 @@ cells.append(nbf.v4.new_code_cell("""# Titanic dataset: survival rate of passeng
     .filter("pclass in [1, 2] and age.is_not_null()")
     .filter({"age": ("between", 18, 60)})
     .by('pclass', 'sex')
-    .agg("survival_rate = survived:mean, n_passengers = count")
+    .agg("survival_rate = mean(survived), n_passengers = count()")
     .arrange("pclass, sex")
 )"""))
 

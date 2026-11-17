@@ -36,10 +36,10 @@ def test_all_agg():
     result = pt.agg(
         pt.by(df, "id", "country"),
         n="count",
-        balance_sum="balance:sum",
-        balance_min="balance:min",
-        balance_mean="balance:mean",
-        balance_max="balance:max",
+        balance_sum="sum(balance)",
+        balance_min="min(balance)",
+        balance_mean="mean(balance)",
+        balance_max="max(balance)",
     )
 
     expected_df = (
@@ -70,10 +70,10 @@ def test_all_agg_drop_na():
     result = pt.agg(
         pt.by(df, "id", "country"),
         n="count",
-        balance_sum="balance:sum",
-        balance_min="balance:min",
-        balance_mean="balance:mean",
-        balance_max="balance:max",
+        balance_sum="sum(balance)",
+        balance_min="min(balance)",
+        balance_mean="mean(balance)",
+        balance_max="max(balance)",
         dropna=True,
     )
 
@@ -173,10 +173,10 @@ def test_agg_df_whole_table_summary():
     # Whole-table multiple metrics require explicit aliases (Paradigm 2)
     res_multi = df.pt.agg(
         n="count",
-        sales_sum="sales:sum",
-        sales_mean="sales:mean",
-        units_sum="units:sum",
-        units_mean="units:mean",
+        sales_sum="sum(sales)",
+        sales_mean="mean(sales)",
+        units_sum="sum(units)",
+        units_mean="mean(units)",
     )
     assert len(res_multi) == 1
     assert list(res_multi.columns) == ["n", "sales_sum", "sales_mean", "units_sum", "units_mean"]
@@ -215,7 +215,7 @@ def test_agg_df_string_spec_with_brackets():
 
     # 5. Named aggregation with brackets in output and source
     res5 = df.pt.by("[smoker status]").pt.agg(
-        "[avg bill] = [total bill]:mean, [bill sum] = [total bill]:sum, [count] = n"
+        "[avg bill] = mean([total bill]), [bill sum] = sum([total bill]), [count] = count()"
     )
     assert list(res5.columns) == ["smoker status", "avg bill", "bill sum", "count"]
     assert list(res5["avg bill"]) == [30.0, 15.0]
@@ -223,7 +223,7 @@ def test_agg_df_string_spec_with_brackets():
     assert list(res5["count"]) == [1, 2]
 
     # 6. Whole-table summary with string mapping
-    res6 = df.pt.agg("[avg bill] = [total bill]:mean, [count] = n")
+    res6 = df.pt.agg("[avg bill] = mean([total bill]), [count] = count()")
     assert len(res6) == 1
     assert list(res6.columns) == ["avg bill", "count"]
     assert res6["avg bill"].iloc[0] == 20.0
@@ -289,24 +289,32 @@ def test_agg_df_output_name_collides_with_group_col():
     # Issue 1: named agg output matching a group column raises ValueError
     df = pd.DataFrame({"Region": ["East", "East", "West"], "Sales": [10, 30, 5], "Profit": [1, 2, 3]})
     with pytest.raises(ValueError, match="collides with group column"):
-        df.pt.by("Region").pt.agg(Region="Sales:sum")
+        df.pt.by("Region").pt.agg(Region="sum(Sales)")
 
     with pytest.raises(ValueError, match="collides with group column"):
-        df.pt.by("Region").pt.agg("Region = Sales:sum")
+        df.pt.by("Region").pt.agg("Region = sum(Sales)")
 
 
 def test_agg_df_duplicate_output_cols():
     # Issue 1: duplicate output column name in named_aggs / output_cols
     df = pd.DataFrame({"Region": ["East", "East", "West"], "Sales": [10, 30, 5], "Profit": [1, 2, 3]})
     with pytest.raises(ValueError, match="is duplicated in aggregation specification"):
-        df.pt.by("Region").pt.agg("Sales_sum = Profit:sum, Sales_sum = Sales:sum")
+        df.pt.by("Region").pt.agg("Sales_sum = sum(Profit), Sales_sum = sum(Sales)")
 
 
 def test_agg_df_list_collision_with_group_col():
     # Collision check: explicit alias colliding with group column raises
     df = pd.DataFrame({"Sales_sum": ["A", "B"], "Sales": [10, 20]})
     with pytest.raises(ValueError, match="collides with group column 'Sales_sum'"):
-        df.pt.by("Sales_sum").pt.agg(Sales_sum="Sales:sum")
+        df.pt.by("Sales_sum").pt.agg(Sales_sum="sum(Sales)")
+
+
+def test_agg_df_colon_syntax_retired():
+    df = pd.DataFrame({"Region": ["East", "West"], "Sales": [10, 20]})
+    with pytest.raises(ValueError, match="retired in favor of canonical"):
+        df.pt.by("Region").pt.agg(sales_sum="Sales:sum")
+    with pytest.raises(ValueError, match="retired in favor of canonical"):
+        df.pt.by("Region").pt.agg("sales_sum = Sales:sum")
 
 
 def test_agg_df_comma_separated_by_string():

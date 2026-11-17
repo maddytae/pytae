@@ -149,7 +149,7 @@ def test_cli_pivot_rich_metrics_1d(tmp_path, capsys):
         }
     )
     p = _write_csv(tmp_path, df)
-    exit_code = cli.main([p, "-pivot", "r=Region, v='avg_sales=Sales:mean, count=n'", "-cols"])
+    exit_code = cli.main([p, "-pivot", "r=Region, v='avg_sales=mean(Sales), count=count()'", "-cols"])
     assert exit_code == 0
     cols = capsys.readouterr().out.strip().splitlines()
     assert cols == ["Region", "avg_sales", "count"]
@@ -164,7 +164,7 @@ def test_cli_pivot_rich_metrics_2d_unquoted(tmp_path, capsys):
         }
     )
     p = _write_csv(tmp_path, df)
-    exit_code = cli.main([p, "-pivot", "r=Region, c=Year, v=rev=Sales:sum, count=n", "-cols"])
+    exit_code = cli.main([p, "-pivot", "r=Region, c=Year, v=rev=sum(Sales), count=count()", "-cols"])
     assert exit_code == 0
     cols = capsys.readouterr().out.strip().splitlines()
     assert cols == ["Region", "rev_2020", "rev_2021", "orders_2020", "orders_2021"] or cols == [
@@ -184,7 +184,7 @@ def test_cli_pivot_multi_func(tmp_path, capsys):
         }
     )
     p = _write_csv(tmp_path, df)
-    exit_code = cli.main([p, "-pivot", "r=Region, v=Sales:[mean, sum]", "-cols"])
+    exit_code = cli.main([p, "-pivot", "r=Region, v='[mean, sum](Sales)'", "-cols"])
     assert exit_code == 0
     cols = capsys.readouterr().out.strip().splitlines()
     assert cols == ["Region", "Sales_mean", "Sales_sum"]
@@ -248,8 +248,8 @@ def test_cli_pivot_single_metric_2d_no_prefix(tmp_path, capsys):
         }
     )
     p = _write_csv(tmp_path, df)
-    # pytae x.parquet -pivot "r=cola,colb,c=colc,v=colv:sum"
-    exit_code = cli.main([p, "-pivot", "r=cola,colb,c=colc,v=colv:sum", "-cols"])
+    # pytae x.parquet -pivot "r=cola,colb,c=colc,v=sum(colv)"
+    exit_code = cli.main([p, "-pivot", "r=cola,colb,c=colc,v=sum(colv)", "-cols"])
     assert exit_code == 0
     cols = capsys.readouterr().out.strip().splitlines()
     assert cols == ["cola", "colb", "C1", "C2"]
@@ -264,7 +264,7 @@ def test_cli_pivot_default_f_v_is_null_for_metrics(tmp_path, capsys):
         }
     )
     p = _write_csv(tmp_path, df)
-    exit_code = cli.main([p, "-pivot", "r=island,c=sex,v=mass:sum"])
+    exit_code = cli.main([p, "-pivot", "r=island,c=sex,v=sum(mass)"])
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "NaN" in out or "null" in out

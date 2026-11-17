@@ -24,7 +24,7 @@ def test_is_enclosed_pair_escaped_quotes_and_brackets():
 def test_grouped_dataframe_rename_string_spec():
     df = pt.DataFrame({"grp": ["a", "a", "b"], "val": [1, 2, 3]})
     grouped = df.by("grp").rename("grp:group, val:value")
-    res = grouped.agg("total = value:sum").arrange("group")
+    res = grouped.agg("total = sum(value)").arrange("group")
     assert res.columns == ["group", "total"]
     assert res["group"].to_list() == ["a", "b"]
     assert res["total"].to_list() == [3, 3]

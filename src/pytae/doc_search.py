@@ -123,7 +123,7 @@ def _extract_doc_chunks() -> list[dict[str, str]]:
                 "### Examples\n"
                 "```python\n"
                 "# Grouped aggregation:\n"
-                "df.by('species').agg(avg_mass='body_mass_g:mean', n='count')\n\n"
+                "df.by('species').agg(avg_mass='mean(body_mass_g)', n='count()')\n\n"
                 "# Grouped window mutation:\n"
                 "df.by('species').mutate(pct_mass='body_mass_g / sum(body_mass_g)')\n\n"
                 "# Top N per group:\n"

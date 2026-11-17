@@ -59,7 +59,7 @@ In Pytae, **data structures are always pure, flat 2D tables**:
 (
     penguins
     .by("species", "island")
-    .agg(avg_mass="body_mass_g:mean", max_mass="body_mass_g:max")
+    .agg(avg_mass="mean(body_mass_g)", max_mass="max(body_mass_g)")
     .filter("avg_mass > 4000")
 )
 ```
@@ -212,11 +212,11 @@ Pandas executes operations primarily in the Python interpreter and single-thread
 |:---|:---|:---|:---|
 | **Count Frequencies** | `df['g'].value_counts().reset_index()` | `df.count("g")` | `-count g` |
 | **Group Row Count** | `df.groupby('g').size().reset_index(name='n')` | `df.by("g").count()` | `-by g -count` |
-| **Group & Summarize** | `df.groupby('g')['x'].mean().reset_index()` | `df.by("g").agg(m="x:mean")` | `-by g -agg m=x:mean` |
-| **Summary with Count** | `df.groupby('g').agg(n=('x','size'), m=('x','mean')).reset_index()` | `df.by("g").agg(total="count", m="x:mean")` | `-by g -agg "total=count,m=x:mean"` |
-| **Multiple Metrics** | `df.groupby('g').agg(m=('x','mean'), s=('x','sum')).reset_index()` | `df.by("g").agg(m="x:mean", s="x:sum")` | `-by g -agg "m=x:mean,s=x:sum"` |
+| **Group & Summarize** | `df.groupby('g')['x'].mean().reset_index()` | `df.by("g").agg(m="mean(x)")` | `-by g -agg m=mean(x)` |
+| **Summary with Count** | `df.groupby('g').agg(n=('x','size'), m=('x','mean')).reset_index()` | `df.by("g").agg(total="count()", m="mean(x)")` | `-by g -agg "total=count(),m=mean(x)"` |
+| **Multiple Metrics** | `df.groupby('g').agg(m=('x','mean'), s=('x','sum')).reset_index()` | `df.by("g").agg(m="mean(x)", s="sum(x)")` | `-by g -agg "m=mean(x),s=sum(x)"` |
 | **Keep NA Groups** | `df.groupby('g', dropna=False).mean().reset_index()` | Default behavior (`dropna=False`) | Default behavior |
-| **Whole-Table Summary**| `df.agg({'x': 'mean'}).to_frame().T` | `df.agg(m="x:mean", n="count")` | `-agg "m=x:mean,n=count"` |
+| **Whole-Table Summary**| `df.agg({'x': 'mean'}).to_frame().T` | `df.agg(m="mean(x)", n="count()")` | `-agg "m=mean(x),n=count()"` |
 
 ### 6. Slicing Extreme Records (`arrange` + `head` / `tail`)
 | Task | Pandas | Pytae (Python) | Pytae CLI |
@@ -349,7 +349,7 @@ import pytae as pt
     .filter("body_mass_g > 3500 and sex.is_not_null()")
     .mutate(body_mass_kg="body_mass_g / 1000", bill_ratio="bill_length_mm / bill_depth_mm")
     .by("species", "island")
-    .agg(n="count", avg_mass_kg="body_mass_kg:mean", max_ratio="bill_ratio:max")
+    .agg(n="count()", avg_mass_kg="mean(body_mass_kg)", max_ratio="max(bill_ratio)")
     .arrange("avg_mass_kg desc")
     .to("summary.parquet")
 )
@@ -361,7 +361,7 @@ pytae penguins.parquet \
   -filter "body_mass_g > 3500 and sex.is_not_null()" \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm" \
   -by species,island \
-  -agg "n = count, avg_mass_kg = body_mass_kg:mean, max_ratio = bill_ratio:max" \
+  -agg "n = count(), avg_mass_kg = mean(body_mass_kg), max_ratio = max(bill_ratio)" \
   -arrange "avg_mass_kg desc" \
   -o summary.parquet
 ```

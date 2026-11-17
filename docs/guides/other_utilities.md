@@ -248,7 +248,7 @@ cat data.jsonl | pytae - -fmt jsonl -shape
 ### Clipboard Export (`-o clip`)
 Copies intermediate or final pipeline table to the OS clipboard as clean TSV:
 ```bash
-pytae penguins.parquet -by species -agg "mean=body_mass_g:mean" -o clip
+pytae penguins.parquet -by species -agg "mean=mean(body_mass_g)" -o clip
 ```
 
 ### Execution Progress (`-progress`)

@@ -32,7 +32,7 @@
 |---|---|---|---|
 | `-freq COL` | Terminal ASCII | Categorical distribution bar chart | `pytae penguins.parquet -freq species` |
 | `-hist COL[:BINS]` | Terminal ASCII | Numeric binned distribution histogram | `pytae penguins.parquet -hist body_mass_g:8` |
-| `-bar [SPEC]` | Terminal ASCII | Metric value magnitude bars across categories | `pytae penguins.parquet -by island -agg avg=mass:mean -bar` |
+| `-bar [SPEC]` | Terminal ASCII | Metric value magnitude bars across categories | `pytae penguins.parquet -by island -agg avg=mean(mass) -bar` |
 | `-scatter [SPEC]` | Terminal Braille | 2D in-terminal high-res bivariate scatter plot | `pytae penguins.parquet -scatter "bill_len:bill_depth"` |
 | `-corr [SPEC]` | Terminal ASCII | Pairwise correlation matrix or ranked pairs | `pytae penguins.parquet -corr pairs` |
 | `-plot SPEC` | Figure Plot | Draw bar, line, scatter, box, area, kde | `pytae data.csv -plot "kind=bar,x=cat,y=val"` |
@@ -102,7 +102,7 @@ While `-freq` visualizes row counts, `-bar` visualizes **pre-aggregated metric v
 ### 1. Bare `-bar` with 2 Columns (Auto-detect)
 When grouping and aggregating down to 2 columns (1 numeric, 1 non-numeric), bare `-bar` automatically targets the value:
 ```bash
-pytae penguins.parquet -by island -agg avg_mass=body_mass_g:mean -bar
+pytae penguins.parquet -by island -agg avg_mass=mean(body_mass_g) -bar
 ```
 
 **Output:**
@@ -119,13 +119,13 @@ pytae penguins.parquet -by island -agg avg_mass=body_mass_g:mean -bar
 ### 2. Multi-Column Tables (Preserves Metadata)
 Target a specific value column while preserving other grouping dimensions:
 ```bash
-pytae penguins.parquet -by species,island -agg avg_mass=body_mass_g:mean -bar avg_mass
+pytae penguins.parquet -by species,island -agg avg_mass=mean(body_mass_g) -bar avg_mass
 ```
 
 ### 3. Percentages & Custom Bounds
 Append percentage of total (`pct=true`) or set custom bounds (`limit=(min,max)`):
 ```bash
-pytae penguins.parquet -by island -agg avg_mass=body_mass_g:mean -bar "pct=true"
+pytae penguins.parquet -by island -agg avg_mass=mean(body_mass_g) -bar "pct=true"
 pytae data.csv -bar "island:avg_mass,limit=(3000,5000),width=30"
 ```
 
@@ -223,7 +223,7 @@ Filter, aggregate, and plot in one pipeline:
 ```bash
 pytae penguins.parquet \
   -by species \
-  -agg "avg_mass=body_mass_g:mean" \
+  -agg "avg_mass=mean(body_mass_g)" \
   -plot "kind=bar, x=species, y=avg_mass" \
   -finalize "title='Average Body Mass by Species', ylabel='Mass (g)'" \
   -o avg_mass.png
@@ -258,7 +258,7 @@ Pass any figure-level customization keys to `-finalize`:
 
 ```bash
 pytae tips.parquet \
-  -by day -agg "avg_bill=total_bill:mean" \
+  -by day -agg "avg_bill=mean(total_bill)" \
   -plot "kind=bar, x=day, y=avg_bill" \
   -finalize "title='Average Bill by Day', style=seaborn-v0_8-whitegrid, xlabel='Day of Week', ylabel='Average Bill ($)'" \
   -o daily_bill.svg

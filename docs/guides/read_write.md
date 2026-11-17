@@ -158,7 +158,7 @@ Directly read and analyze tabular data copied to your system clipboard (e.g. fro
 ```bash
 # Copy a table in your browser/Excel, then immediately query it:
 pytae clip -head 5
-pytae clip -filter "sales > 100" -by region -agg "total = sales:sum"
+pytae clip -filter "sales > 100" -by region -agg "total = sum(sales)"
 ```
 
 ### Python Library Counterpart (`df.to()`, `pt.to()`)

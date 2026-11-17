@@ -186,7 +186,7 @@ pytae data.parquet -scatter "bill_length_mm,bill_depth_mm"
 pytae data.parquet -corr
 
 # Generate publication-quality Matplotlib figures headlessly
-pytae data.parquet -by species -agg "avg_mass=body_mass_g:mean" \
+pytae data.parquet -by species -agg "avg_mass=mean(body_mass_g)" \
   -plot "kind=bar, x=species, y=avg_mass" -finalize "save=chart.png"
 ```
 
@@ -201,10 +201,10 @@ Perform blazing-fast grouped calculations:
 pytae data.parquet -by species -count
 
 # Multiple aggregations per group
-pytae data.parquet -by species -agg "avg_mass=body_mass_g:mean, max_flipper=flipper_length_mm:max, total=count"
+pytae data.parquet -by species -agg "avg_mass=mean(body_mass_g), max_flipper=max(flipper_length_mm), total=count()"
 
 # Multi-column grouping
-pytae data.parquet -by "species,island" -agg "mean_mass=body_mass_g:mean"
+pytae data.parquet -by "species,island" -agg "mean_mass=mean(body_mass_g)"
 
 # Deduplicate rows across key columns
 pytae data.parquet -distinct "species,island"
@@ -445,7 +445,7 @@ clear                     # Clear the terminal screen
 # 2. Pipeline Execution & Inspection (RAM-speed with zero file re-reads)
 pytae> -filter "species == 'Gentoo'"
 pytae> -mutate "mass_kg = body_mass_g / 1000.0"
-pytae> -by species -agg "mean_kg=mass_kg:mean, n=count"
+pytae> -by species -agg "mean_kg=mean(mass_kg), n=count()"
 pytae> -select "species,island,mass_kg"
 pytae> -arrange "mass_kg desc"
 pytae> -cols asc                                             # Column names sorted alphabetically

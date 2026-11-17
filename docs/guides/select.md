@@ -223,7 +223,7 @@ pytae penguins.parquet -select "dtype=numeric" -select "!bill_depth_mm" -head 3
 # Narrowing output columns after an aggregation
 pytae penguins.parquet \
   -by species \
-  -agg "avg_mass = body_mass_g:mean, total = count" \
+  -agg "avg_mass = mean(body_mass_g), total = count()" \
   -select "species,avg_mass"
 ```
 

@@ -483,12 +483,12 @@ def parse_filter(raw: str) -> FilterNode | dict[str, Any]:
 
 def parse_agg(raw: str):
     """Parse -agg: a name (mean), a comma list (mean,sum,count), or a col=aggfunc
-    mapping (val = sum, n = count, total = v1:sum). Quote a mapping key only to protect a comma."""
+    mapping (val = sum(), n = count(), total = sum(v1)). Quote a mapping key only to protect a comma."""
     raw = (raw or "").strip()
     if not raw:
         return "sum"
     if raw.startswith("{") or (raw.startswith("[") and "=" not in raw):
-        raise SystemExit("-agg: use a name (mean), a comma list (mean,sum), or a mapping (col = mean, total = count)")
+        raise SystemExit("-agg: use a name (mean), a comma list (mean,sum), or a mapping (col = mean(), total = count())")
     entries = [e for e in _tokenize(raw, ",", keep_quotes=True, track_brackets=True) if e]
     if not entries:
         raise SystemExit("-agg: expected a name, a comma list, or a mapping")
@@ -511,14 +511,14 @@ def parse_agg(raw: str):
                 if key in ("column", "aggfunc"):
                     raise SystemExit(
                         "-agg: the old 'column=...,aggfunc=...' syntax is retired. "
-                        "Use '-by <cols> -agg \"col = aggfunc\"' or '-agg \"total = col:aggfunc\"' instead."
+                        "Use '-by <cols> -agg \"col = aggfunc()\"' or '-agg \"total = aggfunc(col)\"' instead."
                     )
                 if key.lower() == "dropna":
                     dropna_flag = parse_bool_text(value)
                     continue
             elif ":" in entry:
                 raise SystemExit(
-                    f"-agg: invalid mapping entry '{entry}'; use '=' (e.g. -agg 'col = mean'). Colon ':' is not supported."
+                    f"-agg: invalid mapping entry '{entry}'; use '=' (e.g. -agg 'col = mean()'). Colon ':' is not supported."
                 )
             else:
                 raise SystemExit(f"-agg: invalid mapping entry {entry!r}")

@@ -37,7 +37,7 @@ def test_pandas_groupby_zero_data_loss_contract():
 
     # Pytae contract: null group is preserved; total is 100% accounted for (150)
     ptdf = pt.DataFrame(pdf)
-    res = ptdf.by("category").agg(total="sales:sum")
+    res = ptdf.by("category").agg(total="sum(sales)")
     p_res = res.to("pandas")
 
     assert len(p_res) == 3
@@ -119,8 +119,8 @@ def test_pandas_pure_flat_1d_dataframe_contract():
     # In Pytae:
     ptdf = pt.DataFrame(pdf)
     res = ptdf.by("dept", "role").agg(
-        avg_salary="salary:mean",
-        max_bonus="bonus:max",
+        avg_salary="mean(salary)",
+        max_bonus="max(bonus)",
     )
     p_res = res.to("pandas")
 
@@ -420,7 +420,7 @@ def test_pandas_accessor_pt_seamless_operations():
         pdf.pt
         .filter("salary >= 95")
         .by("dept")
-        .agg(avg_sal="salary:mean")
+        .agg(avg_sal="mean(salary)")
         .arrange("avg_sal desc")
     )
     p_res = res.to("pandas")

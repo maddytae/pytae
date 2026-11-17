@@ -264,9 +264,9 @@ Pytae completely eliminates these bottlenecks by executing in-memory on **Apache
 | Task | SAS | Pytae (Python) | Pytae CLI |
 |:---|:---|:---|:---|
 | **Frequency Count** | `PROC FREQ; TABLES g; RUN;` | `df.count("g")` | `-count g` |
-| **Group Mean** | `PROC MEANS NWAY NOPRINT; CLASS g; VAR x; OUTPUT OUT=out MEAN=m; RUN;` | `df.by("g").agg(m="x:mean")` | `-by g -agg m=x:mean` |
-| **Observation Count** | `OUTPUT OUT=out N=n;` | `df.by("g").agg(total="count")` | `-by g -agg total=count` |
-| **Multiple Metrics** | `OUTPUT OUT=out MEAN=m SUM=s MIN=mn MAX=mx;` | `df.by("g").agg(m="x:mean", s="x:sum")` | `-by g -agg "m=x:mean,s=x:sum"` |
+| **Group Mean** | `PROC MEANS NWAY NOPRINT; CLASS g; VAR x; OUTPUT OUT=out MEAN=m; RUN;` | `df.by("g").agg(m="mean(x)")` | `-by g -agg m=mean(x)` |
+| **Observation Count** | `OUTPUT OUT=out N=n;` | `df.by("g").agg(total="count()")` | `-by g -agg total=count()` |
+| **Multiple Metrics** | `OUTPUT OUT=out MEAN=m SUM=s MIN=mn MAX=mx;` | `df.by("g").agg(m="mean(x)", s="sum(x)")` | `-by g -agg "m=mean(x),s=sum(x)"` |
 | **Preserve Missing Groups**| `PROC MEANS MISSING;` *(Defaults to dropping!)*| Default behavior (`dropna=False`) | Default behavior |
 
 ### 7. Deduplication (`distinct`)
@@ -377,15 +377,15 @@ summary = (
         pulse_pressure="SYSBP - DIABP",
         htn_tier="case_when("
             "SYSBP >= 140 | DIABP >= 90, 'Stage 2', "
-            "SYSBP >= 130 | DIABP >= 80, 'Stage 1', "
+            "SYSBP >= 130 or DIABP >= 80, 'Stage 1', "
             "'Normal'"
         ")"
     )
     .by("TRTP", "SEX")
     .agg(
-        n_subjects="count",
-        mean_sysbp="SYSBP:mean",
-        mean_pp="pulse_pressure:mean"
+        n_subjects="count()",
+        mean_sysbp="mean(SYSBP)",
+        mean_pp="mean(pulse_pressure)"
     )
     .arrange("mean_sysbp desc")
 )

@@ -97,10 +97,10 @@ def run_benchmarks(num_rows: int = 5_000_000, runs: int = 3, output_md: bool = F
             t_start = time.perf_counter()
             pt_agg = (
                 pt.read(parquet_path)
-                .filter("body_mass > 4000 & bill_length > 40.0")
+                .filter("body_mass > 4000 and bill_length > 40.0")
                 .mutate(bill_ratio="bill_length / bill_depth")
                 .by("species", "island")
-                .agg(n="count", avg_mass="body_mass:mean", max_mass="body_mass:max")
+                .agg(n="count()", avg_mass="mean(body_mass)", max_mass="max(body_mass)")
                 .arrange("avg_mass desc")
             )
             times_pt.append(time.perf_counter() - t_start)
@@ -112,10 +112,10 @@ def run_benchmarks(num_rows: int = 5_000_000, runs: int = 3, output_md: bool = F
             t_start = time.perf_counter()
             pt_lazy = (
                 pt.scan(parquet_path)
-                .filter("body_mass > 4000 & bill_length > 40.0")
+                .filter("body_mass > 4000 and bill_length > 40.0")
                 .mutate(bill_ratio="bill_length / bill_depth")
                 .by("species", "island")
-                .agg(n="count", avg_mass="body_mass:mean", max_mass="body_mass:max")
+                .agg(n="count()", avg_mass="mean(body_mass)", max_mass="max(body_mass)")
                 .arrange("avg_mass desc")
                 .collect()
             )
@@ -178,9 +178,9 @@ def run_benchmarks(num_rows: int = 5_000_000, runs: int = 3, output_md: bool = F
         for _ in range(runs):
             t_start = time.perf_counter()
             _ = pt_df.by("species", "island").agg(
-                n="count",
-                avg_mass="body_mass:mean",
-                max_mass="body_mass:max",
+                n="count()",
+                avg_mass="mean(body_mass)",
+                max_mass="max(body_mass)",
             )
             times_pt_agg.append(time.perf_counter() - t_start)
         min_pt_agg = min(times_pt_agg)

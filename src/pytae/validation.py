@@ -303,7 +303,10 @@ def check_dsl_string(verb: str, spec: str) -> list[str]:
                 alias, _, expr = t.partition("=")
                 alias, expr = alias.strip(), expr.strip()
                 if expr == "n":
-                    errors.append(f"legacy 'n' aggregation in '{t}': use 'count' instead (e.g. '{alias} = count')")
+                    errors.append(f"legacy 'n' aggregation in '{t}': use 'count()' instead (e.g. '{alias} = count()')")
+                elif ":" in expr:
+                    src, _, fn = expr.partition(":")
+                    errors.append(f"retired '{expr}' syntax in '{t}': use canonical '{fn.strip()}({src.strip()})' instead")
 
     return errors
 

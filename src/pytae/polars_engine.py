@@ -2437,46 +2437,52 @@ def agg_polars(
             val_str = val.strip() if isinstance(val, str) else ""
             val_norm = re.sub(r"\(\s*\)$", "", val_str).lower() if val_str else ""
 
-            if val_norm in ("n", "count", "size", "len") or val in (["n"], ["count"], ("n",), ("count",)):
-                if "n" in by_cols and clean_out == "n":
-                    raise ValueError("agg(): count 'n' collides with group column 'n'")
-                _add_expr(pl.len().cast(pl.Int64), clean_out)
-            elif isinstance(val, str) and ":" in val:
+            if isinstance(val, str) and ":" in val:
                 src, fn_str = val.split(":", 1)
                 src = _unquote_name(src.strip())
-                fn_list = [f.strip() for f in fn_str.split(",") if f.strip()]
-                if len(fn_list) > 1:
-                    example_aliases = ", ".join(f"{clean_out}_{f}='{src}:{f}'" for f in fn_list)
-                    raise ValueError(
-                        f"agg(): multiple aggregation functions in '{clean_out}={val}' cannot be applied without explicit aliases. "
-                        "Pytae prohibits creating column names on the fly. "
-                        f"Use Paradigm 2: {example_aliases}"
-                    )
-                _add_expr(_polars_agg_expr(pl.col(src), fn_list[0]), clean_out)
+                fn_name = fn_str.strip()
+                raise ValueError(
+                    f"agg(): '{val}' syntax is retired in favor of canonical '{fn_name}({src})'. "
+                    f"In line with 'one and only one obvious way', use '{fn_name}({src})' instead (e.g. {clean_out}='{fn_name}({src})')."
+                )
             elif isinstance(val, str):
-                fn_call_m = re.match(r"^(\w+)\(([^)]+)\)$", val.strip())
+                fn_call_m = re.match(r"^(\w+)\(([^)]*)\)$", val.strip())
                 if fn_call_m:
-                    fn_name = fn_call_m.group(1).strip()
-                    src = _unquote_name(fn_call_m.group(2).strip())
-                    _add_expr(_polars_agg_expr(pl.col(src), fn_name), clean_out)
+                    fn_name = fn_call_m.group(1).strip().lower()
+                    inner_arg = fn_call_m.group(2).strip()
+                    if not inner_arg:
+                        if fn_name in ("n", "count", "size", "len"):
+                            if "n" in by_cols and clean_out == "n":
+                                raise ValueError("agg(): count 'n' collides with group column 'n'")
+                            _add_expr(pl.len().cast(pl.Int64), clean_out)
+                        else:
+                            _add_expr(_polars_agg_expr(pl.col(clean_out), fn_name), clean_out)
+                    else:
+                        src = _unquote_name(inner_arg)
+                        _add_expr(_polars_agg_expr(pl.col(src), fn_name), clean_out)
                 else:
-                    fn_list = [f.strip() for f in val.split(",") if f.strip()]
-                    if len(fn_list) > 1:
-                        example_aliases = ", ".join(f"{clean_out}_{f}='{clean_out}:{f}'" for f in fn_list)
-                        raise ValueError(
-                            f"agg(): multiple aggregation functions in '{clean_out}={val}' cannot be applied without explicit aliases. "
-                            "Pytae prohibits creating column names on the fly. "
-                            f"Use Paradigm 2: {example_aliases}"
-                        )
-                    _add_expr(_polars_agg_expr(pl.col(clean_out), fn_list[0]), clean_out)
+                    if val_norm in ("n", "count", "size", "len") or val in (["n"], ["count"], ("n",), ("count",)):
+                        if "n" in by_cols and clean_out == "n":
+                            raise ValueError("agg(): count 'n' collides with group column 'n'")
+                        _add_expr(pl.len().cast(pl.Int64), clean_out)
+                    else:
+                        fn_list = [f.strip() for f in val.split(",") if f.strip()]
+                        if len(fn_list) > 1:
+                            example_aliases = ", ".join(f"{clean_out}_{f}='{f}({clean_out})'" for f in fn_list)
+                            raise ValueError(
+                                f"agg(): multiple aggregation functions in '{clean_out}={val}' cannot be applied without explicit aliases. "
+                                "Pytae prohibits creating column names on the fly. "
+                                f"Use explicit aliases: {example_aliases}"
+                            )
+                        _add_expr(_polars_agg_expr(pl.col(clean_out), fn_list[0]), clean_out)
             elif isinstance(val, (list, tuple)):
                 fn_list = list(val)
                 if len(fn_list) > 1:
-                    example_aliases = ", ".join(f"{clean_out}_{f}='{clean_out}:{f}'" for f in fn_list)
+                    example_aliases = ", ".join(f"{clean_out}_{f}='{f}({clean_out})'" for f in fn_list)
                     raise ValueError(
                         f"agg(): list of aggregation functions in '{clean_out}={val}' cannot be applied without explicit aliases. "
                         "Pytae prohibits creating column names on the fly. "
-                        f"Use Paradigm 2: {example_aliases}"
+                        f"Use explicit aliases: {example_aliases}"
                     )
                 _add_expr(_polars_agg_expr(pl.col(clean_out), fn_list[0]), clean_out)
             else:
@@ -2531,7 +2537,7 @@ def agg_polars(
             raise ValueError(
                 f"agg(): multiple metric functions ({', '.join(repr(f) for f in rem_fns)}) cannot be applied across columns without explicit aliases. "
                 "Pytae prohibits creating column names on the fly (e.g. '{col}_{fn}'). "
-                "Use Paradigm 2 with explicit aliases instead: e.g. .agg(n='count', avg_col='col:mean', sum_col='col:sum')"
+                "Use Paradigm 2 with explicit aliases instead: e.g. .agg(n='count()', avg_col='mean(col)', sum_col='sum(col)')"
             )
 
         if has_n and "n" in num_cols:

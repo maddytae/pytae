@@ -13,7 +13,7 @@ Group, aggregate, and calculate window statistics using pytae's unified `-by` + 
   - [Single Function across Numeric Columns](#single-function-across-numeric-columns)
   - [Multiple Functions (`"mean,count"`)](#multiple-functions-meancount)
   - [Column-Specific Mapping](#column-specific-mapping)
-  - [Named Outputs (`total = col:aggfunc`)](#named-outputs-total--colaggfunc)
+  - [Named Outputs (`total = func(col)`)](#named-outputs-total--funccol)
   - [Top N per Group in Aggregated Pipelines](#top-n-per-group-in-aggregated-pipelines)
 - [Whole-Table Summaries (Grand Totals)](#whole-table-summaries-grand-totals)
 - [Grouped Transforms (`-by` + `-mutate`)](#grouped-transforms--by--mutate)
@@ -94,14 +94,14 @@ pytae penguins.parquet \
 | Chinstrap | 3733.1 | 212.0 | 68 |
 | Gentoo | 5076.0 | 231.0 | 124 |
 
-### Named Outputs (`total = col:aggfunc`)
+### Named Outputs (`total = func(col)`)
 
-Rename aggregated outputs cleanly using `new_name = col:aggfunc`:
+Rename aggregated outputs cleanly using `new_name = func(col)`:
 
 ```bash
 pytae penguins.parquet \
   -by species \
-  -agg "avg_mass = body_mass_g:mean, max_mass = body_mass_g:max, count = count" \
+  -agg "avg_mass = mean(body_mass_g), max_mass = max(body_mass_g), count = count()" \
   -round 1
 ```
 

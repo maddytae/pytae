@@ -151,7 +151,7 @@ def test_lazy_grouped_operations(sample_parquet: Path):
     assert "mean_val1" in collected_mut.columns
 
     # Grouped agg on LazyFrame
-    g_agg = df.by("category").agg(sum_val1="val1:sum", mean_val2="val2:mean")
+    g_agg = df.by("category").agg(sum_val1="sum(val1)", mean_val2="mean(val2)")
     assert g_agg.is_lazy
     collected_agg = g_agg.collect()
     assert "sum_val1" in collected_agg.columns

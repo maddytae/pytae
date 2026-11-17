@@ -541,8 +541,8 @@ def test_pivot_repeated_columns_in_dimensions_and_values():
 
 
 def test_pivot_rich_metric_1d_aliases_and_counts(sales_df):
-    # 1D: new_col = col:aggfunc and count = n
-    res = sales_df.pt.pivot(r="Region", v="rev = Sales:sum, avg_sales = Sales:mean, orders = n")
+    # 1D: new_col = sum(col) and count = count()
+    res = sales_df.pt.pivot(r="Region", v="rev = sum(Sales), avg_sales = mean(Sales), orders = count()")
     assert list(res.columns) == ["Region", "rev", "avg_sales", "orders"]
     assert res["orders"].dtype == "int64"
     east = res[res["Region"] == "East"].iloc[0]
@@ -557,7 +557,7 @@ def test_pivot_rich_metric_1d_aliases_and_counts(sales_df):
 
 def test_pivot_rich_metric_2d_aliases_and_counts(sales_df):
     # 2D cross-tabulation with multi-metric prefixes
-    res = sales_df.pt.pivot(r="Region", c="Year", v="rev = Sales:sum, orders = n")
+    res = sales_df.pt.pivot(r="Region", c="Year", v="rev = sum(Sales), orders = count()")
     assert list(res.columns) == ["Region", "rev_2023", "rev_2024", "orders_2023", "orders_2024"]
     assert res["orders_2023"].dtype == "int64"
     assert res["orders_2024"].dtype == "int64"
@@ -569,15 +569,15 @@ def test_pivot_rich_metric_2d_aliases_and_counts(sales_df):
 
 
 def test_pivot_multi_func_single_col(sales_df):
-    # Multi-func syntax col:[f1, f2]
-    res_1d = sales_df.pt.pivot(r="Region", v="Sales:[mean, sum]")
+    # Multi-func syntax [f1, f2](col)
+    res_1d = sales_df.pt.pivot(r="Region", v="[mean, sum](Sales)")
     assert list(res_1d.columns) == ["Region", "Sales_mean", "Sales_sum"]
     east = res_1d[res_1d["Region"] == "East"].iloc[0]
     assert east["Sales_mean"] == 150.0
     assert east["Sales_sum"] == 450.0
 
     # With alias: prefix_[f]
-    res_alias = sales_df.pt.pivot(r="Region", v="rev = Sales:[mean, sum]")
+    res_alias = sales_df.pt.pivot(r="Region", v="rev = [mean, sum](Sales)")
     assert list(res_alias.columns) == ["Region", "rev_mean", "rev_sum"]
 
 
@@ -588,7 +588,7 @@ def test_pivot_bracketed_column_spaced():
             "gross sales": [100.0, 200.0, 300.0],
         }
     )
-    res = df.pt.pivot(r="[Store Region]", v="total = [gross sales]:sum, count = n")
+    res = df.pt.pivot(r="[Store Region]", v="total = sum([gross sales]), count = count()")
     assert list(res.columns) == ["Store Region", "total", "count"]
     assert res.loc[res["Store Region"] == "East", "total"].iloc[0] == 300.0
     assert res.loc[res["Store Region"] == "East", "count"].iloc[0] == 2
@@ -601,14 +601,14 @@ def test_pivot_dict_spec(sales_df):
     assert res1.loc[res1["Region"] == "East", "Sales"].iloc[0] == 150.0
     assert res1.loc[res1["Region"] == "East", "Profit"].iloc[0] == 55.0
 
-    res2 = sales_df.pt.pivot(r="Region", v={"rev": "Sales:sum", "orders": "n"})
+    res2 = sales_df.pt.pivot(r="Region", v={"rev": "sum(Sales)", "orders": "count()"})
     assert list(res2.columns) == ["Region", "rev", "orders"]
     assert res2.loc[res2["Region"] == "East", "rev"].iloc[0] == 450.0
     assert res2.loc[res2["Region"] == "East", "orders"].iloc[0] == 3
 
 
 def test_pivot_whole_table_rich_metrics(sales_df):
-    res = sales_df.pt.pivot(v="total_sales = Sales:sum, avg_profit = Profit:mean, count = n")
+    res = sales_df.pt.pivot(v="total_sales = sum(Sales), avg_profit = mean(Profit), count = count()")
     assert list(res.columns) == ["total_sales", "avg_profit", "count"]
     assert len(res) == 1
     assert res["total_sales"].iloc[0] == 1150.0
@@ -618,11 +618,11 @@ def test_pivot_whole_table_rich_metrics(sales_df):
 
 def test_pivot_single_metric_in_2d_no_prefix(sales_df):
     # Single value metric with explicit func should NOT prefix column headers in 2D
-    res = sales_df.pt.pivot(r=["Region", "Store"], c="Year", v="Sales:sum")
+    res = sales_df.pt.pivot(r=["Region", "Store"], c="Year", v="sum(Sales)")
     assert list(res.columns) == ["Region", "Store", "2023", "2024"]
 
     # In contrast, multiple values DO prefix column headers
-    res_multi = sales_df.pt.pivot(r="Region", c="Year", v="Sales:sum, Profit:mean")
+    res_multi = sales_df.pt.pivot(r="Region", c="Year", v="sum(Sales), mean(Profit)")
     assert list(res_multi.columns) == [
         "Region",
         "Sales_sum_2023",
@@ -630,3 +630,8 @@ def test_pivot_single_metric_in_2d_no_prefix(sales_df):
         "Profit_mean_2023",
         "Profit_mean_2024",
     ]
+
+
+def test_pivot_colon_syntax_retired(sales_df):
+    with pytest.raises(ValueError, match="retired in favor of canonical"):
+        sales_df.pt.pivot(r="Region", v="Sales:sum")

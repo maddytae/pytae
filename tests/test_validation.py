@@ -122,11 +122,15 @@ def test_check_dsl_string_arrange():
 
 def test_check_dsl_string_agg():
     # Valid
-    assert check_dsl_string("agg", "total = count, avg_x = x:mean") == []
+    assert check_dsl_string("agg", "total = count(), avg_x = mean(x)") == []
+
+    # Retired colon syntax
+    errs_colon = check_dsl_string("agg", "avg_x = x:mean")
+    assert any("use canonical 'mean(x)' instead" in e for e in errs_colon)
 
     # Legacy n = n
     errs = check_dsl_string("agg", "n = n")
-    assert any("use 'count' instead" in e for e in errs)
+    assert any("use 'count()' instead" in e for e in errs)
 
 
 def test_check_dsl_file_and_paths(tmp_path):

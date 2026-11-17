@@ -988,7 +988,7 @@ def _parse_single_metric_expr(item: str, default_a: str) -> list[PivotMetric]:
         rest = item
 
     norm_rest = rest.strip()
-    if norm_rest.lower() in ("n", "n()", "size", "size()", "count()"):
+    if norm_rest.lower() in ("n", "n()", "size", "size()", "count", "count()"):
         out_name = alias if has_alias and alias else "n"
         return [
             PivotMetric(
@@ -1000,20 +1000,71 @@ def _parse_single_metric_expr(item: str, default_a: str) -> list[PivotMetric]:
             )
         ]
 
-    col_part = rest
-    funcs: list[str] = []
+    multi_fn_m = re.match(r"^\[([^\]]+)\]\(([^)]*)\)$", norm_rest)
+    if multi_fn_m:
+        fn_list = [f.strip().lower() for f in multi_fn_m.group(1).split(",") if f.strip()]
+        inner_arg = multi_fn_m.group(2).strip()
+        src_col = _unquote_name(inner_arg)
+        res_metrics = []
+        for f in fn_list:
+            agg = "size" if f in ("n", "size") else f
+            if has_alias and len(fn_list) == 1:
+                out_name = alias if alias else f"{src_col}_{f}"
+            elif has_alias and len(fn_list) > 1:
+                out_name = f"{alias}_{f}"
+            else:
+                out_name = f"{src_col}_{f}"
+            res_metrics.append(
+                PivotMetric(
+                    src_col=src_col,
+                    out_name=out_name,
+                    aggfunc=agg,
+                    has_alias=has_alias,
+                    has_explicit_func=True,
+                )
+            )
+        return res_metrics
+
+    fn_call_m = re.match(r"^(\w+)\(([^)]*)\)$", norm_rest)
+    if fn_call_m:
+        fn_name = fn_call_m.group(1).strip().lower()
+        inner_arg = fn_call_m.group(2).strip()
+        if not inner_arg:
+            out_name = alias if has_alias and alias else "n"
+            return [
+                PivotMetric(
+                    src_col=None,
+                    out_name=out_name,
+                    aggfunc="size" if fn_name in ("n", "size", "count") else fn_name,
+                    has_alias=has_alias,
+                    has_explicit_func=True,
+                )
+            ]
+        src_col = _unquote_name(inner_arg)
+        agg = "size" if fn_name in ("n", "size") else fn_name
+        out_name = alias if has_alias and alias else f"{src_col}_{fn_name}"
+        return [
+            PivotMetric(
+                src_col=src_col,
+                out_name=out_name,
+                aggfunc=agg,
+                has_alias=has_alias,
+                has_explicit_func=True,
+            )
+        ]
+
     if ":" in rest:
         colon_parts = _tokenize(rest, ":", track_brackets=True, keep_quotes=True)
         if len(colon_parts) >= 2 and colon_parts[0].strip():
             col_part = colon_parts[0].strip()
             func_spec = ":".join(colon_parts[1:]).strip()
-            if (func_spec.startswith("[") and func_spec.endswith("]")) or (
-                func_spec.startswith("(") and func_spec.endswith(")")
-            ):
-                inner = func_spec[1:-1].strip()
-                funcs = [_unquote_name(f.strip()) for f in _tokenize(inner, ",") if f.strip()]
-            else:
-                funcs = [_unquote_name(func_spec)]
+            raise ValueError(
+                f"pivot(): '{rest}' syntax is retired in favor of canonical '{func_spec}({col_part})'. "
+                f"In line with 'one and only one obvious way', use '{func_spec}({col_part})' instead."
+            )
+
+    col_part = rest
+    funcs: list[str] = []
 
     src_col = _unquote_name(col_part.strip())
     if not funcs:
@@ -1100,7 +1151,7 @@ def parse_pivot_metrics(
                             has_explicit_func=True,
                         )
                     )
-            elif isinstance(val, str) and (":" in val or val.strip().lower() in ("n", "size")):
+            elif isinstance(val, str) and ("(" in val or ":" in val or val.strip().lower() in ("n", "n()", "size", "size()", "count", "count()")):
                 metrics.extend(_parse_single_metric_expr(f"{key_str} = {val}", default_a=a))
             else:
                 f_str = str(val).strip()

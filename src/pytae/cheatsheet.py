@@ -76,14 +76,14 @@ CHEATSHEET_TEXT = """\
   pytae data.parquet -hist body_mass_g:20                         # 20-bin histogram
   pytae data.parquet -scatter "bill_length_mm,bill_depth_mm"     # ASCII scatter
   pytae data.parquet -corr                                        # Correlation matrix
-  pytae data.parquet -by species -agg "avg=body_mass_g:mean" \\
+  pytae data.parquet -by species -agg "avg=mean(body_mass_g)" \\
     -plot "kind=bar, x=species, y=avg" -finalize "save=chart.png" # PNG figure
 
 6. 📈 AGGREGATION & GROUPING (-by, -agg)
 --------------------------------------------------------------------------------
   pytae data.parquet -by species -count
-  pytae data.parquet -by species -agg "avg_mass=body_mass_g:mean, total=count"
-  pytae data.parquet -by "species,island" -agg "mean_mass=body_mass_g:mean"
+  pytae data.parquet -by species -agg "avg_mass=mean(body_mass_g), total=count()"
+  pytae data.parquet -by "species,island" -agg "mean_mass=mean(body_mass_g)"
   pytae data.parquet -distinct "species,island"
   pytae data.parquet -arrange "species asc, body_mass_g desc"
 

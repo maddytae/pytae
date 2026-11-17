@@ -474,7 +474,7 @@ def test_pivot_polars_rich_metrics_1d():
             "profit": [10.0, 25.0, 35.0, 50.0, 20.0],
         }
     )
-    res = pivot_polars(df, r="region", v="rev = sales:sum, avg_sales = sales:mean, orders = n")
+    res = pivot_polars(df, r="region", v="rev = sum(sales), avg_sales = mean(sales), orders = count()")
     assert res.columns == ["region", "rev", "avg_sales", "orders"]
     assert res["region"].to_list() == ["East", "West"]
     assert res["rev"].to_list() == [450.0, 700.0]
@@ -490,7 +490,7 @@ def test_pivot_polars_rich_metrics_2d():
             "sales": [100.0, 200.0, 300.0, 400.0, 150.0],
         }
     )
-    res = pivot_polars(df, r="region", c="year", v="rev = sales:sum, orders = n")
+    res = pivot_polars(df, r="region", c="year", v="rev = sum(sales), orders = count()")
     assert res.columns == ["region", "rev_2020", "rev_2021", "orders_2020", "orders_2021"]
     assert res["region"].to_list() == ["East", "West"]
     assert res["rev_2020"].to_list() == [300.0, 300.0]
@@ -506,7 +506,7 @@ def test_pivot_polars_multi_func_single_col():
             "sales": [100.0, 200.0, 300.0],
         }
     )
-    res = pivot_polars(df, r="region", v="sales:[mean, sum]")
+    res = pivot_polars(df, r="region", v="[mean, sum](sales)")
     assert res.columns == ["region", "sales_mean", "sales_sum"]
     assert res["sales_mean"].to_list() == [150.0, 300.0]
     assert res["sales_sum"].to_list() == [300.0, 300.0]
@@ -520,7 +520,7 @@ def test_pivot_polars_whole_table_and_c_only():
         }
     )
     # Whole table
-    res_whole = pivot_polars(df, v="total = sales:sum, count = n")
+    res_whole = pivot_polars(df, v="total = sum(sales), count = count()")
     assert res_whole.columns == ["total", "count"]
     assert res_whole["total"].to_list() == [600.0]
     assert res_whole["count"].to_list() == [3]
@@ -593,7 +593,7 @@ def test_pivot_polars_single_metric_in_2d_no_prefix():
             "sales": [10.0, 20.0, 30.0],
         }
     )
-    res = pivot_polars(df, r="region,store", c="year", v="sales:sum")
+    res = pivot_polars(df, r="region,store", c="year", v="sum(sales)")
     assert res.columns == ["region", "store", "2020", "2021"]
 
 
@@ -606,7 +606,7 @@ def test_pivot_polars_default_f_v_is_null_for_metrics():
         }
     )
     # Default: metrics have null for unobserved intersections
-    res = pivot_polars(df, r="island", c="sex", v="mass:sum")
+    res = pivot_polars(df, r="island", c="sex", v="sum(mass)")
     female_vals = dict(zip(res["island"].to_list(), res["female"].to_list()))
     male_vals = dict(zip(res["island"].to_list(), res["male"].to_list()))
     assert female_vals["Biscoe"] == 200.0
@@ -615,7 +615,7 @@ def test_pivot_polars_default_f_v_is_null_for_metrics():
     assert male_vals["Torgersen"] == 100.0
 
     # With f_v=0: unobserved intersections are replaced with 0.0
-    res_f0 = pivot_polars(df, r="island", c="sex", v="mass:sum", f_v=0)
+    res_f0 = pivot_polars(df, r="island", c="sex", v="sum(mass)", f_v=0)
     female_f0 = dict(zip(res_f0["island"].to_list(), res_f0["female"].to_list()))
     male_f0 = dict(zip(res_f0["island"].to_list(), res_f0["male"].to_list()))
     assert female_f0["Torgersen"] == 0.0

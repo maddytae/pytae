@@ -731,13 +731,13 @@ Calling Styles:
      (
          penguins
          .pt.by("species")
-         .pt.agg(avg_mass="body_mass_g:mean", total="count")
+         .pt.agg(avg_mass="mean(body_mass_g)", total="count()")
      )
   2. String Mapping Specification (Zero Dict Unpacking!):
      (
          tips
          .pt.by("smoker")
-         .pt.agg("tip = mean, [total bill] = mean, total = count")
+         .pt.agg("tip = mean, [total bill] = mean, total = count()")
      )
   3. Whole-Frame Aggregations:
      (
@@ -747,7 +747,7 @@ Calling Styles:
      )
   4. Whole-Table Grand Total (Ungrouped summary, 1 row):
      penguins.pt.agg("mean, n")
-     penguins.pt.agg(avg_mass="body_mass_g:mean", total="count")
+     penguins.pt.agg(avg_mass="mean(body_mass_g)", total="count()")
 
 Key Rules & Behaviors:
   - NO REDUNDANT SELECT:
@@ -1148,7 +1148,7 @@ Terminal Control & Utilities:
 
 6.1. When should I use `-select` before `-agg`?
 -----------------------------------------------
-When declaring specific columns inside `-agg` (e.g. `-agg "avg_mass = body_mass_g:mean, n = n"`),
+When declaring specific columns inside `-agg` (e.g. `-agg "avg_mass = mean(body_mass_g), n = count()"`),
 pytae automatically restricts output to grouping keys and target columns.
 When computing bulk summaries (e.g. `-agg mean`), using `-select` beforehand prunes unneeded columns.
 
@@ -1269,7 +1269,7 @@ In Python:
 (
     pt.sample("penguins")
     .by("island", "species")
-    .agg(avg_mass="body_mass_g:mean")
+    .agg(avg_mass="mean(body_mass_g)")
     .arrange("island", "avg_mass desc")
     .by("island")
     .head(2)
@@ -1353,7 +1353,7 @@ When encountering an error in Pytae, consult this catalog for the root cause and
 | `Invalid syntax: rm checkpoints` | Plural form used in REPL | Use singular: `rm checkpoint <name>` or `rm checkpoint *` |
 | `Invalid syntax: cls / -clear` | Non-canonical clear used | Use canonical `clear` |
 | `Missing argument for -agg` with grouped mutation | Grouped window mutation attempted with `-agg` | Use `-by col -mutate "mean_val = mean(col)"` to avoid collapsing rows |
-| `PolarsComputeError: duplicate column name` | Operation produced colliding column names | Explicitly rename output columns (e.g. `avg_val = col:mean`) |
+| `PolarsComputeError: duplicate column name` | Operation produced colliding column names | Explicitly rename output columns (e.g. `avg_val = mean(col)`) |
 
 
 6.20. How do I query files located on Windows network share drives (UNC paths or mapped drives)?
@@ -1508,7 +1508,7 @@ penguins = pt.sample("penguins")
 agg_summary = (
     penguins
     .pt.by("species", "island")
-    .pt.agg(mass_mean="body_mass_g:mean", count="n")
+    .pt.agg(mass_mean="mean(body_mass_g)", count="count()")
 )
 
 # 2. 2D Summary Matrix (Mean body mass across dimensions)
@@ -1520,7 +1520,7 @@ counts = penguins.pt.pivot(r="island", c="species", a="count")
 
 ```bash
 # Equivalent CLI One-Liners:
-pytae penguins.parquet -by "species,island" -agg "mass_mean=body_mass_g:mean, total=count"
+pytae penguins.parquet -by "species,island" -agg "mass_mean=mean(body_mass_g), total=count()"
 pytae penguins.parquet -pivot "r=island, c=species, v=body_mass_g, a=mean"
 pytae penguins.parquet -pivot "r=island, c=species, a=count"
 ```
@@ -1685,7 +1685,7 @@ import pytae as pt
 top_species = (
     pt.sample("penguins")
     .by("island", "species")
-    .agg(avg_mass="body_mass_g:mean")
+    .agg(avg_mass="mean(body_mass_g)")
     .arrange("island", "avg_mass desc")
     .by("island")
     .head(2)
@@ -2088,7 +2088,7 @@ CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
    - CLI: Chain sequential `-by` operations:
      `pytae sample:penguins -by island,species -agg "avg_mass=mean(body_mass_g)" -arrange "island, avg_mass desc" -by island -head 2`
    - Python:
-     `(penguins.by("island", "species").agg(avg_mass="body_mass_g:mean").arrange("island", "avg_mass desc").by("island").head(2))`
+     `(penguins.by("island", "species").agg(avg_mass="mean(body_mass_g)").arrange("island", "avg_mass desc").by("island").head(2))`
    - ANSI SQL:
      `pytae file -sql "WITH ranked AS (SELECT island, species, AVG(body_mass_g) AS avg_mass, ROW_NUMBER() OVER (PARTITION BY island ORDER BY AVG(body_mass_g) DESC) AS rnk FROM data GROUP BY island, species) SELECT island, species, avg_mass FROM ranked WHERE rnk <= 2"`
 

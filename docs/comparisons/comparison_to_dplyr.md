@@ -190,10 +190,10 @@ While `dplyr` is written with a C++ backend (`cpp11`), R itself is inherently si
 |:---|:---|:---|:---|
 | **Count Frequencies** | `count(df, g, sort = TRUE)` | `df.count("g")` | `-count g` |
 | **Group Row Count** | `df %>% group_by(g) %>% count()` | `df.by("g").count()` | `-by g -count` |
-| **Group Summary** | `df %>% group_by(g) %>% summarise(m = mean(x)) %>% ungroup()` | `df.by("g").agg(m="x:mean")` | `-by g -agg m=x:mean` |
-| **Summary with Count** | `summarise(df, total = n(), m = mean(x))` | `df.by("g").agg(total="count", m="x:mean")` | `-by g -agg "total=count,m=x:mean"` |
-| **Multiple Metrics** | `summarise(df, m = mean(x), s = sum(x))` | `df.by("g").agg(m="x:mean", s="x:sum")` | `-by g -agg "m=x:mean,s=x:sum"` |
-| **Whole-Table Summary**| `summarise(df, m = mean(x))` | `df.agg(m="x:mean", n="count")` | `-agg "m=x:mean,n=count"` |
+| **Group Summary** | `df %>% group_by(g) %>% summarise(m = mean(x)) %>% ungroup()` | `df.by("g").agg(m="mean(x)")` | `-by g -agg m=mean(x)` |
+| **Summary with Count** | `summarise(df, total = n(), m = mean(x))` | `df.by("g").agg(total="count()", m="mean(x)")` | `-by g -agg "total=count(),m=mean(x)"` |
+| **Multiple Metrics** | `summarise(df, m = mean(x), s = sum(x))` | `df.by("g").agg(m="mean(x)", s="sum(x)")` | `-by g -agg "m=mean(x),s=sum(x)"` |
+| **Whole-Table Summary**| `summarise(df, m = mean(x))` | `df.agg(m="mean(x)", n="count()")` | `-agg "m=mean(x),n=count()"` |
 
 ### 6. Slicing Top / Bottom Records (`arrange` + `head` / `tail`)
 | Task | dplyr (R) | Pytae (Python) | Pytae CLI |
@@ -290,10 +290,10 @@ import pytae as pt
 
 (
     pt.read("penguins.parquet")
-    .filter("body_mass_g > 3500 & sex.is_not_null()")
+    .filter("body_mass_g > 3500 and sex.is_not_null()")
     .mutate(body_mass_kg="body_mass_g / 1000", bill_ratio="bill_length_mm / bill_depth_mm")
     .by("species", "island")
-    .agg(n="count", avg_mass_kg="body_mass_kg:mean", max_ratio="bill_ratio:max")
+    .agg(n="count()", avg_mass_kg="mean(body_mass_kg)", max_ratio="max(bill_ratio)")
     .arrange("avg_mass_kg desc")
     .to("summary.parquet")
 )
@@ -305,7 +305,7 @@ pytae penguins.parquet \
   -filter "body_mass_g > 3500 and sex.is_not_null()" \
   -mutate "body_mass_kg = body_mass_g / 1000, bill_ratio = bill_length_mm / bill_depth_mm" \
   -by species,island \
-  -agg "n = count, avg_mass_kg = body_mass_kg:mean, max_ratio = bill_ratio:max" \
+  -agg "n = count(), avg_mass_kg = mean(body_mass_kg), max_ratio = max(bill_ratio)" \
   -arrange "avg_mass_kg desc" \
   -o summary.parquet
 ```

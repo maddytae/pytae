@@ -179,7 +179,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         description=(
             "Computes summary statistics on numeric columns.\n"
             "If -by is omitted, produces a whole-table grand total summary.\n"
-            "Accepts a function name ('mean'), a list ('mean,sum,count'), or mapped expressions ('avg=mean,total=sum').\n"
+            "Accepts a function name ('mean()'), a list ('mean(),sum(),count()'), or mapped expressions ('avg=mean(col),total=count()').\n"
             "By default, missing values (NaN) in group columns form their own group (dropna=False) to prevent silent data loss.\n"
             "To exclude rows with missing group keys, chain -dropna before -agg (e.g. -dropna species -by species -agg mean)."
         ),
@@ -187,15 +187,15 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "-by <cols> : Grouping column(s) (comma-separated).",
             "mean, sum, median, min, max, std, var : Built-in aggregation functions.",
             "count : Group row count (pure integer).",
-            "col = func : Column-specific mapping (e.g. 'total=sum,avg=mean').",
+            "col = func() : Column-specific mapping (e.g. 'body_mass_g = mean(), total = count()').",
             "dropna = bool : In-spec dropna setting (default: false preserves NA groups).",
         ],
         examples=[
             "pytae penguins.parquet -by species -agg mean",
-            'pytae penguins.parquet -by "species,island" -agg "mean,sum,count"',
-            'pytae penguins.parquet -agg "mean,count"   # Whole-table summary (grand total)',
-            'pytae penguins.parquet -by species -agg "total_mass = body_mass_g:sum, total = count"',
-            'pytae penguins.parquet -by sex -agg "body_mass_g = mean, dropna = false"',
+            'pytae penguins.parquet -by "species,island" -agg "mean(),sum(),count()"',
+            'pytae penguins.parquet -agg "mean(),count()"   # Whole-table summary (grand total)',
+            'pytae penguins.parquet -by species -agg "total_mass = sum(body_mass_g), total = count()"',
+            'pytae penguins.parquet -by sex -agg "body_mass_g = mean(), dropna = false"',
         ],
         see_also=["-by", "-pivot", "-mutate", "-dropna"],
     ),
@@ -206,16 +206,16 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         summary="Create 2D Excel-style contingency tables and pivot matrices.",
         description=(
             "Full multi-dimensional pivot table engine across 1D, 2D, and table rollups.\n"
-            "Metric column 'v' is optional; omitting 'v' automatically defaults to row counts ('count').\n"
-            "Supports rich metric mappings in v (e.g. col:func, new_col=col:func, total=count, col:[f1, f2]).\n"
+            "Metric column 'v' is optional; omitting 'v' automatically defaults to row counts ('count()').\n"
+            "Supports rich metric mappings in v (e.g. mean(col), new_col=sum(col), total=count()).\n"
             "Flattens multi-level column hierarchies to clean 1D strings and resets index to RangeIndex.\n"
             "Missing combinations default to f_v (or 0 for row counts)."
         ),
         options=[
             "r=row_cols : Row grouping dimension(s).",
             "c=col_cols : Column dimension(s) to spread as headers (optional for 1D aggregations).",
-            "v=spec : Metric specification (optional; defaults to row count 'count' when omitted).",
-            "a=func : Default aggregation function (default: sum; 'count' for counts).",
+            "v=spec : Metric specification (optional; defaults to row count 'count()' when omitted).",
+            "a=func : Default aggregation function (default: sum; 'count()' for counts).",
             "f_v=val : Replacement for empty grid cells (default 0 for counts, NaN for metric averages).",
             "dropna=true|false : Whether to drop NA categories (default: false).",
         ],
@@ -223,8 +223,8 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             'pytae penguins.parquet -pivot "r=island,c=species"   # 2D cross-tabulation count matrix',
             'pytae penguins.parquet -pivot "r=island,sex"   # 1D frequency table',
             'pytae penguins.parquet -pivot "r=island,c=species,v=body_mass_g,a=mean"',
-            "pytae penguins.parquet -pivot \"r=island,v='avg_mass=body_mass_g:mean, total=count'\"   # 1D summary",
-            "pytae penguins.parquet -pivot \"r=island,c=species,v='rev=body_mass_g:sum, orders=count'\"",
+            "pytae penguins.parquet -pivot \"r=island,v='avg_mass=mean(body_mass_g), total=count()'\"   # 1D summary",
+            "pytae penguins.parquet -pivot \"r=island,c=species,v='rev=sum(body_mass_g), orders=count()'\"",
             "pytae penguins.parquet -pivot \"r='species,island',c=sex,v=body_mass_g,a=median,f_v=0\"",
         ],
         see_also=["-agg", "-long", "-wide"],
@@ -472,9 +472,9 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "width=N : Maximum character width of bars (default: 20).",
         ],
         examples=[
-            "pytae penguins.parquet -by island -agg avg_mass=body_mass_g:mean -bar",
-            "pytae penguins.parquet -by species -agg avg_mass=body_mass_g:mean -bar avg_mass",
-            'pytae penguins.parquet -by island -agg avg_mass=body_mass_g:mean -bar "pct=true"',
+            "pytae penguins.parquet -by island -agg avg_mass=mean(body_mass_g) -bar",
+            "pytae penguins.parquet -by species -agg avg_mass=mean(body_mass_g) -bar avg_mass",
+            'pytae penguins.parquet -by island -agg avg_mass=mean(body_mass_g) -bar "pct=true"',
             'pytae summary.csv -bar "island:avg_mass,limit=(3000,5000)"',
         ],
         see_also=["-freq", "-hist", "-scatter", "-corr"],

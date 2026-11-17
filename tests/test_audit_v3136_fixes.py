@@ -96,21 +96,21 @@ def test_grouped_dataframe_preserves_grouping_on_cleaning():
     # dropna preserves grouping
     gdf = df.by("species").dropna("mass")
     assert type(gdf).__name__ == "GroupedDataFrame"
-    res_agg = gdf.agg(mean_mass="mass:mean")
+    res_agg = gdf.agg(mean_mass="mean(mass)")
     assert len(res_agg) == 2
     assert set(res_agg["species"].to_list()) == {"Adelie", "Gentoo"}
 
     # fillna preserves grouping
     gdf_fill = df.by("species").fillna(0.0, "mass")
     assert type(gdf_fill).__name__ == "GroupedDataFrame"
-    res_agg_fill = gdf_fill.agg(mean_mass="mass:mean")
+    res_agg_fill = gdf_fill.agg(mean_mass="mean(mass)")
     assert len(res_agg_fill) == 2
 
     # rename updates grouping keys
     gdf_ren = df.by("species").rename(species="spec")
     assert type(gdf_ren).__name__ == "GroupedDataFrame"
     assert gdf_ren._by == ["spec"]
-    res_agg_ren = gdf_ren.agg(mean_mass="mass:mean")
+    res_agg_ren = gdf_ren.agg(mean_mass="mean(mass)")
     assert "spec" in res_agg_ren.columns
 
 

@@ -101,7 +101,7 @@ Chain verbs from left to right as a continuous pipeline:
 pytae [penguins]> -filter "body_mass_g > 3500" \
                   -mutate "mass_kg = body_mass_g / 1000" \
                   -by species,island \
-                  -agg "n=count, avg_mass=mass_kg:mean" \
+                  -agg "n=count(), avg_mass=mean(mass_kg)" \
                   -arrange "avg_mass desc"
 ```
 

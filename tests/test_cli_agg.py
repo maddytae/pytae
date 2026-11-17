@@ -89,7 +89,7 @@ def test_group_by_agg_named_output(tmp_path, capsys):
     )
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-by", "grp", "-agg", "total = v1:sum"])
+    exit_code = cli.main([path, "-by", "grp", "-agg", "total = sum(v1)"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -113,7 +113,7 @@ def test_agg_named_output_with_spaced_group(tmp_path, capsys):
     df = pd.DataFrame({"Scenario Name": ["A", "A", "B"], "value": [1, 2, 3]})
     path = _write_csv(tmp_path, df)
 
-    exit_code = cli.main([path, "-by", "Scenario Name", "-agg", "v = value:sum"])
+    exit_code = cli.main([path, "-by", "Scenario Name", "-agg", "v = sum(value)"])
 
     out = capsys.readouterr().out
     assert exit_code == 0
@@ -169,7 +169,7 @@ def test_parse_agg_name_list_and_mapping():
     assert parse_agg("mean,sum,n") == ["mean", "sum", "n"]
     assert parse_agg("val = sum, n = n") == {"val": "sum", "n": "n"}
     assert parse_agg("'body mass' = mean") == {"body mass": "mean"}
-    assert parse_agg("total = v1:sum") == {"total": "v1:sum"}
+    assert parse_agg("total = sum(v1)") == {"total": "sum(v1)"}
     with pytest.raises(SystemExit, match="syntax is retired"):
         parse_agg("column=v1,aggfunc=sum")
     with pytest.raises(SystemExit, match="use '='"):

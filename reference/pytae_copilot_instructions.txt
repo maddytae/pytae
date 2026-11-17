@@ -32,7 +32,7 @@ CRITICAL SYNTAX & USAGE RULES (NON-NEGOTIABLE):
    - CLI: Chain sequential `-by` operations:
      `pytae sample:penguins -by island,species -agg "avg_mass=mean(body_mass_g)" -arrange "island, avg_mass desc" -by island -head 2`
    - Python:
-     `(penguins.by("island", "species").agg(avg_mass="body_mass_g:mean").arrange("island", "avg_mass desc").by("island").head(2))`
+     `(penguins.by("island", "species").agg(avg_mass="mean(body_mass_g)").arrange("island", "avg_mass desc").by("island").head(2))`
    - ANSI SQL:
      `pytae file -sql "WITH ranked AS (SELECT island, species, AVG(body_mass_g) AS avg_mass, ROW_NUMBER() OVER (PARTITION BY island ORDER BY AVG(body_mass_g) DESC) AS rnk FROM data GROUP BY island, species) SELECT island, species, avg_mass FROM ranked WHERE rnk <= 2"`
 
