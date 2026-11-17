@@ -1715,7 +1715,7 @@ def _process_path(
             if pivot_kwargs.get("v"):
                 from pytae._parsing import parse_pivot_metrics
 
-                parsed_metrics = parse_pivot_metrics(pivot_kwargs["v"], a=pivot_kwargs.get("a", "sum"))
+                parsed_metrics = parse_pivot_metrics(pivot_kwargs["v"], a=pivot_kwargs.get("a"))
                 for m in parsed_metrics:
                     if m.src_col is not None:
                         to_check.append(m.src_col)

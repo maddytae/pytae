@@ -868,7 +868,7 @@ def pivot_polars(
     r: str | Sequence[str] | None = None,
     c: str | Sequence[str] | None = None,
     v: Any = None,
-    a: str = "sum",
+    a: str | None = None,
     dropna: bool = False,
     f_v: Any = None,
     _func_name: str = "pivot_polars",

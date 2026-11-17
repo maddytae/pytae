@@ -1103,16 +1103,18 @@ def _parse_single_metric_expr(item: str, default_a: str) -> list[PivotMetric]:
 
 def parse_pivot_metrics(
     v: Any,
-    a: str = "sum",
+    a: str | None = None,
     df_cols: Sequence[str] | None = None,
 ) -> list[PivotMetric]:
     """Parse rich metric mappings in v for pivot operations."""
     if v is None or (isinstance(v, str) and not v.strip()) or (isinstance(v, (list, tuple, dict, set)) and len(v) == 0):
-        if a in ("n", "size", "count", "sum"):
+        if a is None or a.strip().lower() in ("n", "size", "count", "len"):
             return [PivotMetric(src_col=None, out_name="n", aggfunc="size", has_alias=False, has_explicit_func=False)]
         raise ValueError(
             f"pivot(): value column 'v' is required when aggregation function is '{a}'. Omit 'v' for row counts."
         )
+
+    eff_a = "sum" if a is None else a
 
     if isinstance(v, str):
         v_strip = v.strip()
@@ -1127,7 +1129,7 @@ def parse_pivot_metrics(
             ]
         all_metrics: list[PivotMetric] = []
         for item in items:
-            all_metrics.extend(_parse_single_metric_expr(item, a))
+            all_metrics.extend(_parse_single_metric_expr(item, eff_a))
         return all_metrics
 
     if isinstance(v, (dict, Mapping)):
@@ -1152,7 +1154,7 @@ def parse_pivot_metrics(
                         )
                     )
             elif isinstance(val, str) and ("(" in val or ":" in val or val.strip().lower() in ("n", "n()", "size", "size()", "count", "count()")):
-                metrics.extend(_parse_single_metric_expr(f"{key_str} = {val}", default_a=a))
+                metrics.extend(_parse_single_metric_expr(f"{key_str} = {val}", default_a=eff_a))
             else:
                 f_str = str(val).strip()
                 agg = "size" if f_str in ("n", "size") else f_str
@@ -1172,7 +1174,7 @@ def parse_pivot_metrics(
         for item in v:
             if not isinstance(item, str):
                 item = str(item)
-            all_metrics.extend(_parse_single_metric_expr(item, a))
+            all_metrics.extend(_parse_single_metric_expr(item, eff_a))
         return all_metrics
 
-    return _parse_single_metric_expr(str(v), a)
+    return _parse_single_metric_expr(str(v), eff_a)

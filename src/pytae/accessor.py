@@ -127,7 +127,7 @@ class _BasePtAccessor:
         r: str | Sequence[str] | None = None,
         c: str | Sequence[str] | None = None,
         v: str | Sequence[str] | None = None,
-        a: str = "sum",
+        a: str | None = None,
         dropna: bool = False,
         f_v: Any = None,
         **kwargs: Any,

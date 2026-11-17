@@ -239,6 +239,12 @@ def test_pivot_optional_v(sales_df):
     ):
         sales_df.pt.pivot(r="Region", c="Year", a="median")
 
+    with pytest.raises(
+        ValueError,
+        match="pivot\\(\\): value column 'v' is required when aggregation function is 'sum'. Omit 'v' for row counts.",
+    ):
+        sales_df.pt.pivot(r="Region", c="Year", a="sum")
+
 
 def test_pivot_f_v(sales_df):
     res = sales_df.pt.pivot(r="Region", c="Quarter", v="Sales", a="sum", f_v=0)
