@@ -6672,11 +6672,11 @@ pytae c=customers.csv o=orders.parquet \
 
 ### Primary Calling Paradigms
 
-1. **Explicit Aliasing (`alias = "col:operation"`) — Recommended**:
+1. **Explicit Aliasing (`alias = "operation(col)"`) — Recommended**:
    Every output column is explicitly declared as a keyword argument. No columns are created on the fly with unexpected suffixes.
    ```python
    df.by("species").agg(
-       n="count",
+       n="count()",
        avg_bill="mean(bill_length_mm)",
        total_mass="sum(body_mass_g)",
        max_mass="max(body_mass_g)",
@@ -6687,7 +6687,7 @@ pytae c=customers.csv o=orders.parquet \
    Keep the original column name unchanged when performing a single aggregation on that column:
    ```python
    df.by("species").agg(
-       n="count",
+       n="count()",
        bill_length_mm="mean",
        body_mass_g="sum",
    )
@@ -6737,7 +6737,7 @@ tips = pt.sample_data['tips']
 titanic = pt.sample_data['titanic']
 ```
 
-## Explicit Aliasing (`alias = "col:operation"`) — Recommended
+## Explicit Aliasing (`alias = "operation(col)"`) — Recommended
 
 Every output column name is explicitly declared on the left side of `=`. No columns are created on the fly, eliminating any guessing or magical suffixes.
 
@@ -6769,7 +6769,7 @@ shape: (3, 5)
 
 ## Mixing Preserved Column Names & Explicit Aliases
 
-You can cleanly combine 1-to-1 preserved column names (`col='operation'`) and explicit aliases (`alias='col:operation'`) in the same `.agg()` call. Output column order strictly follows parameter order.
+You can cleanly combine 1-to-1 preserved column names (`col='operation'`) and explicit aliases (`alias='operation(col)'`) in the same `.agg()` call. Output column order strictly follows parameter order.
 
 ```python
 # Place count first (n at front), then preserved columns and explicit aliases:
