@@ -15,6 +15,11 @@ This guide covers in-memory pipeline transformations, assignment vs. exploration
 - [In-Memory Pipeline Verbs](#in-memory-pipeline-verbs)
   - [Chaining Multiple Verbs](#chaining-multiple-verbs)
   - [Multi-Line Pipeline Continuation (`\`)](#multi-line-pipeline-continuation-)
+- [Reusable REPL Macros & Recipes (`macro <name> = ...`)](#reusable-repl-macros--recipes-macro-name--)
+  - [Defining Macros](#defining-macros)
+  - [Applying Macros with Pipes (`|`) or Direct Invocation](#applying-macros-with-pipes--or-direct-invocation)
+  - [Inspecting & Managing Macros](#inspecting--managing-macros)
+  - [Transpilation on `export <file.py>` (Clean Reusable Python Functions)](#transpilation-on-export-filepy-clean-reusable-python-functions)
 - [Multi-Table Operations](#multi-table-operations)
   - [Relational Joins (`-join`)](#relational-joins--join)
   - [Table Concatenation (`-concat`)](#table-concatenation--concat)
@@ -118,6 +123,79 @@ Updated 'df' (10 rows x 9 cols).
 ```
 
 If you make a mistake while constructing a multi-line buffer, press <kbd>Ctrl+C</kbd> to discard the buffer and return to an empty prompt.
+
+---
+
+<a id="reusable-repl-macros--recipes-macro-name--"></a>
+## Reusable REPL Macros & Recipes (`macro <name> = ...`)
+
+When experimenting across multiple tables or iterative workflows in the workbench, repeating long verb pipelines is tedious. Pytae provides **REPL Macros** (named recipes) to store transformation pipelines and apply them easily to any table.
+
+### Defining Macros
+Define a macro by assigning a verb pipeline to a name using `macro <name> = <pipeline>`:
+
+```text
+pytae> macro clean_orders = -dropna -filter "sales > 0" -mutate "tax = sales * 0.08"
+Defined macro 'clean_orders': -dropna -filter "sales > 0" -mutate "tax = sales * 0.08"
+```
+
+### Applying Macros with Pipes (`|`) or Direct Invocation
+You can apply a macro to any table using pipe syntax or space-separated command invocation:
+
+```text
+# 1. Non-destructive preview on a specific table:
+pytae> q1 | clean_orders
+
+# 2. Assign transformed result to a new table:
+pytae> q1_clean = q1 | clean_orders
+Created 'q1_clean' via macro 'clean_orders' (850 rows x 3 cols).
+
+# 3. Apply macro to another table and chain extra verbs:
+pytae> q2_clean = q2 | clean_orders -head 5
+
+# 4. Apply to active table:
+pytae [q1]> clean_orders
+pytae [q1]> q1_clean = clean_orders
+```
+
+### Inspecting & Managing Macros
+- **List macros**: Type `macros` or `status macro` to view all defined macros.
+- **Inspect definition**: Type `macro <name>` (e.g. `macro clean_orders`) to inspect its pipeline.
+- **Remove macros**: Type `rm macro <name>` to delete a macro, or `rm macro *` to clear all.
+- **Checkpoints**: All defined macros are automatically preserved in workbench snapshots (`checkpoint <name>` / `restore <name>`).
+
+### Transpilation on `export <file.py>` (Clean Reusable Python Functions)
+When exporting your session to a Python script via `export pipeline.py`, Pytae transpiles your macros into **clean, reusable Python transformation functions**:
+
+```text
+pytae> export pipeline.py
+Exported standalone Python script to /workspace/pipeline.py.
+```
+
+**Generated `pipeline.py`:**
+```python
+"""Auto-generated standalone Python pipeline script from pytae REPL session."""
+import pandas as pd
+import polars as pl
+import pytae as pt
+
+# Reusable REPL macro transformations
+def clean_orders(df: pt.DataFrame) -> pt.DataFrame:
+    return (
+        df
+        .dropna()
+        .filter('sales > 0')
+        .mutate('tax = sales * 0.08')
+    )
+
+q1 = pt.read("q1.parquet")
+q2 = pt.read("q2.parquet")
+q1_clean = clean_orders(q1)
+q2_clean = clean_orders(q2).head(5)
+```
+
+> [!TIP]
+> **Dead-Code Pruning**: If you define 3 test macros during an interactive session but only use 1 in your exported tables, Pytae's dead-code optimizer automatically prunes the 2 unused functions from the generated script.
 
 ---
 
