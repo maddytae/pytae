@@ -1,6 +1,7 @@
-import pytest
-import polars as pl
 import pandas as pd
+import polars as pl
+import pytest
+
 import pytae as pt
 from pytae.dataframe import DataFrame
 from pytae.polars_engine import dups_polars

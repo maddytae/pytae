@@ -209,13 +209,13 @@ class PytaeMagics(Magics):
 
     @line_magic
     def checkpoint(self, line: str = "") -> None:
-        """Manage ephemeral Arrow IPC checkpoints of DataFrames in the namespace.
+        """Manage atomic workbench checkpoints (all DataFrames + user variables).
 
         Usage:
-            %checkpoint <name> [table1 table2 ...]   Save snapshot (default: all DataFrames)
-            %checkpoint list                         List saved checkpoints
-            %checkpoint rm <name | *>                Delete a checkpoint (or all)
-            %checkpoint diff <table> <cp_name>       Compare table against checkpoint
+            %checkpoint <name>                 Save full workbench snapshot (0 MB RAM)
+            %checkpoint list                   List saved checkpoints
+            %checkpoint rm <name | *>          Delete a checkpoint (or all)
+            %checkpoint diff <table> <cp_name> Compare table against checkpoint
         """
         raw = line.strip()
         if not raw or raw.lower() == "list":
@@ -237,12 +237,16 @@ class PytaeMagics(Magics):
             print(self.wb.diff_against_checkpoint(tokens[1], tokens[2], self._user_ns()))
             return
 
+        if len(tokens) > 1:
+            raise ValueError(
+                "%checkpoint captures the entire workbench (all DataFrames and variables); "
+                "selective arguments are not supported. Usage: %checkpoint <name>"
+            )
+
         cp_name = tokens[0]
-        table_names = tokens[1:] if len(tokens) > 1 else None
         msg = self.wb.checkpoint(
             cp_name,
             self._user_ns(),
-            table_names=table_names,
             cell_index=self._current_cell_index(),
         )
         print(msg)
@@ -316,25 +320,55 @@ class PytaeMagics(Magics):
         """Export session history to a clean `.py` or `.ipynb` with rollback pruning.
 
         Usage:
-            %export analysis.py
-            %export analysis.ipynb
+            %export analysis.py [-relative]
+            %export analysis.ipynb [-relative]
         """
         raw = line.strip()
         if not raw:
-            print("Usage: %export <path.py | path.ipynb>")
+            print("Usage: %export <path.py | path.ipynb> [-relative]")
             return
-        dest = shlex.split(raw)[0]
+        tokens = shlex.split(raw)
+        relative_paths = False
+        dest: str | None = None
+        for t in tokens:
+            if t in ("-relative", "--relative"):
+                relative_paths = True
+            elif dest is None:
+                dest = t
+        if dest is None:
+            print("Usage: %export <path.py | path.ipynb> [-relative]")
+            return
         cells = _collect_session_history(self.shell)
-        print(self.wb.export_session(dest, cells, exclude_cell_index=self._current_cell_index()))
+        print(
+            self.wb.export_session(
+                dest,
+                cells,
+                exclude_cell_index=self._current_cell_index(),
+                relative_paths=relative_paths,
+            )
+        )
 
     @line_magic
     def exit(self, line: str = "") -> None:
-        """Exit IPython, optionally exporting session history first (`%exit -s [path]`)."""
+        """Exit IPython, optionally exporting session history first (`%exit -s [path] [-relative]`)."""
         tokens = shlex.split(line.strip()) if line.strip() else []
         if tokens and tokens[0] in ("-s", "--save"):
-            dest = tokens[1] if len(tokens) > 1 else "session.py"
+            relative_paths = False
+            dest = "session.py"
+            for t in tokens[1:]:
+                if t in ("-relative", "--relative"):
+                    relative_paths = True
+                else:
+                    dest = t
             cells = _collect_session_history(self.shell)
-            print(self.wb.export_session(dest, cells, exclude_cell_index=self._current_cell_index()))
+            print(
+                self.wb.export_session(
+                    dest,
+                    cells,
+                    exclude_cell_index=self._current_cell_index(),
+                    relative_paths=relative_paths,
+                )
+            )
 
         # In terminal IPython call ask_exit(); in Jupyter kernels avoid killing the kernel unexpectedly
         shell_cls = type(self.shell).__name__
@@ -400,7 +434,7 @@ def _complete_pytae_magic(wb: Workbench, ipython: Any, event: Any) -> list[str]:
             if len(parts) == 2 or (len(parts) == 3 and not line.endswith(" ")):
                 return [t for t in table_names if t.startswith(symbol)]
             return [c for c in cp_names if c.startswith(symbol)]
-        return [t for t in table_names if t.startswith(symbol)]
+        return []
 
     if magic == "free":
         return [t for t in (table_names + ["*"]) if t.startswith(symbol)]

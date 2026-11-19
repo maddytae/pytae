@@ -269,7 +269,7 @@ def _extract_doc_chunks() -> list[dict[str, str]]:
                 "Magics and display formatters activate automatically on `import pytae as pt` (set `PYTAE_NO_IPYTHON_EXT=1` to opt out).\n\n"
                 "### Core Magics\n"
                 "- `%pt` / `%%pt`: Run full Pytae CLI pipelines in-process (immutable by default; `res = %pt ...` or `%%pt res`).\n"
-                "- `%checkpoint <name> [tables...]`: Save ephemeral Arrow IPC snapshots to disk (0 MB RAM).\n"
+                "- `%checkpoint <name>`: Save atomic workbench snapshot (all DataFrames + user variables; 0 MB RAM).\n"
                 "- `%restore [name]`: Strictly roll back DataFrame state + scrub `Out`/`_` cache + trim OS RSS.\n"
                 "- `%status [table|checkpoint] [-v]`: Inspect tables, RAM, checkpoints, OS RSS, and display settings.\n"
                 "- `%free [df1 ... | *]`: Delete DataFrame(s), scrub IPython `Out`/`_` refs, and return RAM to OS.\n"

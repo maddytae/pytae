@@ -1,6 +1,5 @@
 """Tests covering fixes from the v3.13.4 audit report."""
 
-from pathlib import Path
 
 import pandas as pd
 import polars as pl
@@ -10,8 +9,6 @@ import pytae as pt
 from pytae.accessor import DataFrame
 from pytae.cli_help import KEYWORD_DOCS
 from pytae.cli_run import _output_text
-
-
 
 
 def test_audit_bug2_unicode_output_fallback_and_error_separation():

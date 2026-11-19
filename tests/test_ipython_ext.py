@@ -69,11 +69,17 @@ def test_checkpoint_strict_restore_and_free_scrubs_out_cache(
     assert any(isinstance(v, pt.DataFrame) for v in ip_shell.user_ns["Out"].values())
 
     ip_shell.run_cell("%checkpoint c1")
-    ip_shell.run_cell("df = df.filter('x > 1')\ntemp_df = pt.DataFrame({'z': [9]})")
+    # Selective checkpoint arguments are rejected
+    bad_cp = ip_shell.run_cell("%checkpoint c2 df")
+    assert bad_cp.error_in_exec is not None
+
+    ip_shell.run_cell("df = df.filter('x > 1')\ntemp_df = pt.DataFrame({'z': [9]})\ntemp_var = 123")
     assert "temp_df" in ip_shell.user_ns
+    assert "temp_var" in ip_shell.user_ns
 
     ip_shell.run_cell("%restore c1")
     assert "temp_df" not in ip_shell.user_ns
+    assert "temp_var" not in ip_shell.user_ns
     assert ip_shell.user_ns["df"].shape == (3, 1)
 
     ip_shell.run_cell("df")

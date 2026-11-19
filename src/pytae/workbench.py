@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import ast
 import atexit
+import copy
 import datetime
 import gc
 import json
@@ -211,6 +212,16 @@ def _is_pytae_df(obj: Any) -> bool:
     from pytae.dataframe import DataFrame as PytaeDataFrame
 
     return isinstance(obj, PytaeDataFrame)
+
+
+_USER_VAR_TYPES = (int, float, str, bool, type(None), list, tuple, dict, set, Path, datetime.date, datetime.datetime)
+
+
+def is_user_var(obj: Any) -> bool:
+    """Return True if `obj` is a snapshottable user data variable (scalar, collection, Path, date)."""
+    if is_dataframe(obj) or callable(obj):
+        return False
+    return isinstance(obj, _USER_VAR_TYPES)
 
 
 def is_dataframe(obj: Any) -> bool:
@@ -504,6 +515,7 @@ class CheckpointRecord:
     created_at: datetime.datetime
     cell_index: int
     tables: dict[str, CheckpointTableEntry] = field(default_factory=dict)
+    variables: dict[str, Any] = field(default_factory=dict)
 
     @property
     def disk_bytes(self) -> int:
@@ -594,6 +606,16 @@ class Workbench:
                 tables[k] = v
         return tables
 
+    def discover_vars(self, ns: dict[str, Any]) -> dict[str, Any]:
+        """Return user-defined scalar/collection variables currently present in `ns`."""
+        user_vars: dict[str, Any] = {}
+        for k, v in ns.items():
+            if not isinstance(k, str) or _IPYTHON_INTERNAL_RE.match(k):
+                continue
+            if is_user_var(v):
+                user_vars[k] = v
+        return user_vars
+
     # ------------------------------------------------------------------
     # Checkpoints & strict restore (D11)
     # ------------------------------------------------------------------
@@ -603,22 +625,15 @@ class Workbench:
         name: str,
         ns: dict[str, Any],
         *,
-        table_names: list[str] | None = None,
         cell_index: int = 0,
     ) -> str:
-        """Save an ephemeral Arrow IPC snapshot of DataFrames in `ns`."""
+        """Save an atomic snapshot of the entire workbench (all DataFrames + user variables)."""
         cp_name = name.strip()
         if not cp_name:
             raise ValueError("Checkpoint name cannot be empty.")
 
         all_tables = self.discover_tables(ns)
-        if table_names:
-            missing = [t for t in table_names if t not in all_tables]
-            if missing:
-                raise KeyError(f"Table(s) not found in namespace: {', '.join(missing)}")
-            selected = {t: all_tables[t] for t in table_names}
-        else:
-            selected = all_tables
+        all_vars = self.discover_vars(ns)
 
         # Overwrite existing checkpoint cleanly if reusing name
         if cp_name in self.checkpoints:
@@ -630,7 +645,7 @@ class Workbench:
         safe_cp = re.sub(r"[^A-Za-z0-9_.-]+", "_", cp_name)
         entries: dict[str, CheckpointTableEntry] = {}
 
-        for tbl_name, obj in selected.items():
+        for tbl_name, obj in all_tables.items():
             kind = frame_kind(obj)
             raw = to_polars_frame(obj)
             eager = raw.collect() if isinstance(raw, pl.LazyFrame) else raw
@@ -648,20 +663,31 @@ class Workbench:
                 shape=frame_shape_str(obj),
             )
 
+        snap_vars: dict[str, Any] = {}
+        for var_name, val in all_vars.items():
+            try:
+                snap_vars[var_name] = copy.deepcopy(val)
+            except Exception:
+                snap_vars[var_name] = val
+
         rec = CheckpointRecord(
             name=cp_name,
             created_at=datetime.datetime.now(),
             cell_index=cell_index,
             tables=entries,
+            variables=snap_vars,
         )
         self.checkpoints[cp_name] = rec
         self.checkpoint_order.append(cp_name)
 
-        if not entries:
-            return f"Checkpoint '{cp_name}' saved (0 tables)."
-        names_str = ", ".join(entries.keys())
-        disk_str = _format_bytes(rec.disk_bytes)
-        return f"Checkpoint '{cp_name}' saved ({len(entries)} table{'s' if len(entries) != 1 else ''}: {names_str} | {disk_str} on disk)."
+        tbl_part = (
+            f"{len(entries)} table{'s' if len(entries) != 1 else ''}: {', '.join(entries.keys())}"
+            if entries
+            else "0 tables"
+        )
+        var_part = f", {len(snap_vars)} var{'s' if len(snap_vars) != 1 else ''}" if snap_vars else ""
+        disk_part = f" | {_format_bytes(rec.disk_bytes)} on disk" if entries else ""
+        return f"Checkpoint '{cp_name}' saved ({tbl_part}{var_part}{disk_part})."
 
     def _delete_checkpoint_files(self, rec: CheckpointRecord) -> None:
         for entry in rec.tables.values():
@@ -723,6 +749,21 @@ class Workbench:
             pl_df = self._read_checkpoint_entry(entry)
             ns[tbl_name] = from_polars_frame(pl_df, entry.kind)
             restored_parts.append(f"{tbl_name} ({entry.shape})")
+
+        # Strict restore of user data variables: drop vars created after checkpoint, restore snapshotted values
+        current_vars = self.discover_vars(ns)
+        for var_name in list(current_vars.keys()):
+            if var_name not in rec.variables:
+                ns.pop(var_name, None)
+                dropped_names.append(var_name)
+        current_vars.clear()
+        del current_vars
+
+        for var_name, val in rec.variables.items():
+            try:
+                ns[var_name] = copy.deepcopy(val)
+            except Exception:
+                ns[var_name] = val
 
         if cache_scrub_fn is not None and stale_ids:
             cache_scrub_fn(stale_ids)
@@ -1283,6 +1324,7 @@ class Workbench:
         history_cells: list[tuple[int, str]],
         *,
         exclude_cell_index: int | None = None,
+        relative_paths: bool = False,
     ) -> str:
         """Export IPython session cells to a clean `.py` or `.ipynb` file.
 
@@ -1292,18 +1334,22 @@ class Workbench:
         - Workbench / inspection magics (`%status`, `%checkpoint`, `%restore`, `%free`, `%export`, `exit -s`, etc.)
         - Read-only previews (bare `df`, `df.head()`, unassigned `%pt df -head`)
         - Consecutive duplicate cells and dead overwritten assignments
+
+        By default resolves local input file paths to full absolute paths (pass `relative_paths=True`
+        or `-relative` to emit paths relative to the exported file's directory).
         """
         dest = Path(os.path.expanduser(str(dest_path)))
         if dest.suffix.lower() not in (".py", ".ipynb"):
             dest = dest.with_suffix(".py")
         dest.parent.mkdir(parents=True, exist_ok=True)
+        base_dir = dest.parent.resolve() if relative_paths else None
 
         kept_cells, pruned_count = self._filter_export_cells(
             history_cells, exclude_cell_index=exclude_cell_index
         )
 
         # Rewrite each kept cell to Python form for AST dead-code/duplicate/syntax analysis
-        rewritten = [_rewrite_cell_for_python(c) for c in kept_cells]
+        rewritten = [_rewrite_cell_for_python(c, relative_to=base_dir) for c in kept_cells]
         valid_pairs: list[tuple[str, str]] = []
         for orig, py_code in zip(kept_cells, rewritten):
             if not py_code.strip():
@@ -1497,7 +1543,68 @@ def _unquote_token(tok: str) -> str:
     return tok
 
 
-def _transpile_pt_to_fluent(cmd: str) -> str | None:
+def _resolve_export_path(raw_path: str, *, relative_to: Path | None = None) -> str:
+    """Resolve a local input path to a full absolute path (or relative to `relative_to`).
+
+    Leaves URIs (s3://, https://, sqlite://, ...), `sample:*`, `clip`, and already-absolute
+    Windows drive/UNC paths intact.
+    """
+    p_str = raw_path.strip()
+    if not p_str:
+        return raw_path
+    low = p_str.lower()
+    if low == "clip" or low.startswith("sample:") or "://" in p_str:
+        return p_str
+    # Preserve Windows drive / UNC paths cleanly when running on non-Windows hosts
+    if re.match(r"^[A-Za-z]:[\\/]", p_str) or p_str.startswith("\\\\"):
+        if sys.platform != "win32":
+            return p_str
+
+    has_glob = any(ch in p_str for ch in "*?[]")
+    if has_glob:
+        # Resolve the static parent portion so glob patterns stay valid from any cwd
+        parts = Path(os.path.expanduser(p_str)).parts
+        static_parts: list[str] = []
+        glob_parts: list[str] = []
+        in_glob = False
+        for part in parts:
+            if not in_glob and any(ch in part for ch in "*?[]"):
+                in_glob = True
+            if in_glob:
+                glob_parts.append(part)
+            else:
+                static_parts.append(part)
+        base = Path(*static_parts).resolve() if static_parts else Path.cwd().resolve()
+        resolved = base.joinpath(*glob_parts)
+    else:
+        resolved = Path(os.path.expanduser(p_str)).resolve()
+
+    if relative_to is not None:
+        try:
+            return os.path.relpath(str(resolved), str(relative_to))
+        except ValueError:
+            return str(resolved)
+    return str(resolved)
+
+
+def _resolve_python_io_paths(py_code: str, *, relative_to: Path | None = None) -> str:
+    """Resolve string path literals inside input calls (`pt.read(...)` / `pt.scan(...)`); leave outputs as typed."""
+    if "read(" not in py_code and "scan(" not in py_code:
+        return py_code
+
+    def _repl_in(match: re.Match[str]) -> str:
+        prefix, _quote, inner = match.group(1), match.group(2), match.group(3)
+        resolved = _resolve_export_path(inner, relative_to=relative_to)
+        return f"{prefix}{resolved!r}"
+
+    return re.sub(
+        r"""(\b(?:pt|pytae)\.(?:read|scan)\(\s*)(['"])([^'"]+)\2""",
+        _repl_in,
+        py_code,
+    )
+
+
+def _transpile_pt_to_fluent(cmd: str, *, relative_to: Path | None = None) -> str | None:
     """Transpile standard `%pt` CLI pipelines into idiomatic fluent Python, or return None to fall back."""
     try:
         raw_tokens = shlex.split(cmd, posix=False)
@@ -1518,7 +1625,8 @@ def _transpile_pt_to_fluent(cmd: str) -> str | None:
     elif first.isidentifier() and first.lower() != "clip":
         source_expr = first
     else:
-        source_expr = f"pt.read({first!r})"
+        resolved_first = _resolve_export_path(first, relative_to=relative_to)
+        source_expr = f"pt.read({resolved_first!r})"
 
     if len(tokens) == 1:
         return source_expr
@@ -1577,17 +1685,22 @@ def _transpile_pt_to_fluent(cmd: str) -> str | None:
     return f"(\n    {joined}\n)"
 
 
-def _rewrite_pt_cmd_to_python(cmd: str, target_var: str | None = None) -> str:
+def _rewrite_pt_cmd_to_python(
+    cmd: str,
+    target_var: str | None = None,
+    *,
+    relative_to: Path | None = None,
+) -> str:
     """Convert a `%pt` / `%%pt` invocation into standalone valid Python."""
     stripped = cmd.strip()
-    fluent = _transpile_pt_to_fluent(stripped)
+    fluent = _transpile_pt_to_fluent(stripped, relative_to=relative_to)
     expr = fluent if fluent is not None else f"pt.eval_cli({stripped!r}, locals())"
     if target_var:
         return f"{target_var} = {expr}"
     return expr
 
 
-def _rewrite_cell_for_python(code: str) -> str:
+def _rewrite_cell_for_python(code: str, *, relative_to: Path | None = None) -> str:
     """Rewrite IPython `%pt` / `%%pt` magics into standalone valid Python for `.py` export."""
     lines = code.splitlines()
     if not lines:
@@ -1599,7 +1712,7 @@ def _rewrite_cell_for_python(code: str) -> str:
         body = " ".join(
             ln.strip() for ln in lines[1:] if ln.strip() and not ln.strip().startswith("#")
         )
-        return _rewrite_pt_cmd_to_python(body, target_var=target_var)
+        return _rewrite_pt_cmd_to_python(body, target_var=target_var, relative_to=relative_to)
 
     out_lines: list[str] = []
     for raw_ln in lines:
@@ -1607,18 +1720,23 @@ def _rewrite_cell_for_python(code: str) -> str:
         m_assign = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*%pt\s+(.+)$", ln)
         if m_assign:
             indent = raw_ln[: len(raw_ln) - len(raw_ln.lstrip())]
-            out_lines.append(indent + _rewrite_pt_cmd_to_python(m_assign.group(2), target_var=m_assign.group(1)))
+            out_lines.append(
+                indent
+                + _rewrite_pt_cmd_to_python(
+                    m_assign.group(2), target_var=m_assign.group(1), relative_to=relative_to
+                )
+            )
             continue
         m_bare = re.match(r"^%pt\s+(.+)$", ln)
         if m_bare:
             indent = raw_ln[: len(raw_ln) - len(raw_ln.lstrip())]
-            out_lines.append(indent + _rewrite_pt_cmd_to_python(m_bare.group(1)))
+            out_lines.append(indent + _rewrite_pt_cmd_to_python(m_bare.group(1), relative_to=relative_to))
             continue
         if ln.startswith("%"):
             # Comment out any other IPython magic so exported .py is always valid Python
             out_lines.append(f"# {raw_ln}")
             continue
-        out_lines.append(raw_ln)
+        out_lines.append(_resolve_python_io_paths(raw_ln, relative_to=relative_to))
     return "\n".join(out_lines)
 
 
@@ -1882,12 +2000,16 @@ def run_cli_export(argv: list[str], *, db_path: Path | None = None, output_fn: C
     session_spec: str | None = None
     dest_path: str | None = None
     list_only = False
+    relative_paths = False
 
     i = 0
     while i < len(argv):
         tok = argv[i]
         if tok in ("-list", "--list", "-l"):
             list_only = True
+            i += 1
+        elif tok in ("-relative", "--relative"):
+            relative_paths = True
             i += 1
         elif tok in ("-o", "--output"):
             if i + 1 >= len(argv):
@@ -1959,7 +2081,7 @@ def run_cli_export(argv: list[str], *, db_path: Path | None = None, output_fn: C
         failed, restores = Workbench.load_session_meta(target_session)
         wb.failed_cells = failed
         wb.restore_events = restores or _infer_restore_events(cells)
-        msg = wb.export_session(out_file, cells)
+        msg = wb.export_session(out_file, cells, relative_paths=relative_paths)
         output_fn(f"[session {target_session}] {msg}")
         return 0
     finally:

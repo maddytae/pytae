@@ -104,13 +104,12 @@ ORDER BY avg_mass DESC
 
 ---
 
-### 2. `%checkpoint` & `%restore` — DataFrame Time-Machine
+### 2. `%checkpoint` & `%restore` — Atomic Workbench Time-Machine
 
-Checkpoints spill DataFrames to fast Arrow IPC files in a temporary directory (auto-cleaned on exit) — **0 MB RAM overhead** — and work on *any* `pytae.DataFrame`, `polars.DataFrame`, or `pandas.DataFrame` in your namespace, regardless of whether you transformed them with Python, Polars, Pandas, or `%pt`.
+Checkpoints always capture the **entire workbench state** — every DataFrame (`pytae`, `polars`, `pandas`) spilled to fast Arrow IPC on disk (**0 MB RAM overhead**) plus all user data variables (scalars, lists, dicts, sets, `Path`, dates). Selective per-table checkpointing is intentionally disallowed so `%restore` is always atomic and consistent.
 
 ```python
-%checkpoint raw                  # Snapshot all DataFrames in namespace
-%checkpoint step1 df sales       # Snapshot specific DataFrames only
+%checkpoint raw                  # Snapshot entire workbench (all DataFrames + user variables)
 %checkpoint list                 # List saved checkpoints & disk size
 %checkpoint diff df raw          # Compare current `df` against checkpoint `raw`
 %checkpoint rm raw               # Delete a checkpoint (or `*` for all)
@@ -121,11 +120,11 @@ Checkpoints spill DataFrames to fast Arrow IPC files in a temporary directory (a
 %restore raw    # Restore checkpoint `raw`
 %restore        # Restore the most recent checkpoint
 ```
-`%restore` always performs a **strict restore** of DataFrame state:
-1. Restores all snapshotted DataFrames in their exact original Python types (`pytae`, `polars`, `pandas`).
-2. Drops any DataFrames created *after* the checkpoint.
+`%restore` always performs a **strict restore** of workbench state:
+1. Restores all snapshotted DataFrames (in their exact original Python types) and all snapshotted user variables.
+2. Drops any DataFrames or user variables created *after* the checkpoint.
 3. Scrubs stale references from IPython's `Out` / `_` cache and trims OS RSS.
-4. Keeps your Python imports, functions, and scalar variables intact.
+4. Keeps your Python imports, functions, and classes intact.
 
 ---
 

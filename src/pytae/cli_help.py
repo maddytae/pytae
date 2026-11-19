@@ -1074,7 +1074,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ),
         options=[
             "%pt / %%pt : Run any Pytae CLI pipeline in-process (immutable by default; assign via `res = %pt ...` or `%%pt res`).",
-            "%checkpoint <name> [tables...] : Save ephemeral Arrow IPC snapshot of DataFrames to disk (0 MB RAM).",
+            "%checkpoint <name> : Save atomic snapshot of entire workbench (all DataFrames + user variables; 0 MB RAM).",
             "%checkpoint list | rm <name|*> | diff <table> <cp> : List, delete, or diff checkpoints.",
             "%restore [name] : Strictly restore DataFrame state to a checkpoint (or latest) and trim OS RSS.",
             "%status [table|checkpoint] [-v] : Show tracked DataFrames, RAM, checkpoints, OS RSS, and display settings.",
@@ -1273,7 +1273,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ),
         options=[
             "%status [-v] : Inspect active IPython workbench tables, checkpoints, OS RSS, and display settings.",
-            "%checkpoint <name> [tables...] : Create an ephemeral IPC snapshot of DataFrames (0 MB RAM).",
+            "%checkpoint <name> : Create an atomic IPC snapshot of the entire workbench (all DataFrames + user vars).",
             "%restore [name] : Strictly restore DataFrame state to a checkpoint (or latest) and trim OS RSS.",
             "%free [df1 ... | *] : Delete DataFrame(s), scrub IPython Out/_ cache refs, and trim OS RSS.",
             "%export <path.py | path.ipynb> : Export clean runnable script/notebook with automatic pruning.",
@@ -1291,19 +1291,20 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     "checkpoint": KeywordHelp(
         name="checkpoint",
         flag="%checkpoint <name>",
-        syntax="%checkpoint <name> [table1 table2 ...]",
-        summary="Freeze active IPython DataFrames into an ephemeral disk IPC snapshot (0 MB RAM).",
+        syntax="%checkpoint <name>",
+        summary="Atomically freeze entire IPython workbench (all DataFrames + user variables) to ephemeral disk IPC (0 MB RAM).",
         description=(
-            "Takes an ephemeral Arrow IPC snapshot of DataFrames in your IPython namespace.\n"
-            "- '%checkpoint <name>': Freezes all DataFrames to ephemeral disk IPC (0 MB RAM).\n"
+            "Takes an atomic snapshot of the entire workbench (all DataFrames to Arrow IPC on disk + all user variables).\n"
+            "Selective table arguments are intentionally disallowed so `%restore` is always consistent.\n"
+            "- '%checkpoint <name>': Freezes all DataFrames and user variables (0 MB RAM).\n"
             "- '%checkpoint list': Lists saved checkpoints and disk size.\n"
             "- '%checkpoint diff <table> <cp>': Compares an in-memory table against a checkpoint.\n"
             "- '%checkpoint rm <name | *>': Deletes a saved checkpoint and purges its IPC files.\n"
-            "- '%restore [name]': Strictly restores DataFrame state and trims OS RSS.\n"
+            "- '%restore [name]': Strictly restores DataFrames + user variables and trims OS RSS.\n"
             "- Legacy disk settings ('checkpoint_format', 'convert = all') have been retired."
         ),
         options=[
-            "%checkpoint <name> [tables...] : Freeze all (or named) DataFrames under an ephemeral IPC checkpoint.",
+            "%checkpoint <name> : Freeze the entire workbench (all DataFrames + user variables).",
             "%checkpoint list : List saved checkpoints and disk usage.",
             "%checkpoint diff <table> <cp> : Diff current table vs checkpoint snapshot.",
             "%checkpoint rm <name | *> : Delete a named checkpoint or purge all checkpoints.",

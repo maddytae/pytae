@@ -659,6 +659,7 @@ def outliers_polars(
     """
     import functools
     import operator
+
     import polars as pl
 
     schema = _df_schema(df)

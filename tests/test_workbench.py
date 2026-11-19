@@ -61,9 +61,11 @@ def test_checkpoint_and_strict_restore_preserves_types() -> None:
     assert "3 tables" in msg
     assert "raw" in wb.checkpoints
 
-    # Mutate existing and add a new table after checkpoint
+    # Mutate existing DataFrame + user variable, and add new ones after checkpoint
     ns["pt_df"] = ns["pt_df"].filter("val > 20")  # type: ignore[union-attr]
     ns["extra_df"] = pt.DataFrame({"z": [99]})
+    ns["threshold"] = 999
+    ns["after_var"] = "should_be_dropped"
 
     diff_txt = wb.diff_against_checkpoint("pt_df", "raw", ns)
     assert "4 -> 2" in diff_txt
@@ -76,13 +78,14 @@ def test_checkpoint_and_strict_restore_preserves_types() -> None:
         cache_scrub_fn=lambda ids: (scrubbed_ids.append(ids) or 0),
     )
     assert "Restored checkpoint 'raw'" in restore_msg
-    assert "dropped: extra_df" in restore_msg
+    assert "extra_df" in restore_msg and "after_var" in restore_msg
     assert "extra_df" not in ns
+    assert "after_var" not in ns
     assert isinstance(ns["pt_df"], pt.DataFrame)
     assert ns["pt_df"].shape == (4, 3)
     assert isinstance(ns["pl_df"], pl.DataFrame)
     assert isinstance(ns["pd_df"], pd.DataFrame)
-    # Non-DataFrame Python variables remain intact
+    # User scalar variable was strictly rolled back to its snapshotted value
     assert ns["threshold"] == 25
     assert len(scrubbed_ids) == 1
     assert wb.restore_events == [(1, 4)]
@@ -213,7 +216,7 @@ def test_export_prunes_duplicates_and_dead_assignments(tmp_path: Path) -> None:
     assert text.count("df = pt.sample('penguins')") == 1
     assert "3000" not in text
     assert "4000" in text
-    assert "y.to('out.parquet')" in text
+    assert "y.to(" in text and "out.parquet')" in text
     assert "z = y.head(3)" in text
 
 
@@ -330,3 +333,45 @@ def test_export_fluent_chain_with_round(tmp_path: Path) -> None:
     sample = pt.DataFrame({"grp": ["a", "b"], "v": [1.234, 5.678]})
     rounded = sample.round(1)
     assert rounded._df["v"].to_list() == [1.2, 5.7]
+
+
+def test_export_resolves_full_paths_by_default_and_supports_relative(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    sales = data_dir / "sales.parquet"
+    _sample_df().to(sales)
+
+    wb = Workbench(load_config=False)
+    history = [
+        (1, 'a = %pt data/sales.parquet -filter "val > 10" -o out/filtered.parquet'),
+        (2, 'b = pt.read("data/sales.parquet").to("out/copy.csv")'),
+        (3, 'c = pt.scan("data/*.parquet")'),
+        (4, 'd = pt.read("s3://my-bucket/file.parquet")'),
+        (5, 'recs = b.to("records")'),
+    ]
+
+    # Default: full absolute paths for inputs; outputs preserved as typed
+    out_dir = tmp_path / "scripts"
+    out_abs = out_dir / "abs_export.py"
+    wb.export_session(out_abs, history)
+    abs_text = out_abs.read_text(encoding="utf-8")
+    expected_abs = str(sales.resolve())
+    assert f"pt.read({expected_abs!r})" in abs_text
+    assert ".to('out/filtered.parquet')" in abs_text
+    assert '.to("out/copy.csv")' in abs_text
+    assert f"pt.scan({str(data_dir.resolve() / '*.parquet')!r})" in abs_text
+    assert "pt.read('s3://my-bucket/file.parquet')" in abs_text
+    assert '.to("records")' in abs_text
+
+    # With relative_paths=True (`-relative`): input paths relative to scripts/; outputs preserved as typed
+    out_rel = out_dir / "rel_export.py"
+    wb.export_session(out_rel, history, relative_paths=True)
+    rel_text = out_rel.read_text(encoding="utf-8")
+    assert "pt.read('../data/sales.parquet')" in rel_text or "pt.read('..\\\\data\\\\sales.parquet')" in rel_text
+    assert ".to('out/filtered.parquet')" in rel_text
+    assert '.to("out/copy.csv")' in rel_text
+    assert "pt.read('s3://my-bucket/file.parquet')" in rel_text
+    assert '.to("records")' in rel_text
