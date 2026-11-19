@@ -95,18 +95,18 @@ def test_help_unified_routing() -> None:
     assert "No dedicated help topic for keyword" in unknown_help
     assert "pytae -doc <phrase>" in unknown_help
 
-    # 7. Checkpoint, convert, and session keyword help
+    # 7. Checkpoint, set, and session keyword help (IPython workbench)
     cp_help = get_keyword_help("checkpoint")
-    assert "convert = all" in cp_help
-    assert "checkpoint_format" in cp_help
+    assert "%checkpoint" in cp_help
+    assert "%restore" in cp_help
 
-    convert_help = get_keyword_help("convert")
-    assert "convert = all" in convert_help
-    assert "checkpoint_format" in convert_help
+    set_help = get_keyword_help("set")
+    assert "%set" in set_help
+    assert "max_rows" in set_help
 
     session_help = get_keyword_help("session")
-    assert "session save" in session_help
-    assert "status session" in session_help
+    assert "%status" in session_help
+    assert "%export" in session_help
 
 
 def test_bare_subcommands_retired(capsys: pytest.CaptureFixture[str]) -> None:

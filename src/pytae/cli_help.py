@@ -1259,284 +1259,274 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "session": KeywordHelp(
         name="session",
-        flag="status | checkpoint <name> | export <path>",
-        syntax="pytae -i (then 'status', 'checkpoint <name>', or 'export <path>' in REPL)",
-        summary="In-memory interactive REPL workbench session management and inspection.",
+        flag="%status | %checkpoint <name> | %export <path>",
+        syntax="import pytae as pt  # then %status, %checkpoint, %restore, %free, %export",
+        summary="In-memory IPython & Jupyter workbench session management and inspection.",
         description=(
-            "In-memory workbench framework for interactive data manipulation.\n"
-            "Preserves table states, variables, and checkpoints in RAM during the session.\n"
-            "- 'status [-v]' (or 'status session'): Inspect active workbench tables, RAM consumption, and history.\n"
-            "- 'checkpoint <name>': Save in-memory snapshot for instant undo / rollback.\n"
-            "- 'export <path.pt | path.py> [-relative] [-no-prune]': Save reproducible pipeline script.\n"
-            "- 'session save' / persistent disk sessions have been retired in favor of lightweight in-memory checkpoints and script exports."
+            "In-memory workbench framework for interactive data manipulation inside IPython and Jupyter.\n"
+            "Activates automatically on `import pytae as pt`.\n"
+            "- '%status [-v]': Inspect active workbench DataFrames, RAM consumption, checkpoints, and OS RSS.\n"
+            "- '%checkpoint <name>': Save ephemeral Arrow IPC snapshot (0 MB RAM) for instant rollback.\n"
+            "- '%export <path.py | path.ipynb>': Save clean runnable script/notebook (prunes errors, rollbacks, dead assignments).\n"
+            "- 'pytae -export [session_id|~1] -o <path.py|path.ipynb>': Post-hoc export from IPython's history.sqlite.\n"
+            "- Legacy 'session save' / 'status session' / persistent disk sessions have been retired."
         ),
         options=[
-            "status [-v] (or status session) : Inspect active in-memory session status, tables, and memory usage.",
-            "checkpoint <name> : Create an ephemeral IPC snapshot of all active tables.",
-            "restore [name] : Revert active tables to previous checkpoint (or latest).",
-            "export <path.pt | path.py> [-relative] [-no-prune] : Export executed pipeline to reproducible script (with automatic dead assignment pruning).",
-            "-sessions : Shell CLI notice that disk sessions have been retired in favor of script exports.",
+            "%status [-v] : Inspect active IPython workbench tables, checkpoints, OS RSS, and display settings.",
+            "%checkpoint <name> [tables...] : Create an ephemeral IPC snapshot of DataFrames (0 MB RAM).",
+            "%restore [name] : Strictly restore DataFrame state to a checkpoint (or latest) and trim OS RSS.",
+            "%free [df1 ... | *] : Delete DataFrame(s), scrub IPython Out/_ cache refs, and trim OS RSS.",
+            "%export <path.py | path.ipynb> : Export clean runnable script/notebook with automatic pruning.",
+            "pytae -export [id|~1] -o <path> : Rescue and export any past IPython session from history.sqlite.",
         ],
         examples=[
-            "pytae -i  # Launch interactive REPL workbench",
-            "pytae -i  # Inside REPL: status",
-            "pytae -i  # Inside REPL: checkpoint snapshot1",
-            "pytae -i  # Inside REPL: export pipeline.pt",
-            "pytae -i  # Inside REPL: export pipeline.pt -relative",
+            "%status",
+            "%checkpoint snapshot1",
+            "%restore snapshot1",
+            "%export pipeline.py",
+            "pytae -export -o pipeline.py",
         ],
-        see_also=["-i", "status", "set", "checkpoint", "restore"],
+        see_also=["ipython", "status", "set", "checkpoint", "restore"],
     ),
     "checkpoint": KeywordHelp(
         name="checkpoint",
-        flag="checkpoint <name>",
-        syntax="checkpoint <name>",
-        summary="Freeze active workbench state into an ephemeral disk IPC snapshot (0 MB RAM).",
+        flag="%checkpoint <name>",
+        syntax="%checkpoint <name> [table1 table2 ...]",
+        summary="Freeze active IPython DataFrames into an ephemeral disk IPC snapshot (0 MB RAM).",
         description=(
-            "Takes an ephemeral Arrow IPC snapshot of all active tables, variables, and workbench state.\n"
-            "- 'checkpoint <name>': Freezes active tables to ephemeral disk IPC (e.g. checkpoint cp1).\n"
-            "- 'restore [name]': Reverts workbench tables to the specified checkpoint (or latest).\n"
-            "- 'status checkpoint [name]': Inspects checkpoint inventory, disk sizes, and table details.\n"
-            "- 'rm checkpoint <name>': Removes a saved checkpoint and purges its IPC files.\n"
-            "- Ephemeral storage: Checkpoints consume 0 MB RAM and are automatically deleted on session exit.\n"
-            "- Legacy disk settings ('checkpoint_format', 'convert = all') have been retired in favor of zero-overhead in-memory snapshots."
+            "Takes an ephemeral Arrow IPC snapshot of DataFrames in your IPython namespace.\n"
+            "- '%checkpoint <name>': Freezes all DataFrames to ephemeral disk IPC (0 MB RAM).\n"
+            "- '%checkpoint list': Lists saved checkpoints and disk size.\n"
+            "- '%checkpoint diff <table> <cp>': Compares an in-memory table against a checkpoint.\n"
+            "- '%checkpoint rm <name | *>': Deletes a saved checkpoint and purges its IPC files.\n"
+            "- '%restore [name]': Strictly restores DataFrame state and trims OS RSS.\n"
+            "- Legacy disk settings ('checkpoint_format', 'convert = all') have been retired."
         ),
         options=[
-            "checkpoint <name> : Freeze active workbench state under an ephemeral IPC checkpoint (0 MB RAM).",
-            "restore [name] : Restore in-memory tables and state to a saved checkpoint (or latest).",
-            "status checkpoint [name] : List saved checkpoints or view specific checkpoint metadata.",
-            "rm checkpoint <name | *> : Delete a named checkpoint or purge all checkpoints.",
+            "%checkpoint <name> [tables...] : Freeze all (or named) DataFrames under an ephemeral IPC checkpoint.",
+            "%checkpoint list : List saved checkpoints and disk usage.",
+            "%checkpoint diff <table> <cp> : Diff current table vs checkpoint snapshot.",
+            "%checkpoint rm <name | *> : Delete a named checkpoint or purge all checkpoints.",
         ],
         examples=[
-            "pytae -i  # Inside REPL: checkpoint baseline",
-            "pytae -i  # Inside REPL: restore baseline",
-            "pytae -i  # Inside REPL: status checkpoint",
-            "pytae -i  # Inside REPL: rm checkpoint baseline",
+            "%checkpoint baseline",
+            "%checkpoint diff df baseline",
+            "%restore baseline",
+            "%checkpoint rm baseline",
         ],
-        see_also=["restore", "session", "status", "-i"],
+        see_also=["restore", "session", "status", "ipython"],
     ),
     "restore": KeywordHelp(
         name="restore",
-        flag="restore <name>",
-        syntax="restore <name>",
-        summary="Restore the interactive workbench to a previously frozen checkpoint snapshot.",
+        flag="%restore [name]",
+        syntax="%restore [name]",
+        summary="Strictly restore IPython DataFrame state to a previously frozen checkpoint snapshot.",
         description=(
-            "Reverts all tables and pipeline state to the exact condition recorded when\n"
-            "'checkpoint <name>' was created. Automatically detects and decodes the checkpoint format\n"
-            "(Arrow IPC or Parquet). Intermediate uncheckpointed modifications are cleared, and\n"
-            "memory from abandoned steps is freed immediately."
+            "Strictly reverts DataFrames in IPython's namespace to the exact state recorded when\n"
+            "'%checkpoint <name>' was created. Drops any DataFrames created after the checkpoint,\n"
+            "scrubs stale references from IPython's Out/_ cache, and trims OS RSS immediately."
         ),
         options=[
-            "<name> : Name of an existing checkpoint snapshot to restore (auto-detects IPC or Parquet).",
-            "reset : Shortcut to revert all tables to the latest checkpoint snapshot.",
-            "status checkpoint <name> : Preview snapshot contents, format, and tables before restoring.",
+            "[name] : Name of an existing checkpoint snapshot (omitting restores the latest checkpoint).",
         ],
         examples=[
-            "pytae -i  # Inside REPL: restore base_clean",
-            "pytae -i  # Inside REPL: restore model_v1",
+            "%restore base_clean",
+            "%restore",
         ],
-        see_also=["checkpoint", "reset", "status", "session"],
+        see_also=["checkpoint", "status", "session"],
     ),
     "reset": KeywordHelp(
         name="reset",
-        flag="reset [initial | <table_name>]",
-        syntax="reset [initial | <table_name>]",
-        summary="Revert workbench or individual table to the latest checkpoint or initial file read.",
+        flag="%restore [name]",
+        syntax="%restore [name]  # (IPython's built-in %reset is left untouched)",
+        summary="Use `%restore` for checkpoint rollback (IPython's native `%reset` clears the entire namespace).",
         description=(
-            "Reverts state without terminating the REPL session.\n"
-            "- Bare 'reset': Reverts to the latest checkpoint (or initial file read if no checkpoints exist).\n"
-            "- 'reset initial': Strictly reverts to the original file read state even if checkpoints exist.\n"
-            "- 'reset <table_name>': Resets only the specified table while preserving other tables."
+            "Pytae leaves IPython's built-in `%reset` untouched so it retains standard IPython behavior.\n"
+            "For DataFrame state rollback, use `%checkpoint <name>` and `%restore [name]`."
         ),
         options=[
-            "(bare) : Revert to latest checkpoint (or initial state if no checkpoints).",
-            "initial : Revert strictly to original dataset as loaded from disk.",
-            "<table_name> : Revert only the named table.",
+            "%restore [name] : Strictly restore DataFrames to a saved checkpoint (or latest).",
         ],
         examples=[
-            "pytae -i  # Inside REPL: reset",
-            "pytae -i  # Inside REPL: reset initial",
+            "%checkpoint raw",
+            "%restore raw",
         ],
         see_also=["checkpoint", "restore", "status"],
     ),
     "status": KeywordHelp(
         name="status",
-        flag="status [category] [-v]",
-        syntax="status [table [name] | checkpoint [name] | var [name]] [-v]",
-        summary="Inspect REPL workbench status, loaded tables, checkpoints, or variables.",
+        flag="%status [table | checkpoint] [-v]",
+        syntax="%status [table_name | checkpoint [name]] [-v]",
+        summary="Inspect IPython workbench tables, checkpoints, OS process RSS, and display settings.",
         description=(
-            "Central inspection command for REPL workbench state:\n"
-            "- Bare 'status' or 'status -v': Displays unified session overview (active table, loaded tables, vars, checkpoints, RAM).\n"
-            "- 'status table [name] [-v]': Displays active table schema or inventory of all in-memory tables and memory footprint.\n"
-            "- 'status checkpoint [name] [-v]': Displays snapshot metadata, storage formats, disk bytes, or list of all saved checkpoints.\n"
-            "- 'status var [name] [-v]': Displays session variables, parameters, constants, and JSON breakdown."
+            "Central inspection magic for Pytae's IPython workbench:\n"
+            "- '%status' or '%status -v': Overview of tracked DataFrames, RAM, checkpoints, OS RSS, and settings.\n"
+            "- '%status <table_name> [-v]': Shape, RAM, null counts, and full schema for one DataFrame.\n"
+            "- '%status checkpoint [name]': Checkpoint inventory or snapshot details."
         ),
         options=[
-            "status [-v] : Unified workbench overview: active dataset, loaded tables, checkpoints, and RAM footprint.",
-            "status table [name] [-v] : Diagnostics, schema, and inventory of loaded tables.",
-            "status checkpoint [name] [-v] : Checkpoint history, format breakdown, and snapshot details.",
-            "status var [name] [-v] : Session variables inventory and value inspection.",
+            "%status [-v] : Unified workbench overview: tracked tables, checkpoints, OS RSS, settings.",
+            "%status <table_name> [-v] : Diagnostics, null counts, and schema for a single DataFrame.",
+            "%status checkpoint [name] : Checkpoint list or snapshot breakdown.",
         ],
         examples=[
-            "pytae -i  # Inside REPL: status",
-            "pytae -i  # Inside REPL: status -v",
-            "pytae -i  # Inside REPL: status table -v",
-            "pytae -i  # Inside REPL: status checkpoint",
+            "%status",
+            "%status -v",
+            "%status df -v",
+            "%status checkpoint",
         ],
-        see_also=["checkpoint", "restore", "tables", "diff"],
+        see_also=["checkpoint", "restore", "set"],
     ),
     "quick_start": KeywordHelp(
         name="quick_start",
-        flag="-quick_start, quick_start",
-        syntax="pytae -quick_start (or 'quick_start' inside REPL)",
+        flag="-quick_start",
+        syntax="pytae -quick_start",
         summary="Interactive quick-start tutorial and essential cheat sheet recipes.",
         description=(
-            "Provides an instant cheat sheet of core Pytae verbs, REPL workflows,\n"
-            "pipeline shortcuts, and built-in sample dataset commands.\n"
-            "Can be invoked from the shell CLI as 'pytae -quick_start' or from within\n"
-            "the REPL as '-quick_start', 'quick_start', or 'quickstart'."
+            "Provides an instant cheat sheet of core Pytae CLI verbs, IPython workbench magics,\n"
+            "and built-in sample dataset commands."
         ),
         options=[
-            "df = sample:penguins : Load built-in sample dataset.",
-            "-filter, -mutate, -select, -arrange, -by -agg : Core verb pipelines.",
-            "sql { <query> } : Preview ANSI SQL queries across in-memory tables (or `tbl = sql { ... }`).",
-            "checkpoint <name> / restore <name> : Stateful snapshot management.",
+            "pytae -cheatsheet : Display full terminal quick-reference cheatsheet.",
+            "import pytae as pt : Auto-activates IPython/Jupyter workbench magics (%pt, %checkpoint, %restore, %free, %export).",
         ],
         examples=[
             "pytae -quick_start",
             "pytae -help restore",
         ],
-        see_also=["-help", "-cheatsheet", "-i"],
+        see_also=["-help", "-cheatsheet", "ipython"],
     ),
     "set": KeywordHelp(
         name="set",
-        flag="set [key [= value]]",
-        syntax="set [key [= value]]",
-        summary="Configure or inspect interactive REPL workbench display and persistence settings.",
+        flag="%set [key=value | save | reset]",
+        syntax="%set [max_rows=20 max_cols=12 float_precision=2 comma=true | save | reset]",
+        summary="Configure or persist Pytae IPython / Jupyter display formatting settings.",
         description=(
-            "Inspects or updates runtime settings in the interactive workbench:\n"
-            "- Bare 'set': Displays all current settings and permitted choices.\n"
-            "- 'set <key>': Shows current value and choices for <key>.\n"
-            "- 'set <key> = <val>': Updates setting (e.g. set max_rows = 20, set comma = on).\n"
-            "- 'set save': Persists current display settings to ~/.pytae/config.json.\n"
-            "- Note: Legacy disk settings ('checkpoint_format', 'convert = all', 'new_session', 'load_session', 'save_session') have been retired."
+            "Inspects or updates display settings in IPython and Jupyter:\n"
+            "- '%set': Displays all current display settings.\n"
+            "- '%set max_rows=20 float_precision=2 comma=true': Updates settings for the current session.\n"
+            "- '%set save': Persists current display settings to ~/.pytae/config.json.\n"
+            "- '%set reset': Resets settings back to defaults."
         ),
         options=[
-            "max_rows = <int | default> : Number of rows displayed in table previews (default: 10).",
-            "max_cols = <int | all | default> : Number of columns displayed in previews (default: all).",
-            "float_precision = <int | auto | default> : Decimal places for floating-point values (default: auto).",
-            "comma = <on | off> : Thousands grouping comma formatting in integer outputs (default: off).",
-            "save : Persist active settings to ~/.pytae/config.json for future REPL sessions.",
+            "max_rows=<int> : Number of rows displayed in table previews (default: 10).",
+            "max_cols=<int|none> : Number of columns displayed in previews (default: none/all).",
+            "float_precision=<int|none> : Decimal places for floating-point values (default: none/auto).",
+            "comma=<true|false> : Thousands grouping comma formatting (default: false).",
+            "save : Persist active settings to ~/.pytae/config.json.",
+            "reset : Reset display settings to defaults.",
         ],
         examples=[
-            "pytae -i  # Inside REPL: set max_rows = 25",
-            "pytae -i  # Inside REPL: set comma = on",
-            "pytae -i  # Inside REPL: set float_precision = 2",
-            "pytae -i  # Inside REPL: set save",
+            "%set max_rows=25",
+            "%set comma=true float_precision=2",
+            "%set save",
         ],
         see_also=["status", "session", "checkpoint"],
     ),
     "history": KeywordHelp(
         name="history",
-        flag="history [N]",
-        syntax="history [N]",
-        summary="Audit executed REPL commands in the current session.",
+        flag="%history / pytae -export",
+        syntax="%history -g <pattern>  |  pytae -export [session_id|~1] -o <path.py|path.ipynb>",
+        summary="Search IPython session history or export past sessions from history.sqlite.",
         description=(
-            "Audits commands executed in the current session:\n"
-            "- Bare 'history': Displays numbered session audit log.\n"
-            "- 'history <N>': Limit display to the last N commands.\n"
-            "- All session commands are automatically recorded in ~/.pytae/history/.\n"
-            "- Use 'export <path.pt|path.py>' or 'exit -s [path]' to export runnable scripts."
+            "IPython automatically records every session in ~/.ipython/profile_default/history.sqlite.\n"
+            "- Inside IPython: use `%history -n`, `%history -g <pattern>`, `%export out.py`, or `%exit -s out.py`.\n"
+            "- From the CLI: use `pytae -export` to list sessions and `pytae -export [id|~1] -o out.py` to export."
         ),
         options=[
-            "[N] : Optional integer to limit output to the last N commands.",
+            "%history -g <pattern> : Grep across all past IPython sessions.",
+            "pytae -export : List recent IPython sessions from history.sqlite.",
+            "pytae -export [id|~1] -o <path.py|path.ipynb> : Export a past session cleanly.",
         ],
         examples=[
-            "pytae -i  # Inside REPL: history",
-            "pytae -i  # Inside REPL: history 10",
+            "%history -n",
+            "pytae -export",
+            "pytae -export -o analysis.py",
         ],
         see_also=["status", "session", "exit", "checkpoint"],
     ),
     "rm": KeywordHelp(
-        name="rm",
-        flag="rm <table | checkpoint> <name>",
-        syntax="rm table <name> | rm checkpoint <name>",
-        summary="Explicitly delete in-memory tables or frozen checkpoints.",
+        name="free",
+        flag="%free [df1 df2 | *]  |  %checkpoint rm <name | *>",
+        syntax="%free [df1 df2 | *]  |  %checkpoint rm <name | *>",
+        summary="Delete DataFrame(s), scrub IPython Out/_ cache references, and reclaim OS RAM.",
         description=(
-            "Strictly requires the explicit category ('table' or 'checkpoint') to prevent accidental deletions:\n"
-            "- 'rm table <name>': Unloads table from memory and immediately trims RAM (or 'rm table *').\n"
-            "- 'rm checkpoint <name>': Deletes snapshot from memory and disk (or 'rm checkpoint *')."
+            "Replaces legacy REPL `rm table` / `rm checkpoint` in IPython:\n"
+            "- '%free df1 [df2]': Deletes target DataFrame(s), scrubs hidden IPython Out/_ refs, and trims OS RSS.\n"
+            "- '%free *': Deletes all tracked DataFrames and trims OS RSS.\n"
+            "- '%free': Keeps named variables; scrubs stale Out/_ DataFrame refs and trims OS RSS.\n"
+            "- '%checkpoint rm <name | *>': Deletes a saved checkpoint (or all checkpoints) from disk."
         ),
         options=[
-            "rm table <name> : Delete an in-memory table alias (or 'rm table *').",
-            "rm checkpoint <name> : Delete a saved checkpoint (or 'rm checkpoint *').",
+            "%free <df1 ... | *> : Delete DataFrame(s) and reclaim OS RAM.",
+            "%checkpoint rm <name | *> : Delete saved checkpoint(s).",
         ],
         examples=[
-            "pytae -i  # Inside REPL: rm table df1",
-            "pytae -i  # Inside REPL: rm checkpoint cp1",
+            "%free df1",
+            "%free *",
+            "%checkpoint rm cp1",
         ],
-        see_also=["status", "checkpoint", "tables"],
+        see_also=["status", "checkpoint", "restore"],
     ),
     "switch": KeywordHelp(
         name="switch",
-        flag="switch <table_name>",
-        syntax="switch <table_name>",
-        summary="Switch the active in-memory table cursor.",
+        flag="import pytae as pt",
+        syntax="df1.head()  # or: %pt df1 -head",
+        summary="Not needed in IPython — reference any DataFrame variable directly.",
         description=(
-            "Switches the active default table without reloading files.\n"
-            "All subsequent verb commands (-filter, -head, -select, etc.) execute on this table."
+            "In IPython/Jupyter, every DataFrame is a normal Python variable (`orders`, `customers`, `df`).\n"
+            "Pass the variable name directly to Python methods (`orders.filter(...)`) or `%pt orders -filter ...`."
         ),
         options=[
-            "<table_name> : Name of an existing loaded table.",
+            "%status : List all tracked DataFrames currently in your IPython namespace.",
         ],
         examples=[
-            "pytae -i  # Inside REPL: switch df2",
-            "pytae -i  # Inside REPL: status table",
+            "%status",
+            "%pt orders -head 5",
         ],
-        see_also=["status", "load", "tables"],
+        see_also=["status", "load", "ipython"],
     ),
     "load": KeywordHelp(
         name="load",
-        flag="<var> = <path> [options]",
-        syntax="<var> = <path> [-encoding <enc>] [-dlim <char>] [-nrows <N>]",
-        summary="Load a dataset file into memory as a named table.",
+        flag="pt.read() / %pt",
+        syntax="df = pt.read('data.parquet')  |  df = %pt data.parquet",
+        summary="Load a dataset file into memory as a DataFrame in Python or IPython.",
         description=(
-            "Loads a Parquet, CSV, IPC/Feather, or Excel dataset into the workbench.\n"
-            "Use direct variable assignment: `<alias> = <path>`."
+            "Loads a Parquet, CSV, IPC/Feather, SAS, JSONL, or Excel dataset into memory.\n"
+            "Use `pt.read(...)`, `pt.scan(...)`, `pt.sample('penguins')`, or `df = %pt <path>`."
         ),
         options=[
-            "-encoding <enc> : File text encoding (e.g. latin1, utf-8).",
-            "-dlim <char> : Delimiter character for text files (e.g. ';', '|').",
-            "-nrows <N> : Read only first N rows.",
+            "pt.read(path, ...) : Eagerly load dataset into a pytae.DataFrame.",
+            "pt.scan(path, ...) : Lazily scan dataset without loading into RAM.",
+            "df = %pt <path> [opts] : Load via Pytae CLI reader options in IPython.",
         ],
         examples=[
-            "pytae -i  # Inside REPL: orders = orders.parquet",
-            "pytae -i  # Inside REPL: df = sample:penguins",
-            "pytae -i  # Inside REPL: cust = customers.csv -dlim ','",
+            "df = %pt sample:penguins",
+            "orders = %pt orders.parquet",
+            'cust = %pt customers.csv -dlim ","',
         ],
-        see_also=["switch", "status", "rm"],
+        see_also=["status", "free", "ipython"],
     ),
     "exit": KeywordHelp(
         name="exit",
-        flag="exit [-s [pt|py|path]]",
-        syntax="exit [-s [pt|py|path]]",
-        summary="Exit the interactive REPL workbench, optionally saving session pipeline scripts.",
+        flag="%exit [-s [path.py | path.ipynb]]",
+        syntax="%exit [-s [path.py | path.ipynb]]",
+        summary="Exit IPython, optionally exporting a clean runnable Python script or Jupyter notebook.",
         description=(
-            "Terminates the interactive session and releases resources (automatically purging ephemeral temp files).\n"
-            "Using '-s' automatically compiles all state-mutating commands into a clean, reproducible script\n"
-            "with rolled-back or undone branches pruned."
+            "Exits IPython cleanly. Bare `%exit` delegates directly to IPython's standard exit.\n"
+            "Passing `-s [path]` exports your session (pruning errored cells, rollbacks, duplicates,\n"
+            "dead assignments, and previews, and converting `%pt` chains to fluent Python) before exiting."
         ),
         options=[
-            "-s : Save session commands to executable ./session.pt in cwd.",
-            "-s py : Compile session commands to standalone Python script ./session.py in cwd.",
-            "-s pt : Explicitly save session commands to ./session.pt in cwd.",
-            "-s <path> : Save session commands to specified file path (.pt or .py).",
+            "(bare) : Standard IPython exit.",
+            "-s : Export clean session script to ./session.py and exit.",
+            "-s <path.py | path.ipynb> : Export clean Python script or Jupyter notebook and exit.",
         ],
         examples=[
-            "pytae -i  # Inside REPL: exit",
-            "pytae -i  # Inside REPL: exit -s",
-            "pytae -i  # Inside REPL: exit -s py",
-            "pytae -i  # Inside REPL: exit -s pt",
-            "pytae -i  # Inside REPL: exit -s pipeline.py",
+            "%exit",
+            "%exit -s",
+            "%exit -s pipeline.py",
+            "%exit -s analysis.ipynb",
         ],
         see_also=["history", "session", "checkpoint"],
     ),

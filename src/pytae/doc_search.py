@@ -463,7 +463,7 @@ def format_search_results(results: list[DocResult], query: str = "") -> str:
     """Format documentation search results as clean Markdown."""
     if not results:
         msg = f"No documentation found matching '{query}'." if query else "No documentation found."
-        msg += "\nTry searching for core verbs (filter, mutate, by, agg, explode, diff, assert, pivot, long, wide, repl)."
+        msg += "\nTry searching for core verbs (filter, mutate, by, agg, explode, diff, assert, pivot, long, wide, ipython)."
         return msg
 
     out: list[str] = []

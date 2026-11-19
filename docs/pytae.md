@@ -5,7 +5,7 @@
 - Adopts the **readable, functional grammar** of dplyr,
 - And avoids the **index hierarchies, API redundancies, and silent data loss defaults** of legacy libraries.
 
-Pytae provides a single, unified grammar across **Python library code** (`df.<verb>()`, `pt.<verb>(df)`), the **Interactive Terminal REPL** (`pytae`), and the **Unix Command Line** (`pytae <file> -<verb>`).
+Pytae provides a single, unified grammar across **Python library code** (`df.<verb>()`, `pt.<verb>(df)`), the **IPython & Jupyter Workbench** (`import pytae as pt` → `%pt`, `%checkpoint`, `%restore`, `%status`, `%free`, `%set`, `%export`), and the **Unix Command Line** (`pytae <file> -<verb>`).
 
 ---
 

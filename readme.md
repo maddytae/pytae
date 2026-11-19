@@ -222,7 +222,7 @@ Detailed migration guides with line-by-line syntax comparisons:
 ### Guides & Manuals
 - **[CLI Cheat Sheet & Cookbook](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md)**: 14 curated sections of one-liner recipes and Unix shell workflows.
 - **[Feature & CLI Guides](https://github.com/maddytae/pytae/tree/master/docs/guides/)**: In-depth feature guides for each verb and CLI flag (`filter`, `mutate`, `arrange`, `join`, `diff`, `mask`, `sql`, etc.).
-- **[Interactive REPL Subsystem](https://github.com/maddytae/pytae/tree/master/docs/repl/)**: Deep dives on ingestion, checkpoints, SQL/Python interop, session variables, and memory management.
+- **[IPython & Jupyter Workbench](https://github.com/maddytae/pytae/blob/master/docs/ipython.md)**: Auto-activated magics (`%pt`/`%%pt`, `%checkpoint`, `%restore`, `%status`, `%free`, `%set`, `%export`, `%exit -s`), memory reclaiming, and themes.
 - **[Interactive Python Companion Notebooks](https://github.com/maddytae/pytae/tree/master/docs/notebooks/library/)**: Fully executed Jupyter notebooks for each Python API verb.
 
 ---
