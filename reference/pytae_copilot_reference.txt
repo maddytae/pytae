@@ -6661,6 +6661,35 @@ pytae c=customers.csv o=orders.parquet \
 | 2 | Bob | 1 | 300.0 |
 | 3 | Charlie | 0 | NaN |
 
+---
+
+### Multi-Table SQL Joins from Files in REPL
+
+When joining tables in the interactive REPL using an external SQL file (`test.sql`), load the constituent tables into memory first under matching names:
+
+```sql
+-- test.sql
+SELECT x.a, y.a
+FROM x
+INNER JOIN y ON x.id = y.id;
+```
+
+```bash
+# 1. Load source tables into the REPL session:
+pytae> x = left_data.parquet
+pytae> y = right_data.parquet
+
+# 2. Preview the query without saving (non-destructive):
+pytae> sql test.sql
+
+# 3. Or save the result as a new working table 'k':
+pytae> k = sql test.sql
+Created 'k' from SQL query (850 rows x 2 cols).
+
+# 4. 'k' is now active in the prompt; chain verbs or run further SQL:
+pytae [k: 850x2]> -filter "a > 10" -head 5
+```
+
 ################################################################################
 # NOTEBOOK: docs/notebooks/library/agg.ipynb
 ################################################################################
@@ -13984,6 +14013,7 @@ This guide covers ANSI SQL querying across loaded tables, embedded Python execut
   - [Non-Destructive Preview vs. Assignment (`res = sql { ... }`)](#non-destructive-preview-vs-assignment-res--sql----)
   - [Cross-Table SQL Joins](#cross-table-sql-joins)
   - [Multi-Line SQL Queries](#multi-line-sql-queries)
+  - [Executing SQL Files (`sql file.sql` & `<var> = sql file.sql`)](#executing-sql-files-sql-filesql---var---sql-filesql)
 - [Python Execution (`py { ... }`)](#python-execution-py----)
   - [Single-Line Evaluation](#single-line-evaluation)
   - [Multi-Line `py { ... }` Block Mode](#multi-line-py-----block-mode)
@@ -14062,6 +14092,55 @@ pytae [orders, cust]> summary = sql {
 ...     ORDER BY gross_revenue DESC
 ... }
 Created 'summary' from SQL query (18 rows x 3 cols).
+```
+
+<a id="executing-sql-files-sql-filesql---var---sql-filesql"></a>
+### Executing SQL Files (`sql file.sql` & `<var> = sql file.sql`)
+
+You can execute queries stored in external `.sql` files directly from the REPL without opening inline block mode:
+- **`sql <file.sql>`** (or `sql @<file.sql>`): Executes the query against currently loaded session tables and prints a **non-destructive preview** without altering your active table in RAM.
+- **`<var> = sql <file.sql>`**: Executes the query from the file, stores the output into workbench table `<var>`, and switches `<var>` to be your active working table.
+
+#### Table Resolution Rules
+If your SQL file queries tables by name (e.g., `SELECT x.a, y.a FROM x INNER JOIN y`), **all referenced tables (`x`, `y`, etc.) must already be loaded into the REPL session** (e.g., via `x = left.parquet` and `y = right.parquet`). Pytae registers all active workbench tables (`tables`) and checkpoints into the Polars `SQLContext`. If any table name is not loaded in memory, pytae returns an error:
+```text
+pytae SQL Error: ComputeError: table "x" does not exist
+```
+
+#### Step-by-Step Example Workflow
+
+```bash
+# 1. Load the source tables into the REPL:
+pytae> x = left_data.parquet
+pytae> y = right_data.parquet
+
+# 2. Inspect active tables:
+pytae> tables
+# -> x (1,000 rows x 5 cols)
+# -> y (1,200 rows x 4 cols)
+
+# 3. Preview test.sql without saving (non-destructive):
+#    where test.sql contains: SELECT x.a, y.a FROM x INNER JOIN y
+pytae> sql test.sql
+shape: (850, 2)
+┌─────┬─────┐
+│ a   ┆ a   │
+│ --- ┆ --- │
+│ i64 ┆ i64 │
+╞═════╪═════╡
+│ 1   ┆ 1   │
+│ 2   ┆ 2   │
+│ ... ┆ ... │
+└─────┴─────┘
+
+# 4. Save the query result as new table 'k':
+pytae> k = sql test.sql
+Created 'k' from SQL query (850 rows x 2 cols).
+
+# 5. 'k' is now the active table - pipe verbs directly or query in SQL:
+pytae [k: 850x2]> -head 5
+pytae [k: 850x2]> -filter "a > 10"
+pytae [k: 850x2]> sql { SELECT count(*) FROM k }
 ```
 
 ---
