@@ -185,8 +185,19 @@ Export your session history to a standalone `.py` script or `.ipynb` notebook:
 What `%export` automatically cleans up:
 - **Errored cells** (syntax errors, failed magics, raised exceptions)
 - **Rolled-back cells** (everything executed between `%checkpoint` and `%restore`)
+- **Duplicate & dead overwritten assignments** (e.g. consecutive duplicate cells or `x = ...` immediately overwritten without being read, while preserving `.to(...)` / `-o` side effects)
 - **Workbench & inspection noise** (`%status`, `%checkpoint`, `%restore`, `%free`, `%set`, `%exit`, bare `df`, unassigned `df.head()`, unassigned `%pt df -head`)
 - **Standalone Python rewrite** (for `.py`): converts `df = %pt sample:penguins` → `df = pt.sample('penguins')` and `res = %pt ...` → `res = pt.eval_cli(..., locals())` so `python analysis.py` runs out of the box.
+
+#### Post-Hoc CLI Export from IPython's SQLite History
+Forgot to run `%export` or IPython closed unexpectedly? Export any past IPython session straight from `~/.ipython/profile_default/history.sqlite` with the exact same cleaner:
+
+```bash
+pytae -export                  # List recent IPython sessions (ID, timestamp, preview)
+pytae -export -o code.py       # Export the latest session to standalone Python
+pytae -export 42 -o code.py    # Export session #42
+pytae -export ~1 -o nb.ipynb   # Export latest session (~2 for two ago) to Jupyter notebook
+```
 
 ---
 

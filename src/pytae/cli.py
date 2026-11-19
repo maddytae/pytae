@@ -1016,8 +1016,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     if raw_argv and raw_argv[0] in ("-export", "--export"):
-        parser = build_parser()
-        parser.error("'-export' has been retired from CLI; use '%export <path.py|path.ipynb>' inside IPython.")
+        from pytae.workbench import run_cli_export
+
+        return run_cli_export(raw_argv[1:])
 
     if len(raw_argv) == 1 and raw_argv[0].lower().endswith(".py"):
         sys.stderr.write(f"pytae error: '{raw_argv[0]}' is a Python script; run with 'python {raw_argv[0]}'.\n")

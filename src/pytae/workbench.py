@@ -20,6 +20,7 @@ import os
 import re
 import shlex
 import shutil
+import sqlite3
 import sys
 import tempfile
 from collections.abc import Callable
@@ -47,6 +48,17 @@ def get_pytae_home() -> Path:
 def get_config_path() -> Path:
     """Return path to persistent display configuration (~/.pytae/config.json)."""
     return get_pytae_home() / "config.json"
+
+
+def get_session_meta_dir() -> Path:
+    """Return directory for lightweight IPython session metadata (~/.pytae/sessions)."""
+    return get_pytae_home() / "sessions"
+
+
+def get_ipython_history_db() -> Path:
+    """Return path to IPython's default SQLite history database."""
+    ipython_dir = Path(os.environ.get("IPYTHONDIR", str(Path.home() / ".ipython"))).expanduser()
+    return ipython_dir / "profile_default" / "history.sqlite"
 
 
 def release_memory() -> None:
@@ -1229,6 +1241,39 @@ class Workbench:
     # Export history to .py / .ipynb with rollback pruning (D12)
     # ------------------------------------------------------------------
 
+    def save_session_meta(self, session_id: int) -> None:
+        """Persist lightweight failed-cell and rollback metadata for post-hoc `pytae -export`."""
+        if session_id <= 0:
+            return
+        if not self.failed_cells and not self.restore_events:
+            return
+        try:
+            meta_dir = get_session_meta_dir()
+            meta_dir.mkdir(parents=True, exist_ok=True)
+            meta_path = meta_dir / f"session_{session_id}.json"
+            payload = {
+                "session_id": session_id,
+                "failed_cells": sorted(self.failed_cells),
+                "restore_events": [[a, b] for a, b in self.restore_events],
+            }
+            meta_path.write_text(json.dumps(payload), encoding="utf-8")
+        except Exception:
+            pass
+
+    @staticmethod
+    def load_session_meta(session_id: int) -> tuple[set[int], list[tuple[int, int]]]:
+        """Load persisted failed-cell and rollback metadata for an IPython session ID."""
+        meta_path = get_session_meta_dir() / f"session_{session_id}.json"
+        if not meta_path.exists():
+            return set(), []
+        try:
+            data = json.loads(meta_path.read_text(encoding="utf-8"))
+            failed = {int(x) for x in data.get("failed_cells", [])}
+            restores = [(int(a), int(b)) for a, b in data.get("restore_events", [])]
+            return failed, restores
+        except Exception:
+            return set(), []
+
     def export_session(
         self,
         dest_path: str | Path,
@@ -1239,10 +1284,11 @@ class Workbench:
         """Export IPython session cells to a clean `.py` or `.ipynb` file.
 
         Automatically prunes:
-        - Cells that raised an error during execution
+        - Cells that raised an error during execution (or have invalid Python syntax)
         - Cells rolled back by `%restore` (between checkpoint cell and restore cell)
         - Workbench / inspection magics (`%status`, `%checkpoint`, `%restore`, `%free`, `%export`, `exit -s`, etc.)
-        - Read-only, unassigned `%pt` preview cells (e.g. `%pt df -head`)
+        - Read-only previews (bare `df`, `df.head()`, unassigned `%pt df -head`)
+        - Consecutive duplicate cells and dead overwritten assignments
         """
         dest = Path(os.path.expanduser(str(dest_path)))
         if dest.suffix.lower() not in (".py", ".ipynb"):
@@ -1253,18 +1299,35 @@ class Workbench:
             history_cells, exclude_cell_index=exclude_cell_index
         )
 
+        # Rewrite each kept cell to Python form for AST dead-code/duplicate/syntax analysis
+        rewritten = [_rewrite_cell_for_python(c) for c in kept_cells]
+        valid_pairs: list[tuple[str, str]] = []
+        for orig, py_code in zip(kept_cells, rewritten):
+            if not py_code.strip():
+                pruned_count += 1
+                continue
+            try:
+                ast.parse(py_code)
+            except SyntaxError:
+                pruned_count += 1
+                continue
+            valid_pairs.append((orig, py_code))
+
+        pruned_pairs, dead_dups = _prune_dead_and_duplicate_cells(valid_pairs)
+        pruned_count += dead_dups
+
         if dest.suffix.lower() == ".ipynb":
-            nb = _build_notebook_json(kept_cells)
+            final_nb_cells = [orig for orig, _py in pruned_pairs]
+            nb = _build_notebook_json(final_nb_cells)
             dest.write_text(json.dumps(nb, indent=2) + "\n", encoding="utf-8")
         else:
-            py_cells = [_rewrite_cell_for_python(c) for c in kept_cells]
-            py_cells = [c for c in py_cells if c.strip()]
-            script = _build_python_script(py_cells)
+            final_py_cells = [py for _orig, py in pruned_pairs]
+            script = _build_python_script(final_py_cells)
             dest.write_text(script, encoding="utf-8")
 
         return (
-            f"Exported {len(kept_cells)} cell(s) "
-            f"(pruned {pruned_count} errored/rolled-back/inspection cell(s)) -> {dest}"
+            f"Exported {len(pruned_pairs)} cell(s) "
+            f"(pruned {pruned_count} errored/rolled-back/dead/inspection cell(s)) -> {dest}"
         )
 
     def _filter_export_cells(
@@ -1507,3 +1570,237 @@ def _build_notebook_json(cells: list[str]) -> dict[str, Any]:
         "nbformat": 4,
         "nbformat_minor": 5,
     }
+
+
+# ---------------------------------------------------------------------------
+# AST dead-assignment & duplicate pruning + CLI post-hoc export from SQLite
+# ---------------------------------------------------------------------------
+
+_SIDE_EFFECT_CALLS = frozenset({"to", "write", "write_parquet", "write_csv", "write_ipc", "print", "finalize", "save"})
+
+
+def _analyze_python_cell(py_code: str) -> tuple[str | None, set[str], bool]:
+    """Return `(single_assigned_var, referenced_names, has_side_effect)` for a valid Python cell."""
+    try:
+        tree = ast.parse(py_code)
+    except SyntaxError:
+        return None, set(), True
+
+    used: set[str] = set()
+    has_side_effect = False
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+            used.add(node.id)
+        elif isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Attribute):
+                if node.func.attr in _SIDE_EFFECT_CALLS:
+                    has_side_effect = True
+                if node.func.attr == "eval_cli" and node.args and isinstance(node.args[0], ast.Constant):
+                    cmd_str = str(node.args[0].value)
+                    if _has_output_flag(cmd_str):
+                        has_side_effect = True
+                    # Tokens inside eval_cli('df -filter "x > @k"', locals()) may reference variables
+                    for tok in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", cmd_str):
+                        used.add(tok)
+            elif isinstance(node.func, ast.Name) and node.func.id in _SIDE_EFFECT_CALLS:
+                has_side_effect = True
+
+    single_def: str | None = None
+    if len(tree.body) == 1 and isinstance(tree.body[0], ast.Assign):
+        assign = tree.body[0]
+        if len(assign.targets) == 1 and isinstance(assign.targets[0], ast.Name):
+            single_def = assign.targets[0].id
+
+    return single_def, used, has_side_effect
+
+
+def _prune_dead_and_duplicate_cells(pairs: list[tuple[str, str]]) -> tuple[list[tuple[str, str]], int]:
+    """Drop duplicate consecutive cells, duplicate `import pytae` lines, and dead overwritten assignments."""
+    # 1. Deduplicate consecutive identical cells & repeated `import pytae as pt`
+    deduped: list[tuple[str, str]] = []
+    seen_pt_import = False
+    pruned = 0
+    for orig, py_code in pairs:
+        norm = py_code.strip()
+        if deduped and deduped[-1][1].strip() == norm:
+            pruned += 1
+            continue
+        if re.fullmatch(r"import\s+pytae(?:\s+as\s+[A-Za-z_][A-Za-z0-9_]*)?", norm):
+            if seen_pt_import:
+                pruned += 1
+                continue
+            seen_pt_import = True
+        deduped.append((orig, py_code))
+
+    # 2. Prune dead overwritten single-variable assignments
+    analyzed = [_analyze_python_cell(py) for _orig, py in deduped]
+    dead_indices: set[int] = set()
+    n = len(deduped)
+    for i in range(n):
+        def_var, _used_i, has_side_effect = analyzed[i]
+        if def_var is None or has_side_effect:
+            continue
+        # Scan forward until `def_var` is either read or unconditionally overwritten
+        for j in range(i + 1, n):
+            next_def, next_used, _next_se = analyzed[j]
+            if def_var in next_used:
+                break
+            if next_def == def_var:
+                dead_indices.add(i)
+                break
+
+    final = [pair for idx, pair in enumerate(deduped) if idx not in dead_indices]
+    return final, pruned + len(dead_indices)
+
+
+def _infer_restore_events(history_cells: list[tuple[int, str]]) -> list[tuple[int, int]]:
+    """Infer `(checkpoint_cell_idx, restore_cell_idx)` ranges from raw history lines."""
+    cp_indices: dict[str, int] = {}
+    cp_order: list[str] = []
+    restores: list[tuple[int, int]] = []
+    for idx, raw in history_cells:
+        ln = raw.strip()
+        m_cp = re.match(r"^%?checkpoint\s+([A-Za-z0-9_.-]+)", ln)
+        if m_cp:
+            name = m_cp.group(1)
+            if name.lower() not in ("list", "rm", "drop", "delete", "diff"):
+                cp_indices[name] = idx
+                if name in cp_order:
+                    cp_order.remove(name)
+                cp_order.append(name)
+            continue
+        m_res = re.match(r"^%?restore(?:\s+([A-Za-z0-9_.-]+))?\s*$", ln)
+        if m_res:
+            target = m_res.group(1) or (cp_order[-1] if cp_order else None)
+            if target and target in cp_indices:
+                restores.append((cp_indices[target], idx))
+    return restores
+
+
+def _read_ipython_sessions(db_path: Path, limit: int = 20) -> list[tuple[int, str, int, str]]:
+    """Return recent IPython sessions as `(session_id, start_str, num_cmds, preview)`."""
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        cur = conn.execute(
+            "SELECT session, start, COALESCE(num_cmds, 0) FROM sessions ORDER BY session DESC LIMIT ?",
+            (limit,),
+        )
+        rows = cur.fetchall()
+        out: list[tuple[int, str, int, str]] = []
+        for sess_id, start_ts, num_cmds in rows:
+            p_cur = conn.execute(
+                "SELECT source_raw FROM history WHERE session = ? ORDER BY line ASC LIMIT 3",
+                (sess_id,),
+            )
+            samples = [str(r[0]).splitlines()[0].strip() for r in p_cur.fetchall() if r[0] and str(r[0]).strip()]
+            preview = "; ".join(samples)[:60]
+            out.append((int(sess_id), str(start_ts or ""), int(num_cmds), preview))
+        return out
+    finally:
+        conn.close()
+
+
+def _read_ipython_session_cells(db_path: Path, session_id: int) -> list[tuple[int, str]]:
+    """Return `[(line_no, source_raw), ...]` for a given IPython session ID."""
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        cur = conn.execute(
+            "SELECT line, source_raw FROM history WHERE session = ? ORDER BY line ASC",
+            (session_id,),
+        )
+        return [(int(line_no), str(src)) for line_no, src in cur.fetchall() if src is not None]
+    finally:
+        conn.close()
+
+
+def run_cli_export(argv: list[str], *, db_path: Path | None = None, output_fn: Callable[[str], None] = print) -> int:
+    """CLI handler for `pytae -export [session_id | ~N] [-o <dest.py|dest.ipynb>]`."""
+    hist_db = db_path or get_ipython_history_db()
+
+    # Parse simple args: optional custom .sqlite path, optional session_id / ~N, optional -o dest
+    session_spec: str | None = None
+    dest_path: str | None = None
+    list_only = False
+
+    i = 0
+    while i < len(argv):
+        tok = argv[i]
+        if tok in ("-list", "--list", "-l"):
+            list_only = True
+            i += 1
+        elif tok in ("-o", "--output"):
+            if i + 1 >= len(argv):
+                sys.stderr.write("pytae error: '-o' requires an output file path (e.g. -o analysis.py)\n")
+                return 1
+            dest_path = argv[i + 1]
+            i += 2
+        elif tok.startswith("-o="):
+            dest_path = tok.split("=", 1)[1]
+            i += 1
+        elif tok.endswith(".sqlite") or tok.endswith(".db"):
+            hist_db = Path(os.path.expanduser(tok))
+            i += 1
+        elif tok.endswith((".py", ".ipynb")) and dest_path is None:
+            dest_path = tok
+            i += 1
+        elif session_spec is None and not tok.startswith("-"):
+            session_spec = tok
+            i += 1
+        else:
+            sys.stderr.write(f"pytae error: unrecognized argument for -export: {tok!r}\n")
+            return 1
+
+    if not hist_db.exists():
+        sys.stderr.write(f"pytae error: IPython history database not found at {hist_db}\n")
+        return 1
+
+    sessions = _read_ipython_sessions(hist_db, limit=25)
+    if not sessions:
+        output_fn("No IPython sessions found in history database.")
+        return 0
+
+    if list_only or (session_spec is None and dest_path is None):
+        output_fn(f"IPython History ({hist_db}):")
+        output_fn(f"{'Session':>8}  {'Started':<19}  {'Cmds':>5}  Preview")
+        output_fn("-" * 80)
+        for sess_id, start_ts, num_cmds, preview in sessions:
+            output_fn(f"{sess_id:>8}  {start_ts[:19]:<19}  {num_cmds:>5}  {preview}")
+        output_fn("\nExport with: pytae -export [session_id | ~1] -o <script.py | notebook.ipynb>")
+        return 0
+
+    # Resolve target session ID (default: latest non-empty session)
+    if session_spec is None or session_spec == "~0":
+        target_session = sessions[0][0]
+    elif session_spec.startswith("~"):
+        try:
+            offset = int(session_spec[1:])
+            if offset < 1 or offset > len(sessions):
+                raise ValueError
+            target_session = sessions[offset - 1][0]
+        except ValueError:
+            sys.stderr.write(f"pytae error: invalid relative session {session_spec!r} (e.g. ~1 for latest)\n")
+            return 1
+    else:
+        try:
+            target_session = int(session_spec)
+        except ValueError:
+            sys.stderr.write(f"pytae error: invalid session ID {session_spec!r}\n")
+            return 1
+
+    cells = _read_ipython_session_cells(hist_db, target_session)
+    if not cells:
+        sys.stderr.write(f"pytae error: session {target_session} has no recorded commands.\n")
+        return 1
+
+    out_file = dest_path or f"session_{target_session}.py"
+    wb = Workbench(load_config=False)
+    try:
+        failed, restores = Workbench.load_session_meta(target_session)
+        wb.failed_cells = failed
+        wb.restore_events = restores or _infer_restore_events(cells)
+        msg = wb.export_session(out_file, cells)
+        output_fn(f"[session {target_session}] {msg}")
+        return 0
+    finally:
+        wb.cleanup()

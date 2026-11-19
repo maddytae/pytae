@@ -157,7 +157,7 @@ def test_export_prunes_errors_previews_bare_exit_and_produces_valid_python(
 
 
 def test_cli_disallows_retired_repl_and_pt_flags(capsys: pytest.CaptureFixture[str]) -> None:
-    for retired_argv in (["-i"], ["repl"], ["-run", "a.pt"], ["-export", "h.txt"], ["script.pt"]):
+    for retired_argv in (["-i"], ["repl"], ["-run", "a.pt"], ["script.pt"]):
         with pytest.raises(SystemExit) as exc:
             cli_main(retired_argv)
         assert exc.value.code != 0

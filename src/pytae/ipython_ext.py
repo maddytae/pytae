@@ -254,6 +254,10 @@ class PytaeMagics(Magics):
             cell_index=self._current_cell_index(),
             cache_scrub_fn=self._scrub_fn,
         )
+        hm = getattr(self.shell, "history_manager", None)
+        sess_id = int(getattr(hm, "session_number", 0) or 0)
+        if sess_id > 0:
+            self.wb.save_session_meta(sess_id)
         print(msg)
 
     @line_magic
@@ -441,6 +445,10 @@ def register_ipython_workbench(ipython: Any) -> None:
             idx = magics._current_cell_index()
             if idx > 0:
                 wb.failed_cells.add(idx)
+                hm = getattr(ipython, "history_manager", None)
+                sess_id = int(getattr(hm, "session_number", 0) or 0)
+                if sess_id > 0:
+                    wb.save_session_meta(sess_id)
 
     events = getattr(ipython, "events", None)
     if events is not None:

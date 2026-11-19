@@ -191,3 +191,86 @@ def test_export_session_prunes_rollbacks_and_inspection(tmp_path: Path) -> None:
     assert nb["nbformat"] == 4
     assert len(nb["cells"]) == 2
     assert is_dataframe(_sample_df())
+
+
+def test_export_prunes_duplicates_and_dead_assignments(tmp_path: Path) -> None:
+    wb = Workbench(load_config=False)
+    history = [
+        (1, "import pytae as pt"),
+        (2, "import pytae as pt"),  # duplicate import
+        (3, "df = pt.sample('penguins')"),
+        (4, "df = pt.sample('penguins')"),  # consecutive duplicate
+        (5, "x = df.filter('body_mass_g > 3000')"),  # dead: overwritten at 6 without read
+        (6, "x = df.filter('body_mass_g > 4000')"),  # kept
+        (7, "y = x.mutate(kg='body_mass_g / 1000')"),  # reads x, kept
+        (8, "z = y.to('out.parquet')"),  # side effect -> kept even if overwritten
+        (9, "z = y.head(3)"),
+    ]
+    out_py = tmp_path / "clean.py"
+    wb.export_session(out_py, history)
+    text = out_py.read_text(encoding="utf-8")
+    assert text.count("import pytae as pt") == 1
+    assert text.count("df = pt.sample('penguins')") == 1
+    assert "3000" not in text
+    assert "4000" in text
+    assert "y.to('out.parquet')" in text
+    assert "z = y.head(3)" in text
+
+
+def test_cli_export_from_ipython_sqlite(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import sqlite3
+
+    from pytae.workbench import run_cli_export
+
+    monkeypatch.setenv("PYTAE_HOME", str(tmp_path / "pytae_home"))
+    db_path = tmp_path / "history.sqlite"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE sessions (session INTEGER PRIMARY KEY, start TIMESTAMP, end TIMESTAMP, num_cmds INTEGER, remark TEXT)")
+    conn.execute("CREATE TABLE history (session INTEGER, line INTEGER, source TEXT, source_raw TEXT)")
+    conn.execute("INSERT INTO sessions VALUES (10, '2026-11-19 07:00:00', NULL, 9, '')")
+    rows = [
+        (10, 1, "", "import pytae as pt"),
+        (10, 2, "", "df = %pt sample:penguins"),
+        (10, 3, "", "df"),  # bare preview -> pruned
+        (10, 4, "", "%checkpoint raw"),
+        (10, 5, "", "df = df.filter('body_mass_g > 99999')"),  # rolled back
+        (10, 6, "", "%restore raw"),
+        (10, 7, "", "bad_runtime = 1 / 0"),  # marked failed in sidecar
+        (10, 8, "", "def broken(:"),  # syntax error -> pruned
+        (10, 9, "", "final = df.filter('body_mass_g > 4500')"),
+    ]
+    conn.executemany("INSERT INTO history VALUES (?, ?, ?, ?)", rows)
+    conn.commit()
+    conn.close()
+
+    # Persist sidecar failed_cells for session 10
+    wb = Workbench(load_config=False)
+    wb.failed_cells.add(7)
+    wb.save_session_meta(10)
+
+    # 1. List sessions
+    listed: list[str] = []
+    rc_list = run_cli_export([], db_path=db_path, output_fn=listed.append)
+    assert rc_list == 0
+    assert any("10" in line and "import pytae as pt" in line for line in listed)
+
+    # 2. Export session 10 to .py
+    out_py = tmp_path / "rescued.py"
+    exported: list[str] = []
+    rc_exp = run_cli_export(["10", "-o", str(out_py)], db_path=db_path, output_fn=exported.append)
+    assert rc_exp == 0
+    text = out_py.read_text(encoding="utf-8")
+    assert "df = pt.sample('penguins')" in text
+    assert "final = df.filter('body_mass_g > 4500')" in text
+    assert "99999" not in text
+    assert "1 / 0" not in text
+    assert "def broken" not in text
+    assert "\ndf\n" not in text
+
+    # 3. Export via ~1 to .ipynb
+    out_nb = tmp_path / "rescued.ipynb"
+    rc_nb = run_cli_export(["~1", "-o", str(out_nb)], db_path=db_path, output_fn=exported.append)
+    assert rc_nb == 0
+    nb = json.loads(out_nb.read_text(encoding="utf-8"))
+    assert nb["nbformat"] == 4
+    assert len(nb["cells"]) == 3
