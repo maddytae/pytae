@@ -1461,26 +1461,127 @@ def _is_skippable_cell(code: str) -> bool:
     return _is_pure_python_inspection(code)
 
 
+_FLUENT_REQ_ARG_FLAGS: dict[str, str] = {
+    "-filter": "filter",
+    "-mutate": "mutate",
+    "-select": "select",
+    "-rename": "rename",
+    "-by": "by",
+    "-arrange": "arrange",
+    "-explode": "explode",
+    "-assert": "assert_",
+    "-o": "to",
+}
+
+_FLUENT_OPT_ARG_FLAGS: dict[str, str] = {
+    "-agg": "agg",
+    "-distinct": "distinct",
+    "-dups": "dups",
+    "-outliers": "outliers",
+    "-count": "count",
+    "-dropna": "dropna",
+    "-fillna": "fillna",
+    "-head": "head",
+    "-tail": "tail",
+    "-sample": "sample",
+}
+
+_FLUENT_INT_FLAGS: dict[str, str] = {
+    "-round": "round",
+}
+
+
+def _unquote_token(tok: str) -> str:
+    if len(tok) >= 2 and ((tok[0] == '"' and tok[-1] == '"') or (tok[0] == "'" and tok[-1] == "'")):
+        return tok[1:-1]
+    return tok
+
+
+def _transpile_pt_to_fluent(cmd: str) -> str | None:
+    """Transpile standard `%pt` CLI pipelines into idiomatic fluent Python, or return None to fall back."""
+    try:
+        raw_tokens = shlex.split(cmd, posix=False)
+    except ValueError:
+        return None
+    if not raw_tokens:
+        return None
+
+    tokens = [_unquote_token(t) for t in raw_tokens]
+    first = tokens[0]
+    if first.startswith("-"):
+        return None
+
+    # Source expression
+    m_sample = re.match(r"^sample:([A-Za-z0-9_.-]+)$", first)
+    if m_sample:
+        source_expr = f"pt.sample({m_sample.group(1)!r})"
+    elif first.isidentifier() and first.lower() != "clip":
+        source_expr = first
+    else:
+        source_expr = f"pt.read({first!r})"
+
+    if len(tokens) == 1:
+        return source_expr
+
+    steps: list[str] = []
+    i = 1
+    while i < len(tokens):
+        tok = tokens[i]
+        if not tok.startswith("-"):
+            return None
+        flag = tok.lower()
+        val: str | None = None
+        if "=" in flag:
+            flag, _, eq_val = flag.partition("=")
+            # Preserve original case for eq_val from tok
+            val = tok.partition("=")[2]
+            i += 1
+        elif flag in _FLUENT_REQ_ARG_FLAGS or flag in _FLUENT_INT_FLAGS:
+            if i + 1 >= len(tokens):
+                return None
+            val = tokens[i + 1]
+            i += 2
+        elif flag in _FLUENT_OPT_ARG_FLAGS:
+            if i + 1 < len(tokens) and not tokens[i + 1].startswith("-"):
+                val = tokens[i + 1]
+                i += 2
+            else:
+                i += 1
+        else:
+            return None
+
+        if flag in _FLUENT_REQ_ARG_FLAGS:
+            assert val is not None
+            steps.append(f".{_FLUENT_REQ_ARG_FLAGS[flag]}({val!r})")
+        elif flag in _FLUENT_INT_FLAGS:
+            assert val is not None
+            try:
+                n = int(val)
+            except ValueError:
+                return None
+            steps.append(f".{_FLUENT_INT_FLAGS[flag]}({n})")
+        elif flag in _FLUENT_OPT_ARG_FLAGS:
+            method = _FLUENT_OPT_ARG_FLAGS[flag]
+            if val is None:
+                steps.append(f".{method}()")
+            elif flag in ("-head", "-tail", "-sample") and val.isdigit():
+                steps.append(f".{method}({int(val)})")
+            else:
+                steps.append(f".{method}({val!r})")
+        else:
+            return None
+
+    if len(steps) == 1:
+        return f"{source_expr}{steps[0]}"
+    joined = "\n    ".join([source_expr] + steps)
+    return f"(\n    {joined}\n)"
+
+
 def _rewrite_pt_cmd_to_python(cmd: str, target_var: str | None = None) -> str:
     """Convert a `%pt` / `%%pt` invocation into standalone valid Python."""
     stripped = cmd.strip()
-    m_sample = re.match(r"^sample:([A-Za-z0-9_.-]+)$", stripped)
-    if m_sample:
-        expr = f"pt.sample({m_sample.group(1)!r})"
-    else:
-        try:
-            toks = shlex.split(stripped, posix=False)
-        except ValueError:
-            toks = []
-        if len(toks) == 1 and not toks[0].startswith("-"):
-            raw_tok = toks[0]
-            if (raw_tok.startswith('"') and raw_tok.endswith('"')) or (
-                raw_tok.startswith("'") and raw_tok.endswith("'")
-            ):
-                raw_tok = raw_tok[1:-1]
-            expr = f"pt.read({raw_tok!r})"
-        else:
-            expr = f"pt.eval_cli({stripped!r}, locals())"
+    fluent = _transpile_pt_to_fluent(stripped)
+    expr = fluent if fluent is not None else f"pt.eval_cli({stripped!r}, locals())"
     if target_var:
         return f"{target_var} = {expr}"
     return expr

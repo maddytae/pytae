@@ -303,3 +303,30 @@ def test_export_auto_infers_startup_imports(tmp_path: Path) -> None:
     first_src = "".join(nb["cells"][0]["source"])
     assert "import pandas as pd" in first_src
     assert "import polars as pl" in first_src
+
+
+def test_export_fluent_chain_with_round(tmp_path: Path) -> None:
+    wb = Workbench(load_config=False)
+    history = [
+        (1, 'df = %pt "C:\\Users\\demo\\data.parquet"'),
+        (
+            2,
+            'k = %pt df -filter "reporting_date==\'2026-09-30\' and currency==\'USD\'" '
+            '-by vertical -agg "rwa=sum(post_crm_tranche_rwa)" -round 1 -arrange "rwa desc"',
+        ),
+    ]
+    out_py = tmp_path / "fluent.py"
+    wb.export_session(out_py, history)
+    text = out_py.read_text(encoding="utf-8")
+    assert "df = pt.read('C:\\\\Users\\\\demo\\\\data.parquet')" in text
+    assert ".filter(\"reporting_date=='2026-09-30' and currency=='USD'\")" in text
+    assert ".by('vertical')" in text
+    assert ".agg('rwa=sum(post_crm_tranche_rwa)')" in text
+    assert ".round(1)" in text
+    assert ".arrange('rwa desc')" in text
+    assert "eval_cli" not in text
+
+    # Also verify DataFrame.round(1) works end-to-end
+    sample = pt.DataFrame({"grp": ["a", "b"], "v": [1.234, 5.678]})
+    rounded = sample.round(1)
+    assert rounded._df["v"].to_list() == [1.2, 5.7]

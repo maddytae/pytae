@@ -1509,6 +1509,15 @@ class DataFrame:
 
         return DataFrame(_hist(self._df, col=col, bins=bins, width=width))
 
+    def round(self, decimals: int = 0) -> DataFrame:
+        """Round all floating-point columns to `decimals` decimal places."""
+        schema = _df_schema(self._df)
+        float_cols = [c for c, dt in schema.items() if dt.is_float()]
+        if not float_cols:
+            return DataFrame(self._df, orig_col_map=self._orig_col_map)
+        rounded = self._df.with_columns([pl.col(c).round(decimals).alias(c) for c in float_cols])
+        return DataFrame(rounded, orig_col_map=self._orig_col_map)
+
     def bar(
         self,
         cat: str | None = None,

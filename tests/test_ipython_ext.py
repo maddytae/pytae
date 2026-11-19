@@ -146,7 +146,7 @@ def test_export_prunes_errors_previews_bare_exit_and_produces_valid_python(
     assert "\ndf\n" not in text
     assert "df.head()" not in text
     assert "df = pt.sample('penguins')" in text
-    assert "heavy = pt.eval_cli(" in text
+    assert "heavy = df.filter('body_mass_g > 5000')" in text
 
     # Exported .py must be 100% valid, runnable standalone Python!
     exec_ns: dict[str, object] = {}
