@@ -85,6 +85,7 @@ CHEATSHEET_TEXT = """\
   pytae data.parquet -by species -agg "avg_mass=mean(body_mass_g), total=count()"
   pytae data.parquet -by "species,island" -agg "mean_mass=mean(body_mass_g)"
   pytae data.parquet -distinct "species,island"
+  pytae data.parquet -dups "species,island"
   pytae data.parquet -arrange "species asc, body_mass_g desc"
 
 7. 🔄 RESHAPING & PIVOTING (-long, -wide, -pivot)

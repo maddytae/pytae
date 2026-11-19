@@ -73,6 +73,19 @@ def parse_distinct_spec(raw: str | None) -> tuple[list[str], str | bool]:
     return cols, keep
 
 
+def parse_dups_spec(raw: str | None) -> list[str]:
+    """Parse -dups SPEC into a list of column names.
+
+    Canonical syntax:
+      - Bare flag / None / "": all columns (returns [])
+      - "col1": ['col1']
+      - "col1,col2": ['col1', 'col2']
+    """
+    if not raw or not raw.strip():
+        return []
+    return parse_columns(raw)
+
+
 def parse_count_spec(raw: str | None) -> tuple[list[str], bool, str]:
     """Parse -count SPEC into (cols, sort, name).
 

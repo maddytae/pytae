@@ -1195,6 +1195,7 @@ DATA TRANSFORMATION & PIPELINES:
   -arrange <specs>       : Sort rows, e.g. -arrange "mass_kg desc"
   -by <g> -agg <specs>   : Grouped aggregation, e.g. -by species -agg "m=mean(mass), n=count()"
   -distinct <cols>       : Deduplicate rows
+  -dups [cols]           : Filter to duplicate rows, e.g. -dups or -dups cust_id
   -dropna [cols]         : Drop missing values
   -fillna <specs>        : Impute missing values
   <tbl> -<pipeline>      : Run pipeline on specific table (e.g. df1 -filter "amount > 100")
@@ -1338,6 +1339,7 @@ _DISALLOWED_ALIASES: dict[str, str] = {
     "--by": "-by",
     "--agg": "-agg",
     "--distinct": "-distinct",
+    "--dups": "-dups",
     "--count": "-count",
     "--sample": "-sample",
     "--seed": "-seed",
@@ -1419,6 +1421,7 @@ _BARE_PIPELINE_VERBS = frozenset(
         "by",
         "agg",
         "distinct",
+        "dups",
         "count",
         "dropna",
         "fillna",
@@ -2972,6 +2975,11 @@ class PytaeRepl:
         # Compare two datasets (`-diff <tbl1> <tbl2>` or `-diff <tbl>`)
         if first_lower == "-diff":
             self._cmd_diff(tokens[1:], output_fn)
+            return True
+
+        # Reject -dup
+        if first_lower in ("dup", "-dup", "--dup") or first_lower.startswith(("-dup=", "--dup=")):
+            output_fn("pytae: '-dup' is not supported; use '-dups' instead.")
             return True
 
         # Reject bare pipeline verbs and suggest hyphenated CLI flag
@@ -6036,6 +6044,12 @@ class PytaeRepl:
             output_fn(f"pytae: {exc}")
             return None, None, True
 
+        for t in subbed_tokens:
+            t_low = t.lower()
+            if t_low in ("dup", "-dup", "--dup") or t_low.startswith(("-dup=", "--dup=")):
+                output_fn("pytae: '-dup' is not supported; use '-dups' instead.")
+                return None, None, True
+
         exec_argv = _normalize_cli_args(["<memory>"] + subbed_tokens)
         parser = build_parser(exit_on_error=False)
         parser.repl_output_fn = output_fn
@@ -6534,7 +6548,7 @@ class PytaeRepl:
             flags = [
                 # Core verbs
                 "-filter", "-select", "-mutate", "-arrange", "-by", "-agg",
-                "-distinct", "-count", "-join", "-concat",
+                "-distinct", "-dups", "-count", "-join", "-concat",
                 # Reshaping
                 "-long", "-wide", "-pivot",
                 # Missing data & cleanup
@@ -6562,7 +6576,7 @@ class PytaeRepl:
                 "exit", "quit", "help", "time", "clear", "export",
                 # Bare verbs
                 "filter", "select", "mutate", "arrange", "by", "agg",
-                "distinct", "count", "join", "concat",
+                "distinct", "dups", "count", "join", "concat",
                 "long", "wide", "pivot",
                 "dropna", "fillna", "clean_columns",
                 "head", "tail", "sample", "describe", "glimpse", "schema", "cols", "dtype", "shape", "nulls",

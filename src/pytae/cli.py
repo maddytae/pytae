@@ -135,6 +135,7 @@ _CLI_FLAGS = {
     "-meta",
     "-diff",
     "-distinct",
+    "-dups",
     "-count",
     "-sample",
     "-seed",
@@ -522,6 +523,16 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         metavar="SPEC",
         action=_OrderedValue,
         help='drop duplicate rows, optionally restricted to specific columns and keep mode, e.g. -distinct, -distinct "col1,col2", or -distinct "keep=last"',
+    )
+    parser.add_argument(
+        "-dups",
+        dest="dups",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="SPEC",
+        action=_OrderedValue,
+        help='filter to duplicate rows, optionally restricted to specific columns, e.g. -dups or -dups "col1,col2"',
     )
     parser.add_argument(
         "-count",
@@ -1072,6 +1083,7 @@ def main(argv: list[str] | None = None) -> int:
         (("-qry",), "'-qry' has been removed; use '-filter' instead"),
         (("-unique",), "'-unique' has been removed; use '-distinct' instead"),
         (("-dedupe",), "'-dedupe' has been removed; use '-distinct' instead"),
+        (("-dup", "--dup"), "'-dup' is not supported; use '-dups' instead"),
         (("-sort_by", "-sort"), "'-sort_by' has been deprecated; use '-arrange' instead"),
         (("-agg_df",), "'-agg_df' has been removed; use '-agg' instead"),
         (("-to_clip",), "'-to_clip' has been removed; use '-o clip' instead"),
@@ -1114,7 +1126,7 @@ def main(argv: list[str] | None = None) -> int:
         ),
     ]
     for aliases, msg in retired_redirects:
-        if any(arg in aliases for arg in raw_argv):
+        if any(arg in aliases or any(arg.startswith(f"{a}=") for a in aliases) for arg in raw_argv):
             parser.error(msg)
 
     args, extras = parser.parse_known_args(argv)
@@ -1242,6 +1254,7 @@ def main(argv: list[str] | None = None) -> int:
             args.browse,
             args.glimpse,
             args.distinct is not None,
+            args.dups is not None,
             args.count is not None,
             args.freq is not None,
             args.hist is not None,
@@ -1288,6 +1301,7 @@ def main(argv: list[str] | None = None) -> int:
             args.browse,
             show_all,
             args.distinct is not None,
+            args.dups is not None,
             args.count is not None,
             args.freq is not None,
             args.hist is not None,
@@ -1316,7 +1330,7 @@ def main(argv: list[str] | None = None) -> int:
     if is_clip and args.shape and wants_df:
         parser.error(
             "-o clip can't combine -shape (not a DataFrame/Series) with a DataFrame-producing flag "
-            "like -head/-tail/-cols/-dtype/-nulls/-describe/-distinct/-count/-sample/-arrange/"
+            "like -head/-tail/-cols/-dtype/-nulls/-describe/-distinct/-dups/-count/-sample/-arrange/"
             "-agg/-fillna/-long/-wide/-pivot/-clean_columns/-join/-concat/-freq/-hist/-bar/-corr/-plot; "
             "run -shape separately"
         )

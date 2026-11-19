@@ -39,6 +39,9 @@ class _BasePtAccessor:
     def distinct(self, *cols: Any, keep: str = "first") -> DataFrame:
         return DataFrame(self._obj).distinct(*cols, keep=keep)
 
+    def dups(self, *cols: Any) -> DataFrame:
+        return DataFrame(self._obj).dups(*cols)
+
     def count(self, *cols: Any, sort: bool = True, name: str = "n") -> DataFrame:
         return DataFrame(self._obj).count(*cols, sort=sort, name=name)
 

@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Duplicate Rows Inspection Pipeline Verb (`-dups`, `df.dups()`, `pt.dups()`)**:
+  - Filter datasets directly to rows that contain duplicate records, grouping matching duplicates together.
+  - Bare `-dups`: filters to rows that have identical duplicates across all columns.
+  - Subset `-dups "col1,col2"`: filters to rows sharing duplicate values on specified columns.
+  - Strictly rejects singular `-dup` across CLI, REPL, and pipelines with clear guidance: `'-dup' is not supported; use '-dups' instead`.
+  - Available across CLI (`-dups [cols]`), Python API (`df.dups(*cols)`, `pt.dups(df, *cols)`, `df.pt.dups(*cols)`), REPL (`-dups`, `dup_orders = orders -dups cust`), and Transpiler (exported scripts emit `.dups(...)`).
 - **Parameterized REPL Pipeline Recipes (`def <name>[(<params>)] = <pipeline>`)**:
   - Define reusable transformation chains with custom parameters and default values: `def winsorize(col, min_val=0, max_val=1000) = -filter "$col >= $min_val" -mutate "$col = if_else($col > $max_val, $max_val, $col)"`.
   - Invoke parameterized recipes with positional, keyword, or default arguments via pipes (`q1 | winsorize(sales, 10)`, `q2 | winsorize(sales, max_val=500)`), bare invocations (`winsorize(sales, 10)`), or targeted execution (`q1 winsorize(sales, 10)`).

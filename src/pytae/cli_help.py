@@ -826,6 +826,23 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         see_also=["-dropna", "-filter"],
     ),
+    "dups": KeywordHelp(
+        name="dups",
+        flag="-dups [SPEC]",
+        syntax='pytae <path> -dups ["col1,col2"]',
+        summary="Filter to duplicate rows (across all or specific columns).",
+        description="Retains all rows that have duplicate records, sorted by the checked columns so duplicates appear grouped together.",
+        options=[
+            "Bare flag : Find duplicate rows across all columns.",
+            '"col1,col2" : Find duplicate rows sharing values on specified subset of columns.',
+        ],
+        examples=[
+            "pytae orders.parquet -dups",
+            'pytae orders.parquet -dups "cust_id"',
+            'pytae orders.parquet -dups "cust_id,order_date"',
+        ],
+        see_also=["-distinct", "-count", "-freq"],
+    ),
     "count": KeywordHelp(
         name="count",
         flag="-count [SPEC]",

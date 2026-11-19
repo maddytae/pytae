@@ -1511,6 +1511,12 @@ def _process_path(
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
+        elif op == "dups":
+            dups_val = _next_op_val("dups", getattr(args, "dups", None))
+            err = pipeline.apply_dups(dups_val)
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
         elif op == "count":
             by_cols = current_by
             count_val = _next_op_val("count", getattr(args, "count", None))

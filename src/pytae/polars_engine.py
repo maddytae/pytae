@@ -602,6 +602,31 @@ def distinct_polars(df: Any, cols: list[str] | None = None, keep: str | bool = "
     return df.unique(subset=cols if cols else None, keep=pl_keep, maintain_order=True)
 
 
+def dups_polars(df: Any, cols: Sequence[str] | None = None) -> Any:
+    """Filter to duplicate rows in a Polars DataFrame or LazyFrame.
+
+    If `cols` is provided, filters to rows that share duplicate values on the specified columns.
+    Otherwise, filters to rows that have identical duplicates across all columns.
+    Matching rows are sorted by the checked columns so duplicate records appear grouped together.
+    """
+    import polars as pl
+
+    all_cols = _df_columns(df)
+    if cols:
+        cols_to_check = [str(c) for c in cols if c]
+        available_set = set(all_cols)
+        unknown = [c for c in cols_to_check if c not in available_set]
+        if unknown:
+            raise KeyError(f"dups(): unknown column(s) {unknown}")
+    else:
+        cols_to_check = all_cols
+
+    if not cols_to_check:
+        return df
+
+    return df.filter(pl.struct(cols_to_check).is_duplicated()).sort(cols_to_check)
+
+
 def count_polars(
     df: Any,
     cols: Sequence[str] | None = None,

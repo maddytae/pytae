@@ -191,6 +191,10 @@ def distinct(df: Any, *cols: Any, keep: str = "first") -> DataFrame:
     return DataFrame(df).distinct(*cols, keep=keep)
 
 
+def dups(df: Any, *cols: Any) -> DataFrame:
+    return DataFrame(df).dups(*cols)
+
+
 def count(df: Any, *cols: Any, sort: bool = True, name: str = "n") -> DataFrame:
     if isinstance(df, GroupedDataFrame):
         if cols:
@@ -541,6 +545,7 @@ __all__ = [
     "head",
     "tail",
     "distinct",
+    "dups",
     "count",
     "dropna",
     "fillna",

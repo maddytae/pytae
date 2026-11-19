@@ -19,6 +19,7 @@ _pytae() {
         "-agg[Aggregate expressions]:aggs:"
         "-arrange[Sort rows]:order:"
         "-distinct[Deduplicate rows]:columns:"
+        "-dups[Filter to duplicate rows]:columns:"
         "-count[Count rows per group]:columns:"
         "-join[Join with another table]:spec:"
         "-concat[Concatenate tables]:spec:"
@@ -80,7 +81,7 @@ fi
 
 BASH_COMPLETION = """_pytae_completion() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
-    local flags="-filter -mutate -select -rename -by -agg -arrange -distinct -count -join -concat -long -wide -pivot -explode -assert -dropna -fillna -clean_columns -mask -unmask -head -tail -sample -shape -cols -dtype -nulls -schema -describe -glimpse -meta -browse -freq -hist -bar -scatter -corr -plot -diff -sql -o -check -doc -mcp -run -export -i -time -cheatsheet -version -help --install-completion --completion"
+    local flags="-filter -mutate -select -rename -by -agg -arrange -distinct -dups -count -join -concat -long -wide -pivot -explode -assert -dropna -fillna -clean_columns -mask -unmask -head -tail -sample -shape -cols -dtype -nulls -schema -describe -glimpse -meta -browse -freq -hist -bar -scatter -corr -plot -diff -sql -o -check -doc -mcp -run -export -i -time -cheatsheet -version -help --install-completion --completion"
 
     if [[ "${cur}" == -* ]] ; then
         COMPREPLY=( $(compgen -W "${flags}" -- "${cur}") )
@@ -102,6 +103,7 @@ complete -c pytae -s by -d "Group by columns"
 complete -c pytae -s agg -d "Aggregate expressions"
 complete -c pytae -s arrange -d "Sort rows"
 complete -c pytae -s distinct -d "Deduplicate rows"
+complete -c pytae -s dups -d "Filter to duplicate rows"
 complete -c pytae -s count -d "Count rows per group"
 complete -c pytae -s join -d "Join with another table"
 complete -c pytae -s concat -d "Concatenate tables"

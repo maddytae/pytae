@@ -365,6 +365,28 @@ class _Pipeline:
         except Exception as exc:
             return f"-distinct: {exc}"
 
+    def apply_dups(self, spec: str | None) -> str | None:
+        """Filter to duplicate rows. Returns an error message or None."""
+        from pytae.cli_parsing import parse_dups_spec, unknown_columns_message
+
+        try:
+            cols = parse_dups_spec(spec)
+        except SystemExit as exc:
+            return str(exc)
+        available = self._available_columns()
+        if cols:
+            unknown = [c for c in cols if c not in available]
+            if unknown:
+                return unknown_columns_message("-dups", unknown, available)
+        try:
+            from pytae.polars_engine import dups_polars
+
+            self._pldf = dups_polars(self.polars_lazy_frame(), cols=cols)
+            self._df = None
+            return None
+        except Exception as exc:
+            return f"-dups: {exc}"
+
     def apply_count(self, spec: str | None, by_cols: list[str] | None = None) -> str | None:
         """Count occurrences of combinations of columns or within groups. Returns an error message or None."""
         from pytae.cli_parsing import parse_count_spec, unknown_columns_message

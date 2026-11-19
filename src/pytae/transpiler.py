@@ -186,6 +186,23 @@ def _transpile_pipeline_tokens_to_calls(tokens: list[str], params: list[str] | N
                 i += 1
             continue
 
+        # -dups [spec]
+        if low in ("-dups", "--dups"):
+            if i + 1 < n and not tokens[i + 1].startswith("-"):
+                from pytae.cli_parsing import parse_dups_spec
+
+                try:
+                    dp_cols = parse_dups_spec(tokens[i + 1])
+                    dp_args = [_format_token_str(c, params) for c in dp_cols]
+                    calls.append(f".dups({', '.join(dp_args)})")
+                except Exception:
+                    calls.append(f".dups({_format_token_str(tokens[i + 1], params)})")
+                i += 2
+            else:
+                calls.append(".dups()")
+                i += 1
+            continue
+
         # -dropna [spec]
         if low in ("-dropna", "--dropna"):
             if i + 1 < n and not tokens[i + 1].startswith("-"):

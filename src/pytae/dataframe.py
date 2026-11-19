@@ -24,6 +24,7 @@ from pytae.polars_engine import (
     concat_polars,
     count_polars,
     distinct_polars,
+    dups_polars,
     dropna_polars,
     explode_polars,
     fillna_polars,
@@ -921,6 +922,32 @@ class DataFrame:
             if missing:
                 raise KeyError(f"distinct: column(s) {missing} not found in DataFrame")
         return DataFrame(distinct_polars(self._df, list(cols), keep=keep))
+
+    def dups(self, *cols: Any) -> DataFrame:
+        """Filter to duplicate rows across all or specific columns.
+
+        Parameters
+        ----------
+        *cols : str
+            Columns to check for duplicates. If omitted, checks all columns.
+
+        Returns
+        -------
+        DataFrame
+            A DataFrame containing all rows that have duplicates, sorted by the checked columns.
+        """
+        for c in cols:
+            if isinstance(c, (list, tuple, set)):
+                raise TypeError(
+                    f"dups() takes column names as positional arguments, e.g. dups('a', 'b'). "
+                    f"Lists are not accepted, got {type(c).__name__}."
+                )
+        if cols:
+            avail = set(self.columns)
+            missing = [str(c) for c in cols if str(c) not in avail]
+            if missing:
+                raise KeyError(f"dups: column(s) {missing} not found in DataFrame")
+        return DataFrame(dups_polars(self._df, [str(c) for c in cols]))
 
     def count(self, *cols: Any, sort: bool = True, name: str = "n") -> DataFrame:
         """Count occurrences of unique combinations of columns (or total rows).

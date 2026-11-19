@@ -500,6 +500,16 @@ def distinct(
     return DataFrame(df).distinct(*cols, keep=keep)
 
 
+def dups(
+    df: Any,
+    *cols: Any,
+) -> Any:
+    """Filter to duplicate rows, optionally restricted to specific key columns."""
+    from pytae.dataframe import DataFrame
+
+    return DataFrame(df).dups(*cols)
+
+
 def freq(
     df: Any,
     col: str | None = None,
