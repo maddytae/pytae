@@ -20,6 +20,7 @@ SYNONYMS: dict[str, list[str]] = {
     "select": ["columns", "pick", "drop columns", "exclude", "slice columns", "rename"],
     "distinct": ["dedupe", "unique", "drop_duplicates", "distinct rows", "deduplicate"],
     "dups": ["duplicates", "find duplicates", "repeated", "duplicated", "is_duplicated", "identicals"],
+    "outliers": ["anomaly", "iqr", "zscore", "mad", "extreme values", "tukey", "outlier"],
     "count": ["tally", "frequency", "size", "n", "occurrences"],
     "agg": ["summarize", "aggregate", "sum", "mean", "average", "median", "min", "max"],
     "pivot": ["crosstab", "cross-tabulation", "2d table", "excel pivot", "contingency table"],

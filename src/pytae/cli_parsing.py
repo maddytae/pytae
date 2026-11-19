@@ -86,6 +86,63 @@ def parse_dups_spec(raw: str | None) -> list[str]:
     return parse_columns(raw)
 
 
+def parse_outliers_spec(
+    raw: str | None,
+    flag_name: str = "-outliers",
+) -> tuple[list[str], str, float | None, bool, str]:
+    """Parse -outliers SPEC into (cols, method, threshold, drop, which).
+
+    Canonical syntax:
+      - Bare flag / None / "": all numeric columns, method='iqr', thresh=None (1.5), drop=False, which='any'
+      - "sales": cols=['sales'], method='iqr', thresh=None (1.5), drop=False, which='any'
+      - "sales,method=zscore,thresh=3": cols=['sales'], method='zscore', thresh=3.0, drop=False, which='any'
+      - "sales,k=3.0": cols=['sales'], method='iqr', thresh=3.0, drop=False, which='any'
+      - "sales,drop=true": cols=['sales'], method='iqr', thresh=None, drop=True, which='any'
+      - "sales,profit,which=all": cols=['sales', 'profit'], method='iqr', thresh=None, drop=False, which='all'
+    """
+    if not raw or not raw.strip():
+        return [], "iqr", None, False, "any"
+
+    tokens = [t.strip() for t in _tokenize(raw, ",", track_brackets=True) if t.strip()]
+    cols: list[str] = []
+    method: str = "iqr"
+    thresh: float | None = None
+    drop: bool = False
+    which: str = "any"
+
+    for token in tokens:
+        low = token.lower()
+        if low.startswith("method="):
+            val = low[len("method=") :].strip("\"'")
+            if val in ("iqr", "tukey", "zscore", "z", "mad", "modified_zscore", "mod_zscore"):
+                method = "iqr" if val in ("iqr", "tukey") else ("zscore" if val in ("zscore", "z") else "mad")
+            else:
+                raise SystemExit(f"{flag_name}: invalid method '{val}'. Expected 'iqr', 'zscore', or 'mad'")
+        elif low.startswith(("thresh=", "threshold=", "k=")):
+            val = re.sub(r"^(thresh|threshold|k)=", "", low).strip("\"'")
+            try:
+                thresh = float(val)
+                if thresh <= 0:
+                    raise ValueError()
+            except ValueError:
+                raise SystemExit(f"{flag_name}: invalid threshold '{val}'. Expected a positive number")
+        elif low.startswith(("drop=", "invert=")):
+            val = re.sub(r"^(drop|invert)=", "", low).strip("\"'")
+            drop = val in ("true", "1", "yes")
+        elif low in ("drop", "invert"):
+            drop = True
+        elif low.startswith("which="):
+            val = low[len("which=") :].strip("\"'")
+            if val in ("any", "all"):
+                which = val
+            else:
+                raise SystemExit(f"{flag_name}: invalid which '{val}'. Expected 'any' or 'all'")
+        else:
+            cols.append(_unquote_name(token))
+
+    return cols, method, thresh, drop, which
+
+
 def parse_count_spec(raw: str | None) -> tuple[list[str], bool, str]:
     """Parse -count SPEC into (cols, sort, name).
 

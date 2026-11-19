@@ -510,6 +510,23 @@ def dups(
     return DataFrame(df).dups(*cols)
 
 
+def outliers(
+    df: Any,
+    *cols: Any,
+    method: str = "iqr",
+    threshold: float | None = None,
+    k: float | None = None,
+    drop: bool = False,
+    which: str = "any",
+) -> Any:
+    """Filter to statistical outlier rows, optionally restricted to specific numeric columns."""
+    from pytae.dataframe import DataFrame, GroupedDataFrame
+
+    if isinstance(df, GroupedDataFrame):
+        return df.outliers(*cols, method=method, threshold=threshold, k=k, drop=drop, which=which)
+    return DataFrame(df).outliers(*cols, method=method, threshold=threshold, k=k, drop=drop, which=which)
+
+
 def freq(
     df: Any,
     col: str | None = None,

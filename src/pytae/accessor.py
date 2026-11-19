@@ -42,6 +42,9 @@ class _BasePtAccessor:
     def dups(self, *cols: Any) -> DataFrame:
         return DataFrame(self._obj).dups(*cols)
 
+    def outliers(self, *cols: Any, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).outliers(*cols, **kwargs)
+
     def count(self, *cols: Any, sort: bool = True, name: str = "n") -> DataFrame:
         return DataFrame(self._obj).count(*cols, sort=sort, name=name)
 

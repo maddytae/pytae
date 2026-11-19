@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Statistical Outlier Detection & Filtering Verb (`-outliers`, `df.outliers()`, `pt.outliers()`)**:
+  - Filter datasets directly to rows that are statistical outliers across numeric columns.
+  - Three outlier detection algorithms supported:
+    - `iqr` (Tukey's fences, default `k=1.5`): `Q1 - k*IQR` and `Q3 + k*IQR`.
+    - `zscore` (Standard score, default `thresh=3.0`): `|x - mean| / std > threshold`.
+    - `mad` (Median Absolute Deviation, default `thresh=3.5`): `0.6745 * |x - median| / mad > threshold`.
+  - Invertible filtering via `drop=true` (or `invert=true`) to keep inliers / drop outliers.
+  - Full group-scoping support when preceded by `-by` (e.g. `pytae data.parquet -by region -outliers sales` calculates outlier boundaries within each group via Polars window functions).
+  - Multi-column outlier testing with `which=any|all`.
+  - Automatic detection across all numeric columns when no column is specified (`-outliers`).
+  - Available across CLI (`-outliers [spec]`), Python API (`df.outliers()`, `pt.outliers()`, `df.by().outliers()`, `df.pt.outliers()`), REPL (`-outliers`, `anomalies = orders -outliers sales`), and Transpiler.
 - **Duplicate Rows Inspection Pipeline Verb (`-dups`, `df.dups()`, `pt.dups()`)**:
   - Filter datasets directly to rows that contain duplicate records, grouping matching duplicates together.
   - Bare `-dups`: filters to rows that have identical duplicates across all columns.

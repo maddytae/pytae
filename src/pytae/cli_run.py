@@ -1145,7 +1145,7 @@ def _process_path(
             df = rounded.to_pandas() if hasattr(rounded, "to_pandas") else rounded
             clip_action = lambda d=df: _copy_df_to_clipboard(d, index=False)
 
-    _BY_CONSUMING_OR_PASSTHROUGH_OPS = frozenset({"mutate", "agg", "count", "head", "tail", "sample", "arrange", "by"})
+    _BY_CONSUMING_OR_PASSTHROUGH_OPS = frozenset({"mutate", "agg", "count", "head", "tail", "sample", "arrange", "by", "outliers"})
 
     for idx, op in enumerate(op_order):
         if current_by is not None and op not in _BY_CONSUMING_OR_PASSTHROUGH_OPS:
@@ -1514,6 +1514,14 @@ def _process_path(
         elif op == "dups":
             dups_val = _next_op_val("dups", getattr(args, "dups", None))
             err = pipeline.apply_dups(dups_val)
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
+        elif op == "outliers":
+            by_cols = current_by
+            outliers_val = _next_op_val("outliers", getattr(args, "outliers", None))
+            err = pipeline.apply_outliers(outliers_val, by_cols=by_cols)
+            current_by = None
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)

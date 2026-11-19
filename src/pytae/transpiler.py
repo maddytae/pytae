@@ -203,6 +203,32 @@ def _transpile_pipeline_tokens_to_calls(tokens: list[str], params: list[str] | N
                 i += 1
             continue
 
+        # -outliers [spec]
+        if low in ("-outliers", "--outliers"):
+            if i + 1 < n and not tokens[i + 1].startswith("-"):
+                val = tokens[i + 1]
+                from pytae.cli_parsing import parse_outliers_spec
+
+                try:
+                    o_cols, o_method, o_thresh, o_drop, o_which = parse_outliers_spec(val)
+                    o_args = [_format_token_str(c, params) for c in o_cols]
+                    if o_method != "iqr":
+                        o_args.append(f"method={repr(o_method)}")
+                    if o_thresh is not None:
+                        o_args.append(f"threshold={o_thresh}")
+                    if o_drop:
+                        o_args.append("drop=True")
+                    if o_which != "any":
+                        o_args.append(f"which={repr(o_which)}")
+                    calls.append(f".outliers({', '.join(o_args)})")
+                except Exception:
+                    calls.append(f".outliers({_format_token_str(val, params)})")
+                i += 2
+            else:
+                calls.append(".outliers()")
+                i += 1
+            continue
+
         # -dropna [spec]
         if low in ("-dropna", "--dropna"):
             if i + 1 < n and not tokens[i + 1].startswith("-"):

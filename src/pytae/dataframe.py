@@ -32,6 +32,7 @@ from pytae.polars_engine import (
     join_polars,
     long_polars,
     mutate_polars,
+    outliers_polars,
     pivot_polars,
     select_polars,
     slice_head_polars,
@@ -949,6 +950,59 @@ class DataFrame:
                 raise KeyError(f"dups: column(s) {missing} not found in DataFrame")
         return DataFrame(dups_polars(self._df, [str(c) for c in cols]))
 
+    def outliers(
+        self,
+        *cols: Any,
+        method: str = "iqr",
+        threshold: float | None = None,
+        k: float | None = None,
+        drop: bool = False,
+        which: str = "any",
+    ) -> DataFrame:
+        """Filter to statistical outlier rows across specified numeric columns.
+
+        Parameters
+        ----------
+        *cols : str
+            Columns to check for outliers. If omitted, checks all numeric columns.
+        method : {'iqr', 'zscore', 'mad'}, default 'iqr'
+            Outlier detection method:
+            - 'iqr': Tukey's fences (Q1 - k*IQR, Q3 + k*IQR), default k=1.5
+            - 'zscore': Standard score (|x - mean| / std > threshold), default threshold=3.0
+            - 'mad': Median Absolute Deviation (0.6745 * |x - med| / mad > threshold), default threshold=3.5
+        threshold : float, optional
+            Multiplier / threshold for the specified method.
+        k : float, optional
+            Alias for threshold.
+        drop : bool, default False
+            If True, drops outliers (retaining inliers). If False, filters to outliers.
+        which : {'any', 'all'}, default 'any'
+            When checking multiple columns, whether a row is considered an outlier
+            if it is an outlier in 'any' column or 'all' columns.
+        """
+        thresh = k if threshold is None else threshold
+        for c in cols:
+            if isinstance(c, (list, tuple, set)):
+                raise TypeError(
+                    f"outliers() takes column names as positional arguments, e.g. outliers('a', 'b'). "
+                    f"Lists are not accepted, got {type(c).__name__}."
+                )
+        if cols:
+            avail = set(self.columns)
+            missing = [str(c) for c in cols if str(c) not in avail]
+            if missing:
+                raise KeyError(f"outliers: column(s) {missing} not found in DataFrame")
+        cols_list = [str(c) for c in cols] if cols else None
+        res_df = outliers_polars(
+            self._df,
+            cols=cols_list,
+            method=method,
+            threshold=thresh,
+            drop=drop,
+            which=which,
+        )
+        return DataFrame(res_df, orig_col_map=self._orig_col_map)
+
     def count(self, *cols: Any, sort: bool = True, name: str = "n") -> DataFrame:
         """Count occurrences of unique combinations of columns (or total rows).
 
@@ -1813,6 +1867,35 @@ class GroupedDataFrame:
             _last_sort_cols=cols,
             _last_sort_desc=descending,
         )
+
+    def outliers(
+        self,
+        *cols: Any,
+        method: str = "iqr",
+        threshold: float | None = None,
+        k: float | None = None,
+        drop: bool = False,
+        which: str = "any",
+    ) -> DataFrame:
+        """Filter to statistical outlier rows computed within established groups."""
+        thresh = k if threshold is None else threshold
+        for c in cols:
+            if isinstance(c, (list, tuple, set)):
+                raise TypeError(
+                    f"outliers() takes column names as positional arguments, e.g. outliers('a', 'b'). "
+                    f"Lists are not accepted, got {type(c).__name__}."
+                )
+        cols_list = [str(c) for c in cols] if cols else None
+        res_df = outliers_polars(
+            self._df,
+            cols=cols_list,
+            method=method,
+            threshold=thresh,
+            drop=drop,
+            which=which,
+            by_cols=self._by,
+        )
+        return DataFrame(res_df, orig_col_map=self._orig_col_map)
 
     def mutate(self, *specs: Any, **kwargs: Any) -> DataFrame:
         """Calculate windowed mutations across the established groups."""

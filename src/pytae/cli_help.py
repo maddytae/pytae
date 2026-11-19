@@ -843,6 +843,36 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         ],
         see_also=["-distinct", "-count", "-freq"],
     ),
+    "outliers": KeywordHelp(
+        name="outliers",
+        flag="-outliers [SPEC]",
+        syntax='pytae <path> -outliers ["col[,method=iqr|zscore|mad][,k=1.5][,drop=true]"]',
+        summary="Filter to statistical outlier rows (or inliers if drop=true).",
+        description=(
+            "Detects and filters rows containing statistical outliers across numeric columns.\n"
+            "Supported methods:\n"
+            "- iqr: Tukey's fences (Q1 - k*IQR, Q3 + k*IQR), default k=1.5\n"
+            "- zscore: Standard score (|x - mean| / std > threshold), default threshold=3.0\n"
+            "- mad: Median Absolute Deviation (0.6745 * |x - med| / mad > threshold), default threshold=3.5\n"
+            "Supports group-scoped threshold calculation when preceded by -by."
+        ),
+        options=[
+            "Bare flag : Detect outliers across all numeric columns.",
+            '"col" : Detect outliers in specified column.',
+            '"col1,col2" : Detect outliers across multiple columns (default any).',
+            "method=iqr|zscore|mad : Outlier detection algorithm (default: iqr).",
+            "k=<num> / thresh=<num> : Multiplier / threshold value.",
+            "drop=true / invert=true : Invert filter to retain inliers (drop outliers).",
+            "which=any|all : Whether outlier in any or all specified columns.",
+        ],
+        examples=[
+            "pytae orders.parquet -outliers sales",
+            'pytae orders.parquet -outliers "sales,method=zscore,thresh=3"',
+            'pytae orders.parquet -outliers "sales,k=3,drop=true"',
+            'pytae orders.parquet -by region -outliers sales',
+        ],
+        see_also=["-filter", "-describe", "-hist", "-by"],
+    ),
     "count": KeywordHelp(
         name="count",
         flag="-count [SPEC]",

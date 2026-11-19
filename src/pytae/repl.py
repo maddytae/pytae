@@ -1196,6 +1196,7 @@ DATA TRANSFORMATION & PIPELINES:
   -by <g> -agg <specs>   : Grouped aggregation, e.g. -by species -agg "m=mean(mass), n=count()"
   -distinct <cols>       : Deduplicate rows
   -dups [cols]           : Filter to duplicate rows, e.g. -dups or -dups cust_id
+  -outliers [spec]       : Filter to outlier rows, e.g. -outliers sales, -outliers "sales,k=3"
   -dropna [cols]         : Drop missing values
   -fillna <specs>        : Impute missing values
   <tbl> -<pipeline>      : Run pipeline on specific table (e.g. df1 -filter "amount > 100")
@@ -1340,6 +1341,7 @@ _DISALLOWED_ALIASES: dict[str, str] = {
     "--agg": "-agg",
     "--distinct": "-distinct",
     "--dups": "-dups",
+    "--outliers": "-outliers",
     "--count": "-count",
     "--sample": "-sample",
     "--seed": "-seed",
@@ -1422,6 +1424,7 @@ _BARE_PIPELINE_VERBS = frozenset(
         "agg",
         "distinct",
         "dups",
+        "outliers",
         "count",
         "dropna",
         "fillna",
@@ -2980,6 +2983,11 @@ class PytaeRepl:
         # Reject -dup
         if first_lower in ("dup", "-dup", "--dup") or first_lower.startswith(("-dup=", "--dup=")):
             output_fn("pytae: '-dup' is not supported; use '-dups' instead.")
+            return True
+
+        # Reject -outlier
+        if first_lower in ("outlier", "-outlier", "--outlier") or first_lower.startswith(("-outlier=", "--outlier=")):
+            output_fn("pytae: '-outlier' is not supported; use '-outliers' instead.")
             return True
 
         # Reject bare pipeline verbs and suggest hyphenated CLI flag
@@ -6049,6 +6057,9 @@ class PytaeRepl:
             if t_low in ("dup", "-dup", "--dup") or t_low.startswith(("-dup=", "--dup=")):
                 output_fn("pytae: '-dup' is not supported; use '-dups' instead.")
                 return None, None, True
+            if t_low in ("outlier", "-outlier", "--outlier") or t_low.startswith(("-outlier=", "--outlier=")):
+                output_fn("pytae: '-outlier' is not supported; use '-outliers' instead.")
+                return None, None, True
 
         exec_argv = _normalize_cli_args(["<memory>"] + subbed_tokens)
         parser = build_parser(exit_on_error=False)
@@ -6548,7 +6559,7 @@ class PytaeRepl:
             flags = [
                 # Core verbs
                 "-filter", "-select", "-mutate", "-arrange", "-by", "-agg",
-                "-distinct", "-dups", "-count", "-join", "-concat",
+                "-distinct", "-dups", "-outliers", "-count", "-join", "-concat",
                 # Reshaping
                 "-long", "-wide", "-pivot",
                 # Missing data & cleanup
@@ -6576,7 +6587,7 @@ class PytaeRepl:
                 "exit", "quit", "help", "time", "clear", "export",
                 # Bare verbs
                 "filter", "select", "mutate", "arrange", "by", "agg",
-                "distinct", "dups", "count", "join", "concat",
+                "distinct", "dups", "outliers", "count", "join", "concat",
                 "long", "wide", "pivot",
                 "dropna", "fillna", "clean_columns",
                 "head", "tail", "sample", "describe", "glimpse", "schema", "cols", "dtype", "shape", "nulls",

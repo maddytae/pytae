@@ -627,6 +627,105 @@ def dups_polars(df: Any, cols: Sequence[str] | None = None) -> Any:
     return df.filter(pl.struct(cols_to_check).is_duplicated()).sort(cols_to_check)
 
 
+def outliers_polars(
+    df: Any,
+    cols: Sequence[str] | None = None,
+    method: str = "iqr",
+    threshold: float | None = None,
+    drop: bool = False,
+    which: str = "any",
+    by_cols: Sequence[str] | None = None,
+) -> Any:
+    """Filter rows in a Polars DataFrame or LazyFrame to statistical outliers (or inliers if drop=True).
+
+    Parameters
+    ----------
+    df : pl.DataFrame or pl.LazyFrame
+    cols : Sequence[str] | None
+        Columns to test for outliers. If None or empty, tests all numeric columns.
+    method : {'iqr', 'zscore', 'mad'}
+        Method for outlier detection:
+        - 'iqr': Tukey's fences (Q1 - k*IQR, Q3 + k*IQR), default k=1.5
+        - 'zscore': Standard score (|x - mean| / std > threshold), default threshold=3.0
+        - 'mad': Median Absolute Deviation (0.6745 * |x - med| / mad > threshold), default threshold=3.5
+    threshold : float | None
+        Multiplier / threshold. Defaults to 1.5 for IQR, 3.0 for z-score, 3.5 for MAD.
+    drop : bool
+        If True, returns inliers (drops outliers). If False, returns outlier rows.
+    which : {'any', 'all'}
+        Whether a row is an outlier if it exceeds thresholds in any or all specified columns.
+    by_cols : Sequence[str] | None
+        Optional grouping columns for group-scoped outlier thresholds.
+    """
+    import functools
+    import operator
+    import polars as pl
+
+    schema = _df_schema(df)
+    if cols:
+        cols_to_check = [str(c) for c in cols if c]
+        for c in cols_to_check:
+            if c not in schema:
+                raise KeyError(f"outliers(): unknown column '{c}'")
+            if not schema[c].is_numeric():
+                raise TypeError(f"outliers(): column '{c}' is not numeric ({schema[c]})")
+    else:
+        ignore = set(by_cols or [])
+        cols_to_check = [col for col, dt in schema.items() if dt.is_numeric() and col not in ignore]
+        if not cols_to_check:
+            raise ValueError("outliers(): no numeric columns found in DataFrame")
+
+    method_low = method.lower()
+    if method_low in ("iqr", "tukey"):
+        thresh = 1.5 if threshold is None else float(threshold)
+    elif method_low in ("zscore", "z"):
+        thresh = 3.0 if threshold is None else float(threshold)
+    elif method_low in ("mad", "modified_zscore", "mod_zscore"):
+        thresh = 3.5 if threshold is None else float(threshold)
+    else:
+        raise ValueError(f"outliers(): unknown method '{method}'. Expected 'iqr', 'zscore', or 'mad'")
+
+    if thresh <= 0:
+        raise ValueError(f"outliers(): threshold must be a positive number, got {thresh}")
+
+    conds: list[pl.Expr] = []
+    for c in cols_to_check:
+        c_expr = pl.col(c)
+        if method_low in ("iqr", "tukey"):
+            q1 = c_expr.quantile(0.25)
+            q3 = c_expr.quantile(0.75)
+            iqr = q3 - q1
+            lower = q1 - thresh * iqr
+            upper = q3 + thresh * iqr
+            outlier_expr = c_expr.is_not_null() & ((c_expr < lower) | (c_expr > upper)).fill_null(False)
+        elif method_low in ("zscore", "z"):
+            mean = c_expr.mean()
+            std = c_expr.std()
+            z = pl.when(std > 0).then(((c_expr - mean) / std).abs()).otherwise(0.0)
+            outlier_expr = c_expr.is_not_null() & (z > thresh).fill_null(False)
+        else:  # mad
+            median = c_expr.median()
+            mad = (c_expr - median).abs().median()
+            mod_z = pl.when(mad > 0).then(0.6745 * (c_expr - median).abs() / mad).otherwise(0.0)
+            outlier_expr = c_expr.is_not_null() & (mod_z > thresh).fill_null(False)
+
+        if by_cols:
+            outlier_expr = outlier_expr.over(list(by_cols))
+
+        conds.append(outlier_expr)
+
+    if not conds:
+        return df
+
+    if which.lower() == "all":
+        combined = functools.reduce(operator.and_, conds)
+    else:
+        combined = functools.reduce(operator.or_, conds)
+
+    final_cond = ~combined if drop else combined
+    return df.filter(final_cond)
+
+
 def count_polars(
     df: Any,
     cols: Sequence[str] | None = None,

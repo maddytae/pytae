@@ -387,6 +387,40 @@ class _Pipeline:
         except Exception as exc:
             return f"-dups: {exc}"
 
+    def apply_outliers(self, spec: str | None, by_cols: list[str] | None = None) -> str | None:
+        """Filter to statistical outlier rows. Returns an error message or None."""
+        from pytae.cli_parsing import parse_outliers_spec, unknown_columns_message
+
+        try:
+            cols, method, thresh, drop, which = parse_outliers_spec(spec)
+        except SystemExit as exc:
+            return str(exc)
+        available = self._available_columns()
+        if cols:
+            unknown = [c for c in cols if c not in available]
+            if unknown:
+                return unknown_columns_message("-outliers", unknown, available)
+        if by_cols:
+            unknown_by = [c for c in by_cols if c not in available]
+            if unknown_by:
+                return unknown_columns_message("-by", unknown_by, available)
+        try:
+            from pytae.polars_engine import outliers_polars
+
+            self._pldf = outliers_polars(
+                self.polars_lazy_frame(),
+                cols=cols,
+                method=method,
+                threshold=thresh,
+                drop=drop,
+                which=which,
+                by_cols=by_cols,
+            )
+            self._df = None
+            return None
+        except Exception as exc:
+            return f"-outliers: {exc}"
+
     def apply_count(self, spec: str | None, by_cols: list[str] | None = None) -> str | None:
         """Count occurrences of combinations of columns or within groups. Returns an error message or None."""
         from pytae.cli_parsing import parse_count_spec, unknown_columns_message
