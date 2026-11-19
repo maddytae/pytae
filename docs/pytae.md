@@ -5,7 +5,7 @@
 - Adopts the **readable, functional grammar** of dplyr,
 - And avoids the **index hierarchies, API redundancies, and silent data loss defaults** of legacy libraries.
 
-Pytae provides a single, unified grammar across **Python library code** (`df.<verb>()`, `pt.<verb>(df)`), the **Interactive Terminal REPL** (`pytae`), and the **Unix Command Line** (`pytae <file> -<verb>`).
+Pytae provides a single, unified grammar across **Python library code** (`df.<verb>()`, `pt.<verb>(df)`), the **IPython & Jupyter Workbench** (`import pytae as pt` → `%pt`, `%checkpoint`, `%restore`, `%status`, `%free`, `%set`, `%export`), and the **Unix Command Line** (`pytae <file> -<verb>`).
 
 ---
 
@@ -364,7 +364,7 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 - **`docs/cli_cheatsheet.md`**: [**The Definitive CLI Cheat Sheet & Cookbook**](cli_cheatsheet.md) — 12 curated sections of one-liner recipes and Unix shell workflows.
 - **`docs/guides/`**: Comprehensive Feature & Command Line Markdown guides (`.md`)
 - **`docs/notebooks/`**: Interactive, fully executed Jupyter Companion Notebooks (`.ipynb`)
-- **`docs/repl/`**: Deep dive guides for the interactive REPL shell and memory management.
+- **`docs/ipython.md`**: [**IPython & Jupyter Workbench Guide**](ipython.md) — auto-activated magics, checkpoints, `%free`, `%set`, and `%export`.
 - **`docs/comparisons/`**: Deep dive migration guides and Rosetta Stones.
 
 | Category | Python Library (Notebook) | CLI & Engine Guide (Markdown) | Key Capabilities & Verbs |
@@ -381,7 +381,7 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 | **Reshaping** | **[reshape.ipynb](notebooks/library/reshape.ipynb)** | **[reshape.md](guides/reshape.md)** | `long` (unpivoting), `wide` (1:1 pivoting), and `explode` (unnesting list/array columns) |
 | **Relational Joins**| **[join.ipynb](notebooks/library/join.ipynb)** | **[join.md](guides/join.md)** | `df.join`, `pt.join`, `pt.concat`, inner/left/right/full/semi/anti/cross, colon keys, `validate` |
 | **Masking & Privacy**| **[other_utilities.ipynb](notebooks/library/other_utilities.ipynb)** | **[mask.md](guides/mask.md)** | `mask`, `unmask`, `-mask`, `-unmask`, SHA-256 hash, salt, redact, key encryption, vault tokenization |
-| **Interactive REPL**| — | **[repl/](repl/README.md)** | `pytae -i`, in-memory workbench, ephemeral Python sandboxing, table assignment, `checkpoint`, `restore`, `rm table`, `exit -s` |
+| **IPython Workbench**| — | **[ipython.md](ipython.md)** | `import pytae as pt`, `%pt`/`%%pt`, `%checkpoint`, `%restore`, `%status`, `%free`, `%set`, `%export`, `%exit -s` |
 | **Utilities** | **[other_utilities.ipynb](notebooks/library/other_utilities.ipynb)** | **[clean_replace.md](guides/clean_replace.md)**<br>**[diff.md](guides/diff.md)** | `fillna`, `dropna`, `clean_columns`, `diff` (key-aware with `on=`, `tol=`), `glimpse`, `cols`, `df.to("clip")` |
 | **Inspection** | **[other_utilities.ipynb](notebooks/library/other_utilities.ipynb)** | **[inspect.md](guides/inspect.md)** | `-cols`, `-dtype`, `-shape`, `-nulls`, `-head`, `-tail`, `-glimpse`, `-summary`, `-freq`, `-hist`, `-bar`, `-scatter`, `-corr` |
 | **Multi-File** | **[join.ipynb](notebooks/library/join.ipynb)** | **[multi_file.md](guides/multi_file.md)** | Multi-table pipelines (`alias=source`), multi-file globbing (`*.parquet`), multi-table joining, batch inputs, pipes, Unix redirection |
@@ -393,48 +393,19 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 
 ---
 
-## Interactive REPL Shell (`pytae -i`)
+## IPython & Jupyter Workbench (`import pytae as pt`)
 
-The **Pytae REPL** provides stateful, iterative in-memory data manipulation and exploratory data analysis. In standard one-shot CLI usage, running multiple queries on a 1 GB file requires re-reading and re-parsing from disk every time. The Pytae REPL loads your dataset into RAM **once**, executing subsequent filters, aggregations, feature mutations, ANSI SQL queries, and Python logic at multithreaded Polars SIMD speeds.
+Pytae's interactive workbench runs directly inside **IPython** and **Jupyter** (JupyterLab, VS Code Notebooks). Running `import pytae as pt` inside an active IPython/Jupyter session automatically activates all workbench magics, persistent display formatters, and context-aware Tab completion (outside IPython, IPython is never imported).
 
-### Core Architecture & Guarantees
+| Magic | Example | Description |
+|:---|:---|:---|
+| `%pt` / `%%pt` | `res = %pt df -filter "x > 1"` / `%%pt res` | Full in-process Pytae CLI pipelines (immutable by default; works on RAM DataFrames, disk paths, `clip`, and `-sql`) |
+| `%checkpoint` | `%checkpoint raw`, `%checkpoint diff df raw`, `%checkpoint rm raw` | Ephemeral Arrow IPC snapshots on disk (0 MB RAM) |
+| `%restore` | `%restore raw`, `%restore` | Strict DataFrame rollback + `Out`/`_` cache scrub + OS RSS trim |
+| `%status` | `%status [-v]`, `%status df`, `%status checkpoint` | Tracked DataFrames, shapes, RAM, checkpoints, OS RSS, settings |
+| `%free` | `%free big_df`, `%free *`, `%free` | Delete DataFrame(s), scrub hidden IPython `Out`/`_` refs & trim OS RSS |
+| `%set` | `%set max_rows=20 comma=true`, `%set save` | Persistent display formatting (`~/.pytae/config.json`) |
+| `%export` / `%exit -s` | `%export analysis.py`, `%export nb.ipynb`, `%exit -s out.py` | Export clean standalone `.py` or `.ipynb` with errored, rolled-back, and preview cells pruned |
 
-1. **Dedicated Entrypoint (`pytae -i`)**: Interactive sessions launch cleanly with `pytae -i`. Datasets are loaded explicitly with `df = file.parquet`, guaranteeing that session logs and exported replay scripts are 100% reproducible and self-contained.
-2. **Subject-First Multi-Table Workbench**: Load multiple datasets simultaneously (`df1`, `df2`, `orders`, `cust`). Run commands with clear prefixes (`df1 -head 5`, `orders -join cust on=id`), or switch active tables with `switch <name>`.
-3. **Non-Destructive by Default**: Bare exploratory queries (`-pivot`, `-filter`, `-head`) format and display previews in the terminal without altering underlying tables in memory. State changes require explicit assignment (`df = df -filter ...`).
-4. **Ephemeral Python Sandboxing & Persistent Logic**: Embedded Python execution (`py { ... }`) provides an extensibility escape hatch. Pre-loads `pd`, `pl`, `pt`, and `DataFrame`. Imported modules, custom functions, and classes persist throughout the REPL session, while transient scratch variables, arrays, and intermediate data objects are immediately purged from RAM upon block exit via `gc.collect()`. Tables assigned to a Pytae `DataFrame` (e.g. `k = pt.DataFrame(...)` or `k = df.head(10)`), or assigned to `df` are registered in the workbench and exported cleanly by `exit -s` / `export script`.
-5. **Ephemeral IPC Checkpoints (0 MB RAM Overhead)**: Checkpoints serialize frozen table states to ephemeral Arrow IPC format on disk. They consume **0 MB of RAM** and are automatically purged upon session exit, allowing safe instant restoration via `restore [name]` or `reset`.
-
-### Quick Reference of REPL Commands
-
-| Category | Command | Example | Description |
-|:---|:---|:---|:---|
-| **Ingestion** | Assignment | `df = sales.parquet`<br>`cust = cust.csv -dlim ";"` | Ingest file into named table variable |
-| **Workbench** | `status table` | `status table [-v]` | View loaded tables, shapes, memory, and columns |
-| | `switch` | `switch cust` | Switch active dataset cursor |
-| | `rename` | `rename df1 customers` | Zero-copy $O(1)$ in-memory table pointer rename |
-| | Subject-First | `cust -head 5`, `cust -shape` | Execute command directly on named table |
-| | `rm table` | `rm table df1`, `rm table *` | Free table memory and trigger immediate OS page trim |
-| **Transform** | Pipelines | `-filter "x > 1" -mutate "y = x * 2"` | Full 1:1 parity with Pytae CLI transformation flags |
-| | Relational Joins | `orders -join cust on=id how=left` | Relational join across workbench tables |
-| **Inspection** | Metadata | `-shape`, `-cols [asc\|desc\|pattern]`, `-schema`, `-nulls` | Non-destructive structural inspection |
-| | Previews | `-head 10`, `-tail 5`, `-sample 10`, `-diff [target]` | Non-destructive formatted row previews & milestone diffs |
-| **SQL & Python**| `sql` | `sql { SELECT * FROM orders JOIN cust ... }` | Non-destructive SQL preview (or `res = sql { ... }`) |
-| | `py` | `py { k = df.to("pandas"); orders = pt.DataFrame(k) }` | Embedded Python with persistent imports, ephemeral sandboxing & table assignment |
-| **Checkpoints** | `checkpoint` | `checkpoint baseline` | Save ephemeral IPC snapshot (0 MB RAM overhead) |
-| | `restore` / `reset` | `restore baseline`, `reset` | Instantly revert workbench state to checkpoint |
-| **Parameters** | `@var` | `min_val = 3500`, `@cfg.threshold` | Session variables substituted in `-filter`, `-mutate`, `sql { ... }` |
-| **Export & Replay**| `exit -s` / `export` | `exit -s`, `exit -s py`, `export pipeline.pt` | Export reproducible script (on exit or in-session) |
-| | Batch Replay | `pytae pipeline.pt`, `pytae -i pipeline.pt` | Headless execution or interactive session preload |
-
-### Detailed REPL Documentation Directory
-
-For complete guides, configuration flags, edge cases, and cookbooks, see the dedicated topic documentation under **[`docs/repl/`](repl/)**:
-
-- [**Master REPL Architecture & Command Hub**](repl/README.md) — Architectural pillars, 30-second quickstart, and master command reference table.
-- [**Workbench, Ingestion & Multi-Table Management**](repl/workbench_tables.md) — Reader options (`-encoding`, `-dlim`, `-nrows`, `-opts`), glob loading, sample datasets, zero-copy `rename`, and table deallocation.
-- [**In-Memory Pipelines & Data Inspection**](repl/pipelines_inspection.md) — 1:1 CLI verbs in RAM, assignment vs bare exploration semantics, multi-table joins, and non-destructive inspection.
-- [**SQL & Python Interop (Ephemeral Python Sandboxing)**](repl/sql_python_interop.md) — ANSI SQL across tables, single-line & multi-line `py { ... }` blocks, pre-loaded `pd`/`pl`/`pt`, session-wide persistent imports, ephemeral RAM zeroing, and explicit table assignment.
-- [**Session Variables (`@var`), Settings & Preferences**](repl/variables_config.md) — Session `@parameters`, nested configuration traversal, display preferences (`set`), and permanent configuration (`set save`).
-- [**Checkpoints, History Audit, Pipeline Export & Replay**](repl/checkpoints_history_replay.md) — Ephemeral IPC snapshots, instant `restore`, milestone `-diff`, flight recorder `history`, script export (`exit -s`, `export`), and post-hoc conversion (`pytae -export`).
+👉 See the full guide in [**`docs/ipython.md`**](ipython.md).
 

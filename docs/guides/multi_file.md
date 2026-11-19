@@ -37,7 +37,7 @@ Pytae supports multi-file relational operations directly from the command line w
 
 ### Syntax & Alias Direction (`alias=source`)
 
-Tables are assigned using the natural `alias=source` convention (`df=filename`), perfectly consistent with the REPL (`df = file.parquet`):
+Tables are assigned using the natural `alias=source` convention (`df=filename`), consistent with Python/IPython assignment (`df = pt.read("file.parquet")`):
 
 ```bash
 # Assign aliases to positional inputs

@@ -59,8 +59,8 @@ def test_keyword_docs_attributes() -> None:
         assert doc.description, f"Entry '{key}' missing description"
         assert len(doc.examples) > 0, f"Entry '{key}' must provide at least one runnable example"
         for ex in doc.examples:
-            assert ex.startswith("pytae ") or ex.startswith("cat "), (
-                f"Example '{ex}' in entry '{key}' must begin with 'pytae ' or 'cat '"
+            assert ex.startswith("pytae ") or ex.startswith("cat ") or ex.startswith("%") or " = %pt " in ex, (
+                f"Example '{ex}' in entry '{key}' must begin with 'pytae ', 'cat ', or an IPython magic"
             )
 
 
@@ -95,18 +95,18 @@ def test_help_unified_routing() -> None:
     assert "No dedicated help topic for keyword" in unknown_help
     assert "pytae -doc <phrase>" in unknown_help
 
-    # 7. Checkpoint, convert, and session keyword help
+    # 7. Checkpoint, set, and session keyword help (IPython workbench)
     cp_help = get_keyword_help("checkpoint")
-    assert "convert = all" in cp_help
-    assert "checkpoint_format" in cp_help
+    assert "%checkpoint" in cp_help
+    assert "%restore" in cp_help
 
-    convert_help = get_keyword_help("convert")
-    assert "convert = all" in convert_help
-    assert "checkpoint_format" in convert_help
+    set_help = get_keyword_help("set")
+    assert "%set" in set_help
+    assert "max_rows" in set_help
 
     session_help = get_keyword_help("session")
-    assert "session save" in session_help
-    assert "status session" in session_help
+    assert "%status" in session_help
+    assert "%export" in session_help
 
 
 def test_bare_subcommands_retired(capsys: pytest.CaptureFixture[str]) -> None:
@@ -133,7 +133,7 @@ def test_bare_subcommands_retired(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit):
         main(["repl"])
     err = capsys.readouterr().err
-    assert "'pytae repl' has been retired; use 'pytae -i'" in err
+    assert "retired" in err and "import pytae as pt" in err
 
 
 def test_reference_artifacts_exist_and_non_empty() -> None:

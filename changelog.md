@@ -4,7 +4,26 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.14.9] - 2026-11-19
+
 ### Added
+- **IPython & Jupyter Workbench (`src/pytae/workbench.py`, `src/pytae/ipython_ext.py`)**:
+  - Auto-activates silently on `import pytae as pt` inside any active IPython or Jupyter session (zero IPython import overhead in CLI or plain Python scripts; `PYTAE_NO_IPYTHON_EXT=1` opt-out).
+  - **`%pt` / `%%pt`**: Full in-process Pytae CLI pipeline execution across RAM DataFrames, disk paths, `clip`, `@var` interpolation, and `-sql` — strictly **immutable by default** (`res = %pt ...` or `%%pt res`).
+  - **`%checkpoint <name>` & `%restore [name]`**: Atomic full-workbench snapshots (all DataFrames spilled to ephemeral Arrow IPC on disk at 0 MB RAM + all user data variables) with strict rollback, IPython `Out`/`_` cache scrubbing, and OS-level memory trimming (macOS `malloc_zone_pressure_relief`, Linux `malloc_trim`, Windows `SetProcessWorkingSetSize`).
+  - **`%free [df1 ... | *]`**: Deletes target DataFrames, scrubs hidden references from IPython's `Out`/`_` cache, and returns RAM to the OS.
+  - **`%status [table | checkpoint] [-v]`**: Unified workbench overview of tracked DataFrames, RAM, checkpoints, process RSS, and display settings.
+  - **`%set [max_rows=... | save | reset]`**: Persistent display formatting (`~/.pytae/config.json`) hooked into IPython `text/plain` and Jupyter `text/html` formatters.
+  - **`%export <path.py|path.ipynb> [-relative]` & `%exit -s [path] [-relative]`**: Exports clean runnable Python scripts (transpiling standard `%pt`/`%%pt` pipelines into fluent `DataFrame` chains, resolving local input paths to full absolute paths while keeping outputs as typed, and auto-inferring startup imports like `pt`, `pd`, `pl`, `np`, `Path`) or notebooks, automatically pruning errored cells, rolled-back branches, duplicates, dead overwritten assignments, and read-only previews.
+  - **Post-hoc CLI export (`pytae -export [session_id|~1] -o <path>`)**: Lists and rescues past IPython sessions directly from `~/.ipython/profile_default/history.sqlite` with the exact same cleaner.
+  - Context-aware Tab completion for `%pt` flags, DataFrames, column names, and checkpoints.
+- **`DataFrame.round(decimals=0)`** (`src/pytae/dataframe.py`): Rounds all floating-point columns on both eager and lazy DataFrames.
+- **Statistical Outlier Detection & Filtering Verb (`-outliers`, `df.outliers()`, `pt.outliers()`)** and **Duplicate Rows Verb (`-dups`, `df.dups()`, `pt.dups()`)**.
+
+### Removed / Retired
+- Retired the standalone custom REPL (`src/pytae/repl.py`, `src/pytae/transpiler.py`, `src/pytae/_highlight.py`, `src/pytae/repl_utils.py`, `docs/repl/`), `pytae -i`, `df.repl()`, `.pt` scripts (`-run`), and the `pyreadline3` dependency in favor of native IPython (`ipython>=8.0.0` core dependency) and `docs/ipython.md`.
+
+### Added (earlier unreleased)
 - **Statistical Outlier Detection & Filtering Verb (`-outliers`, `df.outliers()`, `pt.outliers()`)**:
   - Filter datasets directly to rows that are statistical outliers across numeric columns.
   - Three outlier detection algorithms supported:

@@ -7,7 +7,6 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
 
 from pytae import cli
-from pytae.repl import PytaeRepl
 from tests.cli_helpers import _write_csv
 
 
@@ -262,41 +261,3 @@ def test_by_unknown_column_rejected(tmp_path, capsys):
     assert "unknown column(s): 'non_existent'" in err
 
 
-def test_repl_sequential_by_single_shot():
-    repl = PytaeRepl()
-    outputs: list[str] = []
-
-    repl.execute_line("df = sample:penguins", output_fn=outputs.append)
-    outputs.clear()
-
-    # 1. Bare preview
-    repl.execute_line(
-        '-by species -mutate "mean_mass=mean(body_mass_g)" -mutate "global_mass=mean(body_mass_g)"',
-        output_fn=outputs.append,
-    )
-    combined = "\n".join(outputs)
-    assert "3700.662252" in combined
-    assert "5076.016260" in combined
-    assert "4201.754386" in combined
-
-    # 2. Assignment
-    outputs.clear()
-    repl.execute_line(
-        'df = df -by species -mutate "mean_mass=mean(body_mass_g)" -mutate "global_mass=mean(body_mass_g)"',
-        output_fn=outputs.append,
-    )
-    df = repl.tables["df"]
-    if hasattr(df, "collect"):
-        df = df.collect()
-    pdf = df.to_pandas()
-    adelie_rows = pdf[pdf["species"] == "Adelie"]
-    first_adelie = adelie_rows.iloc[0]
-    assert round(first_adelie["mean_mass"], 2) == 3700.66
-    assert round(first_adelie["global_mass"], 2) == 4201.75
-
-    gentoo_rows = pdf[pdf["species"] == "Gentoo"]
-    first_gentoo = gentoo_rows.iloc[0]
-    assert round(first_gentoo["mean_mass"], 2) == 5076.02
-    assert round(first_gentoo["global_mass"], 2) == 4201.75
-
-    repl.close()

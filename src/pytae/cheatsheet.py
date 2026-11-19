@@ -136,28 +136,21 @@ CHEATSHEET_TEXT = """\
   pytae secure.parquet -unmask "ssn" -key "Secret123"             # Decrypt with key
   pytae dev.parquet -unmask "user" -vault "vault.parquet"         # De-tokenize with vault
 
-13. 💬 INTERACTIVE REPL SHELL (-i)
+13. 💬 IPYTHON & JUPYTER WORKBENCH (import pytae as pt)
 --------------------------------------------------------------------------------
-  pytae -i                                                        # Launch interactive REPL workbench
-  # Inside REPL session:
-  #   df = data.parquet       Load dataset into active table
-  #   df1 = "parts/*.parquet" Load globbed partitions into single table
-  #   export <path>           Export pipeline to reproducible .pt or .py script (-relative optional)
-  #   set save                Persist current display settings to ~/.pytae/config.json
-  #   history                 Show session audit log
-  #   exit [-s [pt|py|path]]  Exit REPL (default: session.pt, py: session.py)
-  #   switch <name>           Switch active table cursor
-  #   reset                   Restore original dataset from disk (instant O(1))
-  #   checkpoint <name>       Save ephemeral IPC snapshot across all session tables (0 MB RAM)
-  #   restore [name]          Restore entire workbench to named snapshot (or latest)
-  #   rm table <tbl>          Remove in-memory table (or rm table *)
-  #   rm checkpoint <name>    Delete a saved checkpoint (or rm checkpoint *)
-  #   -cols [asc|desc]        List column names (file order or sorted)
-  #   <cmd> | <shell_cmd>     Pipe output to shell utility (e.g. -cols | grep mass)
-  #   sql { <query> }         Preview ANSI SQL across loaded tables (or tbl = sql { ... })
-  #   -o <path|clip>          Export active dataset to file or clipboard
-  #   Up / Down arrow keys    Recall command history from current session
-  #   -filter, -mutate, etc.  Standard pytae pipeline flags executed in RAM!
+  # Inside IPython or Jupyter — magics activate automatically on import:
+  import pytae as pt
+  df = pt.sample("penguins")                         # Or: df = %pt sales.parquet
+  heavy = %pt df -filter "body_mass_g > 4000"        # Full CLI in-process (immutable)
+  %%pt summary                                       # Multi-line pipeline cell magic
+  %checkpoint raw                                    # Ephemeral IPC snapshot (0 MB RAM)
+  %checkpoint diff df raw                            # Diff table vs checkpoint
+  %restore [raw]                                     # Strict DataFrame rollback + OS RSS trim
+  %status [df | checkpoint] [-v]                     # Tables, RAM, checkpoints, RSS, settings
+  %free df1 [df2 | *]                                # Delete df, scrub Out/_ cache & trim RAM
+  %set max_rows=20 float_precision=2 comma=true      # Display formatting (`%set save` persists)
+  %export analysis.py                                # Clean runnable .py or .ipynb (prunes errors/rollbacks)
+  %exit -s [analysis.py]                             # Export session and exit IPython
 
 14. 📖 DOCUMENTATION SEARCH & MCP SERVER (-doc, -mcp)
 --------------------------------------------------------------------------------

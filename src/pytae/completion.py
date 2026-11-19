@@ -58,9 +58,6 @@ _pytae() {
         "-check[Check syntax of a script or pipeline]:script:_files"
         "-doc[Search Pytae documentation]:query:"
         "-mcp[Start Model Context Protocol server]"
-        "-run[Execute a .pt pipeline script]:script:_files"
-        "-export[Export REPL session history]:history:_files"
-        "-i[Launch interactive REPL]"
         "-time[Benchmark pipeline execution]"
         "-cheatsheet[Display cheatsheet]"
         "-version[Show version]"
@@ -82,7 +79,7 @@ fi
 
 BASH_COMPLETION = """_pytae_completion() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
-    local flags="-filter -mutate -select -rename -by -agg -arrange -distinct -dups -outliers -count -join -concat -long -wide -pivot -explode -assert -dropna -fillna -clean_columns -mask -unmask -head -tail -sample -shape -cols -dtype -nulls -schema -describe -glimpse -meta -browse -freq -hist -bar -scatter -corr -plot -diff -sql -o -check -doc -mcp -run -export -i -time -cheatsheet -version -help --install-completion --completion"
+    local flags="-filter -mutate -select -rename -by -agg -arrange -distinct -dups -outliers -count -join -concat -long -wide -pivot -explode -assert -dropna -fillna -clean_columns -mask -unmask -head -tail -sample -shape -cols -dtype -nulls -schema -describe -glimpse -meta -browse -freq -hist -bar -scatter -corr -plot -diff -sql -o -check -doc -mcp -time -cheatsheet -version -help --install-completion --completion"
 
     if [[ "${cur}" == -* ]] ; then
         COMPREPLY=( $(compgen -W "${flags}" -- "${cur}") )
@@ -143,9 +140,6 @@ complete -c pytae -s o -d "Output destination file or clip"
 complete -c pytae -s check -d "Check syntax of a script or pipeline"
 complete -c pytae -s doc -d "Search Pytae documentation"
 complete -c pytae -s mcp -d "Start Model Context Protocol server"
-complete -c pytae -s run -d "Execute a .pt pipeline script"
-complete -c pytae -s export -d "Export REPL session history"
-complete -c pytae -s i -d "Launch interactive REPL"
 complete -c pytae -s time -d "Benchmark pipeline execution"
 complete -c pytae -s cheatsheet -d "Display cheatsheet"
 complete -c pytae -s version -d "Show version"

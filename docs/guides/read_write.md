@@ -163,7 +163,7 @@ pytae clip -filter "sales > 100" -by region -agg "total = sum(sales)"
 
 ### Python Library Counterpart (`df.to()`, `pt.to()`)
 
-In Python code, the universal destination method is **`df.to(target)`** (providing 1:1 symmetry with CLI and REPL `-o`):
+In Python code, the universal destination method is **`df.to(target)`** (providing 1:1 symmetry with CLI and `%pt` `-o`):
 
 ```python
 # 1. Export to file path (chainable: returns self)
