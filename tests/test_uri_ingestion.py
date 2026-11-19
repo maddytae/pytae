@@ -13,7 +13,6 @@ except ImportError:
 import pytae as pt
 from pytae.cli import main
 from pytae.readers import is_db_or_cloud_uri, parse_db_uri
-from pytae.repl import PytaeRepl
 
 
 @pytest.fixture
@@ -123,24 +122,6 @@ def test_duckdb_in_memory_query():
     assert df.to_dicts() == [{"answer": 42, "greeting": "hello"}]
 
 
-def test_repl_sqlite_and_duckdb_ingest(sqlite_db_path: Path, duckdb_file_path: Path):
-    repl = PytaeRepl()
-    outputs: list[str] = []
-
-    # Eager load sqlite
-    repl.execute_line(f"orders = sqlite://{sqlite_db_path}:orders", output_fn=outputs.append)
-    assert "orders" in repl.tables
-    assert repl.tables["orders"].shape == (3, 3)
-    assert "Loaded" in outputs[-1]
-
-    # Lazy scan duckdb
-    repl.execute_line(f"cust = scan duckdb://{duckdb_file_path}:customers", output_fn=outputs.append)
-    assert "cust" in repl.tables
-    assert "Scanned" in outputs[-1]
-
-    # Query loaded tables using REPL pipeline
-    repl.execute_line("orders -filter \"amount > 50\" -count", output_fn=outputs.append)
-    assert any("2" in line for line in outputs)
 
 
 def test_cli_sqlite_and_duckdb_ingest(sqlite_db_path: Path, duckdb_file_path: Path):

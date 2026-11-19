@@ -526,6 +526,36 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
+def eval_cli(cmd: str, ns: dict[str, Any] | None = None) -> Any:
+    """Evaluate a Pytae CLI pipeline string in-process (used by exported `.py` scripts)."""
+    from pytae.workbench import Workbench
+
+    wb = Workbench(load_config=False)
+    try:
+        return wb.run_pt(cmd, ns if ns is not None else {})
+    finally:
+        wb.cleanup()
+
+
+def _auto_register_ipython() -> None:
+    """Auto-register Pytae magics & formatters when imported inside an active IPython/Jupyter shell."""
+    if "IPython" not in sys.modules or os.environ.get("PYTAE_NO_IPYTHON_EXT"):
+        return
+    try:
+        from IPython import get_ipython
+
+        ip = get_ipython()
+        if ip is not None and not hasattr(ip, "_pytae_workbench"):
+            from pytae.ipython_ext import register_ipython_workbench
+
+            register_ipython_workbench(ip)
+    except Exception:
+        pass
+
+
+_auto_register_ipython()
+
+
 def clear() -> None:
     """Clear the terminal screen."""
     import os
@@ -594,4 +624,5 @@ __all__ = [
     "DSLDiagnostic",
     "PolarsPtAccessor",
     "PandasPtAccessor",
+    "eval_cli",
 ]

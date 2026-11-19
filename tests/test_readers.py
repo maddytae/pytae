@@ -653,10 +653,9 @@ def test_assert_verb_python_accessor_and_cli(tmp_path, capsys):
         cli.main([str(p), "-assert", "amount < 20"])
 
 
-def test_glob_reader_and_repl_glob_and_history_export(tmp_path):
+def test_glob_reader_and_cli_glob(tmp_path):
     import pytae as pt
     from pytae import cli
-    from pytae.repl import PytaeRepl
 
     part_dir = tmp_path / "parts"
     part_dir.mkdir()
@@ -691,29 +690,5 @@ def test_glob_reader_and_repl_glob_and_history_export(tmp_path):
     )
     assert rc == 0
     assert pt.read(out_file).shape == (3, 3)
-
-    # 3. REPL glob loading + -explode / -assert + history -cli / history -py
-    outputs: list[str] = []
-    r = PytaeRepl()
-    r.execute_line(f'df = "{glob_pat}"', output_fn=outputs.append)
-    assert r.current_df is not None and r.current_df.shape == (4, 2)
-
-    r.execute_line('df = df -assert "v > 0" -filter "v >= 20" -mutate "v2 = v * 2"', output_fn=outputs.append)
-    assert r.current_df.shape == (3, 3)
-
-    outputs.clear()
-    r.execute_line("history", output_fn=outputs.append)
-    hist_out = "\n".join(outputs)
-    assert "Session History" in hist_out
-    assert '-assert "v > 0"' in hist_out
-    assert '-filter "v >= 20"' in hist_out
-
-    outputs.clear()
-    r.execute_line("history -cli", output_fn=outputs.append)
-    assert any("not supported" in o for o in outputs)
-
-    outputs.clear()
-    r.execute_line("history -py", output_fn=outputs.append)
-    assert any("not supported" in o for o in outputs)
 
 

@@ -59,8 +59,8 @@ def test_keyword_docs_attributes() -> None:
         assert doc.description, f"Entry '{key}' missing description"
         assert len(doc.examples) > 0, f"Entry '{key}' must provide at least one runnable example"
         for ex in doc.examples:
-            assert ex.startswith("pytae ") or ex.startswith("cat "), (
-                f"Example '{ex}' in entry '{key}' must begin with 'pytae ' or 'cat '"
+            assert ex.startswith("pytae ") or ex.startswith("cat ") or ex.startswith("%") or " = %pt " in ex, (
+                f"Example '{ex}' in entry '{key}' must begin with 'pytae ', 'cat ', or an IPython magic"
             )
 
 
@@ -133,7 +133,7 @@ def test_bare_subcommands_retired(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit):
         main(["repl"])
     err = capsys.readouterr().err
-    assert "'pytae repl' has been retired; use 'pytae -i'" in err
+    assert "retired" in err and "import pytae as pt" in err
 
 
 def test_reference_artifacts_exist_and_non_empty() -> None:

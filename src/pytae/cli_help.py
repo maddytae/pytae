@@ -1064,30 +1064,30 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         see_also=["-mask", "-key", "-vault"],
     ),
     "repl": KeywordHelp(
-        name="repl",
-        flag="-i",
-        syntax="pytae -i",
-        summary="Launch interactive REPL shell with in-memory state, checkpoints, and instant query iteration.",
+        name="ipython",
+        flag="import pytae as pt",
+        syntax="import pytae as pt  # inside IPython or Jupyter",
+        summary="Pytae IPython / Jupyter Workbench with immutable %pt pipelines, checkpoints, %free, %status, %set, and %export.",
         description=(
-            "Starts an interactive Read-Eval-Print Loop (REPL) that loads dataset(s) into memory once.\n"
-            "Supports continuous pipeline iteration, named checkpoints, persistent sessions, and instant reset\n"
-            "without repeatedly re-reading large files from disk."
+            "Pytae's interactive workbench activates automatically when you run `import pytae as pt`\n"
+            "inside IPython or Jupyter notebooks. Set `PYTAE_NO_IPYTHON_EXT=1` to opt out."
         ),
         options=[
-            "reset : Restore the original dataset as loaded from disk.",
-            "history [N] : Show numbered session audit log (use 'export <path>' or 'exit -s' to export scripts).",
-            "exit [-s [path]] [-relative] : Exit REPL (optionally save session script to ./session.pt or <path>).",
-            "status : Show active table shape, columns, and memory usage.",
-            "checkpoint <name> : Freeze and save current state with a name.",
-            "restore <name> : Restore table to a saved checkpoint.",
-            "<var> = <path> : Load a new dataset (or glob pattern) into named table.",
-            "-o <path> : Save active table to Parquet/CSV/Feather or clipboard (-o clip).",
-            "sql { <query> } : Non-destructive ANSI SQL preview across loaded tables (or `<var> = sql { ... }`).",
-            "py { <expr> } : Evaluate arbitrary Python expressions on `df` / `pldf`.",
+            "%pt / %%pt : Run any Pytae CLI pipeline in-process (immutable by default; assign via `res = %pt ...` or `%%pt res`).",
+            "%checkpoint <name> [tables...] : Save ephemeral Arrow IPC snapshot of DataFrames to disk (0 MB RAM).",
+            "%checkpoint list | rm <name|*> | diff <table> <cp> : List, delete, or diff checkpoints.",
+            "%restore [name] : Strictly restore DataFrame state to a checkpoint (or latest) and trim OS RSS.",
+            "%status [table|checkpoint] [-v] : Show tracked DataFrames, RAM, checkpoints, OS RSS, and display settings.",
+            "%free [df1 df2 | *] : Delete target DataFrame(s), scrub IPython Out/_ cache refs, and trim OS RSS.",
+            "%set [key=val | save | reset] : Configure display settings (max_rows, max_cols, float_precision, comma) and persist with `%set save`.",
+            "%export <path.py|path.ipynb> : Export clean Python script or Jupyter notebook with rolled-back cells pruned.",
+            "%exit [-s [path]] : Exit IPython, optionally exporting session history first.",
         ],
         examples=[
-            "pytae -i",
-            "pytae -i  # Inside REPL: set load_session = my_session",
+            'heavy = %pt penguins -filter "body_mass_g > 4000" -arrange "body_mass_g desc"',
+            "%checkpoint raw && %restore raw",
+            "%free heavy",
+            "%export analysis.py",
         ],
         see_also=["-filter", "-mutate", "-agg", "-sql", "-cheatsheet"],
     ),

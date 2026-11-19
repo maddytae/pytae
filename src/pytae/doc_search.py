@@ -259,20 +259,23 @@ def _extract_doc_chunks() -> list[dict[str, str]]:
             ),
         },
         {
-            "topic": "repl",
-            "title": "Interactive REPL Shell: pytae -i / pt.repl()",
-            "category": "repl",
-            "syntax": "pytae -i / pytae -i sample.pt / pt.repl(df)",
-            "keywords": "repl interactive shell checkpoint session history export script switch",
+            "topic": "ipython",
+            "title": "IPython / Jupyter Workbench: import pytae as pt",
+            "category": "ipython",
+            "syntax": "import pytae as pt  # inside IPython or Jupyter",
+            "keywords": "ipython jupyter repl interactive workbench magic checkpoint restore status free set export pt",
             "content": (
-                "Stateful in-memory exploratory data analysis without reloading files from disk.\n\n"
-                "### Core Commands\n"
-                "- reset / reset initial: Revert to latest checkpoint or initial file read.\n"
-                "- checkpoint <name> / restore [name]: Freeze and restore memory snapshots.\n"
-                "- export <path.pt|path.py> [-relative]: Export reproducible script from executed session.\n"
-                "- history [N]: View numbered session audit log.\n"
-                "- switch <name>: Switch active dataset cursor.\n"
-                "- df = 'parts/*.parquet': Multi-file globbing and directory scanning.\n"
+                "Stateful in-memory exploratory data analysis directly inside IPython and Jupyter notebooks.\n"
+                "Magics and display formatters activate automatically on `import pytae as pt` (set `PYTAE_NO_IPYTHON_EXT=1` to opt out).\n\n"
+                "### Core Magics\n"
+                "- `%pt` / `%%pt`: Run full Pytae CLI pipelines in-process (immutable by default; `res = %pt ...` or `%%pt res`).\n"
+                "- `%checkpoint <name> [tables...]`: Save ephemeral Arrow IPC snapshots to disk (0 MB RAM).\n"
+                "- `%restore [name]`: Strictly roll back DataFrame state + scrub `Out`/`_` cache + trim OS RSS.\n"
+                "- `%status [table|checkpoint] [-v]`: Inspect tables, RAM, checkpoints, OS RSS, and display settings.\n"
+                "- `%free [df1 ... | *]`: Delete DataFrame(s), scrub IPython `Out`/`_` refs, and return RAM to OS.\n"
+                "- `%set [max_rows=20 ... | save | reset]`: Configure and persist display formatting (`~/.pytae/config.json`).\n"
+                "- `%export <path.py|path.ipynb>`: Export clean script/notebook with rolled-back cells pruned.\n"
+                "- `%exit [-s [path]]`: Exit IPython, optionally exporting session history first.\n"
             ),
         },
     ]
