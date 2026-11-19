@@ -274,3 +274,32 @@ def test_cli_export_from_ipython_sqlite(tmp_path: Path, monkeypatch: pytest.Monk
     nb = json.loads(out_nb.read_text(encoding="utf-8"))
     assert nb["nbformat"] == 4
     assert len(nb["cells"]) == 3
+
+
+def test_export_auto_infers_startup_imports(tmp_path: Path) -> None:
+    wb = Workbench(load_config=False)
+    # Simulates a session where pt, pd, pl came from IPython exec_lines (not in In history)
+    history = [
+        (1, "df = pd.DataFrame({'a': [1, 2, 3]})"),
+        (2, "pl_df = pl.from_pandas(df)"),
+        (3, "out = pt.DataFrame(pl_df)"),
+    ]
+    out_py = tmp_path / "auto_imports.py"
+    wb.export_session(out_py, history)
+    text = out_py.read_text(encoding="utf-8")
+    assert "import pytae as pt" in text
+    assert "import pandas as pd" in text
+    assert "import polars as pl" in text
+    assert "import numpy as np" not in text  # unused -> not added
+
+    # Must execute cleanly standalone!
+    exec_ns: dict[str, object] = {}
+    exec(compile(text, str(out_py), "exec"), exec_ns)
+    assert isinstance(exec_ns["out"], pt.DataFrame)
+
+    out_nb = tmp_path / "auto_imports.ipynb"
+    wb.export_session(out_nb, history)
+    nb = json.loads(out_nb.read_text(encoding="utf-8"))
+    first_src = "".join(nb["cells"][0]["source"])
+    assert "import pandas as pd" in first_src
+    assert "import polars as pl" in first_src

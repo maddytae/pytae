@@ -1318,6 +1318,10 @@ class Workbench:
 
         if dest.suffix.lower() == ".ipynb":
             final_nb_cells = [orig for orig, _py in pruned_pairs]
+            final_py_for_imports = [py for _orig, py in pruned_pairs]
+            missing_imports = _infer_missing_imports(final_py_for_imports, always_include_pt=False)
+            if missing_imports:
+                final_nb_cells = ["\n".join(missing_imports)] + final_nb_cells
             nb = _build_notebook_json(final_nb_cells)
             dest.write_text(json.dumps(nb, indent=2) + "\n", encoding="utf-8")
         else:
@@ -1525,15 +1529,55 @@ def _substitute_ns_vars(token: str, ns: dict[str, Any]) -> str:
     return re.sub(r"(?<![A-Za-z0-9_])@([A-Za-z_][A-Za-z0-9_]*)", _repl, token)
 
 
+_AUTO_IMPORT_MAP: tuple[tuple[str, str], ...] = (
+    ("pt", "import pytae as pt"),
+    ("pd", "import pandas as pd"),
+    ("pl", "import polars as pl"),
+    ("np", "import numpy as np"),
+    ("Path", "from pathlib import Path"),
+)
+
+
+def _infer_missing_imports(py_cells: list[str], *, always_include_pt: bool = True) -> list[str]:
+    """Detect common startup-imported aliases (pt, pd, pl, np, Path) used without explicit imports."""
+    loaded: set[str] = set()
+    defined: set[str] = set()
+    for cell in py_cells:
+        try:
+            tree = ast.parse(cell)
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    defined.add(alias.asname or alias.name.split(".")[0])
+            elif isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    defined.add(alias.asname or alias.name)
+            elif isinstance(node, ast.Name):
+                if isinstance(node.ctx, ast.Load):
+                    loaded.add(node.id)
+                elif isinstance(node.ctx, ast.Store):
+                    defined.add(node.id)
+
+    missing: list[str] = []
+    for sym, stmt in _AUTO_IMPORT_MAP:
+        if sym in defined:
+            continue
+        if sym in loaded or (sym == "pt" and always_include_pt):
+            missing.append(stmt)
+    return missing
+
+
 def _build_python_script(cells: list[str]) -> str:
     header = [
         "# Exported from Pytae IPython Workbench",
         f"# Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         "",
     ]
-    has_pt_import = any(re.search(r"\bimport\s+pytae\b|\bfrom\s+pytae\b", c) for c in cells)
-    if not has_pt_import:
-        header.append("import pytae as pt")
+    missing_imports = _infer_missing_imports(cells, always_include_pt=True)
+    if missing_imports:
+        header.extend(missing_imports)
         header.append("")
 
     body = "\n\n".join(cells)
