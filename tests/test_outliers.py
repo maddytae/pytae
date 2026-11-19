@@ -1,11 +1,10 @@
-import pytest
-import polars as pl
 import pandas as pd
+import polars as pl
+import pytest
+
 import pytae as pt
 from pytae.dataframe import DataFrame
 from pytae.polars_engine import outliers_polars
-from pytae.transpiler import _transpile_pipeline_tokens_to_python, _compile_history_to_python
-from pytae.repl import PytaeRepl
 
 
 def test_outliers_polars_iqr_basic():
@@ -187,78 +186,7 @@ def test_cli_outlier_rejection(tmp_path):
         main([str(fpath), "--outlier"])
 
 
-def test_repl_outliers_pipeline():
-    session = PytaeRepl()
-    df = pl.DataFrame({
-        "sales": [10.0, 11.0, 12.0, 10.5, 100.0],
-    })
-    session.tables["orders"] = df
-    session.current_df = df
-    session.path_str = "orders"
-
-    outputs = []
-    # Bare execution
-    session.execute_line("-outliers", output_fn=outputs.append)
-    assert any("sales" in o for o in outputs)
-
-    # Assignment
-    outputs.clear()
-    session.execute_line("anomalies = orders -outliers sales", output_fn=outputs.append)
-    assert "anomalies" in session.tables
-    assert session.tables["anomalies"].shape == (1, 1)
-    assert session.tables["anomalies"]["sales"][0] == 100.0
-
-    # Rejection of bare 'outliers'
-    outputs.clear()
-    session.execute_line("outliers", output_fn=outputs.append)
-    assert any("bare 'outliers' is not recognized; use '-outliers'" in o for o in outputs)
-
-    # Rejection of singular 'outlier' / '-outlier'
-    outputs.clear()
-    session.execute_line("-outlier", output_fn=outputs.append)
-    assert any("'-outlier' is not supported; use '-outliers' instead" in o for o in outputs)
-
-    outputs.clear()
-    session.execute_line("outlier", output_fn=outputs.append)
-    assert any("'-outlier' is not supported; use '-outliers' instead" in o for o in outputs)
 
 
-def test_transpiler_outliers():
-    # Bare -outliers
-    assert ".outliers()" in _transpile_pipeline_tokens_to_python(["-outliers"])
-
-    # Keyed
-    res_keyed = _transpile_pipeline_tokens_to_python(["-outliers", "sales"])
-    assert ".outliers('sales')" in res_keyed
-
-    # Method and threshold and drop
-    res_opts = _transpile_pipeline_tokens_to_python(["-outliers", "sales,method=zscore,thresh=2.5,drop=true"])
-    assert ".outliers('sales', method='zscore', threshold=2.5, drop=True)" in res_opts
-
-    # REPL compilation
-    entries = [
-        "orders = clip",
-        "bad = orders -outliers sales,k=3",
-    ]
-    py_code = _compile_history_to_python(entries)
-    assert ".outliers('sales', threshold=3.0)" in py_code
 
 
-def test_repl_recipe_def_with_outliers():
-    session = PytaeRepl()
-    df = pl.DataFrame({
-        "sales": [10.0, 11.0, 12.0, 10.5, 100.0],
-    })
-    session.tables["orders"] = df
-    session.current_df = df
-    session.path_str = "orders"
-
-    outputs = []
-    session.execute_line("def get_outliers(c, k=1.5) = -outliers \"$c,k=$k\"", output_fn=outputs.append)
-    assert "get_outliers" in session.defs
-
-    outputs.clear()
-    session.execute_line("bad = orders | get_outliers(sales)", output_fn=outputs.append)
-    assert "bad" in session.tables
-    assert session.tables["bad"].shape == (1, 1)
-    assert session.tables["bad"]["sales"][0] == 100.0

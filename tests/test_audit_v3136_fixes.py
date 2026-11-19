@@ -22,7 +22,6 @@ import pytae as pt
 from pytae._text import tokenize
 from pytae.cli import main as cli_main
 from pytae.readers import write_dataframe
-from pytae.repl import _transpile_pipeline_tokens_to_python
 
 
 def test_dropna_and_fillna_subset_string():
@@ -140,25 +139,6 @@ def test_pt_diff_with_paths():
     assert "Row counts differ" not in report_path
 
 
-def test_repl_transpiler_all_operations():
-    tokens = [
-        "-by", "species, island",
-        "-clean_columns",
-        "-rename", "old_col:new_col",
-        "-count", "user_id",
-        "-sort", "count", "desc",
-        "-o", "output.parquet",
-    ]
-    code = _transpile_pipeline_tokens_to_python(tokens)
-    expected = (
-        ".by('species', 'island')"
-        ".clean_columns()"
-        ".rename('old_col:new_col')"
-        ".count('user_id')"
-        ".arrange('count desc')"
-        ".to('output.parquet')"
-    )
-    assert code == expected
 
 
 def test_write_dataframe_json_and_xlsx(tmp_path):
@@ -197,63 +177,4 @@ def test_pandas_pt_accessor_to_clip_hard_removed():
         pdf.pt.to_clip()
 
 
-def test_repl_message_review_and_alias_consistency():
-    from pytae.repl import PytaeRepl
-
-    r = PytaeRepl()
-    outs = []
-
-    # 1. Bare vars
-    outs.clear()
-    r.execute_line("vars", output_fn=outs.append)
-    assert outs[-1] == "pytae: bare 'vars' is not recognized; use 'status var' (or 'status var -v')."
-
-    # 2. Disallowed aliases directing directly to valid working commands
-    outs.clear()
-    r.execute_line("-vars", output_fn=outs.append)
-    assert outs[-1] == "pytae: '-vars' is not recognized; use 'status var'."
-
-    outs.clear()
-    r.execute_line("-tables", output_fn=outs.append)
-    assert outs[-1] == "pytae: '-tables' is not recognized; use 'status table'."
-
-    outs.clear()
-    r.execute_line("-checkpoints", output_fn=outs.append)
-    assert outs[-1] == "pytae: '-checkpoints' is not recognized; use 'status checkpoint'."
-
-    outs.clear()
-    r.execute_line("cps", output_fn=outs.append)
-    assert outs[-1] == "pytae: 'cps' is not recognized; use 'status checkpoint'."
-
-    outs.clear()
-    r.execute_line("datasets", output_fn=outs.append)
-    assert outs[-1] == "pytae: 'datasets' is not recognized; use 'status table'."
-
-    # 3. rm var -all redirect to rm var *
-    outs.clear()
-    r.execute_line("rm var -all", output_fn=outs.append)
-    assert outs[-1] == "pytae: 'rm var -all' is not recognized; use 'rm var *'."
-
-    # 4. rm checkpoints redirects to full usage
-    outs.clear()
-    r.execute_line("rm checkpoints", output_fn=outs.append)
-    assert outs[-1] == "pytae: 'rm checkpoints' is not recognized; use 'rm checkpoint <name>' or 'rm checkpoint *'."
-
-    # 5. rm unrecognized categories strictly rejected
-    outs.clear()
-    r.execute_line("rm cp", output_fn=outs.append)
-    assert outs[-1] == "pytae: unrecognized rm category 'cp'. Use 'rm table <name>', 'rm checkpoint <name>', or 'rm var <name>'."
-
-    outs.clear()
-    r.execute_line("rm dataset", output_fn=outs.append)
-    assert outs[-1] == "pytae: unrecognized rm category 'dataset'. Use 'rm table <name>', 'rm checkpoint <name>', or 'rm var <name>'."
-
-    # 6. status unrecognized categories strictly rejected
-    outs.clear()
-    r.execute_line("status cp", output_fn=outs.append)
-    assert outs[-1] == "pytae: unrecognized status category 'cp'. Use 'status session [-v]', 'status table [name] [-v]', 'status checkpoint [name] [-v]', or 'status var [name] [-v]'."
-
-    outs.clear()
-    r.execute_line("status dataset", output_fn=outs.append)
-    assert outs[-1] == "pytae: unrecognized status category 'dataset'. Use 'status session [-v]', 'status table [name] [-v]', 'status checkpoint [name] [-v]', or 'status var [name] [-v]'."
 

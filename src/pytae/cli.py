@@ -187,9 +187,6 @@ _CLI_FLAGS = {
     "-plot",
     "-browse",
     "-finalize",
-    "-i",
-    "-sessions",
-    "-ready",
     "-doc",
     "-mcp",
     "-check",
@@ -918,36 +915,11 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         help="numeric difference tolerance / threshold for dataset comparison (-diff); e.g. -tol 0.001 or -tol 1e-4",
     )
     parser.add_argument(
-        "-i",
-        dest="repl",
-        action="store_true",
-        help="launch interactive REPL shell with in-memory state, checkpoints, and instant query iteration",
-    )
-    parser.add_argument(
-        "-sessions",
-        dest="list_sessions",
-        action="store_true",
-        help="list all saved persistent REPL sessions on disk and exit (supports filtering: pytae -sessions [-ready] [-v] [pattern])",
-    )
-    parser.add_argument(
-        "-ready",
-        dest="ready_only",
-        action="store_true",
-        help="filter session listing to only ready/healthy sessions (e.g. pytae -sessions -ready)",
-    )
-    parser.add_argument(
         "-v",
         "-verbose",
         dest="verbose",
         action="store_true",
-        help="enable verbose output with detailed checkpoint and format breakdown (e.g. pytae -sessions -v)",
-    )
-    parser.add_argument(
-        "-run",
-        "--run",
-        dest="run_script",
-        metavar="SCRIPT",
-        help="execute a Pytae script (.pt) in batch headless mode and exit (e.g. pytae -run pipeline.pt)",
+        help="enable verbose output",
     )
     return parser
 
@@ -1010,7 +982,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if raw_argv and raw_argv[0] == "repl":
         parser = build_parser()
-        parser.error("'pytae repl' has been retired; use 'pytae -i' instead")
+        parser.error("The standalone REPL has been retired; use IPython with 'import pytae as pt'.")
 
     # Static DSL syntax check flag: `pytae -check [paths...]`
     if raw_argv and raw_argv[0] in ("-check", "--check"):
@@ -1030,45 +1002,31 @@ def main(argv: list[str] | None = None) -> int:
 
         return run_mcp_server()
 
-    # Script execution flag: `pytae -run <script.pt>`
+    # Retired REPL / .pt script flags
+    if raw_argv and raw_argv[0] in ("-i", "--interactive", "-interactive", "-repl", "--repl"):
+        parser = build_parser()
+        parser.error("'pytae -i' has been retired; use IPython with 'import pytae as pt'.")
+
     if raw_argv and raw_argv[0] in ("-run", "--run"):
-        if len(raw_argv) < 2:
-            parser = build_parser()
-            parser.error("'-run' requires a script file path (e.g. pytae -run pipeline.pt)")
-        if raw_argv[1].lower().endswith(".py"):
-            sys.stderr.write(
-                f"pytae error: '{raw_argv[1]}' is a Python script; run with 'python {raw_argv[1]}'. "
-                "For native Pytae pipelines, use 'pytae <script.pt>'.\n"
-            )
-            return 1
-        from pytae.repl import run_script_file
+        parser = build_parser()
+        parser.error("'.pt' scripts and '-run' have been retired; use Python scripts ('.py') or IPython ('%export').")
 
-        return run_script_file(raw_argv[1])
-
-    # Explicit rejection of legacy or non-existent `-save`:
     if raw_argv and raw_argv[0] in ("-save", "--save"):
-        sys.stderr.write("pytae error: '-save' is not a CLI option; use '-export <history_file> [-o <target.py|target.pt>]' or '-o <file>'.\n")
+        sys.stderr.write("pytae error: '-save' is not a CLI option; use '-o <file>' or '%export' in IPython.\n")
         return 1
 
-    # History export flag: `pytae -export <history_file> [-o <target.py|target.pt>]`
     if raw_argv and raw_argv[0] in ("-export", "--export"):
-        from pytae.repl import run_cli_export
+        from pytae.workbench import run_cli_export
 
         return run_cli_export(raw_argv[1:])
 
-    # Direct Python script detection: redirect to python
     if len(raw_argv) == 1 and raw_argv[0].lower().endswith(".py"):
-        sys.stderr.write(
-            f"pytae error: '{raw_argv[0]}' is a Python script; run with 'python {raw_argv[0]}'. "
-            "For native Pytae pipelines, use 'pytae <script.pt>'.\n"
-        )
+        sys.stderr.write(f"pytae error: '{raw_argv[0]}' is a Python script; run with 'python {raw_argv[0]}'.\n")
         return 1
 
-    # Direct script execution: `pytae script.pt`
     if len(raw_argv) == 1 and raw_argv[0].lower().endswith(".pt"):
-        from pytae.repl import run_script_file
-
-        return run_script_file(raw_argv[0])
+        parser = build_parser()
+        parser.error("'.pt' scripts have been retired; use Python scripts ('.py') or IPython ('%export').")
 
     # Check for keyword-specific help: `pytae -help <keyword>` or `pytae -h <keyword>`
     if len(raw_argv) >= 2 and raw_argv[0] in ("-h", "--help", "-help") and not raw_argv[1].startswith("-"):
@@ -1088,8 +1046,7 @@ def main(argv: list[str] | None = None) -> int:
         (("-examples",), "'-examples' is not recognized; use '-cheatsheet' instead"),
         (("-limit",), "'-limit' is not recognized; use '-nrows <N>' instead"),
         (("-tolerance",), "'-tolerance' is not recognized; use '-tol <threshold>' instead"),
-        (("-repl",), "'-repl' is not recognized; use '-i' instead"),
-        (("-interactive",), "'-interactive' is not recognized; use '-i' instead"),
+        (("-i", "-repl", "-interactive"), "The standalone REPL has been retired; use IPython with 'import pytae as pt'"),
         (("-query",), "'-query' has been removed; use '-filter' instead"),
         (("-qry",), "'-qry' has been removed; use '-filter' instead"),
         (("-unique",), "'-unique' has been removed; use '-distinct' instead"),
@@ -1123,12 +1080,12 @@ def main(argv: list[str] | None = None) -> int:
             "'-replace_values' has been removed; use '-mutate' with map() or .str.replace() instead",
         ),
         (
-            ("-session", "--session"),
-            "'-session' has been removed; start REPL with 'pytae -i' and use 'checkpoint <name>' for in-memory undo, or replay pipelines via scripts",
+            ("-session", "--session", "-sessions"),
+            "'-session' has been removed; use IPython with 'import pytae as pt' and '%checkpoint <name>' / '%export'",
         ),
         (
             ("-s",),
-            "'-s' is not recognized; start REPL with 'pytae -i' and use 'checkpoint <name>' for in-memory undo, or replay pipelines via scripts",
+            "'-s' is not recognized; use IPython with 'import pytae as pt' and '%checkpoint <name>' / '%export'",
         ),
         (("-opt",), "'-opt' is not recognized; use '-opts' instead"),
         (("-frac",), "-frac is deprecated and removed; use '-sample <val>' (e.g. -sample 0.05 or -sample 5%)"),
@@ -1162,13 +1119,6 @@ def main(argv: list[str] | None = None) -> int:
                     'whole spec in quotes, e.g. -select "col a,col b" -- see docs/guides/select.md.'
                 )
             parser.error(msg)
-
-    if getattr(args, "list_sessions", False):
-        print(
-            "pytae: persistent disk sessions have been retired. Use 'checkpoint <name>' inside REPL for in-memory undo, "
-            "'export <path.pt|path.py>' to save pipelines, or 'pytae <script.pt>' to replay."
-        )
-        return 0
 
     has_progress = args.progress is not None
     chunk_size = args.progress or 200_000
@@ -1209,30 +1159,6 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     raw_paths = args.path if isinstance(args.path, list) else ([args.path] if args.path else [])
-
-    if getattr(args, "repl", False):
-        if raw_paths:
-            if len(raw_paths) == 1 and str(raw_paths[0]).lower().endswith(".pt"):
-                from pytae.repl import repl
-
-                repl(script=raw_paths[0])
-                return 0
-            if len(raw_paths) == 1 and str(raw_paths[0]).lower().endswith(".py"):
-                sys.stderr.write(
-                    f"pytae error: '-i' cannot be combined with Python script '{raw_paths[0]}'. "
-                    f"To run interactive Python, use 'python -i {raw_paths[0]}'. "
-                    "For native Pytae pipelines, use 'pytae -i <pipeline.pt>'.\n"
-                )
-                return 1
-            first_path = raw_paths[0] if raw_paths else "data.parquet"
-            parser.error(
-                f"'-i' cannot be combined with input files ({', '.join(raw_paths)}). "
-                f"Run 'pytae -i' to enter interactive mode, then load datasets with '<var> = <path>' (e.g. df = {first_path})."
-            )
-        from pytae.repl import repl
-
-        repl()
-        return 0
 
     if not raw_paths:
         if _is_stdin_piped():

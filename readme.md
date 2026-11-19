@@ -11,9 +11,9 @@ Fast, ergonomic tabular data manipulation, feature engineering, and visualizatio
 
 1. **Python & Jupyter SDK (`pt.DataFrame` / `df.pt`)**: High-performance Polars-native DataFrame library with `.pt` accessor for pandas/polars DataFrames.
 2. **Unix Pipeline CLI (`pytae`)**: Fast one-shot command-line data processing, format conversion, and terminal visualizations.
-3. **Interactive REPL Shell (`pytae -i`)**: Stateful in-memory workbench with disk-backed checkpoints, multi-table joins, and ANSI SQL.
+3. **IPython & Jupyter Workbench (`import pytae as pt`)**: Auto-activated magics (`%pt`/`%%pt`, `%checkpoint`, `%restore`, `%status`, `%free`, `%set`, `%export`, `%exit -s`) with disk-backed checkpoints and OS RAM reclaiming.
 
-👉 **Quick Links**: [**CLI Cheat Sheet & Cookbook**](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md) | [**Interactive REPL Guide**](https://github.com/maddytae/pytae/blob/master/docs/pytae.md#interactive-repl-shell-pytae--i) | [**Master Reference & Architecture Hub**](https://github.com/maddytae/pytae/blob/master/docs/pytae.md) | [**vs. Pandas**](https://github.com/maddytae/pytae/blob/master/docs/comparisons/comparison_to_pandas.md) | [**vs. dplyr**](https://github.com/maddytae/pytae/blob/master/docs/comparisons/comparison_to_dplyr.md) | [**vs. SAS**](https://github.com/maddytae/pytae/blob/master/docs/comparisons/comparison_to_sas.md) | [**Benchmarks (5M Rows)**](https://github.com/maddytae/pytae/blob/master/docs/benchmarks/README.md)
+👉 **Quick Links**: [**CLI Cheat Sheet & Cookbook**](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md) | [**IPython & Jupyter Workbench Guide**](https://github.com/maddytae/pytae/blob/master/docs/ipython.md) | [**Master Reference & Architecture Hub**](https://github.com/maddytae/pytae/blob/master/docs/pytae.md) | [**vs. Pandas**](https://github.com/maddytae/pytae/blob/master/docs/comparisons/comparison_to_pandas.md) | [**vs. dplyr**](https://github.com/maddytae/pytae/blob/master/docs/comparisons/comparison_to_dplyr.md) | [**vs. SAS**](https://github.com/maddytae/pytae/blob/master/docs/comparisons/comparison_to_sas.md) | [**Benchmarks (5M Rows)**](https://github.com/maddytae/pytae/blob/master/docs/benchmarks/README.md)
 
 ---
 
@@ -46,7 +46,7 @@ pipx install pytae        # via pipx
 
 ### Option 2: Standard Python Package Installation
 ```bash
-pip install pytae              # Polars-native CLI, REPL, and Python library
+pip install pytae              # Polars-native CLI, IPython workbench, and Python library
 pip install "pytae[plot]"       # Includes matplotlib for plotting & dashboards
 ```
 
@@ -155,61 +155,43 @@ pytae --install-completion
 
 ---
 
-## 3. Quick Start: Interactive REPL Shell (`pytae -i`)
+## 3. Quick Start: IPython & Jupyter Workbench (`import pytae as pt`)
 
-Instead of re-reading multi-gigabyte files from disk on every command, the **Pytae REPL** loads datasets into memory **once** and provides an instantaneous interactive workbench with zero syntax bloat:
+Just `import pytae as pt` inside IPython or Jupyter — all workbench magics, display formatters, and context-aware Tab completions activate automatically (no `%load_ext` needed):
 
-```bash
-# Launch the interactive workbench
-pytae -i
+```python
+import pytae as pt
+
+# Load data via Python or %pt (immutable by default)
+df = pt.sample("penguins")
+# or: df = %pt sales.parquet
+
+# Run full Pytae CLI pipelines in-process without mutating `df`
+heavy = %pt df -filter "body_mass_g > 4000" -arrange "body_mass_g desc"
+
+# Multi-line pipeline cell magic (`%%pt <target_var>`)
+%%pt summary
+df
+-dropna "body_mass_g"
+-by "species, island"
+-agg "avg_mass = mean(body_mass_g), n = count()"
+-arrange "avg_mass desc"
+
+# Ephemeral Arrow IPC checkpoints (0 MB RAM), strict rollback & OS RAM reclaim
+%checkpoint raw
+%status                         # Tracked tables, RAM, checkpoints, OS RSS, settings
+%checkpoint diff df raw         # Compare current `df` vs checkpoint `raw`
+%restore raw                    # Strict DataFrame rollback + OS RSS trim
+%free heavy                     # Delete `heavy`, scrub IPython Out/_ cache & trim RAM
+
+# Persistent display settings & clean script/notebook export
+%set max_rows=20 float_precision=2 comma=true
+%set save                       # Persists to ~/.pytae/config.json
+%export analysis.py             # Standalone runnable .py (or .ipynb); prunes errors & rollbacks
+%exit -s analysis.py            # Export and exit IPython cleanly
 ```
 
-### In-Memory Multi-Table Workbench
-Load datasets interactively (local files or bundled `sample:<name>`), explore with instant previews, and transform data:
-
-```text
-pytae> df1 = sample:penguins
-Loaded penguins.parquet as 'df1' (344 rows x 7 cols).
-
-# Fast non-destructive inspection (does not truncate active data)
-pytae [df1: 344x7]> -schema
-pytae [df1: 344x7]> -head 3
-pytae [df1: 344x7]> -sample 5%
-
-# Exploratory previews (safe, non-mutating preview matching CLI output)
-pytae [df1: 344x7]> -filter "species == 'Gentoo' and body_mass_g > 5000"
-
-# State mutation via explicit assignment
-pytae [df1: 344x7]> df1 = -filter "species in ['Adelie', 'Gentoo'] and body_mass_g >= 3500"
-Updated 'df1' (188 rows x 7 cols).
-
-pytae [df1: 188x7]> df1 = -mutate "mass_kg = body_mass_g / 1000" -select "species,island,mass_kg"
-Updated 'df1' (188 rows x 3 cols).
-
-# Multi-table workflows, relational joins & ANSI SQL
-pytae [df1: 188x3]> df2 = sample:tips
-pytae [df1, df2]> df3 = -join "left=df1,right=df2,how=cross"
-pytae [df1, df2, df3]> df4 = -sql "SELECT df1.species, count(*) as n FROM df1 GROUP BY 1"
-
-# Instant rollbacks, checkpoints & reproducible pipeline export
-pytae> reset                      # Revert to baseline
-pytae> checkpoint baseline       # Save named snapshot
-pytae> restore baseline          # Revert to snapshot
-pytae> export pipeline.pt        # Export clean pipeline to Pytae script (or .py)
-pytae> export pipeline.pt -relative # Export with portable relative paths
-pytae> exit -s                   # Save clean, pruned pipeline on exit to ./session.pt
-```
-
-> [!TIP]
-> **Reproducible Pipelines & Code Handoffs**:
-> - **In-Session Export**: Run `export pipeline.pt` (or `export pipeline.py`). Add `-relative` for portable paths across machines and Git repos.
-> - **Export on Exit**: Run `exit -s` (saves clean `./session.pt`), `exit -s py`, or `exit -s <path> [-relative]`.
-> - **CLI Post-Hoc Export**: Rescue any flight-recorder session log with `pytae -export <history.txt> -o pipeline.pt` (or `-o pipeline.py`).
-> - **Strict Domain Execution**:
->   - Pytae pipelines: Run headlessly with `pytae pipeline.pt`, or stay inside REPL with `pytae -i pipeline.pt`.
->   - Python scripts: Run with standard Python via `python pipeline.py` (or `python -i pipeline.py`).
-
-👉 **Read the Full REPL Manual**: [Interactive REPL Guide](https://github.com/maddytae/pytae/blob/master/docs/pytae.md#interactive-repl-shell-pytae--i) | [REPL Topic Guides](https://github.com/maddytae/pytae/tree/master/docs/repl/)
+👉 **Read the Full IPython Workbench Guide**: [**docs/ipython.md**](https://github.com/maddytae/pytae/blob/master/docs/ipython.md)
 
 ---
 
@@ -240,7 +222,7 @@ Detailed migration guides with line-by-line syntax comparisons:
 ### Guides & Manuals
 - **[CLI Cheat Sheet & Cookbook](https://github.com/maddytae/pytae/blob/master/docs/cli_cheatsheet.md)**: 14 curated sections of one-liner recipes and Unix shell workflows.
 - **[Feature & CLI Guides](https://github.com/maddytae/pytae/tree/master/docs/guides/)**: In-depth feature guides for each verb and CLI flag (`filter`, `mutate`, `arrange`, `join`, `diff`, `mask`, `sql`, etc.).
-- **[Interactive REPL Subsystem](https://github.com/maddytae/pytae/tree/master/docs/repl/)**: Deep dives on ingestion, checkpoints, SQL/Python interop, session variables, and memory management.
+- **[IPython & Jupyter Workbench](https://github.com/maddytae/pytae/blob/master/docs/ipython.md)**: Auto-activated magics (`%pt`/`%%pt`, `%checkpoint`, `%restore`, `%status`, `%free`, `%set`, `%export`, `%exit -s`), memory reclaiming, and themes.
 - **[Interactive Python Companion Notebooks](https://github.com/maddytae/pytae/tree/master/docs/notebooks/library/)**: Fully executed Jupyter notebooks for each Python API verb.
 
 ---

@@ -1,6 +1,6 @@
 ================================================================================
 PYTAE COMPREHENSIVE KNOWLEDGE BASE & AGENT TRAINING REFERENCE MANUAL
-RELEASE VERSION: 3.14.8
+RELEASE VERSION: 3.14.9
 ================================================================================
 
 TABLE OF CONTENTS
@@ -42,8 +42,8 @@ TABLE OF CONTENTS
           - safe_reset_index(df)
           - df.to_clip() / s.to_clip() (System Clipboard Export)
     4.13. Plotter — Visualization & Dashboarding (Plotting API)
-    4.14. pt.repl() / df.pt.repl() / df.repl() — Interactive REPL Shell
-    4.15. pt.clear() / r.clear() — Terminal Screen Clearing
+    4.14. IPython & Jupyter Workbench (`import pytae as pt`)
+    4.15. pt.clear() — Terminal Screen Clearing
 5.  CLI REFERENCE (COMMAND LINE INTERFACE)
     5.1.  Execution Model & Pipeline Architecture
     5.2.  File Formats & Zero-Cost Metadata Inspection
@@ -52,7 +52,7 @@ TABLE OF CONTENTS
     5.5.  Quoting & Delimiter Standards (: vs =) and Shell Quoting Rules
     5.6.  Multi-File Relational Operations (Positional Inputs, -join, -concat, -sql, -opts)
     5.7.  Batch Processing, Conversions & Clipboard (-o)
-    5.8.  Interactive REPL Shell (pytae -i)
+    5.8.  IPython & Jupyter Workbench (`import pytae as pt`, `pytae -export`)
 6.  FREQUENTLY ASKED QUESTIONS, PITFALLS & SYNTAX RULES
     6.1.  When should I use `-select` before `-agg`?
     6.2.  Why is `by` strictly standalone across all verbs?
@@ -68,10 +68,10 @@ TABLE OF CONTENTS
     6.12. How do I inspect metadata without reading data into RAM?
     6.13. How do I assign literal constants in `mutate()`? (Use quoted strings e.g. status="'active'")
     6.14. How do I apply the same formula across multiple columns in `mutate()`? (Use `(col1, col2) = _ * 2`)
-    6.15. How does terminal clearing and table removal work in the REPL? (clear, rm *, rm checkpoint *)
+    6.15. How do memory reclaiming (`%free`) and checkpoints (`%checkpoint`, `%restore`) work in IPython?
     6.16. How do I get Top N records per group in the CLI? (Sequential -by)
     6.17. Why did my filter fail with unrecognized token / missing quote in terminal?
-    6.18. How do I change where REPL sessions and checkpoints are saved? (PYTAE_SESSIONS_DIR)
+    6.18. How do I export clean `.py` / `.ipynb` scripts from IPython (`%export`, `%exit -s`, `pytae -export`)?
     6.19. Error Message Catalog & Troubleshooting Index
     6.20. How do I query files located on Windows network share drives (UNC paths or mapped drives)?
     6.21. How do I filter date intervals and ISO timestamp strings without date parsing errors?
@@ -85,13 +85,13 @@ TABLE OF CONTENTS
     Recipe 5: Multi-File Join, Concat, and Export
     Recipe 6: In-Terminal Visual Inspection (-freq, -hist, -meta, -arrange)
     Recipe 7: Multi-Panel Dashboard with Secondary Y-Axis and Faceting
-    Recipe 8: Interactive REPL Multi-Table Exploration & Snapshots
+    Recipe 8: IPython & Jupyter Workbench Exploration, Checkpoints & Export
     Recipe 9: Top N per Group across Chained Pipelines (CLI, Python & SQL)
     Recipe 10: Enterprise & Network Share Workflows (Windows UNC, Mapped Drives, Backslashes)
     Recipe 11: Quarter-Over-Quarter Portfolio Drift & Key-Aware Diffing
     Recipe 12: Complex Date-Range & Multi-Condition Filtering
     Recipe 13: Excel Multi-Sheet Ingestion with Strict -opts
-8.  DETAILED FEATURE DOCUMENTATION GUIDES (docs/guides/, docs/repl/, docs/notebooks/)
+8.  DETAILED FEATURE DOCUMENTATION GUIDES (docs/guides/, docs/ipython.md, docs/notebooks/)
 9.  MASTER DOCUMENTATION & ARCHITECTURE GUIDE (docs/pytae.md)
 10. ECOSYSTEM COMPARISONS & MIGRATION GUIDES (Pandas, dplyr, SAS)
 11. REPOSITORY DIRECTORY TREE
@@ -158,12 +158,12 @@ RULE 4: CHAINED PIPELINES & SEQUENTIAL `-by` (TOP N RECIPE)
   "
   ```
 
-RULE 5: INTERACTIVE REPL (`pytae -i`)
-- 1:1 CLI flag parity: Verbs in REPL must start with a leading hyphen: `-filter "..."`, `-mutate "..."`, `-head 5`, `-cols`.
-- Non-destructive previews: Inspection commands (`-head`, `-tail`, `-shape`, `-cols`, `-describe`, `-glimpse`) preview data WITHOUT truncating or mutating the dataset.
-- Clean confirmation: Transformations output concise shape confirmations (e.g. `-> penguins.parquet: 188 rows x 7 cols`) without dumping full tables.
-- Deletion: Enforce wildcard `rm *` (all tables) or `rm checkpoint *` (all snapshots). Singular `rm checkpoint <name>`. Never use `rm checkpoints` or `-all`.
-- Screen clearing: ALWAYS `clear`. Never `cls`.
+RULE 5: IPYTHON & JUPYTER WORKBENCH (`import pytae as pt`)
+- The standalone REPL (`pytae -i`) and `.pt` scripts are retired. Inside IPython/Jupyter, `import pytae as pt` automatically activates all magics (no `%load_ext` needed).
+- `%pt` / `%%pt` runs full Pytae CLI pipelines in-process and is strictly immutable by default (`res = %pt df -filter ...` or `%%pt res`).
+- `%checkpoint <name>` atomically snapshots the entire workbench (all DataFrames to Arrow IPC on disk + all user variables; selective table args are disallowed). `%restore [name]` performs strict rollback + OS RSS trim.
+- `%free [df1 ... | *]` deletes target DataFrames, scrubs IPython `Out`/`_` refs, and trims OS RSS.
+- `%export <path.py|path.ipynb> [-relative]` and `%exit -s [path]` export clean runnable scripts/notebooks; `pytae -export [id|~1] -o out.py` rescues past sessions from IPython's `history.sqlite`.
 
 RULE 6: DUAL-MODALITY PARITY
 - CLI and Python APIs map 100% symmetrically:
@@ -189,7 +189,7 @@ RULE 7: THE "TWIN PROOF" RULE (GROUND ON SAMPLE DATASETS)
 
 1. OVERVIEW & CORE PHILOSOPHY
 --------------------------------------------------------------------------------
-Package: pytae (Current Release Version: 3.14.8)
+Package: pytae (Current Release Version: 3.14.9)
 
 `pytae` is an ergonomic, high-performance tabular data manipulation library and 
 command-line tool powered by a 100% native multithreaded SIMD Polars engine with 
@@ -229,8 +229,8 @@ Key principles:
 
 2. PACKAGE ARCHITECTURE & IMPORT PATTERNS
 --------------------------------------------------------------------------------
-Installation (PyPI: https://pypi.org/project/pytae/3.14.8/):
-  pip install pytae==3.14.8
+Installation (PyPI: https://pypi.org/project/pytae/3.14.9/):
+  pip install pytae==3.14.9
   pip install 'pytae[plot]'    # includes matplotlib, scipy
 
 Importing:
@@ -846,24 +846,25 @@ Key Concepts:
     pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="bill_depth_mm").finalize()
 
 
-4.14. pt.repl() / df.pt.repl() / df.repl() — Interactive REPL Shell
+4.14. IPython & Jupyter Workbench (`import pytae as pt`)
 --------------------------------------------------------------------------------
-Launch an interactive Read-Eval-Print Loop (REPL) directly from Python:
-  pt.repl(df)
-  df.pt.repl()
-  df.repl()
+Pytae's interactive workbench runs directly inside IPython and Jupyter notebooks.
+Simply run `import pytae as pt` — all magics, display formatters, and Tab completions
+activate automatically (set `PYTAE_NO_IPYTHON_EXT=1` to opt out).
 
-Features:
-  - Drops into a stateful, interactive terminal session pre-loaded with the DataFrame.
-  - Returns the final transformed DataFrame on exit (Ctrl-D or 'exit' / 'quit').
-  - Full access to pipeline transformations, inspections, checkpoints, and SQL.
+Magics:
+  - `%pt` / `%%pt`: Full in-process Pytae CLI pipelines (immutable by default).
+  - `%checkpoint <name>` / `%restore [name]`: Atomic full-workbench snapshot & strict rollback.
+  - `%status [table|checkpoint] [-v]`: Tracked DataFrames, RAM, checkpoints, OS RSS, settings.
+  - `%free [df1 ... | *]`: Delete DataFrame(s), scrub IPython Out/_ cache & trim OS RSS.
+  - `%set [key=val | save | reset]`: Persistent display formatting (`~/.pytae/config.json`).
+  - `%export <path.py|path.ipynb> [-relative]` / `%exit -s [path]`: Clean runnable export.
 
 
-4.15. pt.clear() / r.clear() — Terminal Screen Clearing
+4.15. pt.clear() — Terminal Screen Clearing
 --------------------------------------------------------------------------------
 Clear the terminal screen cleanly across all platforms:
   pt.clear()
-  r.clear()  # Inside REPL / session object
 
 Features:
   - Canonical clear command across POSIX (clear) and Windows (cls) terminals.
@@ -1042,65 +1043,31 @@ pytae penguins.parquet -filter "body_mass_g > 4000" -o heavy_penguins.parquet
 pytae penguins.parquet -head -o clip
 
 
-5.8. Interactive REPL Shell (pytae -i)
+5.8. IPython & Jupyter Workbench (`import pytae as pt`, `pytae -export`)
 --------------------------------------------------------------------------------
-Launch the stateful interactive REPL shell from the command line:
-  pytae -i                              # Launch interactive multi-table workbench
-  pytae -session analysis               # Launch or resume named persistent session
-  pytae -sessions                       # List all saved persistent sessions on disk
+The standalone REPL (`pytae -i`) and `.pt` scripts have been retired in favor of
+native IPython and Jupyter integration.
 
-* Note: Passing input files to '-i' (e.g. 'pytae file.parquet -i') is disallowed.
-  Run 'pytae -i', then load datasets interactively with '<var> = <path>' (e.g. df = file.parquet).
-  This ensures that session history is always 100% self-contained and reproducible.
+Activation:
+  import pytae as pt   # Auto-activates all magics, display hooks & Tab completion
 
-Dataset Ingest & Interactive Workbench:
-  - Load datasets               : `df = orders.parquet`, `df2 = customers.csv -dlim ";" -encoding latin1`.
-  - Operations on active table  : `-filter "amount > 100"`, `-head 5`, `-pivot "..."`.
-  - Subject-first operations    : `df1 -filter "amount > 100"`, `df2 -head 5`.
-  - Relational joins & assign   : `df3 = df1 -join df2 on=cust_id`.
-  - Polars ANSI SQL engine      : `sql { ... }` for preview; `df4 = sql { SELECT df1.order_id, df2.name FROM df1 JOIN df2 ON df1.cust_id = df2.id }` to assign.
+Core Magics:
+  - `%pt <source> [flags]`        : Full in-process Pytae CLI pipeline (immutable; `res = %pt ...`).
+  - `%%pt [target_var]`           : Multi-line pipeline cell magic (no backslash continuations needed).
+  - `%checkpoint <name>`          : Atomic snapshot of entire workbench (all DataFrames to Arrow IPC + user vars; 0 MB RAM).
+  - `%checkpoint list|diff|rm`    : List checkpoints, diff table vs checkpoint, or delete (`*` for all).
+  - `%restore [name]`             : Strictly restore DataFrames & user variables + scrub Out/_ + trim OS RSS.
+  - `%status [table|cp] [-v]`     : Show tracked DataFrames, RAM, checkpoints, process RSS, and settings.
+  - `%free [df1 ... | *]`         : Delete DataFrame(s), scrub IPython Out/_ cache refs, and trim OS RSS.
+  - `%set [k=v | save | reset]`   : Configure display formatting (`max_rows`, `max_cols`, `float_precision`, `comma`).
+  - `%export <path> [-relative]`  : Export clean `.py` (fluent chains, full input paths) or `.ipynb`.
+  - `%exit -s [path] [-relative]` : Export session and exit IPython cleanly.
 
-State Management & Rollback Commands:
-  - `reset`                   : Rollback to latest saved checkpoint (or initial dataset read if none).
-  - `reset initial`           : Strictly rollback to initial dataset read (bypassing checkpoints).
-  - `history`                 : Display session audit log with sequential step numbers and *checkpoint: <name>* banners.
-  - `history <N>`             : Display the last N transformation steps.
-  - `history -s [path]`       : Export session history up to this point to a file (defaults to ./history.txt without exiting).
-  - Session Flight Recorder   : Sessions are automatically logged in real-time to ~/.pytae_history/history_YYYY_MM_DD_HH_MM_SS.txt.
-
-Session-Wide Checkpoints:
-  - `checkpoint <name>`       : Freeze snapshot of entire workbench (all tables in session).
-  - `status checkpoints`      : List all saved checkpoints and their constituent tables.
-  - `restore <name>`          : Restore entire workbench state back to named snapshot.
-
-Persistent Sessions (./<name>/ or <path>/):
-  - `status session [-v]`     : Display active session name, disk path, checkpoints, and settings.
-  - `set new_session = <name>` : Start/bind persistent session in current working directory or path.
-  - `set load_session = <name>`: Switch to persistent session and restore its latest checkpoint.
-  - `set save_session = <name>`: Snapshot/relocate session directory on disk.
-  - `sessions`                : List all saved persistent sessions on disk.
-  - `set save_code = <path>`  : Automatically save reproducible pipeline script on exit.
-  * Note: Sessions are path-first and default to the current working directory. Set PYTAE_SESSIONS_DIR to customize session storage location.
-  * Note: Only checkpoints are persisted; uncheckpointed scratch tables/columns drop on exit.
-  * Note: Sessions can be deleted from your terminal using OS file commands (e.g. 'rm -rf ./<name>').
-
-Strict Deletion Syntax (Wildcard):
-  - `rm table <table_name>`   : Remove specific in-memory table.
-  - `rm table *`              : Remove all in-memory tables from memory.
-  - `rm checkpoint <name>`    : Delete a named checkpoint snapshot.
-  - `rm checkpoint *`         : Delete all saved checkpoint snapshots.
-  * Note: Legacy bare 'rm <name>' or 'rm *' requires a category ('table' or 'checkpoint'). Legacy '-all' or 'all' flags are rejected; use '*' wildcard syntax. Plural 'rm tables' and 'rm checkpoints' are rejected; use singular 'rm table' and 'rm checkpoint'.
-
-Terminal Control & Utilities:
-  - `clear`                   : Clear the terminal screen.
-  - `status session [-v]`     : Display active session name, dimensions, memory usage, checkpoints.
-  - `status table [name] [-v]`: Inspect active table or specific table schema.
-  - `status tables [-v]`      : List all loaded tables in memory with shapes and memory footprints.
-  - `<cmd> | <sh>`            : Pipe command output to external shell tools (e.g. `-cols | grep bill`).
-  - `sql { <query> }`           : Non-destructive ANSI SQL preview across loaded tables (or `<var> = sql { ... }`).
-  - `py { <expr> }`           : Evaluate Python code with `df`, `pldf`, `pd`, `pl`, `pt`; imports & functions persist across blocks.
-  - `set syntax_highlight = on|off`, `set theme = <name>` : Configure REPL live syntax highlighting and color themes (`default`, `monokai`, `dracula`, `nord`, `light`, `minimal`).
-  - `exit` / `exit -s [path]` : Exit REPL (optionally save session history to ./history.txt or a named file).
+Post-Hoc CLI Export from IPython SQLite History:
+  pytae -export                         # List recent IPython sessions from history.sqlite
+  pytae -export -o analysis.py          # Export latest session to standalone Python
+  pytae -export 42 -o analysis.py       # Export session #42
+  pytae -export ~1 -o nb.ipynb          # Export relative session to Jupyter notebook
 
 
 6. FREQUENTLY ASKED QUESTIONS, PITFALLS & SYNTAX RULES
@@ -1195,19 +1162,16 @@ Use parenthesized target syntax `[prefix](target_cols)[suffix] = expr` with `_` 
 - New columns (suffix/prefix): `df.pt.mutate("(rev, cost)_usd = _ * 1.08")` or `df.pt.mutate("norm_(rev, cost) = _ / max(_)")`
 - Selectors & grouped: `df.pt.by("species").pt.mutate("z_(dtype=numeric) = (_ - mean(_)) / std(_)")`
 
-6.15. How does terminal clearing and table removal work in the REPL?
+6.15. How do memory reclaiming (`%free`) and checkpoints (`%checkpoint`, `%restore`) work in IPython?
 --------------------------------------------------------------------------------
-1. Canonical `clear`:
-   To maintain "One and Only One Obvious Way", Pytae standardizes strictly on `clear`
-   across the REPL prompt, CLI, and Python API (`pt.clear()`, `r.clear()`).
-   Passing `cls`, `-cls`, `--cls`, `-clear`, or `--clear` produces an immediate clear error
-   directing the user to `clear`.
+1. `%free` (delete DataFrames + scrub IPython Out/_ cache + trim OS RSS):
+   - In IPython, plain `del df` often leaves gigabytes pinned in `Out[N]` / `_`.
+   - `%free big_df` deletes `big_df`, scrubs all hidden references from `Out`/`_`, calls `gc.collect()`, and returns pages to the OS (`malloc_zone_pressure_relief` on macOS, `malloc_trim` on Linux, `SetProcessWorkingSetSize` on Windows).
+   - `%free *` frees all tracked DataFrames; bare `%free` trims stale `Out`/`_` cache without deleting named variables.
 
-2. Wildcard Deletion `rm table *` and `rm checkpoint *`:
-   Pytae standardizes on standard wildcard `*` syntax with explicit categories (`rm table *`, `rm checkpoint *`):
-   - `rm table *` removes all loaded tables from memory.
-   - `rm checkpoint *` deletes all saved checkpoint snapshots.
-   - Singular `rm table <name>` and `rm checkpoint <name>` are enforced strictly; plural `rm tables` or `rm checkpoints` are redirected.
+2. Atomic `%checkpoint <name>` & strict `%restore [name]`:
+   - `%checkpoint <name>` always snapshots the entire workbench (all DataFrames to Arrow IPC on disk at 0 MB RAM + all user data variables). Selective table arguments are intentionally disallowed.
+   - `%restore [name]` strictly restores all snapshotted DataFrames and user variables, drops any created after the checkpoint, scrubs `Out`/`_`, and trims OS RSS.
 
 6.16. How do I get Top N records per group in the CLI? (Sequential -by)
 --------------------------------------------------------------------------------
@@ -1254,46 +1218,20 @@ In Unix shells (bash, zsh), unquoted strings inside `-filter` expressions are tr
 - Fix: Always quote string literals with inner single quotes:
   `pytae data.parquet -filter "currency == 'CAD' and reporting_date in ['2026-09-30']"`
 
-6.18. How do I change where REPL sessions and checkpoints are saved? (PYTAE_SESSIONS_DIR)
+6.18. How do I export clean `.py` / `.ipynb` scripts from IPython (`%export`, `%exit -s`, `pytae -export`)?
 --------------------------------------------------------------------------------
-By default, Pytae sessions are path-first: a named session is saved in the current working directory (`./<session_name>/`) or at an explicit relative/absolute path passed to `set new_session = <path>`.
-Each checkpoint is saved as an Arrow IPC binary file (`.ipc`) or compressed Parquet (`.parquet`) preserving exact Polars SIMD schemas and types.
+Inside IPython:
+  %export analysis.py              # Standalone fluent Python (full absolute input paths; outputs kept as typed)
+  %export analysis.py -relative    # Input paths relative to the exported script's directory
+  %export analysis.ipynb           # Valid Jupyter notebook (nbformat v4)
+  %exit -s analysis.py             # Export and exit IPython cleanly
 
-To store REPL sessions in a custom directory (e.g. project workspace, shared drive, or scratch volume), set the `PYTAE_SESSIONS_DIR` environment variable:
+From the CLI (post-hoc rescue from ~/.ipython/profile_default/history.sqlite):
+  pytae -export                    # List recent IPython sessions
+  pytae -export -o analysis.py     # Export latest session
+  pytae -export ~1 -o nb.ipynb     # Export relative session
 
-In Unix Shell (bash / zsh):
-```bash
-export PYTAE_SESSIONS_DIR="$HOME/my_project/.pytae_sessions"
-pytae -session project_work
-```
-
-In Fish Shell:
-```fish
-set -gx PYTAE_SESSIONS_DIR "$HOME/my_project/.pytae_sessions"
-pytae -session project_work
-```
-
-In Windows PowerShell:
-```powershell
-$env:PYTAE_SESSIONS_DIR = "C:\my_project\.pytae_sessions"
-pytae -session project_work
-```
-
-In Python:
-```python
-import os
-os.environ["PYTAE_SESSIONS_DIR"] = "/path/to/custom/sessions"
-import pytae as pt
-pt.repl()
-```
-
-Verify in REPL:
-Inside the interactive REPL, run `status session` to inspect the active directory:
-```
-pytae> status session
-=== REPL Session Status ===
-Session Name  : default (storage: /path/to/custom/sessions/default)
-```
+Automatically prunes errored cells, rolled-back cells, consecutive duplicates, dead overwritten assignments, and read-only previews, and auto-infers missing startup imports (`pt`, `pd`, `pl`, `np`, `Path`).
 
 6.19. Error Message Catalog & Troubleshooting Index
 --------------------------------------------------------------------------------
@@ -1307,8 +1245,8 @@ When encountering an error in Pytae, consult this catalog for the root cause and
 | `ColumnNotFound: column 'XYZ' not found` | Column name misspelled, wrong casing, or string literal unquoted | Check `-cols`; quote string values (`col == 'XYZ'`); use `[col name]` if name has spaces |
 | `TypeError: pt.mutate() got an unexpected keyword argument 'by'` | Passed `by=` as a parameter inside a verb | Call `df.by("col").mutate(...)` first; `by` is strictly standalone |
 | `AttributeError: ... has no attribute 'ungroup'` | Tried to ungroup a DataFrame | Pytae grouping is single-shot and auto-clearing; no `ungroup()` exists or is needed |
-| `Invalid syntax: rm checkpoints` | Plural form used in REPL | Use singular: `rm checkpoint <name>` or `rm checkpoint *` |
-| `Invalid syntax: cls / -clear` | Non-canonical clear used | Use canonical `clear` |
+| `'pytae -i' has been retired` | Standalone REPL was retired | Start IPython and run `import pytae as pt` |
+| `selective arguments are not supported` | Passed table names to `%checkpoint` | `%checkpoint <name>` always snapshots the entire workbench |
 | `Missing argument for -agg` with grouped mutation | Grouped window mutation attempted with `-agg` | Use `-by col -mutate "mean_val = mean(col)"` to avoid collapsing rows |
 | `PolarsComputeError: duplicate column name` | Operation produced colliding column names | Explicitly rename output columns (e.g. `avg_val = mean(col)`) |
 
@@ -1574,36 +1512,35 @@ k.save("dashboard.png", dpi=300)
 pt.plot(penguins, by="species", ncols=3, kind="scatter", x="bill_length_mm", y="bill_depth_mm").finalize()
 ```
 
-Recipe 8: Interactive REPL Multi-Table Exploration & Snapshots
+Recipe 8: IPython & Jupyter Workbench Exploration, Checkpoints & Export
 --------------------------------------------------------------------------------
-```bash
-# Launch interactive workbench with reader options
-pytae -i
+```python
+import pytae as pt
 
-# Load multiple datasets with custom delimiters and encodings
-pytae> df1 = orders.csv -encoding latin1 -dlim ";"
-pytae> df2 = customers.parquet
+# Load datasets via Python or %pt (immutable by default)
+orders = pt.read("orders.csv", sep=";", encoding="latin1")
+cust = pt.read("customers.parquet")
 
-# Subject-first manipulation
-pytae [df1, df2]> df1 -filter "amount > 100"
-pytae [df1, df2]> df1 -mutate "tax = amount * 0.08"
+# Atomic workbench checkpoint (all DataFrames + user vars; 0 MB RAM)
+%checkpoint baseline
 
-# Save named snapshot of all tables in session
-pytae [df1, df2]> checkpoint baseline
+# Immutable %pt pipeline
+high_val = %pt orders -filter "amount > 100" -mutate "tax = amount * 0.08" -round 2
 
-# Perform join and SQL exploration
-pytae [df1, df2]> df3 = df1 -join df2 on=cust_id
-pytae [df1, df2, df3]> sql { SELECT df1.order_id, df2.name, df1.amount FROM df1 JOIN df2 ON df1.cust_id = df2.id }
+# SQL across all DataFrames in IPython's namespace
+joined = %pt -sql "SELECT orders.order_id, cust.name, orders.amount FROM orders JOIN cust ON orders.cust_id = cust.id"
 
-# Revert to snapshot
-pytae [df1, df2, df3]> restore baseline
-Restored checkpoint 'baseline' (2 tables: df1, df2; active: df2).
+# Inspect workbench & OS RSS
+%status
 
-# Clean removal using wildcard syntax
-pytae [df1, df2]> rm checkpoint *
-Cleared all saved checkpoints.
-pytae [df1, df2]> rm *
-Removed all tables from memory.
+# Strict rollback to baseline (drops high_val & joined, trims OS RSS)
+%restore baseline
+
+# Delete a table and reclaim OS RAM (scrubs IPython Out/_ cache too)
+%free cust
+
+# Export clean standalone Python script (fluent chains, full input paths)
+%export analysis.py
 ```
 
 Recipe 9: Top N per Group across Chained Pipelines (CLI, Python & SQL)
@@ -1688,7 +1625,7 @@ pytae a=portfolio.xlsx b=portfolio.xlsx   -opts "a:sheet=Loans, a:skiprows=2, b:
 ```
 
 ================================================================================
-8. DETAILED FEATURE DOCUMENTATION GUIDES (docs/guides/, docs/repl/, docs/notebooks/)
+8. DETAILED FEATURE DOCUMENTATION GUIDES (docs/guides/, docs/ipython.md, docs/notebooks/)
 ================================================================================
 
 ################################################################################
@@ -4325,7 +4262,7 @@ Pytae supports multi-file relational operations directly from the command line w
 
 ### Syntax & Alias Direction (`alias=source`)
 
-Tables are assigned using the natural `alias=source` convention (`df=filename`), perfectly consistent with the REPL (`df = file.parquet`):
+Tables are assigned using the natural `alias=source` convention (`df=filename`), consistent with Python/IPython assignment (`df = pt.read("file.parquet")`):
 
 ```bash
 # Assign aliases to positional inputs
@@ -5776,7 +5713,7 @@ pytae clip -filter "sales > 100" -by region -agg "total = sum(sales)"
 
 ### Python Library Counterpart (`df.to()`, `pt.to()`)
 
-In Python code, the universal destination method is **`df.to(target)`** (providing 1:1 symmetry with CLI and REPL `-o`):
+In Python code, the universal destination method is **`df.to(target)`** (providing 1:1 symmetry with CLI and `%pt` `-o`):
 
 ```python
 # 1. Export to file path (chainable: returns self)
@@ -6623,13 +6560,13 @@ Execute directly via CLI:
 pytae penguins.parquet -sql analysis.sql
 ```
 
-Or in the interactive REPL:
-```sql
+Or inside IPython / Jupyter (`import pytae as pt`):
+```python
 # Preview from file
-pytae [penguins]> sql analysis.sql
+%pt penguins -sql analysis.sql
 
-# Create new table from file
-pytae [penguins]> summary = sql analysis.sql
+# Assign result to a new DataFrame (immutable)
+summary = %pt penguins -sql analysis.sql
 ```
 
 **Output:**
@@ -6663,31 +6600,251 @@ pytae c=customers.csv o=orders.parquet \
 
 ---
 
-### Multi-Table SQL Joins from Files in REPL
+### Multi-Table SQL Joins in IPython / Jupyter
 
-When joining tables in the interactive REPL using an external SQL file (`test.sql`), load the constituent tables into memory first under matching names:
+When joining in-memory DataFrames inside IPython (`import pytae as pt`), any DataFrame variable in your namespace is automatically queryable by name via `%pt -sql` or `%%pt`:
 
-```sql
--- test.sql
+```python
+import pytae as pt
+
+# 1. Load source tables into memory:
+x = pt.read("left_data.parquet")
+y = pt.read("right_data.parquet")
+
+# 2. Query across all in-memory tables (immutable):
+k = %pt -sql "SELECT x.a, y.a FROM x INNER JOIN y ON x.id = y.id"
+
+# 3. Or multi-line SQL via %%pt cell magic:
+%%pt k
+-sql "
 SELECT x.a, y.a
 FROM x
-INNER JOIN y ON x.id = y.id;
+INNER JOIN y ON x.id = y.id
+"
+
+# 4. Chain further Python or %pt operations on `k`:
+k.filter("a > 10").head(5)
 ```
 
+################################################################################
+# FILE: docs/ipython.md
+################################################################################
+# Pytae IPython & Jupyter Workbench
+
+Pytae's interactive workbench runs natively inside **IPython** and **Jupyter** (JupyterLab, VS Code Notebooks, Google Colab).
+
+There is no separate shell to launch and no `%load_ext` command to remember — just import `pytae`:
+
+```python
+import pytae as pt
+```
+
+The moment `import pytae as pt` runs inside an active IPython or Jupyter session, Pytae silently registers:
+- Workbench magics (`%pt` / `%%pt`, `%checkpoint`, `%restore`, `%status`, `%free`, `%set`, `%export`, `%exit -s`)
+- Persistent display formatters for `pytae.DataFrame` (both terminal plain-text and Jupyter HTML)
+- Context-aware Tab completion (CLI `-flags`, DataFrame names, column names, and checkpoint names)
+
+*(Outside IPython — e.g., CLI commands or plain `python script.py` — IPython is never imported, so there is zero startup overhead. Set `PYTAE_NO_IPYTHON_EXT=1` if you ever want to import `pytae` inside IPython without registering magics.)*
+
+---
+
+## Quick Start
+
+```python
+import pytae as pt
+
+# Load data with Python or %pt
+df = pt.sample("penguins")
+# or: df = %pt sales.parquet
+
+# Save an ephemeral disk checkpoint (0 MB RAM)
+%checkpoint raw
+
+# Run any Pytae CLI pipeline in-process (immutable by default!)
+heavy = %pt df -filter "body_mass_g > 4000" -arrange "body_mass_g desc"
+
+# Inspect tracked tables, checkpoints, OS process RSS, and settings
+%status
+
+# Roll back DataFrame state strictly and reclaim RAM
+%restore raw
+
+# Delete a large DataFrame AND scrub hidden IPython Out/_ cache references
+%free heavy
+
+# Export clean, runnable .py or .ipynb (auto-prunes errors, rollbacks & previews)
+%export analysis.py
+```
+
+---
+
+## Magic Reference
+
+### 1. `%pt` and `%%pt` — Full In-Process CLI Pipelines (Immutable)
+
+`%pt` executes Pytae's full CLI grammar (`-filter`, `-mutate`, `-select`, `-by`, `-agg`, `-pivot`, `-long`, `-wide`, `-join`, `-concat`, `-outliers`, `-dups`, `-distinct`, `-mask`, `-freq`, `-hist`, `-bar`, `-scatter`, `-corr`, `-plot`, `-browse`, `-diff`, `-meta`, `-schema`, `-glimpse`, `-sql`, `-o`, etc.) **in-process** with zero subprocess overhead.
+
+- **Immutable by default**: `%pt` never mutates an existing DataFrame in-place. Assign explicitly with `res = %pt ...` or `%%pt res`.
+- **Works on RAM DataFrames, disk paths, and `clip`**: Pass a variable name (`df`), a file path (`sales.parquet`), `sample:penguins`, or `clip`.
+- **Supports `@var` interpolation**: Reference Python scalars/lists in expressions (`cutoff = 4000; %pt df -filter "body_mass_g > @cutoff"`).
+
+#### Line magic (`%pt`)
+```python
+# Explore without modifying `df`
+%pt df -filter "species == 'Adelie'" -head 5
+
+# Assign result to a new DataFrame
+adelie = %pt df -filter "species == 'Adelie'" -mutate "mass_kg = body_mass_g / 1000"
+
+# Load from disk + filter in one step
+recent = %pt sales.parquet -filter "year == 2025" -select "id,region,amount"
+
+# Terminal visualizations & exports
+%pt df -hist body_mass_g
+%pt df -freq island
+%pt df -o out/penguins.parquet
+%pt df -o clip
+
+# SQL across all DataFrames in IPython's namespace
+top = %pt -sql "SELECT island, COUNT(*) AS n, AVG(body_mass_g) AS avg_mass FROM df GROUP BY island"
+```
+
+#### Cell magic (`%%pt`)
+Write readable multi-line pipelines without `\` continuations. Put an optional target variable name on the `%%pt` header line:
+
+```python
+%%pt summary
+df
+-dropna "body_mass_g"
+-filter "species != 'Gentoo'"
+-by "species, island"
+-agg "avg_mass = mean(body_mass_g), n = count()"
+-arrange "avg_mass desc"
+```
+
+Multi-line SQL via `%%pt`:
+```python
+%%pt top_islands
+-sql "
+SELECT island, COUNT(*) AS n, AVG(body_mass_g) AS avg_mass
+FROM df
+GROUP BY island
+ORDER BY avg_mass DESC
+"
+```
+
+---
+
+### 2. `%checkpoint` & `%restore` — Atomic Workbench Time-Machine
+
+Checkpoints always capture the **entire workbench state** — every DataFrame (`pytae`, `polars`, `pandas`) spilled to fast Arrow IPC on disk (**0 MB RAM overhead**) plus all user data variables (scalars, lists, dicts, sets, `Path`, dates). Selective per-table checkpointing is intentionally disallowed so `%restore` is always atomic and consistent.
+
+```python
+%checkpoint raw                  # Snapshot entire workbench (all DataFrames + user variables)
+%checkpoint list                 # List saved checkpoints & disk size
+%checkpoint diff df raw          # Compare current `df` against checkpoint `raw`
+%checkpoint rm raw               # Delete a checkpoint (or `*` for all)
+```
+
+**Strict Restore (`%restore`)**:
+```python
+%restore raw    # Restore checkpoint `raw`
+%restore        # Restore the most recent checkpoint
+```
+`%restore` always performs a **strict restore** of workbench state:
+1. Restores all snapshotted DataFrames (in their exact original Python types) and all snapshotted user variables.
+2. Drops any DataFrames or user variables created *after* the checkpoint.
+3. Scrubs stale references from IPython's `Out` / `_` cache and trims OS RSS.
+4. Keeps your Python imports, functions, and classes intact.
+
+---
+
+### 3. `%status` — Workbench & Memory Overview
+
+```python
+%status                  # All tracked DataFrames (type, shape, RAM), checkpoints, OS RSS, settings
+%status -v               # Include total DataFrame RAM
+%status df               # Detailed shape, RAM, null counts, and columns for `df`
+%status df -v            # Full column-by-column schema & null breakdown
+%status checkpoint       # List all checkpoints
+%status checkpoint raw   # Inspect tables inside checkpoint `raw`
+```
+
+---
+
+### 4. `%free` — Delete DataFrames & Reclaim OS RAM
+
+In IPython, plain `del df` often fails to free RAM because IPython's output cache (`Out[N]`, `_`, `_N`) still holds strong references to previously displayed DataFrames, and OS allocators retain freed pages.
+
+`%free` deletes the variable(s), **scrubs all hidden references from `Out` / `_`**, runs `gc.collect()`, trims the OS working set, and reports the RSS change:
+
+```python
+%free big_df             # Delete `big_df`, scrub Out/_ cache, trim OS RSS
+%free df1 df2            # Delete multiple DataFrames + reclaim RAM
+%free *                  # Delete all tracked DataFrames + reclaim RAM
+%free                    # Keep named variables; scrub stale Out/_ DataFrame refs + trim RAM
+```
+
+---
+
+### 5. `%set` — Persistent Display Formatting
+
+Configure DataFrame rendering for both terminal IPython (`text/plain`) and Jupyter (`text/html`):
+
+```python
+%set                                              # Show current settings
+%set max_rows=20 max_cols=12                      # Update for current session
+%set float_precision=2 comma=true                 # Format floats & thousands separators
+%set save                                         # Persist permanently to ~/.pytae/config.json
+%set reset                                        # Reset to defaults
+```
+
+---
+
+### 6. `%export` & `%exit -s` — Clean Script / Notebook Export
+
+Export your session history to a standalone `.py` script or `.ipynb` notebook:
+
+```python
+%export analysis.py      # Standalone runnable Python script
+%export analysis.ipynb   # Valid Jupyter notebook (nbformat v4)
+%exit -s analysis.py     # Export and exit IPython cleanly
+%exit -s                 # Export to ./session.py and exit
+```
+
+What `%export` automatically cleans up:
+- **Errored cells** (syntax errors, failed magics, raised exceptions)
+- **Rolled-back cells** (everything executed between `%checkpoint` and `%restore`)
+- **Duplicate & dead overwritten assignments** (e.g. consecutive duplicate cells or `x = ...` immediately overwritten without being read, while preserving `.to(...)` / `-o` side effects)
+- **Workbench & inspection noise** (`%status`, `%checkpoint`, `%restore`, `%free`, `%set`, `%exit`, bare `df`, unassigned `df.head()`, unassigned `%pt df -head`)
+- **Standalone Python rewrite** (for `.py`): converts `df = %pt sample:penguins` → `df = pt.sample('penguins')` and `res = %pt ...` → `res = pt.eval_cli(..., locals())` so `python analysis.py` runs out of the box.
+
+#### Post-Hoc CLI Export from IPython's SQLite History
+Forgot to run `%export` or IPython closed unexpectedly? Export any past IPython session straight from `~/.ipython/profile_default/history.sqlite` with the exact same cleaner:
+
 ```bash
-# 1. Load source tables into the REPL session:
-pytae> x = left_data.parquet
-pytae> y = right_data.parquet
+pytae -export                  # List recent IPython sessions (ID, timestamp, preview)
+pytae -export -o code.py       # Export the latest session to standalone Python
+pytae -export 42 -o code.py    # Export session #42
+pytae -export ~1 -o nb.ipynb   # Export latest session (~2 for two ago) to Jupyter notebook
+```
 
-# 2. Preview the query without saving (non-destructive):
-pytae> sql test.sql
+---
 
-# 3. Or save the result as a new working table 'k':
-pytae> k = sql test.sql
-Created 'k' from SQL query (850 rows x 2 cols).
+## Themes & Syntax Highlighting in IPython
 
-# 4. 'k' is now active in the prompt; chain verbs or run further SQL:
-pytae [k: 850x2]> -filter "a > 10" -head 5
+IPython + Pygments natively provides 49+ color themes and 24-bit true-color syntax highlighting:
+
+```python
+%colors gruvbox-dark     # Switch live (neutral, linux, lightbg, gruvbox-dark, nocolor)
+```
+
+To set a permanent theme in `~/.ipython/profile_default/ipython_config.py`:
+```python
+c = get_config()
+c.TerminalInteractiveShell.true_color = True
+c.InteractiveShell.colors = "linux"
+c.TerminalInteractiveShell.highlighting_style = "dracula"  # monokai, nord, one-dark, etc.
 ```
 
 ################################################################################
@@ -13181,2091 +13338,6 @@ kind='box': unsupported=['dropna'], controls=['annot', 'by', 'clip_data', 'colum
 kind='hist': unsupported=[], controls=['annot', 'by', 'clip_data', 'column', 'dropna', 'fmt', 'on', 'palette', 'print_data', 'secondary_y', 'x', 'xlabel', 'y', 'ylabel']
 ```
 
-################################################################################
-# FILE: docs/repl/README.md
-################################################################################
-# Pytae Interactive REPL Workbench (`pytae -i`)
-
-[← Back to Master Reference](../pytae.md)
-
-The Pytae REPL is a high-performance in-memory exploratory workbench. Unlike traditional command-line tools that re-read gigabyte files from disk on every invocation, the Pytae REPL loads datasets into memory **once**, retains native multithreaded Polars Arrow memory buffers, and executes transformations, ANSI SQL, and Python logic at RAM speed.
-
----
-
-## The 6 Pillars of the REPL Architecture
-
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                        PYTAE REPL ARCHITECTURAL PILLARS                                │
-├────────────────────────────────────────────────────────────────────────────────────────┤
-│ 1. IN-MEMORY WORKBENCH     │ Load multiple datasets once; transform and inspect at      │
-│                            │ microsecond RAM speeds with zero repeated disk I/O.        │
-├────────────────────────────┼────────────────────────────────────────────────────────────┤
-│ 2. NON-DESTRUCTIVE PREVIEWS│ Bare verbs (-head, -filter) display safe previews. State   │
-│                            │ is modified only through explicit assignment (df = ...).   │
-├────────────────────────────┼────────────────────────────────────────────────────────────┤
-│ 3. ZERO-RAM CHECKPOINTS    │ Snapshots (checkpoint <name>) serialize to ephemeral disk  │
-│                            │ Arrow IPC. Instant rollback (restore) with 0 MB RAM cost.  │
-├────────────────────────────┼────────────────────────────────────────────────────────────┤
-│ 4. EPHEMERAL SANDBOXING    │ Embedded Python (py) runs in an ephemeral scope with zero   │
-│                            │ residual RAM footprint. Explicit table handoff.             │
-├────────────────────────────┼────────────────────────────────────────────────────────────┤
-│ 5. REPRODUCIBLE SCRIPTS    │ Automatic flight recorder logs every step. Prunes undo paths│
-│                            │ and exports clean .pt (Pytae) or .py (Python) pipelines.   │
-├────────────────────────────┼────────────────────────────────────────────────────────────┤
-│ 6. OS PAGE DEALLOCATION    │ Deleting tables (rm table) immediately invokes kernel page │
-│                            │ trimming (malloc_trim, Mach task, working set).            │
-└────────────────────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 30-Second Quickstart
-
-```bash
-# Launch the interactive workbench
-pytae -i
-```
-
-```text
-# 1. Ingest datasets into named tables
-pytae> orders = orders.parquet
-Loaded orders.parquet as 'orders' (100,000 rows x 6 cols).
-
-pytae [orders: 100,000x6]> cust = customers.csv
-Loaded customers.csv as 'cust' (15,000 rows x 5 cols).
-
-# 2. Safe, non-destructive preview
-pytae [orders, cust]> -filter "amount > 500" -head 3
-
-# 3. Explicit state mutation
-pytae [orders, cust]> orders = -filter "amount > 500" -mutate "tax = amount * 0.08"
-
-# 4. Instant named snapshot (0 MB RAM overhead)
-pytae [orders, cust]> checkpoint baseline
-Saved checkpoint 'baseline' (2 tables: orders, cust).
-
-# 5. Relational joins & ANSI SQL across tables
-pytae [orders, cust]> enriched = orders -join cust on=customer_id how=left
-pytae [orders, cust, enriched]> top_spenders = sql { SELECT cust.name, sum(orders.amount) as total FROM orders JOIN cust ON orders.customer_id = cust.customer_id GROUP BY 1 ORDER BY total DESC LIMIT 5 }
-
-# 6. Milestone diffing & instant rollback
-pytae> -diff baseline
-pytae> restore baseline
-
-# 7. Export reproducible pipeline and exit
-pytae> export pipeline.pt -relative
-pytae> exit -s
-```
-
----
-
-## Master Command Reference
-
-| Category | Command | Syntax Example | Description |
-| :--- | :--- | :--- | :--- |
-| **Ingestion** | Direct Assignment | `df = file.parquet` | Load dataset into named table. |
-| | Reader Options | `df = file.csv -dlim "," -nrows 100` | Ingest with custom delimiter, encoding, or row limits. |
-| | Excel Sheets | `df = sales.xlsx -opts "sheet=Q1"` | Specify sheet, header, or skiprows via `-opts`. |
-| | Glob Ingestion | `sales = "parts/*.parquet"` | Ingest multi-file partitions into unified table. |
-| | Bundled Samples | `tips = sample:tips` | Instant access to bundled sample datasets (`penguins`, `tips`, `iris`, etc.). |
-| **Table Management** | Listing Tables | `status table` | Display active table details and memory footprint. |
-| | Switching Cursor | `switch <name>` | Select active table cursor for bare commands. |
-| | Zero-Copy Rename | `rename <old> <new>` | Instant $O(1)$ pointer reassignment. |
-| | Subject-First Verbs| `<tbl> -<verb>` | Run verb directly on non-active table without switching. |
-| | Deleting Tables | `rm table <name>`, `rm table *` | Purge tables and return memory pages to the OS kernel. |
-| **Pipelines & Verbs** | Safe Preview | `-filter "..."`, `-head 5` | Non-destructive preview matching terminal CLI output. |
-| | State Mutation | `df = -filter "..."` | Update table state via explicit assignment. |
-| | Relational Joins | `-join <right> on=key how=left` | Relational join across loaded tables. |
-| | Inspection | `-schema`, `-cols`, `-summary` | Instant schema, column list, or statistical glimpse. |
-| **Advanced Query** | ANSI SQL | `sql { SELECT ... }` | Non-destructive SQL preview (or `res = sql { ... }` to assign table). |
-| | Python Eval | `py { <expr> }` | Python expression evaluation in `{ ... }`. |
-| | Python Block | `py { ... }` | Multi-line Python block with ephemeral RAM sandboxing. |
-| | Register Table | `py { tbl = pt.DataFrame(...) }` | Register Python DataFrame back to Pytae workbench. |
-| **Variables & Config** | Session Variable | `threshold = 1000` | Define typed session parameter referenced as `@threshold`. |
-| | Variable Status | `status var` | List defined variables and values. |
-| | Remove Variable | `rm var <name>`, `rm var *` | Purge session variable definitions. |
-| | Display Settings | `set max_rows = 25` | Configure `max_rows`, `max_cols`, `float_precision`, `comma`. |
-| | Persist Settings | `set save` | Save preferences to `~/.pytae/config.json`. |
-| | Session Status | `status`, `status -v` | Complete session diagnostics (RAM, tables, variables, checkpoints). |
-| **Checkpoints** | Save Snapshot | `checkpoint <name>` | Save state to ephemeral IPC disk (0 MB active RAM). |
-| | Instant Restore | `restore [name]` | Revert workbench state to checkpoint. |
-| | Milestone Diff | `-diff`, `-diff <cp>` | Compare active table against checkpoint state. |
-| | Revert to Source | `reset`, `reset initial` | Revert to latest checkpoint or initial file read state. |
-| | Checkpoint Status | `status checkpoint` | List saved checkpoints and disk usage. |
-| | Remove Checkpoint | `rm checkpoint <name>` | Delete named checkpoint. |
-| **Export & Replay** | In-Session Export | `export <path> [-relative]` | Export clean, reproducible pipeline (`.pt` or `.py`). |
-| | Exit Export | `exit -s [path] [-relative]` | Export session pipeline on exit to `./session.pt`. |
-| | History Audit Log | `history`, `history <n>` | Display numbered session command history. |
-| | CLI Log Conversion | `pytae -export <hist> -o <out>`| Post-hoc conversion of history logs to `.pt` or `.py`. |
-| | Headless Execution | `pytae pipeline.pt` | Run Pytae pipeline headlessly to completion. |
-| | Interactive Preload| `pytae -i pipeline.pt` | Preload script into interactive REPL session. |
-
----
-
-## Detailed Topic Manuals
-
-Dive deeper into specific subsystems:
-
-1. **[Workbench & Multi-Table Management](workbench_tables.md)**:
-   Launching the shell, ingesting local/remote/sample files, reader options, managing multiple tables, zero-copy renaming, shell navigation, and keybindings.
-2. **[In-Memory Pipelines & Data Inspection](pipelines_inspection.md)**:
-   Exploration vs. mutation semantics, chaining CLI verbs at RAM speed, relational joins, and non-destructive inspection tools (`-head`, `-cols`, `-schema`, `-diff`).
-3. **[SQL & Python Interop (Ephemeral Python Sandboxing)](sql_python_interop.md)**:
-   Cross-table ANSI SQL queries, embedded Python evaluation, multi-line blocks, the ephemeral memory sandboxing architecture, and explicit table assignment.
-4. **[Session Variables & Configuration](variables_config.md)**:
-   Defining session `@parameters`, nested configuration traversal, using variables in pipelines, display preferences (`set`), and persisting settings (`set save`).
-5. **[Checkpoints, History Audit, Pipeline Export & Replay](checkpoints_history_replay.md)**:
-   Ephemeral IPC snapshotting (`checkpoint`), zero-RAM storage, instant state rollback (`restore`), milestone schema/value diffing (`-diff`), flight recorder audit logs, clean script export (`export`, `exit -s`), automatic undo branch pruning, CLI history conversion (`pytae -export`), batch execution, and kernel memory page deallocation.
-
-################################################################################
-# FILE: docs/repl/checkpoints_history_replay.md
-################################################################################
-# REPL Guide: Checkpoints, History Audit, Pipeline Export & Replay
-
-[← Back to REPL Hub](README.md) | [Master Reference](../pytae.md)
-
-This guide covers saving in-memory snapshots (`checkpoint`), instant rollback (`restore`), milestone diffing (`-diff`), audit history logging (`history`), exporting clean reproducible pipelines (`export`, `exit -s`), post-hoc CLI conversion (`pytae -export`), and batch execution in the Pytae interactive REPL (`pytae -i`).
-
----
-
-## Contents
-
-- [Checkpoints & Ephemeral IPC Storage](#checkpoints--ephemeral-ipc-storage)
-  - [Saving & Updating Checkpoints (`checkpoint <name>`)](#saving--updating-checkpoints-checkpoint-name)
-  - [Instant Workbench Recovery (`restore [name]`)](#instant-workbench-recovery-restore-name)
-  - [Milestone Diffing Against Checkpoints (`-diff`)](#milestone-diffing-against-checkpoints--diff)
-  - [Listing & Deleting Checkpoints (`status checkpoint`, `rm checkpoint`)](#listing--deleting-checkpoints-status-checkpoint-rm-checkpoint)
-  - [Reverting to Source (`reset`, `reset <tbl>`, `reset initial`)](#reverting-to-source-reset-reset-tbl-reset-initial)
-- [Session History & Audit Logging](#session-history--audit-logging)
-  - [In-REPL History Audit Log (`history`, `history <n>`)](#in-repl-history-audit-log-history-history-n)
-  - [Automated Flight-Recorder Storage](#automated-flight-recorder-storage)
-- [Reproducible Pipeline Export](#reproducible-pipeline-export)
-  - [In-Session Export (`export <path> [-relative]`)](#in-session-export-export-path--relative)
-  - [Smart Export on Exit (`exit -s [path] [-relative]`)](#smart-export-on-exit-exit--s-path--relative)
-  - [Automatic Undo Branch Pruning](#automatic-undo-branch-pruning)
-  - [Path Canonicalization & Windows UNC Resolution](#path-canonicalization--windows-unc-resolution)
-- [Executing Exported Scripts: "One and Only One Obvious Way"](#executing-exported-scripts-one-and-only-one-obvious-way)
-  - [Pytae Pipeline Scripts (`.pt`)](#pytae-pipeline-scripts-pt)
-  - [Python Scripts (`.py`)](#python-scripts-py)
-  - [Post-Hoc CLI Conversion (`pytae -export`)](#post-hoc-cli-conversion-pytae--export)
-- [Comprehensive Real-World Scenarios](#comprehensive-real-world-scenarios)
-  - [Scenario 1: Feature Engineering with Milestone Diffing & Rollback](#scenario-1-feature-engineering-with-milestone-diffing--rollback)
-  - [Scenario 2: Multi-Table Branching & Production Pipeline Export](#scenario-2-multi-table-branching--production-pipeline-export)
-
----
-
-## Checkpoints & Ephemeral IPC Storage
-
-The Pytae REPL features a zero-overhead snapshotting system. When exploring hypotheses, you can freeze your workbench state at any time without consuming valuable RAM.
-
-<a id="saving--updating-checkpoints-checkpoint-name"></a>
-### Saving & Updating Checkpoints (`checkpoint <name>`)
-
-Take an ephemeral snapshot of all active tables, original file references, session `@variables`, and pipeline state:
-
-```text
-pytae [orders, cust]> checkpoint baseline
-Saved checkpoint 'baseline' (2 tables: orders, cust; 2 variables: @tax_rate, @threshold).
-```
-
-- **0 MB RAM Overhead**: Tables are serialized to an ephemeral process-bound temp directory (`/tmp/pytae_cp_xxxxxx/`) in Arrow IPC format, consuming **0 MB of active process heap**.
-- **Instant Overwrite**: Re-saving to an existing checkpoint name automatically replaces the previous snapshot and reports the update:
-
-```text
-pytae [orders, cust]> checkpoint baseline
-Updated checkpoint 'baseline' (2 tables: orders, cust; 2 variables: @tax_rate, @threshold).
-```
-
-- **Automatic Lifecycle Cleanup**: When exiting the session (`exit`, `Ctrl+D`, or process termination), all ephemeral IPC files and temporary directories are wiped completely.
-
-### Instant Workbench Recovery (`restore [name]`)
-
-Restoring drops modified tables from RAM and streams back the exact snapshot from disk at microsecond speeds:
-
-```text
-# Revert to a specific named checkpoint
-pytae [orders, cust, scratch_df]> restore baseline
-Restored checkpoint 'baseline' (2 tables: orders, cust; active: cust).
-
-# Revert to the most recent checkpoint (bare restore)
-pytae [orders, cust]> restore
-Restored checkpoint 'baseline' (2 tables: orders, cust).
-```
-
-All post-checkpoint scratch tables and uncommitted mutations are automatically dropped.
-
-### Milestone Diffing Against Checkpoints (`-diff`)
-
-Compare the active in-memory table against its frozen counterpart inside any checkpoint. Running bare `-diff` compares the active table against the **latest saved milestone**:
-
-```text
-pytae [t1*]> t1 = -mutate "bonus = tip * 2"
-
-# 1. Bare -diff compares active table vs latest checkpoint
-pytae [t1*]> -diff
-Comparing 't1' vs 'checkpoint:baseline':
-Comparing:
-  Left (source):  <left> (244 rows, 8 cols)
-  Right (target): <right> (244 rows, 7 cols)
-
-Shape:
-  Rows: 244 vs 244 (+0)
-  Cols: 8 vs 7 (+1)
-
-Columns:
-  + Added in left (1):   bonus
-  Common (7):            total_bill, tip, sex, smoker, day, time, size
-
-Schema Drift:
-  None (all common columns have matching dtypes)
-
-Values:
-  Matching: all cell values in common columns match.
-```
-
-#### Comparing Specific Tables inside a Checkpoint (`<checkpoint>:<table_name>`)
-```text
-pytae [t1, t2]> -diff baseline:t2
-Comparing 't2' vs 'checkpoint:baseline:t2':
-...
-```
-
-#### Comparing Across Two Different Checkpoints
-```text
-pytae> -diff v1:t1 v2:t1
-Comparing 'checkpoint:v1:t1' vs 'checkpoint:v2:t1':
-...
-```
-
-### Listing & Deleting Checkpoints (`status checkpoint`, `rm checkpoint`)
-
-```text
-# List all saved checkpoints, tables, and sizes
-pytae> status checkpoint
-Checkpoints (2 saved):
-  - baseline       : 2 tables [active: cust], 2 vars [@tax_rate, @threshold] (42.1 KB disk, 0 MB RAM)
-      - orders: 1,000 rows x 8 cols
-      - cust: 500 rows x 4 cols
-  - filtered       : 1 table [active: orders] (18.4 KB disk, 0 MB RAM)
-      - orders: 742 rows x 8 cols
-
-# Inspect metadata for a specific checkpoint
-pytae> status checkpoint baseline
-Checkpoint: baseline
-Active Table : cust
-Tables       : 2 tables (orders, cust)
-Variables    : 2 defined [@tax_rate = 0.08, @threshold = 1000]
-Storage      : ephemeral disk IPC (42.1 KB on disk, 0 MB RAM)
-
-# Delete a single checkpoint
-pytae> rm checkpoint filtered
-Removed checkpoint 'filtered'.
-
-# Purge all checkpoints
-pytae> rm checkpoint *
-Cleared all saved checkpoints.
-```
-
-<a id="reverting-to-source-reset-reset-tbl-reset-initial"></a>
-### Reverting to Source (`reset`, `reset <tbl>`, `reset initial`)
-
-Reset commands allow you to step back to baseline states:
-
-* **`reset`**: Reverts active tables to the **latest saved checkpoint**. If no checkpoints exist, reverts to the initial file read state.
-* **`reset <table_name>`**: Reverts **only the specified table** to the latest checkpoint (or initial read), leaving all other loaded tables untouched.
-* **`reset <table_name> initial`**: Reverts **only the specified table** strictly to its initial file read state, bypassing all intermediate checkpoints.
-* **`reset initial`**: Strictly reverts **all tables** across the entire workbench back to their initial file read state.
-
----
-
-## Session History & Audit Logging
-
-<a id="in-repl-history-audit-log-history-history-n"></a>
-### In-REPL History Audit Log (`history`, `history <n>`)
-
-Inspect commands executed during your session as a clean numbered list:
-
-```text
-pytae [df: 344x7]> history
-Session History:
-   1: df = penguins.parquet
-   2: checkpoint v1
-   3: -filter "species == 'Adelie'"
-   4: df = -mutate "mass_kg = body_mass_g / 1000"
-
-# View only the last 3 commands
-pytae [df: 344x7]> history 3
-```
-
-### Automated Flight-Recorder Storage
-
-Every interactive session automatically writes a chronological flight-recorder audit log to `~/.pytae/history/history_<timestamp>.txt`. If an interactive session is closed without running any commands or loading any tables, Pytae automatically purges the empty history file so your directory stays completely clean.
-
----
-
-## Reproducible Pipeline Export
-
-### In-Session Export (`export <path> [-relative]`)
-
-Export your active pipeline at any time without exiting the REPL:
-
-```text
-# 1. Export as a native Pytae pipeline script (canonical)
-pytae> export pipeline.pt
-
-# 2. Export with portable relative file paths
-pytae> export pipeline.pt -relative
-
-# 3. Export as a standalone Python / Polars script
-pytae> export pipeline.py
-pytae> export pipeline.py -relative
-```
-
-### Smart Export on Exit (`exit -s [path] [-relative]`)
-
-Save pure transformation steps into a standalone executable script as you exit:
-
-| Command | Output File | Description |
-|:---|:---|:---|
-| **`exit -s`** | `./session.pt` in `cwd` | **Default**: Saves clean, pruned steps to a Pytae script. |
-| **`exit -s py`** | `./session.py` in `cwd` | Compiles session into a standalone Python / Polars script. |
-| **`exit -s pt`** | `./session.pt` in `cwd` | Explicit shortcut for `./session.pt`. |
-| **`exit -s <path> [-relative]`** | `<path>` in `cwd` | Saves to custom path with optional relative dataset paths. |
-
-### Automatic Undo Branch Pruning
-
-Both `exit -s` and `export` automatically **prune rolled-back branches and discarded experiments**. If you test a filter, restore a checkpoint, and choose another path, only the active, final pipeline steps that produced your current tables are written to the exported script.
-
-### Deterministic Dead-Store & Redundant Assignment Elimination
-
-During interactive data exploration, commands are often re-run or overwritten (e.g. typing `df = test.csv` twice, or typing `df = test1.csv` and immediately switching to `df = test2.csv` without using `test1`).
-
-When exporting scripts via `export <path>` or `exit -s`, Pytae automatically applies a deterministic **Def-Use Liveness Pass**:
-
-1. **Dead Stores Pruned**:
-   If an assignment defines a variable `v` without external side-effects, and `v` is reassigned by a subsequent command without ever being read in between, the superseded assignment is eliminated from the exported script:
-   ```text
-   # Interactive REPL:
-   pytae> df = test1.csv
-   pytae> df = test2.csv
-   pytae> df -o output.csv
-
-   # Exported script:
-   df = test2.csv
-   df -o output.csv
-   ```
-2. **Repetitive Batch Sequences Faithfully Preserved**:
-   When commands repeat across batches (e.g. processing multiple files in sequence), intermediate results are consumed by downstream operations. Pytae detects these active def-use chains and preserves every step:
-   ```text
-   # Interactive REPL:
-   pytae> df = test1.csv
-   pytae> k = df -head
-   pytae> k -o tes1_sample.csv
-   pytae> df = test2.csv
-   pytae> k = df -head
-   pytae> k -o tes2_sample.csv
-
-   # Exported script:
-   # All 6 commands are faithfully preserved because each definition is read and exported!
-   df = test1.csv
-   k = df -head
-   k -o tes1_sample.csv
-   df = test2.csv
-   k = df -head
-   k -o tes2_sample.csv
-   ```
-3. **Fail-Safe Conservative Boundaries**:
-   Commands with side effects (saving to disk via `-o`, `export`, `save`, clipboard), custom Python blocks (`py { ... }`), and explicit table resets (`reset`) act as opaque barriers. The pruner never eliminates assignments across these boundaries.
-4. **Disabling Pruning with `-no-prune`**:
-   To export verbatim, unpruned execution logs containing every repeated command, pass `-no-prune`:
-   ```bash
-   pytae> export pipeline.pt -no-prune
-   pytae> export pipeline.py -no-prune
-   pytae> exit -s pipeline.pt -no-prune
-   # Or post-hoc via CLI:
-   pytae -export history.txt -o pipeline.pt -no-prune
-   ```
-
-### Path Canonicalization & Windows UNC Resolution
-
-When exporting scripts:
-1. **Absolute Paths by Default**: Relative paths provided interactively (`df = ../data/orders.parquet`) are canonicalized to absolute paths so scripts can be executed safely from any working directory or cron scheduler.
-2. **Portable Relative Paths with `-relative`**: When sharing scripts with colleagues or checking them into Git repositories alongside data folders, passing `-relative` preserves paths relative to the current working directory.
-3. **Windows Mapped Drives to UNC**: On Windows, mapped network drives (`Z:\shared\data.parquet`) are automatically resolved to universal network paths (`\\server\share\data.parquet`) using Windows `WNetGetConnectionW`.
-
----
-
-## Executing Exported Scripts: "One and Only One Obvious Way"
-
-Pytae enforces clear boundaries between native Pytae scripts and standard Python scripts:
-
-### Pytae Pipeline Scripts (`.pt`)
-
-Native Pytae pipeline scripts contain zero-boilerplate assignments and flags (`orders = orders.parquet`, `-filter "amount > 100"`).
-
-- **Headless Execution**:
-  ```bash
-  pytae pipeline.pt
-  ```
-  Runs to completion, executes exports, and exits `0`. Ideal for automated batch pipelines and CI/CD.
-
-- **Interactive Preload**:
-  ```bash
-  pytae -i pipeline.pt
-  ```
-  Executes the script and leaves you directly inside the interactive REPL with all datasets loaded.
-
-### Python Scripts (`.py`)
-
-Python scripts exported via `export pipeline.py` or `exit -s py` contain standard Python code using `pytae` and `polars`. State-mutating `py { ... }` blocks (including direct assignments like `k = df.head(10)`, table assignments, and persistent helper definitions) are emitted with redundant top-level imports (`pd`, `pl`, `pt`, or repeated imports across blocks) automatically deduplicated, while pure inspection blocks (`py { print(df.shape) }`) are omitted.
-
-- **Headless Execution**:
-  ```bash
-  python pipeline.py
-  ```
-- **Interactive Python**:
-  ```bash
-  python -i pipeline.py
-  ```
-
-> [!NOTE]
-> Attempting to run Python scripts with `pytae script.py` or `pytae -i script.py` is actively intercepted with a friendly redirect:
-> ```text
-> pytae error: 'script.py' is a Python script; run with 'python script.py'.
-> For native Pytae pipelines, use 'pytae <script.pt>'.
-> ```
-
-### Post-Hoc CLI Conversion (`pytae -export`)
-
-If you closed a session without exporting, you can convert any recorded flight-recorder log (`~/.pytae/history/`) into a clean script post-hoc:
-
-```bash
-# Convert to native Pytae script
-pytae -export ~/.pytae/history/history_20261108_000000.txt -o pipeline.pt
-
-# Convert to standalone Python script
-pytae -export ~/.pytae/history/history_20261108_000000.txt -o pipeline.py
-
-# Convert with portable relative paths
-pytae -export history.txt -o pipeline.pt -relative
-```
-
----
-
-## Comprehensive Real-World Scenarios
-
-### Scenario 1: Feature Engineering with Milestone Diffing & Rollback
-
-```text
-# 1. Ingest dataset
-pytae> tips = sample:tips
-Loaded tips.parquet as 'tips' (244 rows x 7 cols).
-
-# 2. Freeze baseline state (0 MB RAM overhead)
-pytae [tips]> checkpoint baseline
-Saved checkpoint 'baseline' (244 rows x 7 cols).
-
-# 3. Add experimental features
-pytae [tips]> tips = -mutate "pct = (tip / total_bill) * 100", "is_high = tip > 5"
-shape: (244, 9)
-
-# 4. Compare active table vs baseline milestone
-pytae [tips]> -diff baseline
-Comparing 'tips' vs 'checkpoint:baseline':
-Shape:
-  Rows: 244 vs 244 (+0)
-  Cols: 9 vs 7 (+2)
-Columns:
-  + Added in left (2):   is_high, pct
-  Common (7):            total_bill, tip, sex, smoker, day, time, size
-
-# 5. Decide to discard experimental features and restore clean baseline
-pytae [tips]> restore baseline
-Restored checkpoint 'baseline' (244 rows x 7 cols).
-
-pytae [tips]> -diff baseline
-Values:
-  Identical: all cell values match exactly.
-```
-
----
-
-### Scenario 2: Multi-Table Branching & Production Pipeline Export
-
-```text
-# 1. Ingest tables and declare parameters
-pytae> orders = orders.parquet
-Loaded orders.parquet as 'orders' (10,000 rows x 6 cols).
-
-pytae [orders]> cust = customers.csv
-Loaded customers.csv as 'cust' (1,200 rows x 4 cols).
-
-pytae [orders, cust]> min_spend = 50.0
-Set @min_spend = 50.0
-
-# 2. Checkpoint pre-join milestone
-pytae [orders, cust]> checkpoint pre_join
-Saved checkpoint 'pre_join' (2 tables: orders, cust; 1 variable: @min_spend).
-
-# 3. Filter orders and join with customers
-pytae [orders, cust]> switch orders
-pytae [orders, cust*]> orders = -filter "amount >= @min_spend"
-pytae [orders, cust*]> orders = -join cust on=customer_id -o clean_orders.parquet
-Exported 6,420 rows to clean_orders.parquet.
-
-# 4. Export reproducible production pipeline on exit
-pytae [orders, cust*]> exit -s
-Session code saved to /Users/analyst/projects/session.pt.
-Exiting pytae REPL.
-```
-
-Generated `session.pt`:
-```pytae
-# Pytae Script: session.pt
-# Generated: 2026-11-08 00:20:00
-
-orders = orders.parquet
-cust = customers.csv
-min_spend = 50.0
-orders = -filter "amount >= @min_spend"
-orders = -join cust on=customer_id -o clean_orders.parquet
-```
-
-Run in production:
-```bash
-pytae session.pt
-```
-
-################################################################################
-# FILE: docs/repl/pipelines_inspection.md
-################################################################################
-# REPL Guide: In-Memory Pipelines & Data Inspection
-
-[← Back to REPL Hub](README.md) | [Master Reference](../pytae.md)
-
-This guide covers in-memory pipeline transformations, assignment vs. exploration semantics, multi-table joins, and non-destructive data inspection tools in the Pytae interactive REPL (`pytae -i`).
-
----
-
-## Contents
-
-- [The Core Rule: Assignment vs. Bare Exploration](#the-core-rule-assignment-vs-bare-exploration)
-  - [Bare Exploratory Previews (Non-Mutating)](#bare-exploratory-previews-non-mutating)
-  - [State Mutation via Explicit Assignment](#state-mutation-via-explicit-assignment)
-  - [Assigning Results to New Tables](#assigning-results-to-new-tables)
-- [In-Memory Pipeline Verbs](#in-memory-pipeline-verbs)
-  - [Chaining Multiple Verbs](#chaining-multiple-verbs)
-  - [Multi-Line Pipeline Continuation (`\`)](#multi-line-pipeline-continuation-)
-- [Reusable REPL Recipes (`def <name> = ...`)](#reusable-repl-recipes-def-name--)
-  - [Defining Recipes (`def`)](#defining-recipes-def)
-  - [Applying Recipes with Pipes (`|`) or Direct Invocation](#applying-recipes-with-pipes--or-direct-invocation)
-  - [Inspecting & Managing Recipes (`defs`, `status def`, `rm def`)](#inspecting--managing-recipes-defs-status-def-rm-def)
-  - [Transpilation on `export <file.py>` (Clean Reusable Python Functions)](#transpilation-on-export-filepy-clean-reusable-python-functions)
-- [Multi-Table Operations](#multi-table-operations)
-  - [Relational Joins (`-join`)](#relational-joins--join)
-  - [Table Concatenation (`-concat`)](#table-concatenation--concat)
-- [Non-Destructive Data Inspection](#non-destructive-data-inspection)
-  - [Previews (`-head`, `-tail`, `-sample`, `-browse`)](#previews--head--tail--sample--browse)
-  - [Structural Inspection (`-schema`, `-cols`, `-dtype`, `-shape`, `-nulls`)](#structural-inspection--schema--cols--dtype--shape--nulls)
-  - [Statistical Summaries (`-glimpse`, `-describe`, `-freq`)](#statistical-summaries--glimpse--describe--freq)
-  - [Terminal Visualizations (`-bar`, `-scatter`, `-hist`, `-corr`)](#terminal-visualizations--bar--scatter--hist--corr)
-  - [Comparing Datasets (`-diff`)](#comparing-datasets--diff)
-
----
-
-## The Core Rule: Assignment vs. Bare Exploration
-
-In Pytae, the interactive shell follows an ironclad rule: **Bare verbs never mutate your data**.
-
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                              THE PYTAE SAFETY CONTRACT                                 │
-├────────────────────────────────────────────────────────────────────────────────────────┤
-│  pytae> -filter "amount > 100"       # SAFE: Previews filtered rows. Table untouched.  │
-│  pytae> df = -filter "amount > 100"  # EXPLICIT: Table 'df' updated in RAM.           │
-│  pytae> big = -filter "amount > 100" # DERIVED: Creates new table 'big' in RAM.       │
-└────────────────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Bare Exploratory Previews (Non-Mutating)
-
-Running a verb directly against the prompt computes and renders an immediate terminal preview without altering the underlying table in memory:
-
-```text
-pytae [df: 344x7]> -filter "species == 'Gentoo' and body_mass_g > 5000"
-shape: (61, 7)
-┌─────────┬───────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
-│ species ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
-│ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
-│ str     ┆ str       ┆ f64            ┆ f64           ┆ i64               ┆ i64         ┆ str    │
-╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Gentoo  ┆ Biscoe    ┆ 46.1           ┆ 13.2          ┆ 211               ┆ 5300        ┆ female │
-│ Gentoo  ┆ Biscoe    ┆ 50.0           ┆ 16.3          ┆ 230               ┆ 5700        ┆ male   │
-└─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
-
-# Notice: The active table dimension remains 344x7!
-pytae [df: 344x7]> 
-```
-
-### State Mutation via Explicit Assignment
-
-To persist transformations, assign the pipeline result back to the table:
-
-```text
-pytae [df: 344x7]> df = -filter "species in ['Adelie', 'Gentoo'] and body_mass_g >= 3500"
-Updated 'df' (188 rows x 7 cols).
-
-pytae [df: 188x7]> df = -mutate "mass_kg = body_mass_g / 1000" -select "species,island,mass_kg"
-Updated 'df' (188 rows x 3 cols).
-
-pytae [df: 188x3]> 
-```
-
-### Assigning Results to New Tables
-
-Create derived tables without modifying the original source:
-
-```text
-pytae [orders, cust]> big_orders = orders -filter "total > 500"
-Created 'big_orders' (12,400 rows x 6 cols).
-
-# Both 'orders' and 'big_orders' now exist independently in memory
-pytae [orders, cust, big_orders]> 
-```
-
----
-
-## In-Memory Pipeline Verbs
-
-All 19 Pytae CLI flags execute at native Polars multithreaded SIMD speeds directly inside the REPL.
-
-### Chaining Multiple Verbs
-
-Chain verbs from left to right as a continuous pipeline:
-
-```text
-pytae [penguins]> -filter "body_mass_g > 3500" \
-                  -mutate "mass_kg = body_mass_g / 1000" \
-                  -by species,island \
-                  -agg "n=count(), avg_mass=mean(mass_kg)" \
-                  -arrange "avg_mass desc"
-```
-
-### Multi-Line Pipeline Continuation (`\`)
-
-For long or complex transformation chains, terminate lines with a backslash `\` to continue input:
-
-```text
-pytae [df: 10,000x8]> df = -filter "status == 'completed'" \
-                      -mutate "margin = revenue - cost" \
-                      -arrange "margin desc" \
-                      -head 10
-Updated 'df' (10 rows x 9 cols).
-```
-
-If you make a mistake while constructing a multi-line buffer, press <kbd>Ctrl+C</kbd> to discard the buffer and return to an empty prompt.
-
----
-
-<a id="reusable-repl-recipes-def-name--"></a>
-## Reusable REPL Recipes (`def <name> = ...`)
-
-When experimenting across multiple tables or iterative workflows in the workbench, repeating long verb pipelines is tedious. Pytae provides **REPL Recipes** (defined via `def`) to store transformation pipelines and apply them easily to any table.
-
-### Defining Recipes (`def`)
-Define a reusable pipeline recipe by assigning a verb pipeline to a name using `def <name> = <pipeline>`:
-
-```text
-pytae> def clean_orders = -dropna -filter "sales > 0" -mutate "tax = sales * 0.08"
-Defined recipe 'clean_orders': -dropna -filter "sales > 0" -mutate "tax = sales * 0.08"
-```
-
-#### Parameterized Recipes (Arguments & Default Values)
-Recipes can accept positional arguments, default values, and keyword arguments:
-
-```text
-pytae> def winsorize(col, min_val=0, max_val=1000) = \
-       -filter "$col >= $min_val" -mutate "$col = if_else($col > $max_val, $max_val, $col)"
-Defined recipe 'winsorize(col, min_val=0, max_val=1000)': -filter "$col >= $min_val" -mutate "$col = if_else($col > $max_val, $max_val, $col)"
-```
-
-Parameters are referenced inside verb arguments using `$param`, `${param}`, or `@param`. When invoked, arguments are substituted into the pipeline template:
-
-```text
-# Positional arguments:
-pytae> q1_clean = q1 | winsorize(sales, 10, 500)
-
-# Using default values:
-pytae> q1_clean = q1 | winsorize(sales)
-
-# Keyword arguments:
-pytae> q2_clean = q2 | winsorize(profit, max_val=250)
-```
-
-### Applying Recipes with Pipes (`|`) or Direct Invocation
-You can apply a defined recipe to any table using pipe syntax or space-separated command invocation:
-
-```text
-# 1. Non-destructive preview on a specific table:
-pytae> q1 | clean_orders
-
-# 2. Assign transformed result to a new table:
-pytae> q1_clean = q1 | clean_orders
-Created 'q1_clean' via recipe 'clean_orders' (850 rows x 3 cols).
-
-# 3. Apply recipe to another table and chain extra verbs:
-pytae> q2_clean = q2 | clean_orders -head 5
-
-# 4. Apply to active table:
-pytae [q1]> clean_orders
-pytae [q1]> q1_clean = clean_orders
-```
-
-### Inspecting & Managing Recipes (`defs`, `status def`, `rm def`)
-- **List recipes**: Type `defs` or `status def` to view all defined recipes.
-- **Inspect definition**: Type `def <name>` (e.g. `def clean_orders`) to inspect its pipeline.
-- **Remove recipes**: Type `rm def <name>` to delete a recipe definition, or `rm def *` to clear all.
-- **Checkpoints**: All defined recipes are automatically preserved in workbench snapshots (`checkpoint <name>` / `restore <name>`).
-
-### Transpilation on `export <file.py>` (Clean Reusable Python Functions)
-When exporting your session to a Python script via `export pipeline.py`, Pytae transpiles your definitions into **clean, reusable Python transformation functions**:
-
-```text
-pytae> export pipeline.py
-Exported standalone Python script to /workspace/pipeline.py.
-```
-
-**Generated `pipeline.py`:**
-```python
-"""Auto-generated standalone Python pipeline script from pytae REPL session."""
-import pandas as pd
-import polars as pl
-import pytae as pt
-
-# Reusable pipeline transformations
-def clean_orders(df: pt.DataFrame) -> pt.DataFrame:
-    return (
-        df
-        .dropna()
-        .filter('sales > 0')
-        .mutate('tax = sales * 0.08')
-    )
-
-q1 = pt.read("q1.parquet")
-q2 = pt.read("q2.parquet")
-q1_clean = clean_orders(q1)
-q2_clean = clean_orders(q2).head(5)
-```
-
-> [!TIP]
-> **Dead-Code Pruning**: If you define 3 test recipes during an interactive session but only use 1 in your exported tables, Pytae's dead-code optimizer automatically prunes the 2 unused functions from the generated script.
-
----
-
-## Multi-Table Operations
-
-### Relational Joins (`-join`)
-
-Perform in-memory relational joins across loaded tables:
-
-```text
-# Left join 'cust' into active table 'orders' on customer_id
-pytae [orders, cust]> orders -join cust on=customer_id how=left
-
-# Join on differing column names
-pytae [orders, cust]> orders -join cust on=cust_id:id how=inner
-
-# Assign join result to a new table
-pytae [orders, cust]> enriched = orders -join cust on=customer_id
-Created 'enriched' (100,000 rows x 10 cols).
-
-# Join and export directly to file in one step
-pytae [orders, cust]> orders -join cust on=customer_id -o merged.parquet
-Exported 100,000 rows to merged.parquet.
-```
-
-Supported join types: `how=left`, `how=inner`, `how=outer`, `how=semi`, `how=anti`, `how=cross`.
-
-### Table Concatenation (`-concat`)
-
-Concatenate tables vertically (row-bind) or horizontally (column-bind):
-
-```text
-# Vertical stack of specified tables
-pytae [q1, q2]> all_sales = -concat "frames=q1,q2"
-
-# Or stack all loaded tables directly:
-pytae [q1, q2]> all_sales = -concat
-```
-
----
-
-## Non-Destructive Data Inspection
-
-Pytae provides a comprehensive suite of inspection tools that never alter your underlying data.
-
-### Previews (`-head`, `-tail`, `-sample`, `-browse`)
-
-```text
-# Preview first 5 rows
-pytae [df: 344x7]> -head 5
-
-# Preview last 10 rows
-pytae [df: 344x7]> -tail 10
-
-# Interactive full-screen terminal grid browser with live sorting and sticky headers
-pytae [df: 344x7]> -browse
-# Controls: arrow keys / vi keys (h/j/k/l), s (toggle sort column/direction), ? (help), q (exit)
-
-# Deterministic random sample (percentage or row count)
-pytae [df: 344x7]> -sample 10% -seed 42
-pytae [df: 344x7]> -sample 50
-```
-
-### Structural Inspection (`-schema`, `-cols`, `-dtype`, `-shape`, `-nulls`)
-
-```text
-# Comprehensive schema breakdown (types, null %, unique counts)
-pytae [df: 344x7]> -schema
-
-# Column names list
-pytae [df: 344x7]> -cols
-
-# Column names sorted alphabetically
-pytae [df: 344x7]> -cols asc
-
-# Column data types
-pytae [df: 344x7]> -dtype
-
-# Dimensions (rows, cols)
-pytae [df: 344x7]> -shape
-(344, 7)
-
-# Missing value audit across all columns
-pytae [df: 344x7]> -nulls
-```
-
-### Statistical Summaries (`-glimpse`, `-describe`, `-freq`)
-
-```text
-# Transposed overview showing data types and first values
-pytae [df: 344x7]> -glimpse
-
-# Five-number summary (mean, std, min, 25%, 50%, 75%, max)
-pytae [df: 344x7]> -describe
-
-# Frequency distribution table for categorical columns
-pytae [df: 344x7]> -freq species
-┌───────────┬───────┬─────────┐
-│ species   ┆ count ┆ percent │
-│ ---       ┆ ---   ┆ ---     │
-│ str       ┆ i64   ┆ f64     │
-╞═══════════╪═══════╪═════════╡
-│ Adelie    ┆ 152   ┆ 44.19   │
-│ Gentoo    ┆ 124   ┆ 36.05   │
-│ Chinstrap ┆ 68    ┆ 19.77   │
-└───────────┴───────┴─────────┘
-```
-
-### Terminal Visualizations (`-bar`, `-scatter`, `-hist`, `-corr`)
-
-Generate instant Unicode ASCII charts directly in your terminal:
-
-```text
-# Frequency bar chart
-pytae [df: 344x7]> -freq species -bar
-
-# Histogram distribution of a continuous column
-pytae [df: 344x7]> df -hist body_mass_g
-
-# Correlation matrix
-pytae [df: 344x7]> -corr
-```
-
-### Comparing Datasets (`-diff`)
-
-Compare active tables against other tables or saved checkpoints:
-
-```text
-# Compare active table against another loaded table
-pytae [today, yesterday]> -diff yesterday on=id tol=1e-4
-
-# Compare active table against latest milestone checkpoint
-pytae [df*]> -diff baseline
-```
-
-################################################################################
-# FILE: docs/repl/sql_python_interop.md
-################################################################################
-# REPL Guide: SQL & Python Interop (Ephemeral Python Sandboxing)
-
-[← Back to REPL Hub](README.md) | [Master Reference](../pytae.md)
-
-This guide covers ANSI SQL querying across loaded tables, embedded Python execution (`py <expr>`), the **Ephemeral Python Sandboxing architecture**, and explicit table registration in the Pytae interactive REPL (`pytae -i`).
-
----
-
-## Contents
-
-- [ANSI SQL across Tables (`sql { ... }`)](#ansi-sql-across-tables-sql----)
-  - [Explicit Table Names in SQL](#explicit-table-names-in-sql)
-  - [Non-Destructive Preview vs. Assignment (`res = sql { ... }`)](#non-destructive-preview-vs-assignment-res--sql----)
-  - [Cross-Table SQL Joins](#cross-table-sql-joins)
-  - [Multi-Line SQL Queries](#multi-line-sql-queries)
-  - [Executing SQL Files (`sql file.sql` & `<var> = sql file.sql`)](#executing-sql-files-sql-filesql---var---sql-filesql)
-- [Python Execution (`py { ... }`)](#python-execution-py----)
-  - [Single-Line Evaluation](#single-line-evaluation)
-  - [Multi-Line `py { ... }` Block Mode](#multi-line-py-----block-mode)
-  - [Pre-Loaded Libraries (`pd`, `pl`, `pt`, `DataFrame`)](#pre-loaded-libraries-pd-pl-pt-dataframe)
-  - [Session-Wide Persistent Imports & Functions](#session-wide-persistent-imports--functions)
-  - [Accessing Pytae Session Variables (`@var` -> `var`)](#accessing-pytae-session-variables-var---var)
-- [Ephemeral Python Sandboxing & RAM Isolation](#ephemeral-python-sandboxing--ram-isolation)
-  - [The Design Philosophy: Ephemeral Data vs. Persistent Logic](#the-design-philosophy-ephemeral-data-vs-persistent-logic)
-  - [Immediate Garbage Collection & Memory Zeroing](#immediate-garbage-collection--memory-zeroing)
-  - [Explicit Table Registration](#explicit-table-registration)
-  - [Rejection of Bare `.pt` Accessor Proxies](#rejection-of-bare-pt-accessor-proxies)
-  - [In-Place Active Table Mutation](#in-place-active-table-mutation)
-- [Comprehensive Real-World Walkthrough](#comprehensive-real-world-walkthrough)
-
----
-
-<a id="ansi-sql-across-tables-sql----"></a>
-## ANSI SQL across Tables (`sql { ... }`)
-
-Pytae embeds a native Polars `SQLContext` directly into the REPL, allowing you to run standard ANSI SQL queries across all loaded tables without copying data into an external database engine like SQLite or DuckDB.
-
-### Explicit Table Names in SQL
-
-All loaded tables in the workbench are registered into the SQL catalog using their exact table variable names (`df`, `orders`, `cust`, etc.). Unlike one-shot CLI usage (`pytae file.parquet -sql "... FROM data"`), there is no automatic `data` alias in the REPL because every table already has an explicit name:
-
-```text
-pytae [orders: 100,000x6]> sql { SELECT status, count(*) AS n, sum(amount) AS total FROM orders GROUP BY 1 ORDER BY total DESC }
-shape: (4, 3)
-┌───────────┬───────┬────────────┐
-│ status    ┆ n     ┆ total      │
-│ ---       ┆ ---   ┆ ---        │
-│ str       ┆ i64   ┆ f64        │
-╞═══════════╪═══════╪════════════╡
-│ completed ┆ 74200 ┆ 8421095.50 │
-│ pending   ┆ 15100 ┆ 1420550.00 │
-│ refunded  ┆  6200 ┆  510200.00 │
-│ disputed  ┆  4500 ┆  380120.00 │
-└───────────┴───────┴────────────┘
-```
-
-<a id="non-destructive-preview-vs-assignment-res--sql----"></a>
-### Non-Destructive Preview vs. Assignment (`res = sql { ... }`)
-
-- **Bare `sql { ... }`**: Executes the query non-destructively and prints a formatted table preview (like `-head`). Your active table in RAM remains untouched.
-- **Assigned `<var> = sql { ... }`**: Assigns the SQL query result into a new or existing workbench table variable:
-
-```text
-pytae [orders, cust]> top_customers = sql { SELECT customer_id, sum(amount) as ltv FROM orders GROUP BY 1 HAVING ltv > 5000 ORDER BY ltv DESC }
-Created 'top_customers' from SQL query (342 rows x 2 cols).
-
-pytae [orders, cust, top_customers]> 
-```
-
-### Cross-Table SQL Joins
-
-Execute complex relational SQL joins across multiple independent tables held in RAM:
-
-```text
-pytae [orders, cust]> sql { SELECT c.country, count(o.order_id) as orders_count, avg(o.amount) as avg_amount FROM orders o LEFT JOIN cust c ON o.customer_id = c.customer_id GROUP BY 1 ORDER BY orders_count DESC }
-```
-
-### Multi-Line SQL Queries
-
-Opening `sql {` (or `<var> = sql {`) automatically enters multi-line block mode (`... ` prompt with 4-space auto-indentation). Arbitrary blank lines, `-- comments`, single quotes `'...'`, and double-quoted column identifiers `"..."` work naturally without escaping. Type `}` to execute:
-
-```text
-pytae [orders, cust]> summary = sql {
-...     SELECT
-...         c.country,
-...         count(*) AS total_orders,
-...         round(sum(o.amount), 2) AS gross_revenue
-...     FROM orders o
-...     JOIN cust c ON o.customer_id = c.customer_id
-...     WHERE o.status = 'completed'
-...     GROUP BY c.country
-...     ORDER BY gross_revenue DESC
-... }
-Created 'summary' from SQL query (18 rows x 3 cols).
-```
-
-<a id="executing-sql-files-sql-filesql---var---sql-filesql"></a>
-### Executing SQL Files (`sql file.sql` & `<var> = sql file.sql`)
-
-You can execute queries stored in external `.sql` files directly from the REPL without opening inline block mode:
-- **`sql <file.sql>`** (or `sql @<file.sql>`): Executes the query against currently loaded session tables and prints a **non-destructive preview** without altering your active table in RAM.
-- **`<var> = sql <file.sql>`**: Executes the query from the file, stores the output into workbench table `<var>`, and switches `<var>` to be your active working table.
-
-#### Table Resolution Rules
-If your SQL file queries tables by name (e.g., `SELECT x.a, y.a FROM x INNER JOIN y`), **all referenced tables (`x`, `y`, etc.) must already be loaded into the REPL session** (e.g., via `x = left.parquet` and `y = right.parquet`). Pytae registers all active workbench tables (`tables`) and checkpoints into the Polars `SQLContext`. If any table name is not loaded in memory, pytae returns an error:
-```text
-pytae SQL Error: ComputeError: table "x" does not exist
-```
-
-#### Step-by-Step Example Workflow
-
-```bash
-# 1. Load the source tables into the REPL:
-pytae> x = left_data.parquet
-pytae> y = right_data.parquet
-
-# 2. Inspect active tables:
-pytae> tables
-# -> x (1,000 rows x 5 cols)
-# -> y (1,200 rows x 4 cols)
-
-# 3. Preview test.sql without saving (non-destructive):
-#    where test.sql contains: SELECT x.a, y.a FROM x INNER JOIN y
-pytae> sql test.sql
-shape: (850, 2)
-┌─────┬─────┐
-│ a   ┆ a   │
-│ --- ┆ --- │
-│ i64 ┆ i64 │
-╞═════╪═════╡
-│ 1   ┆ 1   │
-│ 2   ┆ 2   │
-│ ... ┆ ... │
-└─────┴─────┘
-
-# 4. Save the query result as new table 'k':
-pytae> k = sql test.sql
-Created 'k' from SQL query (850 rows x 2 cols).
-
-# 5. 'k' is now the active table - pipe verbs directly or query in SQL:
-pytae [k: 850x2]> -head 5
-pytae [k: 850x2]> -filter "a > 10"
-pytae [k: 850x2]> sql { SELECT count(*) FROM k }
-```
-
----
-
-<a id="python-execution-py----"></a>
-## Python Execution (`py { ... }`)
-
-The REPL allows direct execution of arbitrary Python code when complex procedural logic, regex algorithms, or scientific libraries (`scipy`, `sklearn`, `numpy`) are required. All Python execution is enclosed in `{ ... }`.
-
-### Single-Line Evaluation
-
-Execute a one-liner Python statement using the `py { ... }` syntax:
-
-```text
-# Inspect Python environment or standard library
-pytae> py { import sys; print(sys.version) }
-3.13.1 (main, Dec  3 2024)
-
-# Mathematical evaluation
-pytae> py { import math; [math.factorial(x) for x in range(1, 6)] }
-[1, 2, 6, 24, 120]
-```
-
-<a id="multi-line-py-----block-mode"></a>
-### Multi-Line `py { ... }` Block Mode
-
-Open multi-line block mode with `py {`. The prompt changes to `... `, providing automatic indentation (+4 spaces on `:`). Arbitrary blank lines are permitted within the block without triggering early execution. Type `}` on a newline to complete and run:
-
-```text
-pytae [orders]> py {
-... import numpy as np
-... rates = np.array([0.05, 0.08, 0.12])
-... print("Mean rate:", rates.mean())
-... }
-Mean rate: 0.08333333333333333
-```
-
-#### Trailing Expression Auto-Display (IPython / Jupyter Style)
-
-Just like in Jupyter notebooks or IPython, multi-line `py { ... }` blocks automatically evaluate and format the return value of any trailing expression (such as `df.head()`, `df.describe()`, or calculations) without needing an explicit `print()` call:
-
-```text
-pytae> py {
-...     import pandas as pd
-...     import polars as pl
-...     df = pt.sample('penguins')
-...     df.head()
-... }
-shape: (5, 7)
-┌─────────┬───────────┬────────────────┬───────────────┬───────────────────┬─────────────┬────────┐
-│ species ┆ island    ┆ bill_length_mm ┆ bill_depth_mm ┆ flipper_length_mm ┆ body_mass_g ┆ sex    │
-│ ---     ┆ ---       ┆ ---            ┆ ---           ┆ ---               ┆ ---         ┆ ---    │
-│ str     ┆ str       ┆ f64            ┆ f64           ┆ f64               ┆ f64         ┆ str    │
-╞═════════╪═══════════╪════════════════╪═══════════════╪═══════════════════╪═════════════╪════════╡
-│ Adelie  ┆ Torgersen ┆ 39.1           ┆ 18.7          ┆ 181.0             ┆ 3750.0      ┆ Male   │
-│ Adelie  ┆ Torgersen ┆ 39.5           ┆ 17.4          ┆ 186.0             ┆ 3800.0      ┆ Female │
-│ Adelie  ┆ Torgersen ┆ 40.3           ┆ 18.0          ┆ 195.0             ┆ 3250.0      ┆ Female │
-│ Adelie  ┆ Torgersen ┆ null           ┆ null          ┆ null              ┆ null        ┆ null   │
-│ Adelie  ┆ Torgersen ┆ 36.7           ┆ 19.3          ┆ 193.0             ┆ 3450.0      ┆ Female │
-└─────────┴───────────┴────────────────┴───────────────┴───────────────────┴─────────────┴────────┘
-Updated active table 'df' (344 rows x 7 cols).
-```
-
-#### Contextual Tab Autocompletion inside `py { ... }` and `sql { ... }`
-
-The REPL contextually inspects your input block:
-- **Inside `py { ... }`**: Pressing `[Tab]` autocompletes object methods and attributes (`df.h` $\to$ `df.head()`, `df.hist()`), library functions (`pl.c` $\to$ `pl.col()`), loaded table references, and Python builtins/keywords.
-- **Inside `sql { ... }`**: Pressing `[Tab]` autocompletes ANSI SQL keywords (`SELECT`, `WHERE`, `ORDER BY`, etc.), loaded table names, column names, and table-qualified columns (`orders.amount`).
-
-### Pre-Loaded Libraries (`pd`, `pl`, `pt`, `DataFrame`)
-
-To maximize interactive ergonomics, Pytae automatically pre-loads the core data stack directly into every `py { ... }` scope:
-
-| Pre-Loaded Symbol | Library / Object | Description |
-|:---|:---|:---|
-| `pd` | `pandas` | Complete Pandas library (`pd.Series`, `pd.DataFrame`, `pd.to_datetime`) |
-| `pl` | `polars` | Complete Polars library (`pl.col`, `pl.lit`, `pl.concat`, `pl.Series`) |
-| `pt` | `pytae` | Core Pytae module (`pt.read`, `pt.scan`, `pt.DataFrame`) |
-| `DataFrame` | `pytae.DataFrame` | Pytae table wrapper class |
-| `df` | `pytae.DataFrame` | Active table wrapped as a Pytae DataFrame |
-| `pldf` | `polars.DataFrame` | Active table as a raw underlying Polars DataFrame |
-
-You never need to run `import pandas as pd` or `import polars as pl` — they are available immediately out of the box:
-
-```text
-pytae> py { pd.Series([10, 20, 30, 40]).describe() }
-count     4.000000
-mean     25.000000
-std      12.909944
-min      10.000000
-25%      17.500000
-50%      25.000000
-75%      32.500000
-max      40.000000
-dtype: float64
-```
-
-### Session-Wide Persistent Imports & Functions
-
-In Pytae, **all imports and custom definitions persist throughout the entire REPL session**. 
-
-Once you import a module or symbol in any `py { ... }` block, it is retained in the session environment and remains directly accessible in all subsequent `py { ... }` blocks until you `exit` the shell. You do **not** need to re-import libraries or re-define helper functions across blocks.
-
-#### 1. Persistent Module Imports
-Import any standard library or third-party package once:
-
-```text
-# Block 1: Import once
-pytae> py {
-... import math
-... from scipy.stats import norm
-... }
-
-# Block 2: Directly accessible in later blocks!
-pytae> py {
-... print("Z-score p-value:", norm.cdf(1.96))
-... print("Square root:    ", math.sqrt(144))
-... }
-Z-score p-value: 0.9750021048517795
-Square root:     12.0
-```
-
-#### 2. Persistent Custom Functions & Classes
-User-defined functions, lambdas, and classes also persist across blocks and retain full access to their imported module dependencies:
-
-```text
-# Block 1: Define domain logic or helper functions
-pytae> py {
-... import math
-... def haversine(lat1, lon1, lat2, lon2):
-...     r = 6371.0
-...     phi1, phi2 = math.radians(lat1), math.radians(lat2)
-...     dphi = math.radians(lat2 - lat1)
-...     dlam = math.radians(lon2 - lon1)
-...     a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlam/2)**2
-...     return 2 * r * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-... }
-
-# Block 2: Call the function across the session
-pytae> py {
-... dist_km = haversine(40.7128, -74.0060, 51.5074, -0.1278)
-... print(f"NYC to London: {dist_km:,.1f} km")
-... }
-NYC to London: 5,570.2 km
-```
-
-#### 3. Deletion and Overwriting (`del`)
-- **Explicit Removal**: If you wish to explicitly unload or remove an imported module or custom function from the session environment, run `del <name>` inside any `py { ... }` block:
-  ```text
-  pytae> py { del haversine }
-  ```
-- **Reassignment**: If a function or module name is reassigned to non-callable scratch data (e.g. `haversine = 123`), it is automatically evicted from the persistent environment upon block exit.
-
-### Accessing Pytae Session Variables (`@var` -> `var`)
-
-Session variables defined with `@var = ...` in the REPL (e.g. `@path`, `@threshold`) are automatically injected into `py` blocks **as bare Python identifiers without the `@` prefix** (`path`, `threshold`):
-
-```text
-# 1. Define variable in Pytae
-pytae> @data_dir = r"Z:\Finance\RiskModels\Data\HistoricalExtracts"
-
-# 2. Access in Python without '@'
-pytae> py {
-... import glob, polars as pl
-... files = glob.glob(data_dir + r"\*.parquet")
-... dfs = [pl.read_parquet(f, columns=['reporting_date', 'rwa_amount']) for f in files]
-... comb_df = DataFrame(pl.concat(dfs))
-... }
-Registered active table 'comb_df' (250,000 rows x 2 cols).
-```
-
-> [!NOTE]
-> In standard Python syntax, `@` is not a valid identifier prefix (`@path` raises a Python `SyntaxError`). Always omit the `@` when referencing variables inside Python expressions. For full details, see [Session Variables Guide](variables_config.md#accessing-session-variables-in-python-py-blocks).
-
----
-
-## Ephemeral Python Sandboxing & RAM Isolation
-
-### The Design Philosophy: Ephemeral Data vs. Persistent Logic
-
-In standard interactive shells (such as IPython or Jupyter), every variable created in Python lingers in the global namespace indefinitely, causing memory leaks that bloat process RSS.
-
-Pytae balances **interactive convenience** with **strict memory hygiene** through a clear separation of concerns:
-
-1. **Persistent Logic**:
-   - Imported modules (`types.ModuleType`), functions (`types.FunctionType`, callables), and classes (`type`) **persist** throughout the REPL session so you only import once.
-2. **Ephemeral Data**:
-   - Intermediate variables, scratch lists, dictionaries, numbers, NumPy arrays, and unassigned dataframes are **immediately purged from RAM** upon block completion.
-   - `gc.collect()` is explicitly executed.
-   - Kernel page trimming (`libc.malloc_trim(0)` on Linux, `mach_task` on macOS, `K32EmptyWorkingSet` on Windows) is triggered after every block to return resident heap pages back to the operating system.
-3. **Explicit Workbench Tables**:
-   - Only tables assigned directly from a Pytae `DataFrame` (e.g. `orders_log = pt.DataFrame(df)` or `k = df.head(10)`), or assigned back to active `df` are promoted into the Pytae table registry and preserved in exported `.pt`/`.py` scripts.
-
-### Immediate Garbage Collection & Memory Zeroing
-
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                   EPHEMERAL PYTHON SANDBOXING ARCHITECTURE                             │
-├────────────────────────────────────────────────────────────────────────────────────────┤
-│ 1. INGEST SCOPE   │ Pre-loads pd, pl, pt, active tables, session vars, & persistent env.│
-│ 2. EXECUTE SCRIPT │ User imports libraries, defines functions, trains ML models, etc.   │
-│ 3. BLOCK COMPLETE │ Python execution ends.                                             │
-│ 4. PRESERVE LOGIC │ Modules, custom functions, and classes saved into session env.     │
-│ 5. RAM FLUSH      │ Scratch data & arrays destroyed. gc.collect() invoked.             │
-│ 6. OS PAGE TRIM   │ OS kernel frees virtual memory pages. Process RSS resets to 0 MB.  │
-│ 7. EXPLICIT HANDOFF│ ONLY tables assigned as Pytae DataFrames persist in REPL.          │
-└────────────────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Explicit Table Registration
-
-To promote a Python DataFrame into the active Pytae workbench, assign it directly as a `pt.DataFrame`:
-
-```text
-pytae [orders]> py {
-... # Heavy computation inside Python
-... pldf = orders.to("polars")
-... pldf = pldf.with_columns(log_amount = pl.col("amount").log())
-... # Register back to Pytae:
-... orders_log = pt.DataFrame(pldf)
-... }
-Registered table 'orders_log' in Pytae workbench.
-
-pytae [orders, orders_log]> 
-```
-
-### Rejection of Bare `.pt` Accessor Proxies
-
-To prevent memory leaks and ambiguous pointer references across the C-Python boundary:
-- Tables inside the `py` block must be explicitly converted using `pt.DataFrame(...)` or `df.to("pytae")`.
-- Unassigned or bare Python variables (`x = 100`) do not persist in Pytae's `@variable` registry.
-- Tables cannot be accidentally overwritten without an explicit assignment or registration.
-
-### In-Place Active Table Mutation
-
-If you wish to mutate the currently active table using Python logic:
-
-```text
-pytae [orders: 100,000x6]> py {
-... df = orders.filter("amount > 0").arrange("amount desc")
-... }
-Updated active table 'orders' (98,420 rows x 6 cols).
-```
-
----
-
-## Comprehensive Real-World Walkthrough
-
-Combining Pytae CLI verbs, ANSI SQL, and embedded Python into a unified workflow:
-
-```text
-# 1. Ingest dataset
-pytae> df = sample:tips
-Loaded tips.parquet as 'df' (244 rows x 7 cols).
-
-# 2. Filter using CLI verbs
-pytae [df: 244x7]> df = -filter "total_bill > 10"
-
-# 3. Aggregate using ANSI SQL
-pytae [df: 226x7]> summary = sql { SELECT day, time, avg(tip) as avg_tip, count(*) as count FROM df GROUP BY 1, 2 }
-Created 'summary' from SQL query (6 rows x 4 cols).
-
-# 4. Fit statistical regression in Python using Scipy (import persists!)
-pytae [df, summary]> py {
-... from scipy.stats import linregress
-... x = df['total_bill'].to_list()
-... y = df['tip'].to_list()
-... res = linregress(x, y)
-... print(f"Slope: {res.slope:.4f}, R-squared: {res.rvalue**2:.4f}")
-... }
-Slope: 0.1065, R-squared: 0.4497
-
-# Notice: All scipy arrays and regression objects are purged; process RAM remains flat!
-pytae [df, summary]> status
-Process RAM   : ~132.1 MB (PID 84912)
-
-# 5. Use the previously imported linregress function later without re-importing!
-pytae [df, summary]> py {
-... subset = df.filter("sex == 'Female'")
-... female_res = linregress(subset['total_bill'].to_list(), subset['tip'].to_list())
-... print(f"Female slope: {female_res.slope:.4f}")
-... }
-Female slope: 0.1132
-```
-
-################################################################################
-# FILE: docs/repl/variables_config.md
-################################################################################
-# REPL Guide: Session Variables (`@var`), Settings & User Preferences
-
-[← Back to REPL Hub](README.md) | [Master Reference](../pytae.md)
-
-This guide covers defining session parameters and constants (`@var`), traversing nested configuration dictionaries, parameterizing pipeline filters and queries, configuring display options with `set`, persisting settings across sessions via `set save`, and system status telemetry in the Pytae interactive REPL (`pytae -i`).
-
----
-
-## Contents
-
-- [Session Variables & Parameters (`@var`)](#session-variables--parameters-var)
-  - [Defining Variables (`<name> = <literal>`)](#defining-variables-name--literal)
-  - [Supported Data Types](#supported-data-types)
-  - [Traversing Nested Dictionaries & Lists (`@cfg.key`, `@cfg[idx]`)](#traversing-nested-dictionaries--lists-cfgkey-cfgidx)
-  - [Using Variables in Pipeline Verbs (`-filter`, `-mutate`, `sql { ... }`)](#using-variables-in-pipeline-verbs--filter--mutate-sql----)
-  - [Accessing Session Variables in Python (`py` blocks)](#accessing-session-variables-in-python-py-blocks)
-  - [Inspecting Variables (`status var`, `status var <name>`)](#inspecting-variables-status-var-status-var-name)
-  - [Deleting Variables (`rm var <name>`, `rm var *`)](#deleting-variables-rm-var-name-rm-var-)
-  - [Namespace Protection: Tables vs. Variables](#namespace-protection-tables-vs-variables)
-- [Display Preferences & Configuration (`set`, `set save`)](#display-preferences--configuration-set-set-save)
-  - [Querying Active Settings (`set`)](#querying-active-settings-set)
-  - [Available Display Options](#available-display-options)
-  - [Persisting Settings to Disk (`set save`, `~/.pytae/config.json`)](#persisting-settings-to-disk-set-save-pytaeconfigjson)
-- [Session Status & Diagnostics (`status`, `status -v`)](#session-status--diagnostics-status-status--v)
-
----
-
-## Session Variables & Parameters (`@var`)
-
-In complex data wrangling pipelines, hardcoding magic numbers or string literals across multiple queries leads to fragile scripts. Pytae allows you to declare typed session parameters that can be safely referenced across all CLI flags and SQL statements.
-
-### The Universal `@` Rule: Tables vs. Variables
-
-To keep the REPL mental model clean and unambiguous:
-
-| Scope | Rule | Example |
-| :--- | :--- | :--- |
-| **Session Variables** | **Always prefix LHS with `@`** | `@threshold = 5000`<br>`@path = "Z:\data\*.parquet"`<br>`@regions = ['North', 'West']` |
-| **Tables (DataFrames)** | **Always bare on LHS (no `@`)** | `df = orders.parquet`<br>`sales = sample:tips`<br>`heavy = df -filter "mass > 5000"` |
-| **Referencing Variables** | **Always use `@`** | `-filter "amount > @threshold"`<br>`df = @path`<br>`lazy_df = scan @path` |
-
-> [!TIP]
-> Bare scalar definitions (e.g. `threshold = 5000`) continue to work as a silent fallback, but the recommended convention is to always use `@` on the left-hand side (`@threshold = 5000`).
-
-<a id="defining-variables-name--literal"></a>
-### Defining Variables
-
-Assign any literal directly at the prompt using the `@name = ...` syntax:
-
-```text
-# Numeric scalars (integers, floats)
-pytae> @threshold = 5000
-Set @threshold = 5000 (int)
-
-pytae> @tax_rate = 0.0825
-Set @tax_rate = 0.0825 (float)
-
-# String parameters & labels
-pytae> @target_status = 'completed'
-Set @target_status = 'completed' (str)
-
-# Lists & Collections
-pytae> @target_countries = ['US', 'CA', 'UK']
-Set @target_countries = ['US', 'CA', 'UK'] (list)
-
-# Configuration dictionaries
-pytae> @cfg = {'min_mass': 3500, 'island': 'Biscoe', 'limit': 100}
-Set @cfg = {'min_mass': 3500, 'island': 'Biscoe', 'limit': 100} (dict)
-```
-
----
-
-### Supported Path Formats Across Shells & OSs
-
-Pytae automatically normalizes and recognizes all operating system and shell path formats across Windows (CMD, PowerShell, Git Bash, MSYS2, Cygwin, WSL) and Unix (macOS, Linux):
-
-| Shell / Environment | Format Example | Syntax | Notes |
-| :--- | :--- | :--- | :--- |
-| **Windows Backslash (CMD / PowerShell)** | `C:\Users\maddy\data\orders.parquet`<br>`Z:\OSFI\...\historic_data\*.parquet` | `@p = r"Z:\OSFI\...\*.parquet"`<br>or `@p = "C:\\data\\orders.parquet"` | Raw string `r"..."` prevents backslash escape issues (e.g. `\u` in `\uspc`). |
-| **Windows Forward Slash** | `C:/Users/maddy/data/orders.parquet` | `@p = "C:/Users/maddy/data/orders.parquet"` | Cross-platform friendly; avoids all escape characters. |
-| **Windows UNC Network Shares** | `\\server\share\data\orders.parquet`<br>`//server/share/data/orders.parquet` | `@p = r"\\server\share\data\orders.parquet"` | Full support for Windows shared network drives and UNC paths. |
-| **Git Bash / MSYS (Single Slash)** | `/c/Users/maddy/data/orders.parquet`<br>`/z/OSFI/.../data.parquet` | `@p = "/c/Users/maddy/data/orders.parquet"` | Automatically translates `/c/...` to `C:/...` on Windows. |
-| **Git Bash / MSYS (Double Slash)** | `//c/Users/maddy/data/orders.parquet` | `@p = "//c/Users/maddy/data/orders.parquet"` | Supported for Git Bash scripts that use double slashes to prevent POSIX path expansion. |
-| **WSL (Windows Subsystem for Linux)** | `/mnt/c/Users/maddy/data/orders.parquet` | `@p = "/mnt/c/Users/maddy/data/orders.parquet"` | Automatically resolves `/mnt/c/...` mounts on Windows. |
-| **Cygwin** | `/cygdrive/c/Users/maddy/data/orders.parquet` | `@p = "/cygdrive/c/Users/maddy/data/orders.parquet"` | Automatically resolves `/cygdrive/c/...` mounts on Windows. |
-| **macOS / Linux / POSIX** | `/Users/maddy/data/orders.parquet`<br>`~/data/orders.parquet` | `@p = "~/data/orders.parquet"` | Tilde (`~`) home expansion and absolute POSIX paths supported natively. |
-| **Relative & Multi-File Globs** | `data/*.parquet`<br>`sales_2026_*.parquet` | `@p = "data/*.parquet"` | Matches multiple partitioned parquet or CSV files. |
-| **Sample Datasets** | `sample:penguins`, `sample:tips`, `sample:titanic` | `@p = "sample:penguins"` | Built-in sample datasets bundled with Pytae. |
-
----
-
-### Ingestion from Path Variables (`df = @path`, `df = scan @path`)
-
-Once a path is saved in a session variable, you can load or lazily scan datasets directly using the `@var` reference:
-
-```text
-# 1. Define the path variable
-pytae> @rwa_path = r"Z:\OSFI\Data Sources for Historical RWA\Project\rwa_data\input_tables\uspc_calc_extract\historic_data\*.parquet"
-Set @rwa_path = 'Z:\\OSFI\\Data Sources for Historical RWA\\Project\\rwa_data\\input_tables\\uspc_calc_extract\\historic_data\\*.parquet' (str)
-
-# 2. Load eagerly into memory as table 'df'
-pytae> df = @rwa_path
-Loaded *.parquet as 'df' (250,000 rows x 18 cols).
-
-# 3. Or scan lazily without loading into RAM
-pytae> lazy_df = scan @rwa_path
-Scanned *.parquet as 'lazy_df' (lazy, 18 cols).
-
-# 4. Git Bash path ingestion
-pytae> @gb_path = "/c/Users/maddy/downloads/customers.csv"
-pytae> customers = @gb_path -dlim "," -encoding utf-8
-Loaded customers.csv as 'customers' (15,000 rows x 5 cols).
-```
-
-### Supported Data Types
-
-Pytae session variables support standard JSON-serializable primitives and collections:
-- **Integers**: `min_rows = 100`
-- **Floating-point numbers**: `tax_rate = 0.0825`
-- **Strings**: `env = 'production'`
-- **Booleans**: `is_active = True`
-- **Lists**: `priority_tiers = ['Gold', 'Platinum']`
-- **Dictionaries**: `config = {"cutoff": 1000, "region": "North"}`
-
-### Traversing Nested Dictionaries & Lists (`@cfg.key`, `@cfg[idx]`)
-
-Define hierarchical configuration blocks and traverse them using dot notation or index brackets:
-
-```text
-pytae> thresholds = {"high": 10000, "medium": 5000, "low": 1000}
-Set @thresholds = {'high': 10000, 'medium': 5000, 'low': 1000} (dict)
-
-# Inspect specific subkey
-pytae> @thresholds.high
-10000
-
-# Inspect list index
-pytae> tiers = ['bronze', 'silver', 'gold']
-pytae> @tiers[2]
-'gold'
-```
-
-<a id="using-variables-in-pipeline-verbs--filter--mutate-sql----"></a>
-### Using Variables in Pipeline Verbs (`-filter`, `-mutate`, `sql { ... }`)
-
-Inject session variables directly into pipeline filter expressions, column derivations, and SQL queries:
-
-```text
-# 1. Use in -filter
-pytae [orders]> -filter "amount >= @threshold and country in @target_countries"
-
-# 2. Use in -mutate
-pytae [orders]> orders = -mutate "gross_amount = amount * (1 + @tax_rate)"
-
-# 3. Use in ANSI SQL
-pytae [orders]> sql { SELECT * FROM orders WHERE amount > @thresholds.medium }
-```
-
-Variables are substituted at query compile time, ensuring full Polars SIMD optimization without Python interpreter overhead.
-
-### Accessing Session Variables in Python (`py` blocks)
-
-When you define a session variable in Pytae (`@var = ...`), Pytae automatically injects it into the isolated execution scope of `py` blocks **as a native Python variable without the `@` prefix** (`var`).
-
-> [!IMPORTANT]
-> **The `@` Rule Across Modes:**
-> - **In Pytae REPL commands**: Always use `@var` (`@path = ...`, `df = @path`, `-filter "amount >= @threshold"`). The `@` tells Pytae that the identifier is a session parameter rather than a dataset or file name.
-> - **In Python (`py` blocks)**: Always use bare `var` (`path`, `threshold`). In Python grammar, `@` is not a valid identifier character and will cause a `SyntaxError: invalid syntax` if included in an expression like `glob.glob(@path)`.
-
-#### Example: Globbing and Loading Multi-File Partitions from a Network Drive
-
-Suppose you define a directory path on a Windows network share or local drive:
-
-```text
-# 1. Define the base path as a raw string session variable in Pytae
-pytae> @data_dir = r"Z:\Finance\RiskModels\Data\HistoricalExtracts"
-```
-
-You can now work with this path in two ways:
-
-##### Way 1: Direct Pytae 1-Liner (Recommended — No Python or imports required)
-Pytae's universal reader natively resolves wildcards and globs across partitions:
-
-```text
-# Ingest all matching parquet files, select columns, and combine in one shot
-pytae> @extract_glob = r"Z:\Finance\RiskModels\Data\HistoricalExtracts\*.parquet"
-pytae> comb_df = @extract_glob -select "reporting_date, rwa_amount"
-Loaded *.parquet as 'comb_df' (250,000 rows x 2 cols).
-```
-
-##### Way 2: Inside a `py` Multi-Line Block (Using Polars & glob)
-If you require custom procedural transformations, access the variable inside `py` as `data_dir` (without `@`):
-
-```text
-pytae> py {
-... import glob
-... import polars as pl
-... 
-... # Notice: 'data_dir' is used without '@' inside Python!
-... files = glob.glob(data_dir + r"\*.parquet")
-... dfs = [pl.read_parquet(f, columns=['reporting_date', 'rwa_amount']) for f in files]
-... 
-... # Wrap the concatenated result with DataFrame() to register it as an active Pytae table
-... comb_df = DataFrame(pl.concat(dfs))
-... }
-Registered active table 'comb_df' (250,000 rows x 2 cols).
-```
-
-Once the block exits, `comb_df` is fully registered in your Pytae session and ready for normal REPL operations (`-filter`, `-mutate`, `save`, `diff`, etc.).
-
-<a id="inspecting-variables-status-var-status-var-name"></a>
-### Inspecting Variables (`status var`, `status var <name>`)
-
-```text
-# List all defined variables
-pytae> status var
-Session Variables (3 defined):
-  * @threshold        : 5000 (int)
-  * @tax_rate         : 0.0825 (float)
-  * @target_countries : ['US', 'CA', 'UK'] (list)
-
-# Inspect a specific variable
-pytae> status var threshold
-Variable: @threshold
-Type    : int
-Value   : 5000
-```
-
-<a id="deleting-variables-rm-var-name-rm-var-"></a>
-### Deleting Variables (`rm var <name>`, `rm var *`)
-
-```text
-# Delete a single variable
-pytae> rm var threshold
-Removed variable @threshold.
-
-# Delete all session variables
-pytae> rm var *
-Cleared all session variables.
-```
-
-### Namespace Protection: Tables vs. Variables
-
-Pytae strictly enforces separate namespaces for DataFrames and scalar variables:
-- If a table named `df` exists, assigning `df = 10` is rejected with an error directing you to choose a distinct variable name or remove the table first via `rm table df`.
-- Table names cannot start with `@` (e.g. `@orders = ...` is invalid syntax).
-- This separation guarantees that variables can never accidentally overwrite or shadow active in-memory tables.
-
----
-
-## Display Preferences & Configuration (`set`, `set save`)
-
-Customize terminal output formatting, floating-point precision, and display truncation.
-
-### Querying Active Settings (`set`)
-
-Running `set` with no arguments prints the current configuration:
-
-```text
-pytae> set
-max_rows        = 10 (options: <int>, default)
-max_cols        = all (options: <int>, all, default)
-float_precision = auto (options: <int>, auto, default)
-comma           = off (options: on, off)
-syntax_highlight = on (options: on, off)
-theme            = default (options: default, monokai, dracula, nord, light, minimal)
-(Tip: Run 'set save' to persist settings across REPL sessions)
-```
-
-Query a specific key using `set <key>` (running `set theme` also prints a live colored preview of all available themes):
-
-```text
-pytae> set max_rows
-max_rows        = 10 (options: <int>, default)
-```
-
-### Available Display Options
-
-| Option | Aliases | Allowed Values | Default | Description |
-|:---|:---|:---|:---|:---|
-| **`max_rows`** | `rows` | `<int>`, `default` | `10` | Maximum rows printed in tabular previews. |
-| **`max_cols`** | `cols` | `<int>`, `all`, `default` | `all` | Maximum columns printed in wide tables before truncating. |
-| **`float_precision`** | `precision` | `<int>`, `auto`, `default`| `auto` | Decimal places shown for floating-point values. |
-| **`comma`** | — | `on`, `off` | `off` | Format large numbers with thousands separators (`1,234,567`). |
-| **`syntax_highlight`** | `highlight` | `on`, `off` | `on` | Live ANSI syntax highlighting across Pytae DSL, `sql { ... }`, `py { ... }`, and prompts. |
-| **`theme`** | `color_theme` | `default`, `monokai`, `dracula`, `nord`, `light`, `minimal` | `default` | Syntax highlighting color palette (run `set theme` for live visual samples). |
-
-Multiple settings can be combined on a single line:
-
-```text
-pytae> set max_rows = 25, comma = on, float_precision = 2
-```
-
-### Persisting Settings to Disk (`set save`, `~/.pytae/config.json`)
-
-On initial startup, Pytae automatically creates `~/.pytae/config.json` with sensible defaults. To permanently save your active display preferences across all future REPL sessions, run:
-
-```text
-pytae> set save
-Saved configuration to /Users/username/.pytae/config.json.
-```
-
-On subsequent launches, the REPL automatically reads `~/.pytae/config.json`:
-
-```json
-{
-  "max_rows": 25,
-  "max_cols": "all",
-  "float_precision": 2,
-  "comma": "on",
-  "syntax_highlight": "on",
-  "theme": "monokai"
-}
-```
-
----
-
-## Session Status & Diagnostics (`status`, `status -v`)
-
-Run bare `status` to inspect high-level telemetry for the active session:
-
-```text
-pytae [orders, cust*]> status
-=== REPL Session Status ===
-Active Table  : cust (500 rows x 4 cols, ~0.02 MB)
-Loaded Tables : 2 tables [orders, cust*] (~0.12 MB in memory)
-Variables     : 2 defined [@tax_rate, @threshold]
-Checkpoints   : 2 saved (latest: baseline) [42.1 KB ephemeral disk, 0 MB RAM]
-Process RAM   : ~148.2 MB (PID 64919)
-------------------------------------------------------------
-(Tip: Use 'status table [name]' for table details, 'status checkpoint [name]' for checkpoints, 'status var [name]' for variables)
-```
-
-Run `status -v` for verbose details including per-table schemas, column counts, variable values, checkpoint paths, history log file paths, and memory statistics:
-
-```text
-pytae [orders, cust*]> status -v
-=== REPL Session Status ===
-Active Table  : cust (500 rows x 4 cols, ~0.02 MB)
-Loaded Tables : 2 tables [orders, cust*] (~0.12 MB in memory)
-  - orders   : 1,000 rows x 8 cols (~0.10 MB) (source: orders.parquet)
-  - cust [active]: 500 rows x 4 cols (~0.02 MB) (source: customers.csv)
-Variables     : 2 defined [@tax_rate, @threshold]
-  * @tax_rate     : 0.0825 (float)
-  * @threshold    : 5000 (int)
-Checkpoints   : 2 saved (latest: baseline) [42.1 KB ephemeral disk, 0 MB RAM]
-  - baseline    : ephemeral IPC created 2026-11-08 00:00:00 (2 tables)
-History Log   : ~/.pytae/history/history_20261108_000000.txt
-Settings      : max_rows=25, max_cols=all, float_precision=2, comma=on
-Process RAM   : ~148.2 MB (PID 64919)
-```
-
-################################################################################
-# FILE: docs/repl/workbench_tables.md
-################################################################################
-# REPL Guide: Ingestion, Multi-Table Management & Shell Navigation
-
-[← Back to REPL Hub](README.md) | [Master Reference](../pytae.md)
-
-This guide covers launching the interactive workbench, ingesting files and sample datasets, managing multiple tables simultaneously in RAM, zero-copy renaming, subject-first execution, table deallocation, and interactive shell navigation in the Pytae interactive REPL (`pytae -i`).
-
----
-
-## Contents
-
-- [Launching the REPL](#launching-the-repl)
-- [Ingesting Datasets](#ingesting-datasets)
-  - [Variable Assignment (`df = file.parquet`)](#variable-assignment-df--fileparquet)
-  - [Reader Options (`-encoding`, `-dlim`, `-nrows`, `-opts`)](#reader-options--encoding--dlim--nrows--opts)
-  - [Excel Workbooks & Sheet Selection](#excel-workbooks--sheet-selection)
-  - [Multi-File Glob Ingestion](#multi-file-glob-ingestion)
-  - [Windows & Git Bash Path Formats (`/c/Users/...`, `//c/...`)](#windows--git-bash-path-formats-cusers-c)
-  - [Bundled Sample Datasets (`sample:<name>`)](#bundled-sample-datasets-samplename)
-- [Multi-Table Workbench Operations](#multi-table-workbench-operations)
-  - [Inspecting Loaded Tables (`status table`)](#inspecting-loaded-tables-status-table)
-  - [Quick Dimension Inspection without Switching](#quick-dimension-inspection-without-switching)
-  - [Switching the Active Table Cursor (`switch <name>`)](#switching-the-active-table-cursor-switch-name)
-  - [Zero-Copy Table Renaming (`rename <old> <new>`)](#zero-copy-table-renaming-rename-old-new)
-  - [Subject-First Execution (`<tbl> -<verb>`)](#subject-first-execution-tbl--verb)
-  - [Removing Tables & OS Memory Trimming (`rm table <name>`)](#removing-tables--os-memory-trimming-rm-table-name)
-- [Interactive Shell Navigation & Ergonomics](#interactive-shell-navigation--ergonomics)
-  - [Prompt Structure & Telemetry](#prompt-structure--telemetry)
-  - [Context-Aware Tab Autocompletion](#context-aware-tab-autocompletion)
-  - [Persistent Arrow-Key History](#persistent-arrow-key-history)
-  - [Multiline Command Drafting & Line Continuations (`\`)](#multiline-command-drafting--line-continuations-)
-  - [Unix Shell Integration (`|`)](#unix-shell-integration-)
-  - [Terminal Keyboard Shortcuts](#terminal-keyboard-shortcuts)
-
----
-
-## Launching the REPL
-
-Launch the interactive workbench by invoking `pytae` with the `-i` flag:
-
-```bash
-# Launch empty workbench
-pytae -i
-
-# Launch workbench and preload an existing pipeline script
-pytae -i sample.pt
-```
-
-> [!NOTE]
-> `pytae -i` does not preload data files directly on launch (e.g. `pytae -i orders.parquet customers.csv`). Only an empty workbench (`pytae -i`) or an existing native pipeline script (`pytae -i sample.pt`) can be launched. Datasets are loaded interactively inside the workbench using assignment syntax (`orders = orders.parquet`), ensuring exported replay scripts remain 100% reproducible and self-contained.
-
----
-
-## Ingesting Datasets
-
-### Variable Assignment (`df = file.parquet`)
-
-Load datasets directly into named table variables using standard assignment syntax:
-
-```text
-pytae> orders = orders.parquet
-Loaded orders.parquet as 'orders' (100,000 rows x 6 cols).
-pytae [orders: 100,000x6]> 
-```
-
-The table is immediately read into memory via Polars SIMD Arrow buffers and becomes the active table.
-
-> [!NOTE]
-> The legacy syntax `load <path> [as <alias>]` is deprecated in favor of direct variable assignment (`<alias> = <path>`).
-
-### Reader Options (`-encoding`, `-dlim`, `-nrows`, `-opts`)
-
-Pass format parameters or full reader options directly during assignment:
-
-```text
-# Specify Latin-1 encoding, semicolon delimiter, and load only the first 5,000 rows
-pytae> raw = export.csv -encoding latin1 -dlim ";" -nrows 5000
-Loaded export.csv as 'raw' (5,000 rows x 12 cols) [encoding=latin1, sep=;, nrows=5000].
-
-# Custom comma delimiter
-pytae> cust = customers.csv -dlim ","
-Loaded customers.csv as 'cust' (15,000 rows x 5 cols) [sep=,].
-```
-
-Reader options apply strictly to the specific assignment command on that line and do not pollute future operations.
-
-### Excel Workbooks & Sheet Selection
-
-Ingest Excel spreadsheets (`.xlsx`, `.xls`, `.xlsm`):
-
-```text
-# Load first sheet by default
-pytae> sales = sales_2024.xlsx
-Loaded sales_2024.xlsx as 'sales' (3,500 rows x 8 cols).
-
-# Specify target sheet name via -opts
-pytae> feb = sales_2024.xlsx -opts "sheet=Feb"
-Loaded 'feb' from sales_2024.xlsx (3,500 rows x 8 cols).
-
-# Combine options (sheet, skiprows, header, usecols)
-pytae> notes = sales_2024.xlsx -opts "sheet=CustomNotes, skiprows=2, header=0"
-Loaded 'notes' from sales_2024.xlsx (1,200 rows x 5 cols).
-```
-
-> [!NOTE]
-> Sheet names must strictly be specified via `-opts "sheet=..."`. Colon sheet syntax (`file.xlsx:Sheet`) is not supported to ensure path integrity across local and network filesystems.
-
-### Multi-File Glob Ingestion
-
-Ingest multiple partition files matching a glob pattern into a single unified table:
-
-```text
-pytae> sales_2025 = "sales_2025/part_*.parquet"
-Loaded 12 files matching 'sales_2025/part_*.parquet' as 'sales_2025' (1,200,000 rows x 8 cols).
-```
-
-### Direct Database & Cloud Ingestion (`sqlite://`, `duckdb://`, `s3://`, `gcs://`)
-
-Load tables or execute direct queries from SQLite, DuckDB, or cloud data lakes into the workbench:
-
-```text
-# SQLite eager table ingestion
-pytae> orders = sqlite://app.db:orders
-Loaded app.db:orders as 'orders' (100,000 rows x 5 cols).
-
-# SQLite custom query ingestion
-pytae> top_orders = sqlite://app.db:SELECT id, amount FROM orders WHERE amount > 50
-Loaded app.db:query as 'top_orders' (12,450 rows x 2 cols).
-
-# DuckDB eager table ingestion (zero-copy via Apache Arrow)
-pytae> customers = duckdb://analytics.duckdb:customers
-Loaded analytics.duckdb:customers as 'customers' (25,000 rows x 4 cols).
-
-# Lazy scan with projection and filter pushdown
-pytae> lake = scan s3://my-bucket/lake/events.parquet
-Scanned events.parquet as 'lake' (lazy, 18 cols).
-
-pytae> orders_lazy = scan sqlite://app.db:orders
-Scanned app.db:orders as 'orders_lazy' (lazy, 5 cols).
-```
-
-<a id="windows--git-bash-path-formats-cusers-c"></a>
-### Windows, UNC & Git Bash Path Formats (`/c/Users/...`, `//c/...`, `\\server\share\...`)
-
-On Windows, Git Bash (MSYS2), and WSL environments, path conventions often vary. Pytae seamlessly normalizes Git Bash drive mounts (`/c/path/file.parquet` and `//c/path/file.parquet`), WSL mounts (`/mnt/c/...`), Cygwin mounts (`/cygdrive/c/...`), and UNC network shares directly into valid Windows filesystem paths (`C:/path/file.parquet`), whether passed bare or quoted:
-
-```text
-# Unquoted Git Bash path
-pytae> orders = /c/Users/maddy/orders.parquet
-Loaded orders.parquet as 'orders' (100,000 rows x 6 cols).
-
-# Quoted Git Bash path
-pytae> cust = "//c/Users/maddy/customers.csv"
-Loaded customers.csv as 'cust' (15,000 rows x 5 cols).
-
-# Standard Windows paths with drive letter
-pytae> sales = "C:/Users/maddy/sales.parquet"
-Loaded sales.parquet as 'sales' (50,000 rows x 8 cols).
-
-# Windows UNC Network Share
-pytae> network_deals = "\\server\share\rwa_data\deals.parquet"
-Loaded deals.parquet as 'network_deals' (85,000 rows x 12 cols).
-```
-
-### Supported Path Formats Summary
-
-| Environment / Format | Example Syntax | Normalized By Pytae To |
-| :--- | :--- | :--- |
-| **Windows Backslash** | `C:\data\orders.parquet`<br>`r"Z:\OSFI\...\*.parquet"` | `C:/data/orders.parquet`<br>`Z:/OSFI/.../*.parquet` |
-| **Windows Forward Slash** | `C:/data/orders.parquet` | `C:/data/orders.parquet` |
-| **Windows UNC Shares** | `\\server\share\data.parquet` | `//server/share/data.parquet` |
-| **Git Bash (Single Slash)** | `/c/Users/maddy/orders.parquet` | `C:/Users/maddy/orders.parquet` |
-| **Git Bash (Double Slash)** | `//c/Users/maddy/orders.parquet` | `C:/Users/maddy/orders.parquet` |
-| **WSL Mounts** | `/mnt/c/Users/maddy/orders.parquet` | `C:/Users/maddy/orders.parquet` |
-| **Cygwin Mounts** | `/cygdrive/c/Users/maddy/orders.parquet` | `C:/Users/maddy/orders.parquet` |
-| **POSIX / macOS / Linux** | `/Users/maddy/data.parquet`, `~/data.parquet` | Local filesystem path |
-| **Relative & Globs** | `data/*.parquet`, `./sub/**/*.csv` | Expanded glob match list |
-| **Sample Datasets** | `sample:penguins`, `sample:tips` | Bundled parquet files |
-
-If a path does not exist on disk, Pytae reports a clean diagnostic rather than inadvertently declaring a string session variable.
-
-<a id="bundled-sample-datasets-samplename"></a>
-### Bundled Sample Datasets (`sample:<name>`)
-
-Instantly load bundled demo datasets using the explicit `sample:` prefix:
-
-```text
-pytae> df = sample:penguins
-Loaded penguins.parquet as 'df' (344 rows x 7 cols).
-
-pytae> tips = sample:tips
-Loaded tips.parquet as 'tips' (244 rows x 7 cols).
-```
-
-Available bundled samples include: `penguins`, `iris`, `tips`, `titanic`, `diamonds`, `flights`, and `planets`.
-
----
-
-## Multi-Table Workbench Operations
-
-The Pytae REPL is a full multi-table environment capable of holding multiple independent DataFrames in RAM simultaneously.
-
-### Inspecting Loaded Tables (`status table`)
-
-View the active table and a complete inventory of all loaded tables, their shapes, and source files:
-
-```text
-pytae [orders, cust]> status table
-Table          : orders (orders.parquet) [active]
-Shape          : 100,000 rows x 6 columns
-Table memory   : ~14.20 MB
-Status         : active
-
-Loaded Tables (2):
- * orders      : 100,000 rows x 6 cols (orders.parquet) [active]
-   cust        : 15,000 rows x 5 cols (customers.csv)
-```
-
-Use `status table -v` for column lists and detailed memory breakdowns:
-
-```text
-pytae [orders, cust]> status table -v
-Loaded Tables (2):
- * orders      : 100,000 rows x 6 cols (~14.20 MB) (orders.parquet) [active]
-       Columns (6): order_id, customer_id, order_date, amount, status, items
-   cust        : 15,000 rows x 5 cols (~1.12 MB) (customers.csv)
-       Columns (5): customer_id, name, email, signup_date, country
-Total Tables: ~15.32 MB | Process RAM: ~128.5 MB
-```
-
-### Quick Dimension Inspection without Switching
-
-Typing a bare table name inspects its dimensions without altering the active table cursor:
-
-```text
-pytae [orders, cust]> cust
-cust: 15,000 rows x 5 cols (tip: 'switch cust' to switch active dataset)
-```
-
-<a id="switching-the-active-table-cursor-switch-name"></a>
-### Switching the Active Table Cursor (`switch <name>`)
-
-Switch the active cursor to another table using `switch <name>`:
-
-```text
-pytae [orders, cust]> switch cust
-Switched active dataset to 'cust'. Active shape: (15,000, 5)
-pytae [cust: 15,000x5]> 
-```
-
-> [!NOTE]
-> The legacy command `use <name>` has been deprecated and removed in favor of `switch <name>`.
-
-<a id="zero-copy-table-renaming-rename-old-new"></a>
-### Zero-Copy Table Renaming (`rename <old> <new>`)
-
-Rename an in-memory dataset via instant $O(1)$ zero-copy pointer reassignment:
-
-```text
-pytae [df1, orders]> rename df1 customers
-Renamed table 'df1' to 'customers'.
-pytae [customers, orders]>
-```
-
-All references in the workbench and cursor tracking update instantaneously without copying underlying Arrow memory buffers.
-
-<a id="subject-first-execution-tbl--verb"></a>
-### Subject-First Execution (`<tbl> -<verb>`)
-
-Execute commands directly on non-active tables without switching cursors:
-
-```text
-# Inspect cust without switching active table away from orders
-pytae [orders, cust]> cust -head 3
-pytae [orders, cust]> cust -shape
-(15,000, 5)
-
-# Transform cust directly
-pytae [orders, cust]> cust -filter "country == 'US'"
--> cust: 9,200 rows x 5 cols
-```
-
-<a id="removing-tables--os-memory-trimming-rm-table-name"></a>
-### Removing Tables & OS Memory Trimming (`rm table <name>`)
-
-Purge tables from memory when they are no longer needed:
-
-```text
-# Remove specific table by variable name
-pytae [df1, df2]> rm table df1
-Removed table 'df1'. Switched active dataset to 'df2'.
-
-# Remove all loaded tables at once
-pytae [orders, cust, big_orders]> rm table *
-Removed all 3 loaded tables. No tables remain loaded.
-```
-
-#### Immediate OS Page Trimming
-Unlike standard Python shells that retain freed pages in heap memory pools:
-1. **Zero Lingering References**: `rm table` purges all internal references (`self.tables`, `self.orig_tables`, and `self.initial_tables`).
-2. **OS Memory Trimming**: Pytae immediately triggers memory reclamation:
-   - **Linux**: Calls `libc.malloc_trim(0)` to unmap freed arenas back to the OS.
-   - **macOS**: Calls internal Mach task reclamation (`mach_task_basic_info`).
-   - **Windows**: Calls `SetProcessWorkingSetSize(-1, -1)` and `K32EmptyWorkingSet` to flush freed working set pages.
-
----
-
-## Interactive Shell Navigation & Ergonomics
-
-### Prompt Structure & Telemetry
-
-The REPL prompt dynamically reflects the active workbench state:
-
-- **Single Table**: `pytae [orders: 100,000x6]>` displays the active table name and dimensions.
-- **Multiple Tables**: `pytae [orders*, cust]>` shows loaded tables with `*` indicating the active cursor.
-- **Dirty State**: `pytae [orders*]>` shows `*` next to a table modified since the last checkpoint.
-
-### Context-Aware Tab Autocompletion
-
-The Pytae REPL provides comprehensive `readline` autocompletion with clean in-place candidate preview:
-
-- **In-Place Ephemeral Preview**: Displays matching candidates directly underneath the prompt and clears cleanly upon selection, avoiding duplicate prompt lines or terminal scrollback clutter.
-- **Top-Level Verbs**: Press `[Tab]` at an empty prompt to view top-level commands (`switch`, `rename`, `rm`, `checkpoint`, `restore`, `export`, `status`, `set`, etc.).
-- **Flags**: Type `-` and press `[Tab]` to autocomplete CLI pipeline verbs (`-filter`, `-mutate`, `-select`, `-arrange`, `-pivot`, `-browse`, etc.).
-- **Table Names**: Autocompletes loaded table names after `switch `, `rename `, `diff `, and `rm table `.
-- **Column Names**: Inside pipeline flags (`-select `, `-filter `, `-by `, `-arrange `), autocompletes column names from the active table.
-- **File Paths & URIs**: Autocompletes local filesystem files, directories, and connection strings during assignment (`df = `).
-- **SQL & Python Context**: Contextually autocompletes SQL keywords, table names, and column names inside `sql { ... }`, and Python environment variables, methods/attributes (`df.h`, `pl.col`), builtins, and keywords inside `py { ... }`.
-- **Settings**: Autocompletes configuration keys and values after `set ` (e.g. `set comma = ` $\to$ `on`, `off`).
-
-### Persistent Arrow-Key History
-
-The REPL maintains persistent command history saved in `~/.pytae_history`. Use <kbd>↑</kbd> and <kbd>↓</kbd> arrow keys to recall previous commands. Multi-line commands containing `\` continuations are cleanly flattened into single lines for smooth arrow navigation.
-
-### Multiline Command Drafting & Line Continuations (`\`)
-
-For complex pipelines or multi-step queries, span commands across multiple lines using a trailing backslash (`\`):
-
-```text
-pytae [orders]> -filter "amount > 1000 and status == 'shipped'" \
-... -mutate "tax = amount * 0.08" \
-... -select "order_id,customer_id,tax,amount" \
-... -head 5
-```
-
-- **Smart Line Splitting**: Pressing <kbd>Shift+Enter</kbd> (or <kbd>Enter</kbd> immediately following a `\`) splits the input at the cursor position and drops down to the continuation prompt (`... `).
-- **Inline Continuation Collapsing**: Commands containing inline `\` line continuations (e.g. `-s species \ -s island`) are seamlessly collapsed into a unified command string prior to execution.
-- **Multidimensional Arrow Navigation**: Pressing <kbd>↑</kbd> and <kbd>↓</kbd> inside a multiline command navigates across lines within your multi-line buffer before cycling through command history.
-- **Clean History Logging**: Multiline commands are stored in session history and `~/.pytae_history` as clean, unified single-line commands without stray backslashes.
-
-### Unix Shell Integration (`|`)
-
-Pipe any REPL output directly to standard Unix terminal tools:
-
-```text
-# Search column names with grep
-pytae [df: 344x7]> -cols | grep mass
-body_mass_g
-
-# Search sorted columns on a specific table
-pytae [orders, cust]> orders -cols asc | grep id
-customer_id
-order_id
-
-# Count preview rows with wc
-pytae [df: 344x7]> -head 50 | wc -l
-54
-```
-
-*Note: Pipe characters inside quotes or brackets (e.g. `-filter "a | b"` or regexes) are parsed as expression logic rather than shell pipes.*
-
-### Terminal Keyboard Shortcuts
-
-| Shortcut | Action |
-|:---|:---|
-| <kbd>Ctrl+A</kbd> / <kbd>Home</kbd> | Move cursor to the beginning of the line |
-| <kbd>Ctrl+E</kbd> / <kbd>End</kbd> | Move cursor to the end of the line |
-| <kbd>Ctrl+K</kbd> | Cut from cursor to the end of the line |
-| <kbd>Ctrl+U</kbd> | Clear the current line |
-| <kbd>Ctrl+C</kbd> | Abort the active multi-line input buffer or long-running query |
-| <kbd>Ctrl+D</kbd> | Exit the REPL session cleanly |
-| <kbd>Tab</kbd> | Trigger context-aware autocompletion |
-
 ================================================================================
 9. MASTER DOCUMENTATION & ARCHITECTURE GUIDE (docs/pytae.md)
 ================================================================================
@@ -15280,7 +13352,7 @@ pytae [df: 344x7]> -head 50 | wc -l
 - Adopts the **readable, functional grammar** of dplyr,
 - And avoids the **index hierarchies, API redundancies, and silent data loss defaults** of legacy libraries.
 
-Pytae provides a single, unified grammar across **Python library code** (`df.<verb>()`, `pt.<verb>(df)`), the **Interactive Terminal REPL** (`pytae`), and the **Unix Command Line** (`pytae <file> -<verb>`).
+Pytae provides a single, unified grammar across **Python library code** (`df.<verb>()`, `pt.<verb>(df)`), the **IPython & Jupyter Workbench** (`import pytae as pt` → `%pt`, `%checkpoint`, `%restore`, `%status`, `%free`, `%set`, `%export`), and the **Unix Command Line** (`pytae <file> -<verb>`).
 
 ---
 
@@ -15639,7 +13711,7 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 - **`docs/cli_cheatsheet.md`**: [**The Definitive CLI Cheat Sheet & Cookbook**](cli_cheatsheet.md) — 12 curated sections of one-liner recipes and Unix shell workflows.
 - **`docs/guides/`**: Comprehensive Feature & Command Line Markdown guides (`.md`)
 - **`docs/notebooks/`**: Interactive, fully executed Jupyter Companion Notebooks (`.ipynb`)
-- **`docs/repl/`**: Deep dive guides for the interactive REPL shell and memory management.
+- **`docs/ipython.md`**: [**IPython & Jupyter Workbench Guide**](ipython.md) — auto-activated magics, checkpoints, `%free`, `%set`, and `%export`.
 - **`docs/comparisons/`**: Deep dive migration guides and Rosetta Stones.
 
 | Category | Python Library (Notebook) | CLI & Engine Guide (Markdown) | Key Capabilities & Verbs |
@@ -15656,7 +13728,7 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 | **Reshaping** | **[reshape.ipynb](notebooks/library/reshape.ipynb)** | **[reshape.md](guides/reshape.md)** | `long` (unpivoting), `wide` (1:1 pivoting), and `explode` (unnesting list/array columns) |
 | **Relational Joins**| **[join.ipynb](notebooks/library/join.ipynb)** | **[join.md](guides/join.md)** | `df.join`, `pt.join`, `pt.concat`, inner/left/right/full/semi/anti/cross, colon keys, `validate` |
 | **Masking & Privacy**| **[other_utilities.ipynb](notebooks/library/other_utilities.ipynb)** | **[mask.md](guides/mask.md)** | `mask`, `unmask`, `-mask`, `-unmask`, SHA-256 hash, salt, redact, key encryption, vault tokenization |
-| **Interactive REPL**| — | **[repl/](repl/README.md)** | `pytae -i`, in-memory workbench, ephemeral Python sandboxing, table assignment, `checkpoint`, `restore`, `rm table`, `exit -s` |
+| **IPython Workbench**| — | **[ipython.md](ipython.md)** | `import pytae as pt`, `%pt`/`%%pt`, `%checkpoint`, `%restore`, `%status`, `%free`, `%set`, `%export`, `%exit -s` |
 | **Utilities** | **[other_utilities.ipynb](notebooks/library/other_utilities.ipynb)** | **[clean_replace.md](guides/clean_replace.md)**<br>**[diff.md](guides/diff.md)** | `fillna`, `dropna`, `clean_columns`, `diff` (key-aware with `on=`, `tol=`), `glimpse`, `cols`, `df.to("clip")` |
 | **Inspection** | **[other_utilities.ipynb](notebooks/library/other_utilities.ipynb)** | **[inspect.md](guides/inspect.md)** | `-cols`, `-dtype`, `-shape`, `-nulls`, `-head`, `-tail`, `-glimpse`, `-summary`, `-freq`, `-hist`, `-bar`, `-scatter`, `-corr` |
 | **Multi-File** | **[join.ipynb](notebooks/library/join.ipynb)** | **[multi_file.md](guides/multi_file.md)** | Multi-table pipelines (`alias=source`), multi-file globbing (`*.parquet`), multi-table joining, batch inputs, pipes, Unix redirection |
@@ -15668,50 +13740,21 @@ All comprehensive guides, API signatures, CLI flags, walkthroughs, and edge case
 
 ---
 
-## Interactive REPL Shell (`pytae -i`)
+## IPython & Jupyter Workbench (`import pytae as pt`)
 
-The **Pytae REPL** provides stateful, iterative in-memory data manipulation and exploratory data analysis. In standard one-shot CLI usage, running multiple queries on a 1 GB file requires re-reading and re-parsing from disk every time. The Pytae REPL loads your dataset into RAM **once**, executing subsequent filters, aggregations, feature mutations, ANSI SQL queries, and Python logic at multithreaded Polars SIMD speeds.
+Pytae's interactive workbench runs directly inside **IPython** and **Jupyter** (JupyterLab, VS Code Notebooks). Running `import pytae as pt` inside an active IPython/Jupyter session automatically activates all workbench magics, persistent display formatters, and context-aware Tab completion (outside IPython, IPython is never imported).
 
-### Core Architecture & Guarantees
+| Magic | Example | Description |
+|:---|:---|:---|
+| `%pt` / `%%pt` | `res = %pt df -filter "x > 1"` / `%%pt res` | Full in-process Pytae CLI pipelines (immutable by default; works on RAM DataFrames, disk paths, `clip`, and `-sql`) |
+| `%checkpoint` | `%checkpoint raw`, `%checkpoint diff df raw`, `%checkpoint rm raw` | Ephemeral Arrow IPC snapshots on disk (0 MB RAM) |
+| `%restore` | `%restore raw`, `%restore` | Strict DataFrame rollback + `Out`/`_` cache scrub + OS RSS trim |
+| `%status` | `%status [-v]`, `%status df`, `%status checkpoint` | Tracked DataFrames, shapes, RAM, checkpoints, OS RSS, settings |
+| `%free` | `%free big_df`, `%free *`, `%free` | Delete DataFrame(s), scrub hidden IPython `Out`/`_` refs & trim OS RSS |
+| `%set` | `%set max_rows=20 comma=true`, `%set save` | Persistent display formatting (`~/.pytae/config.json`) |
+| `%export` / `%exit -s` | `%export analysis.py`, `%export nb.ipynb`, `%exit -s out.py` | Export clean standalone `.py` or `.ipynb` with errored, rolled-back, and preview cells pruned |
 
-1. **Dedicated Entrypoint (`pytae -i`)**: Interactive sessions launch cleanly with `pytae -i`. Datasets are loaded explicitly with `df = file.parquet`, guaranteeing that session logs and exported replay scripts are 100% reproducible and self-contained.
-2. **Subject-First Multi-Table Workbench**: Load multiple datasets simultaneously (`df1`, `df2`, `orders`, `cust`). Run commands with clear prefixes (`df1 -head 5`, `orders -join cust on=id`), or switch active tables with `switch <name>`.
-3. **Non-Destructive by Default**: Bare exploratory queries (`-pivot`, `-filter`, `-head`) format and display previews in the terminal without altering underlying tables in memory. State changes require explicit assignment (`df = df -filter ...`).
-4. **Ephemeral Python Sandboxing & Persistent Logic**: Embedded Python execution (`py { ... }`) provides an extensibility escape hatch. Pre-loads `pd`, `pl`, `pt`, and `DataFrame`. Imported modules, custom functions, and classes persist throughout the REPL session, while transient scratch variables, arrays, and intermediate data objects are immediately purged from RAM upon block exit via `gc.collect()`. Tables assigned to a Pytae `DataFrame` (e.g. `k = pt.DataFrame(...)` or `k = df.head(10)`), or assigned to `df` are registered in the workbench and exported cleanly by `exit -s` / `export script`.
-5. **Ephemeral IPC Checkpoints (0 MB RAM Overhead)**: Checkpoints serialize frozen table states to ephemeral Arrow IPC format on disk. They consume **0 MB of RAM** and are automatically purged upon session exit, allowing safe instant restoration via `restore [name]` or `reset`.
-
-### Quick Reference of REPL Commands
-
-| Category | Command | Example | Description |
-|:---|:---|:---|:---|
-| **Ingestion** | Assignment | `df = sales.parquet`<br>`cust = cust.csv -dlim ";"` | Ingest file into named table variable |
-| **Workbench** | `status table` | `status table [-v]` | View loaded tables, shapes, memory, and columns |
-| | `switch` | `switch cust` | Switch active dataset cursor |
-| | `rename` | `rename df1 customers` | Zero-copy $O(1)$ in-memory table pointer rename |
-| | Subject-First | `cust -head 5`, `cust -shape` | Execute command directly on named table |
-| | `rm table` | `rm table df1`, `rm table *` | Free table memory and trigger immediate OS page trim |
-| **Transform** | Pipelines | `-filter "x > 1" -mutate "y = x * 2"` | Full 1:1 parity with Pytae CLI transformation flags |
-| | Relational Joins | `orders -join cust on=id how=left` | Relational join across workbench tables |
-| **Inspection** | Metadata | `-shape`, `-cols [asc\|desc\|pattern]`, `-schema`, `-nulls` | Non-destructive structural inspection |
-| | Previews | `-head 10`, `-tail 5`, `-sample 10`, `-diff [target]` | Non-destructive formatted row previews & milestone diffs |
-| **SQL & Python**| `sql` | `sql { SELECT * FROM orders JOIN cust ... }` | Non-destructive SQL preview (or `res = sql { ... }`) |
-| | `py` | `py { k = df.to("pandas"); orders = pt.DataFrame(k) }` | Embedded Python with persistent imports, ephemeral sandboxing & table assignment |
-| **Checkpoints** | `checkpoint` | `checkpoint baseline` | Save ephemeral IPC snapshot (0 MB RAM overhead) |
-| | `restore` / `reset` | `restore baseline`, `reset` | Instantly revert workbench state to checkpoint |
-| **Parameters** | `@var` | `min_val = 3500`, `@cfg.threshold` | Session variables substituted in `-filter`, `-mutate`, `sql { ... }` |
-| **Export & Replay**| `exit -s` / `export` | `exit -s`, `exit -s py`, `export pipeline.pt` | Export reproducible script (on exit or in-session) |
-| | Batch Replay | `pytae pipeline.pt`, `pytae -i pipeline.pt` | Headless execution or interactive session preload |
-
-### Detailed REPL Documentation Directory
-
-For complete guides, configuration flags, edge cases, and cookbooks, see the dedicated topic documentation under **[`docs/repl/`](repl/)**:
-
-- [**Master REPL Architecture & Command Hub**](repl/README.md) — Architectural pillars, 30-second quickstart, and master command reference table.
-- [**Workbench, Ingestion & Multi-Table Management**](repl/workbench_tables.md) — Reader options (`-encoding`, `-dlim`, `-nrows`, `-opts`), glob loading, sample datasets, zero-copy `rename`, and table deallocation.
-- [**In-Memory Pipelines & Data Inspection**](repl/pipelines_inspection.md) — 1:1 CLI verbs in RAM, assignment vs bare exploration semantics, multi-table joins, and non-destructive inspection.
-- [**SQL & Python Interop (Ephemeral Python Sandboxing)**](repl/sql_python_interop.md) — ANSI SQL across tables, single-line & multi-line `py { ... }` blocks, pre-loaded `pd`/`pl`/`pt`, session-wide persistent imports, ephemeral RAM zeroing, and explicit table assignment.
-- [**Session Variables (`@var`), Settings & Preferences**](repl/variables_config.md) — Session `@parameters`, nested configuration traversal, display preferences (`set`), and permanent configuration (`set save`).
-- [**Checkpoints, History Audit, Pipeline Export & Replay**](repl/checkpoints_history_replay.md) — Ephemeral IPC snapshots, instant `restore`, milestone `-diff`, flight recorder `history`, script export (`exit -s`, `export`), and post-hoc conversion (`pytae -export`).
+👉 See the full guide in [**`docs/ipython.md`**](ipython.md).
 
 ================================================================================
 CLI CHEATSHEET & COOKBOOK (docs/cli_cheatsheet.md)
@@ -16120,81 +14163,43 @@ pytae customers.csv -mask "email=hash, ssn=encrypt, name=tokenize" -key "SecretK
 
 ---
 
-## 13. 💬 Interactive REPL Shell (`-i`)
+## 13. 💬 IPython & Jupyter Workbench (`import pytae as pt`)
 
-Stateful interactive data manipulation environment with in-memory execution and checkpoint history:
+Just `import pytae as pt` inside IPython or Jupyter — all workbench magics, display formatters, and Tab completions activate automatically:
 
-```bash
-# Launch interactive REPL workbench
-pytae -i
+```python
+import pytae as pt
 
-# Load dataset inside REPL:
-#   pytae> df = data.parquet
+# 1. Load & transform immutably in-process (`%pt` / `%%pt`)
+df = pt.sample("penguins")                             # or: df = %pt sales.parquet
+heavy = %pt df -filter "body_mass_g > 4000" -arrange "body_mass_g desc"
+top = %pt -sql "SELECT island, COUNT(*) AS n FROM df GROUP BY island"
 
-# Launch the interactive REPL shell (in-memory, SQL, checkpoints)
-pytae -i
+%%pt summary
+df
+-dropna "body_mass_g"
+-by "species, island"
+-agg "avg_mass = mean(body_mass_g), n = count()"
 
-# List persistent REPL sessions on disk from the shell
-pytae -sessions              # List all saved sessions
-pytae -sessions -ready       # Filter to ready/healthy sessions only
-pytae -sessions -v           # Verbose session view (disk size, format, checkpoints)
+# 2. Checkpoints, Strict Restore & Memory Reclaim
+%checkpoint raw                  # Ephemeral Arrow IPC snapshot (0 MB RAM)
+%checkpoint list                 # List saved checkpoints & disk size
+%checkpoint diff df raw          # Compare current `df` vs checkpoint `raw`
+%checkpoint rm raw               # Delete a checkpoint (or `*` for all)
+%restore [raw]                   # Strict DataFrame rollback + Out/_ scrub + OS RSS trim
+%status [df | checkpoint] [-v]   # Tables, shapes, RAM, checkpoints, OS RSS, settings
+%free heavy                      # Delete `heavy`, scrub IPython Out/_ cache & trim RAM
+%free                            # Scrub stale Out/_ DataFrame refs & trim RAM
 
-# Inspect loaded sessions from inside the REPL
-pytae> sessions
-
-# Inside the REPL prompt:
-# 1. State Management & Checkpoints
-status [-v]          # Display unified session status, active table, RAM consumption, and history
-status table [-v]    # Inspect active table and list all loaded tables (-v for cols & RAM)
-switch orders        # Switch active dataset cursor to 'orders'
-rename df1 customers # Zero-copy O(1) in-memory table rename
--diff [target]       # Diff active table vs latest checkpoint, another table, or checkpoint:table
-reset                # Revert to latest checkpoint (or initial dataset if none)
-reset initial        # Revert strictly to initial dataset read (bypassing checkpoints)
-history [N]          # Show session audit log (all steps auto-logged to ~/.pytae/history/)
-checkpoint v1        # Save ephemeral IPC snapshot across all active tables (0 MB RAM)
-rm checkpoint v1     # Delete a saved checkpoint from disk (or rm checkpoint *)
-restore [v1]         # Restore workbench to snapshot (or bare restore for latest)
-export p.pt [-relative]   # Export executed pipeline to reproducible Pytae script
-export p.py [-relative]   # Export executed pipeline to reproducible Python script
-set save                  # Persist current display settings to ~/.pytae/config.json
-status checkpoint         # List saved in-memory checkpoints
-status table <name>       # Inspect specific table shape and memory (-v for column dtypes)
-rm table orders           # Remove specific table from memory and free RAM (or rm table *)
-clear                     # Clear the terminal screen
-[Tab]                     # Autocomplete commands, flags, tables, columns, and paths
-
-# 2. Pipeline Execution & Inspection (RAM-speed with zero file re-reads)
-pytae> -filter "species == 'Gentoo'"
-pytae> -mutate "mass_kg = body_mass_g / 1000.0"
-pytae> -by species -agg "mean_kg=mean(mass_kg), n=count()"
-pytae> -select "species,island,mass_kg"
-pytae> -arrange "mass_kg desc"
-pytae> -cols asc                                             # Column names sorted alphabetically
-pytae> -cols | grep mass                                     # Pipe command output to shell utility
-# Multi-line continuation: pipelines with '\', SQL with quotes, dicts/lists with brackets, 'py { ... }' for blocks
-pytae> df = -filter "species == 'Gentoo'" \
-...   -mutate "kg = body_mass_g / 1000.0"
-
-# 3. Direct Query Engines & Export
-pytae> sql { SELECT species, AVG(body_mass_g) FROM df GROUP BY 1 } # Preview ANSI SQL across tables
-pytae> py { df.shape }
-pytae> -o clean.parquet
-pytae> -o clip                                               # Copy active table to system clipboard
-pytae> exit -s                                                # Exit and export session to ./session.pt
-pytae> exit -s py                                             # Exit and export session to ./session.py
-pytae> exit -s pipeline.pt -relative                          # Exit and export session with relative paths
-# Up / Down arrow keys recall command history from current session
+# 3. Persistent Display Settings & Clean Export
+%set max_rows=20 float_precision=2 comma=true
+%set save                        # Persist to ~/.pytae/config.json
+%export analysis.py              # Standalone runnable .py (prunes errors, rollbacks, previews)
+%export analysis.ipynb           # Jupyter notebook (nbformat v4)
+%exit -s analysis.py             # Export and exit IPython cleanly
 ```
 
-```bash
-# Replaying & Converting Pipelines ("One and Only One Obvious Way"):
-pytae pipeline.pt                                     # Headless batch execution of Pytae script
-pytae -i pipeline.pt                                  # Replay Pytae script and drop into interactive REPL
-python pipeline.py                                    # Execute standalone Python script via Python
-pytae -export ~/.pytae/history/hist.txt -o pipe.pt   # Post-hoc convert flight-recorder log to .pt
-pytae -export ~/.pytae/history/hist.txt -o pipe.py   # Post-hoc convert flight-recorder log to .py
-```
+👉 Full guide: [**docs/ipython.md**](ipython.md)
 
 ---
 
@@ -17365,7 +15370,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.14.8"
+version = "3.14.9"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"
@@ -17375,7 +15380,7 @@ dependencies = [
     "pyarrow>=15.0.0",
     "polars>=1.0.0",
     "openpyxl>=3.1.0",
-    "pyreadline3>=3.4.0; sys_platform == 'win32'",
+    "ipython>=8.0.0",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -17443,8 +15448,5 @@ module = [
     "pytae.plotting",
     "pytae.polars_engine",
     "pytae.readers",
-    "pytae.repl",
-    "pytae.repl_utils",
-    "pytae.transpiler",
 ]
 ignore_errors = true

@@ -398,81 +398,43 @@ pytae customers.csv -mask "email=hash, ssn=encrypt, name=tokenize" -key "SecretK
 
 ---
 
-## 13. 💬 Interactive REPL Shell (`-i`)
+## 13. 💬 IPython & Jupyter Workbench (`import pytae as pt`)
 
-Stateful interactive data manipulation environment with in-memory execution and checkpoint history:
+Just `import pytae as pt` inside IPython or Jupyter — all workbench magics, display formatters, and Tab completions activate automatically:
 
-```bash
-# Launch interactive REPL workbench
-pytae -i
+```python
+import pytae as pt
 
-# Load dataset inside REPL:
-#   pytae> df = data.parquet
+# 1. Load & transform immutably in-process (`%pt` / `%%pt`)
+df = pt.sample("penguins")                             # or: df = %pt sales.parquet
+heavy = %pt df -filter "body_mass_g > 4000" -arrange "body_mass_g desc"
+top = %pt -sql "SELECT island, COUNT(*) AS n FROM df GROUP BY island"
 
-# Launch the interactive REPL shell (in-memory, SQL, checkpoints)
-pytae -i
+%%pt summary
+df
+-dropna "body_mass_g"
+-by "species, island"
+-agg "avg_mass = mean(body_mass_g), n = count()"
 
-# List persistent REPL sessions on disk from the shell
-pytae -sessions              # List all saved sessions
-pytae -sessions -ready       # Filter to ready/healthy sessions only
-pytae -sessions -v           # Verbose session view (disk size, format, checkpoints)
+# 2. Checkpoints, Strict Restore & Memory Reclaim
+%checkpoint raw                  # Ephemeral Arrow IPC snapshot (0 MB RAM)
+%checkpoint list                 # List saved checkpoints & disk size
+%checkpoint diff df raw          # Compare current `df` vs checkpoint `raw`
+%checkpoint rm raw               # Delete a checkpoint (or `*` for all)
+%restore [raw]                   # Strict DataFrame rollback + Out/_ scrub + OS RSS trim
+%status [df | checkpoint] [-v]   # Tables, shapes, RAM, checkpoints, OS RSS, settings
+%free heavy                      # Delete `heavy`, scrub IPython Out/_ cache & trim RAM
+%free                            # Scrub stale Out/_ DataFrame refs & trim RAM
 
-# Inspect loaded sessions from inside the REPL
-pytae> sessions
-
-# Inside the REPL prompt:
-# 1. State Management & Checkpoints
-status [-v]          # Display unified session status, active table, RAM consumption, and history
-status table [-v]    # Inspect active table and list all loaded tables (-v for cols & RAM)
-switch orders        # Switch active dataset cursor to 'orders'
-rename df1 customers # Zero-copy O(1) in-memory table rename
--diff [target]       # Diff active table vs latest checkpoint, another table, or checkpoint:table
-reset                # Revert to latest checkpoint (or initial dataset if none)
-reset initial        # Revert strictly to initial dataset read (bypassing checkpoints)
-history [N]          # Show session audit log (all steps auto-logged to ~/.pytae/history/)
-checkpoint v1        # Save ephemeral IPC snapshot across all active tables (0 MB RAM)
-rm checkpoint v1     # Delete a saved checkpoint from disk (or rm checkpoint *)
-restore [v1]         # Restore workbench to snapshot (or bare restore for latest)
-export p.pt [-relative]   # Export executed pipeline to reproducible Pytae script
-export p.py [-relative]   # Export executed pipeline to reproducible Python script
-set save                  # Persist current display settings to ~/.pytae/config.json
-status checkpoint         # List saved in-memory checkpoints
-status table <name>       # Inspect specific table shape and memory (-v for column dtypes)
-rm table orders           # Remove specific table from memory and free RAM (or rm table *)
-clear                     # Clear the terminal screen
-[Tab]                     # Autocomplete commands, flags, tables, columns, and paths
-
-# 2. Pipeline Execution & Inspection (RAM-speed with zero file re-reads)
-pytae> -filter "species == 'Gentoo'"
-pytae> -mutate "mass_kg = body_mass_g / 1000.0"
-pytae> -by species -agg "mean_kg=mean(mass_kg), n=count()"
-pytae> -select "species,island,mass_kg"
-pytae> -arrange "mass_kg desc"
-pytae> -cols asc                                             # Column names sorted alphabetically
-pytae> -cols | grep mass                                     # Pipe command output to shell utility
-# Multi-line continuation: pipelines with '\', SQL with quotes, dicts/lists with brackets, 'py { ... }' for blocks
-pytae> df = -filter "species == 'Gentoo'" \
-...   -mutate "kg = body_mass_g / 1000.0"
-
-# 3. Direct Query Engines & Export
-pytae> sql { SELECT species, AVG(body_mass_g) FROM df GROUP BY 1 } # Preview ANSI SQL across tables
-pytae> py { df.shape }
-pytae> -o clean.parquet
-pytae> -o clip                                               # Copy active table to system clipboard
-pytae> exit -s                                                # Exit and export session to ./session.pt
-pytae> exit -s py                                             # Exit and export session to ./session.py
-pytae> exit -s pipeline.pt -relative                          # Exit and export session with relative paths
-# Up / Down arrow keys recall command history from current session
+# 3. Persistent Display Settings & Clean Export
+%set max_rows=20 float_precision=2 comma=true
+%set save                        # Persist to ~/.pytae/config.json
+%export analysis.py              # Standalone runnable .py (prunes errors, rollbacks, previews)
+%export analysis.ipynb           # Jupyter notebook (nbformat v4)
+%exit -s analysis.py             # Export and exit IPython cleanly
 ```
 
-```bash
-# Replaying & Converting Pipelines ("One and Only One Obvious Way"):
-pytae pipeline.pt                                     # Headless batch execution of Pytae script
-pytae -i pipeline.pt                                  # Replay Pytae script and drop into interactive REPL
-python pipeline.py                                    # Execute standalone Python script via Python
-pytae -export ~/.pytae/history/hist.txt -o pipe.pt   # Post-hoc convert flight-recorder log to .pt
-pytae -export ~/.pytae/history/hist.txt -o pipe.py   # Post-hoc convert flight-recorder log to .py
-```
+👉 Full guide: [**docs/ipython.md**](ipython.md)
 
 ---
 

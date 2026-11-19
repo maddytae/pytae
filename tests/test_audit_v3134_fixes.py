@@ -1,6 +1,5 @@
 """Tests covering fixes from the v3.13.4 audit report."""
 
-from pathlib import Path
 
 import pandas as pd
 import polars as pl
@@ -10,25 +9,6 @@ import pytae as pt
 from pytae.accessor import DataFrame
 from pytae.cli_help import KEYWORD_DOCS
 from pytae.cli_run import _output_text
-from pytae.repl import PytaeRepl
-
-
-def test_audit_bug1_repl_windows_paths_in_targeted_pipeline(tmp_path: Path):
-    """Bug 1: Targeted pipeline commands (e.g. 'k -o C:\\path\\out.csv') must not swallow backslashes."""
-    r = PytaeRepl()
-    r.tables["df"] = pl.DataFrame({"a": list(range(10))})
-    r.current_df = r.tables["df"]
-    r.path_str = "df"
-
-    outs: list[str] = []
-    r.execute_line("k = df -head 5", output_fn=outs.append)
-
-    target_out = tmp_path / "win_out.csv"
-    outs.clear()
-    r.execute_line(f"k -o {target_out}", output_fn=outs.append)
-    assert any("Saved 5 rows" in o for o in outs)
-    assert target_out.exists()
-    r.close()
 
 
 def test_audit_bug2_unicode_output_fallback_and_error_separation():
@@ -64,14 +44,6 @@ def test_audit_bug4_date_mutate_helper_datetime_strings():
     assert str(res["d"][1]) == "2026-04-20"
 
 
-def test_audit_bug5_repl_cols_substring_filter():
-    """Bug 5: REPL -cols supports substring filtering."""
-    r = PytaeRepl()
-    r.execute_line("df = sample:penguins")
-    outs: list[str] = []
-    r.execute_line("-cols mass", output_fn=outs.append)
-    assert any("body_mass_g" in o for o in outs)
-    r.close()
 
 
 def test_audit_bug6_glimpse_fluent_method_chaining():

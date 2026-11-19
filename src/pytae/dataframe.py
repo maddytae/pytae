@@ -24,8 +24,8 @@ from pytae.polars_engine import (
     concat_polars,
     count_polars,
     distinct_polars,
-    dups_polars,
     dropna_polars,
+    dups_polars,
     explode_polars,
     fillna_polars,
     filter_polars,
@@ -1497,16 +1497,6 @@ class DataFrame:
 
         return DataFrame(schema_dataframe(self))
 
-    def repl(self, prompt: str = "pytae") -> Any:
-        """Launch an interactive REPL shell pre-loaded with this DataFrame.
-
-        Returns the modified DataFrame upon exiting the REPL session.
-        """
-        from pytae.repl import repl
-
-        res = repl(df=self, prompt=prompt)
-        return DataFrame(res) if res is not None else self
-
     def freq(self, col: str | None = None, dropna: bool = False, width: int = 20) -> DataFrame:
         """Calculate frequency distribution of unique column values."""
         from pytae.other_utilities import freq as _freq
@@ -1518,6 +1508,15 @@ class DataFrame:
         from pytae.other_utilities import hist as _hist
 
         return DataFrame(_hist(self._df, col=col, bins=bins, width=width))
+
+    def round(self, decimals: int = 0) -> DataFrame:
+        """Round all floating-point columns to `decimals` decimal places."""
+        schema = _df_schema(self._df)
+        float_cols = [c for c, dt in schema.items() if dt.is_float()]
+        if not float_cols:
+            return DataFrame(self._df, orig_col_map=self._orig_col_map)
+        rounded = self._df.with_columns([pl.col(c).round(decimals).alias(c) for c in float_cols])
+        return DataFrame(rounded, orig_col_map=self._orig_col_map)
 
     def bar(
         self,

@@ -150,13 +150,13 @@ Execute directly via CLI:
 pytae penguins.parquet -sql analysis.sql
 ```
 
-Or in the interactive REPL:
-```sql
+Or inside IPython / Jupyter (`import pytae as pt`):
+```python
 # Preview from file
-pytae [penguins]> sql analysis.sql
+%pt penguins -sql analysis.sql
 
-# Create new table from file
-pytae [penguins]> summary = sql analysis.sql
+# Assign result to a new DataFrame (immutable)
+summary = %pt penguins -sql analysis.sql
 ```
 
 **Output:**
@@ -190,29 +190,28 @@ pytae c=customers.csv o=orders.parquet \
 
 ---
 
-### Multi-Table SQL Joins from Files in REPL
+### Multi-Table SQL Joins in IPython / Jupyter
 
-When joining tables in the interactive REPL using an external SQL file (`test.sql`), load the constituent tables into memory first under matching names:
+When joining in-memory DataFrames inside IPython (`import pytae as pt`), any DataFrame variable in your namespace is automatically queryable by name via `%pt -sql` or `%%pt`:
 
-```sql
--- test.sql
+```python
+import pytae as pt
+
+# 1. Load source tables into memory:
+x = pt.read("left_data.parquet")
+y = pt.read("right_data.parquet")
+
+# 2. Query across all in-memory tables (immutable):
+k = %pt -sql "SELECT x.a, y.a FROM x INNER JOIN y ON x.id = y.id"
+
+# 3. Or multi-line SQL via %%pt cell magic:
+%%pt k
+-sql "
 SELECT x.a, y.a
 FROM x
-INNER JOIN y ON x.id = y.id;
-```
+INNER JOIN y ON x.id = y.id
+"
 
-```bash
-# 1. Load source tables into the REPL session:
-pytae> x = left_data.parquet
-pytae> y = right_data.parquet
-
-# 2. Preview the query without saving (non-destructive):
-pytae> sql test.sql
-
-# 3. Or save the result as a new working table 'k':
-pytae> k = sql test.sql
-Created 'k' from SQL query (850 rows x 2 cols).
-
-# 4. 'k' is now active in the prompt; chain verbs or run further SQL:
-pytae [k: 850x2]> -filter "a > 10" -head 5
+# 4. Chain further Python or %pt operations on `k`:
+k.filter("a > 10").head(5)
 ```

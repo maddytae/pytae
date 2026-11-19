@@ -8,8 +8,6 @@ import pytae as pt
 from pytae._parsing import _parse_filter_string, _split_mutate_entries, parse_rename_spec
 from pytae._text import _is_enclosed_pair as is_enclosed_pair
 from pytae.readers import read_uri
-from pytae.repl import PytaeRepl as InteractiveSession
-from pytae.repl import _substitute_variables, _transpile_pipeline_tokens_to_python
 from pytae.validation import check_dsl_string
 
 
@@ -83,45 +81,8 @@ def test_check_dsl_string_filter():
     assert len(errs_eq) > 0
 
 
-def test_repl_transpile_extended_flags():
-    tokens = [
-        "-pivot",
-        "r=region,c=year,v=sales,a=mean",
-        "-long",
-        "cols=y2020,id_vars=region",
-        "-wide",
-        "r=region,c=variable,v=value",
-        "-assert",
-        "sales > 0",
-        "-explode",
-        "tags",
-        "-mask",
-        "ssn:redact",
-        "-unmask",
-        "ssn",
-    ]
-    code = _transpile_pipeline_tokens_to_python(tokens)
-    assert ".pivot(r='region', c='year', v='sales', a='mean')" in code
-    assert ".long(cols='y2020', id_vars='region')" in code
-    assert ".wide(r='region')" in code
-    assert ".assert_('sales > 0')" in code
-    assert ".explode('tags')" in code
-    assert ".mask('ssn:redact')" in code
-    assert ".unmask('ssn')" in code
 
 
-def test_repl_substitute_variables_skips_quotes():
-    variables = {"role": "admin"}
-    assert _substitute_variables("role == @role", variables) == "role == 'admin'"
-    assert _substitute_variables("role == '@role'", variables) == "role == '@role'"
-
-
-def test_repl_fast_inspection_does_not_swallow_pipeline():
-    pldf = pl.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
-    sess = InteractiveSession(df=pldf)
-    outputs: list[str] = []
-    handled = sess._try_fast_inspection(pldf, ["-head", "2", "-select", "a"], outputs.append)
-    assert handled is False
 
 
 def test_read_uri_sqlite_cte_and_quoted_table(tmp_path):
@@ -192,25 +153,6 @@ def test_schema_only_diff_cli_repl_and_api(tmp_path, capsys):
     api_out = pt.diff(jan_path, feb_path, schema=True)
     assert "* id: Int64 (right) -> Int32 (left)" in api_out
     assert "Skipped (schema-only diff)" in api_out
-
-    # 4. REPL: -diff "feb,schema" and -diff jan "feb,schema"
-    sess = InteractiveSession()
-    repl_out: list[str] = []
-    sess.execute_line(f"jan = {jan_path}", output_fn=repl_out.append)
-    sess.execute_line(f"feb = {feb_path}", output_fn=repl_out.append)
-    sess.execute_line("switch jan", output_fn=repl_out.append)
-    repl_out.clear()
-
-    sess.execute_line('-diff "feb,schema"', output_fn=repl_out.append)
-    combined = "\n".join(repl_out)
-    assert "* id: Int64 (right) -> Int32 (left)" in combined
-    assert "Skipped (schema-only diff)" in combined
-
-    repl_out.clear()
-    sess.execute_line('-diff jan "feb,schema"', output_fn=repl_out.append)
-    combined2 = "\n".join(repl_out)
-    assert "Comparing 'jan' vs 'feb':" in combined2
-    assert "Skipped (schema-only diff)" in combined2
 
 
 def test_schema_ddl_and_code_generation(tmp_path, capsys, monkeypatch):
@@ -288,11 +230,5 @@ def test_schema_ddl_and_code_generation(tmp_path, capsys, monkeypatch):
     assert len(copied) == 1
     assert "CREATE TABLE orders (" in copied[0]
 
-    # 7. REPL -schema sql / bq / pydantic / json
-    sess = InteractiveSession(df=df, path=pq_path)
-    repl_out: list[str] = []
-    sess.execute_line("-schema sql", output_fn=repl_out.append)
-    assert "CREATE TABLE orders (" in "\n".join(repl_out)
-
-    # 8. Python API pt.schema(df, "sql")
+    # 7. Python API pt.schema(df, "sql")
     assert "CREATE TABLE data (" in pt.schema(df, "sql")

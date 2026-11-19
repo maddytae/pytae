@@ -10,7 +10,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 import pytae as pt
 from pytae import cli
 from pytae.readers import ExcelReader, get_reader
-from pytae.repl import PytaeRepl
 
 
 @pytest.fixture
@@ -164,61 +163,14 @@ def test_cli_excel_targeted_opts(multi_sheet_excel, tmp_path, capsys):
     assert capsys.readouterr().out.strip() == "(2, 4)"
 
 
-def test_repl_load_excel_default_sheet(multi_sheet_excel):
-    r = PytaeRepl()
-    outputs = []
-    r.execute_line(f"df = {multi_sheet_excel}", output_fn=outputs.append)
-    assert r.current_df is not None
-    assert r.current_df.shape == (3, 3)
-    assert "Widget" in str(r.current_df)
 
 
-def test_repl_excel_colon_syntax_rejected(multi_sheet_excel):
-    r = PytaeRepl()
-    outputs = []
-    r.execute_line(f"df = {multi_sheet_excel}:Feb", output_fn=outputs.append)
-    assert any("colon sheet syntax" in o for o in outputs)
-    assert any("specify sheet via -opts" in o for o in outputs)
 
 
-def test_repl_load_excel_with_opts(multi_sheet_excel):
-    r = PytaeRepl()
-    outputs = []
-    r.execute_line(f'df = {multi_sheet_excel} -opts "sheet=CustomNotes, skiprows=2, header=0"', output_fn=outputs.append)
-    assert r.current_df is not None
-    assert r.current_df.shape == (2, 3)
-    assert list(r.current_df.columns) == ["id", "code", "amount"]
 
 
-def test_repl_load_excel_sheet_in_opts(multi_sheet_excel):
-    r = PytaeRepl()
-    outputs = []
-    # sheet as part of -opts directly
-    r.execute_line(f'df = {multi_sheet_excel} -opts "sheet=Feb"', output_fn=outputs.append)
-    assert r.current_df is not None
-    assert r.current_df.shape == (3, 3)
-    assert "Thingamajig" in str(r.current_df)
-
-    # sheet_name as part of -opts directly
-    r.execute_line(f'df2 = {multi_sheet_excel} -opts "sheet_name=CustomNotes, skiprows=2, header=0"', output_fn=outputs.append)
-    assert r.tables["df2"].shape == (2, 3)
-    assert list(r.tables["df2"].columns) == ["id", "code", "amount"]
 
 
-def test_repl_no_opts_persistency(multi_sheet_excel):
-    r = PytaeRepl()
-    outputs = []
-    # 1. 'set opts' should NOT be a valid persistent setting
-    r.execute_line('set opts = "skiprows=2, header=0"', output_fn=outputs.append)
-    assert "unknown setting 'opts'" in outputs[-1]
-
-    # 2. Loading with -opts applies only to that assignment
-    r.execute_line(f'df1 = {multi_sheet_excel} -opts "sheet=CustomNotes, skiprows=2, header=0"', output_fn=outputs.append)
-    assert r.tables["df1"].shape == (2, 3)
-
-    # 3. Subsequent assignment without -opts must NOT retain df1's opts
-    r.execute_line(f'df2 = {multi_sheet_excel} -opts "sheet=Feb"', output_fn=outputs.append)
-    assert r.tables["df2"].shape == (3, 3)  # normal 3 rows, not skipped rows!
 
 
 def test_dataframe_to_excel_defaults_index_false(tmp_path):

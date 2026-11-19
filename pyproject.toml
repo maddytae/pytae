@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pytae"
-version = "3.14.8"
+version = "3.14.9"
 description = "Fast, ergonomic pandas tools and zero-code CLI for tabular data manipulation and plotting"
 authors = [{ name = "Madhukar Kumar Jha", email = "madhukar.k.jha@gmail.com" }]
 readme = "readme.md"
@@ -14,7 +14,7 @@ dependencies = [
     "pyarrow>=15.0.0",
     "polars>=1.0.0",
     "openpyxl>=3.1.0",
-    "pyreadline3>=3.4.0; sys_platform == 'win32'",
+    "ipython>=8.0.0",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -82,8 +82,5 @@ module = [
     "pytae.plotting",
     "pytae.polars_engine",
     "pytae.readers",
-    "pytae.repl",
-    "pytae.repl_utils",
-    "pytae.transpiler",
 ]
 ignore_errors = true
