@@ -1203,12 +1203,12 @@ DATA TRANSFORMATION & PIPELINES:
   <var> = sql { <query> }: Create table from ANSI SQL across loaded tables (or <var> = sql <file.sql>)
 
 REUSABLE PIPELINES & RECIPES:
-  def <name> = <flags>   : Define reusable recipe (e.g. def clean = -dropna -filter "sales > 0")
-  defs                   : List all defined recipes (or 'status def')
-  def <name>             : Inspect recipe definition
-  [<tbl>] | <name>       : Apply recipe to table or active table (e.g. q1 | clean)
-  <var> = <tbl> | <name> : Assign result of recipe to new table (e.g. q1_clean = q1 | clean)
-  rm def <name>          : Delete a recipe definition (or 'rm def *')
+  def <name>[(<params>)] = <flags> : Define reusable recipe (e.g. def winsorize(col, min_val=0) = -filter "$col >= $min_val")
+  defs                             : List all defined recipes (or 'status def')
+  def <name>                       : Inspect recipe definition
+  [<tbl>] | <name>[(<args>)]       : Apply recipe to table or active table (e.g. q1 | winsorize(sales, 10))
+  <var> = <tbl> | <name>[(<args>)] : Assign result of recipe to new table (e.g. q1_clean = q1 | winsorize(sales, 10))
+  rm def <name>                    : Delete a recipe definition (or 'rm def *')
 
 INSPECTION & EXPORT:
   -head [N] / -tail [N]  : Non-destructive preview of top/bottom N rows (e.g. -head 10)
@@ -1556,6 +1556,159 @@ def _substitute_variables(text: str, variables: dict[str, Any]) -> str:
     return "".join(out)
 
 
+def _parse_def_signature(sig_str: str) -> list[tuple[str, str | None]]:
+    """Parse recipe parameter signature like '(col, min_val=0, max_val=1000)'.
+    Returns list of (param_name, default_value_str_or_None).
+    """
+    if not sig_str or not sig_str.strip():
+        return []
+    raw = sig_str.strip()
+    if raw.startswith("(") and raw.endswith(")"):
+        raw = raw[1:-1].strip()
+    if not raw:
+        return []
+    params: list[tuple[str, str | None]] = []
+    seen_default = False
+    for p in [item.strip() for item in raw.split(",") if item.strip()]:
+        if "=" in p:
+            k, v = p.split("=", 1)
+            k, v = k.strip(), v.strip()
+            if not k.isidentifier():
+                raise ValueError(f"parameter name '{k}' must be a valid identifier.")
+            seen_default = True
+            params.append((k, v))
+        else:
+            k = p.strip()
+            if not k.isidentifier():
+                raise ValueError(f"parameter name '{k}' must be a valid identifier.")
+            if seen_default:
+                raise ValueError(f"non-default parameter '{k}' follows default parameter.")
+            params.append((k, None))
+    return params
+
+
+def _parse_call_head(call_str: str) -> tuple[str, str | None, str] | None:
+    """Scan the head of a recipe invocation, e.g.:
+    'winsorize(sales, 10) -head 5' -> ('winsorize', 'sales, 10', '-head 5')
+    'clean -head 5' -> ('clean', None, '-head 5')
+    'clean' -> ('clean', None, '')
+    """
+    c = call_str.strip()
+    if not c:
+        return None
+    m_name = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)", c)
+    if not m_name:
+        return None
+    name = m_name.group(1)
+    idx = m_name.end()
+    while idx < len(c) and c[idx].isspace():
+        idx += 1
+    if idx < len(c) and c[idx] == "(":
+        idx += 1
+        depth = 1
+        in_quote = None
+        args_buf: list[str] = []
+        while idx < len(c) and depth > 0:
+            ch = c[idx]
+            if in_quote:
+                if ch == in_quote:
+                    in_quote = None
+                args_buf.append(ch)
+            elif ch in ('"', "'"):
+                in_quote = ch
+                args_buf.append(ch)
+            elif ch in ("(", "[", "{"):
+                depth += 1
+                args_buf.append(ch)
+            elif ch in (")", "]", "}"):
+                depth -= 1
+                if depth > 0:
+                    args_buf.append(ch)
+            else:
+                args_buf.append(ch)
+            idx += 1
+        if depth != 0:
+            raise ValueError(f"unclosed parenthesis in recipe call '{c}'.")
+        args_str = "".join(args_buf).strip()
+        rest = c[idx:].strip()
+        return name, args_str, rest
+    rest = c[idx:].strip()
+    return name, None, rest
+
+
+def _split_call_args(args_str: str) -> list[str]:
+    """Split comma-separated arguments while respecting quotes and nested brackets."""
+    if not args_str or not args_str.strip():
+        return []
+    args: list[str] = []
+    buf: list[str] = []
+    in_quote = None
+    depth = 0
+    for ch in args_str:
+        if in_quote:
+            if ch == in_quote:
+                in_quote = None
+            buf.append(ch)
+        elif ch in ('"', "'"):
+            in_quote = ch
+            buf.append(ch)
+        elif ch in ("(", "[", "{"):
+            depth += 1
+            buf.append(ch)
+        elif ch in (")", "]", "}"):
+            depth -= 1
+            buf.append(ch)
+        elif ch == "," and depth == 0:
+            args.append("".join(buf).strip())
+            buf = []
+        else:
+            buf.append(ch)
+    if buf:
+        args.append("".join(buf).strip())
+    return args
+
+
+def _bind_and_substitute_recipe(template: str, sig_str: str, args_str: str | None) -> str:
+    """Bind arguments to parameters according to signature and substitute into template."""
+    params = _parse_def_signature(sig_str)
+    call_args = _split_call_args(args_str or "")
+    pos_args: list[str] = []
+    kw_args: dict[str, str] = {}
+    for a in call_args:
+        if "=" in a and a.split("=", 1)[0].strip().isidentifier():
+            k, v = a.split("=", 1)
+            kw_args[k.strip()] = v.strip()
+        else:
+            pos_args.append(a.strip())
+
+    if len(pos_args) > len(params):
+        plural = "s" if len(params) != 1 else ""
+        raise ValueError(f"takes {len(params)} argument{plural} but {len(pos_args)} were given.")
+
+    bound: dict[str, str] = {}
+    for i, (p_name, p_default) in enumerate(params):
+        if i < len(pos_args):
+            bound[p_name] = pos_args[i]
+        elif p_name in kw_args:
+            bound[p_name] = kw_args[p_name]
+        elif p_default is not None:
+            bound[p_name] = p_default
+        else:
+            raise ValueError(f"missing required argument '{p_name}'.")
+
+    unexpected = set(kw_args) - {p[0] for p in params}
+    if unexpected:
+        raise ValueError(f"got unexpected keyword argument '{next(iter(unexpected))}'.")
+
+    res = template
+    for k, v in bound.items():
+        clean_v = v.strip("\"'") if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")) else v
+        res = res.replace("${" + k + "}", clean_v)
+        res = re.sub(r"\$" + re.escape(k) + r"\b", lambda m, val=clean_v: val, res)
+        res = re.sub(r"@" + re.escape(k) + r"\b", lambda m, val=clean_v: val, res)
+    return res
+
+
 
 
 _SET_KNOWN_KEYS = {
@@ -1723,6 +1876,7 @@ class PytaeRepl:
         self.variables: dict[str, Any] = dict(variables or {})
         self.initial_variables: dict[str, Any] = dict(self.variables)
         self.defs: dict[str, str] = {}
+        self.def_signatures: dict[str, str] = {}
         self._py_env: dict[str, Any] = {}
 
         self.path: Path | None = None
@@ -2329,6 +2483,42 @@ class PytaeRepl:
             output_fn(f"pytae error: {exc}")
             return True
 
+    def _resolve_recipe_call(
+        self,
+        call_str: str,
+        output_fn: Callable[[str], None],
+    ) -> tuple[str, list[str] | None] | None:
+        """Resolve a recipe call string (e.g. 'clean', 'winsorize(sales, 10) -head 5').
+        Returns (recipe_name, combined_pipeline_tokens) or (recipe_name, None) on error,
+        or None if call_str does not match any known recipe name.
+        """
+        try:
+            parsed = _parse_call_head(call_str)
+        except ValueError as exc:
+            output_fn(f"pytae error: {exc}")
+            return ("ERROR", None)
+        if parsed is None:
+            return None
+        r_name, args_str, rest = parsed
+        if r_name not in self.defs:
+            return None
+        template = self.defs[r_name]
+        sig_str = self.def_signatures.get(r_name, "")
+        try:
+            subbed = _bind_and_substitute_recipe(template, sig_str, args_str)
+        except ValueError as exc:
+            output_fn(f"pytae error: recipe '{r_name}' {exc}")
+            return (r_name, None)
+        try:
+            subbed_tokens = shlex.split(subbed) if subbed.strip() else []
+        except Exception:
+            subbed_tokens = subbed.strip().split()
+        try:
+            extra_tokens = shlex.split(rest) if rest.strip() else []
+        except Exception:
+            extra_tokens = rest.strip().split()
+        return r_name, subbed_tokens + extra_tokens
+
     def _execute_line_core(self, line: str, output_fn: Callable[[str], None] = print) -> bool:
         """Core dispatch logic for one REPL command line."""
         original_line = line
@@ -2385,12 +2575,11 @@ class PytaeRepl:
         pipe_parts = _split_repl_pipe(line)
         if pipe_parts is not None:
             left_cmd, right_pipe_cmd = pipe_parts
-            try:
-                right_pipe_tokens = shlex.split(right_pipe_cmd) if right_pipe_cmd.strip() else []
-            except Exception:
-                right_pipe_tokens = right_pipe_cmd.strip().split()
-            first_right = right_pipe_tokens[0] if right_pipe_tokens else ""
-            if first_right in self.defs:
+            recipe_call_res = self._resolve_recipe_call(right_pipe_cmd, output_fn)
+            if recipe_call_res is not None:
+                r_name, combined_tokens = recipe_call_res
+                if combined_tokens is None:
+                    return True
                 # 1. Recipe assignment: <target> = [<src>] | <def> [extra_flags]
                 if "=" in left_cmd and not left_cmd.strip().startswith("-"):
                     target_var, src_expr = [p.strip() for p in left_cmd.split("=", 1)]
@@ -2415,13 +2604,10 @@ class PytaeRepl:
                             output_fn("pytae: no active dataset loaded to apply recipe.")
                             return True
 
-                        def_pipe = self.defs[first_right]
-                        extra_tokens = right_pipe_tokens[1:]
-                        combined_tokens = shlex.split(def_pipe) + extra_tokens
                         res_df, durations = self._eval_pipeline_df(source_df, combined_tokens, output_fn)
                         if res_df is not None:
                             self.tables[target_var] = res_df
-                            self.table_sources[target_var] = f"{src_label} | {first_right}"
+                            self.table_sources[target_var] = f"{src_label} | {right_pipe_cmd.strip()}"
                             self.current_df = res_df
                             self.path_str = target_var
                             self.orig_df = self.orig_tables.get(target_var)
@@ -2431,7 +2617,7 @@ class PytaeRepl:
                                 shape_desc = f"lazy, {len(res_df.columns)} cols"
                             else:
                                 shape_desc = f"{res_df.shape[0]:,} rows x {res_df.shape[1]} cols"
-                            output_fn(f"Created '{target_var}' via recipe '{first_right}' ({shape_desc}).")
+                            output_fn(f"Created '{target_var}' via recipe '{r_name}' ({shape_desc}).")
                         return True
 
                 # 2. Direct/preview recipe application: [<src>] | <def> [extra_flags]
@@ -2451,9 +2637,6 @@ class PytaeRepl:
                     output_fn("pytae: no active dataset loaded to apply recipe.")
                     return True
 
-                def_pipe = self.defs[first_right]
-                extra_tokens = right_pipe_tokens[1:]
-                combined_tokens = shlex.split(def_pipe) + extra_tokens
                 has_o = any(t == "-o" or t.startswith("-o=") for t in combined_tokens)
                 if has_o:
                     self._run_pipeline_on_df(source_df, combined_tokens, output_fn)
@@ -2628,7 +2811,7 @@ class PytaeRepl:
             self._cmd_history(output_fn, args=tokens[1:])
             return True
 
-        # Recipes: `defs` (list), `def <name> = <pipeline>` (define), or `def <name>` (inspect)
+        # Recipes: `defs` (list), `def <name>[(<params>)] = <pipeline>` (define), or `def <name>` (inspect)
         if first_lower in ("def", "defs"):
             if first_lower == "defs" or len(tokens) == 1:
                 if not self.defs:
@@ -2636,13 +2819,45 @@ class PytaeRepl:
                 else:
                     output_fn(f"Defined recipes ({len(self.defs)}):")
                     for d_name, d_pipe in sorted(self.defs.items()):
-                        output_fn(f"  {d_name} = {d_pipe}")
+                        sig = self.def_signatures.get(d_name, "")
+                        output_fn(f"  {d_name}{sig} = {d_pipe}")
                 return True
-            if "=" in line:
-                def_part = line.strip()[len(tokens[0]):].strip()
-                d_parts = def_part.split("=", 1)
-                d_name = d_parts[0].strip()
-                d_pipe = d_parts[1].strip()
+            def_part = line.strip()[len(tokens[0]):].strip()
+            in_paren = 0
+            in_quote = None
+            eq_idx = -1
+            for idx_ch, ch in enumerate(def_part):
+                if in_quote:
+                    if ch == in_quote:
+                        in_quote = None
+                elif ch in ('"', "'"):
+                    in_quote = ch
+                elif ch in ('(', '[', '{'):
+                    in_paren += 1
+                elif ch in (')', ']', '}'):
+                    in_paren -= 1
+                elif ch == '=' and in_paren == 0:
+                    eq_idx = idx_ch
+                    break
+
+            if eq_idx != -1:
+                lhs = def_part[:eq_idx].strip()
+                d_pipe = def_part[eq_idx + 1:].strip()
+
+                sig_str = ""
+                if "(" in lhs and lhs.endswith(")"):
+                    paren_idx = lhs.index("(")
+                    d_name = lhs[:paren_idx].strip()
+                    sig_content = lhs[paren_idx + 1:-1].strip()
+                    sig_str = f"({sig_content})"
+                    try:
+                        _parse_def_signature(sig_str)
+                    except ValueError as exc:
+                        output_fn(f"pytae error: {exc}")
+                        return True
+                else:
+                    d_name = lhs
+
                 if not d_name.isidentifier():
                     output_fn(f"pytae error: recipe name '{d_name}' must be a valid Python identifier.")
                     return True
@@ -2653,13 +2868,15 @@ class PytaeRepl:
                     output_fn("pytae error: recipe definition cannot be empty. Usage: def <name> = <pipeline>")
                     return True
                 self.defs[d_name] = d_pipe
-                self._record_history(f"def {d_name} = {d_pipe}")
-                output_fn(f"Defined recipe '{d_name}': {d_pipe}")
+                self.def_signatures[d_name] = sig_str
+                self._record_history(f"def {d_name}{sig_str} = {d_pipe}")
+                output_fn(f"Defined recipe '{d_name}{sig_str}': {d_pipe}")
                 return True
             else:
-                d_name = tokens[1]
+                d_name = tokens[1].split("(")[0].strip()
                 if d_name in self.defs:
-                    output_fn(f"def {d_name} = {self.defs[d_name]}")
+                    sig = self.def_signatures.get(d_name, "")
+                    output_fn(f"def {d_name}{sig} = {self.defs[d_name]}")
                 else:
                     avail = ", ".join(self.defs) if self.defs else "none"
                     output_fn(f"pytae: recipe '{d_name}' is not defined. Available: {avail}")
@@ -2669,14 +2886,15 @@ class PytaeRepl:
             output_fn("pytae: 'macro' has been replaced by 'def'; use 'def <name> = <pipeline>', 'defs', or 'def <name>'.")
             return True
 
-        # Bare recipe invocation on active table: e.g. clean_orders or clean_orders -head 5
-        if first_lower in self.defs:
+        # Bare recipe invocation on active table: e.g. clean_orders, winsorize(sales, 10), or clean_orders -head 5
+        recipe_bare_res = self._resolve_recipe_call(norm_line, output_fn)
+        if recipe_bare_res is not None:
+            r_name, combined_tokens = recipe_bare_res
+            if combined_tokens is None:
+                return True
             if self.current_df is None:
                 output_fn("pytae: no active dataset loaded to apply recipe.")
                 return True
-            def_pipe = self.defs[first_lower]
-            extra_tokens = tokens[1:]
-            combined_tokens = shlex.split(def_pipe) + extra_tokens
             has_o = any(t == "-o" or t.startswith("-o=") for t in combined_tokens)
             if has_o:
                 self._run_pipeline_on_df(self.current_df, combined_tokens, output_fn)
@@ -2823,11 +3041,14 @@ class PytaeRepl:
                         return True
                     count = len(self.defs)
                     self.defs.clear()
+                    self.def_signatures.clear()
                     self._record_history("rm def *")
                     output_fn(f"Removed all definitions ({count} removed).")
                     return True
                 if target in self.defs:
                     del self.defs[target]
+                    if target in self.def_signatures:
+                        del self.def_signatures[target]
                     self._record_history(f"rm def {target}")
                     output_fn(f"Removed def '{target}'.")
                     return True
@@ -3706,11 +3927,13 @@ class PytaeRepl:
                     return
                 output_fn(f"Defined recipes ({len(self.defs)}):")
                 for d_name, d_pipe in sorted(self.defs.items()):
-                    output_fn(f"  {d_name} = {d_pipe}")
+                    sig = self.def_signatures.get(d_name, "")
+                    output_fn(f"  {d_name}{sig} = {d_pipe}")
                 return
-            d_name = target_args[1]
+            d_name = target_args[1].split("(")[0].strip()
             if d_name in self.defs:
-                output_fn(f"def {d_name} = {self.defs[d_name]}")
+                sig = self.def_signatures.get(d_name, "")
+                output_fn(f"def {d_name}{sig} = {self.defs[d_name]}")
             else:
                 avail = ", ".join(self.defs) if self.defs else "none"
                 output_fn(f"pytae: def '{d_name}' not found. Available: {avail}")
@@ -3984,6 +4207,8 @@ class PytaeRepl:
             "active_table": self.path_str,
             "current_df": self.current_df.clone() if self.current_df is not None else None,
             "defs": dict(self.defs),
+            "def_signatures": dict(self.def_signatures),
+            "def_signatures": dict(self.def_signatures),
         }
 
     def _apply_session_state(self, state: Any) -> None:
@@ -3998,6 +4223,7 @@ class PytaeRepl:
             self.initial_tables = {k: v.clone() for k, v in state.get("initial_tables", {}).items()}
             self.table_sources = dict(state.get("table_sources", {}))
             self.defs = dict(state.get("defs", state.get("macros", {})))
+            self.def_signatures = dict(state.get("def_signatures", {}))
             self.path_str = state.get("active_table")
             if self.path_str and self.path_str in self.tables:
                 self.current_df = self.tables[self.path_str]
@@ -4374,6 +4600,7 @@ class PytaeRepl:
             "variables": dict(self.variables),
             "variables_path": vars_path,
             "defs": dict(self.defs),
+            "def_signatures": dict(self.def_signatures),
             "created_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "size_bytes": total_bytes,
         }
@@ -4482,6 +4709,7 @@ class PytaeRepl:
                 self.defs = dict(snap["macros"])
             else:
                 self.defs = {}
+            self.def_signatures = dict(snap.get("def_signatures", {}))
 
         elif isinstance(snap, pl.DataFrame):
             self.current_df = snap.clone()
@@ -5106,14 +5334,17 @@ class PytaeRepl:
             pipe_tokens: list[str] = []
             pipe_line = ""
 
-            if first_tok in self.defs:
+            recipe_assign_res = self._resolve_recipe_call(right_expr, output_fn)
+            if recipe_assign_res is not None:
+                r_name, combined_tokens = recipe_assign_res
+                if combined_tokens is None:
+                    return
                 if self.current_df is None:
                     output_fn("pytae: no active dataset loaded to apply recipe.")
                     return
                 source_df = self.current_df
                 source_label = self.path_str or "active"
-                def_pipe = self.defs[first_tok]
-                pipe_tokens = shlex.split(def_pipe) + right_tokens[1:]
+                pipe_tokens = combined_tokens
                 pipe_line = right_expr
             elif first_tok.startswith("-"):
                 if first_tok == "-join" and "left=" in right_expr:
@@ -5134,12 +5365,18 @@ class PytaeRepl:
                 if resolved_src is not None:
                     source_df = self.tables[resolved_src]
                     source_label = first_tok
-                    pipe_tokens = right_tokens[1:]
-                    pipe_line = right_expr[len(first_tok) :].strip()
-                    if pipe_tokens and pipe_tokens[0] in self.defs:
-                        def_pipe = self.defs[pipe_tokens[0]]
-                        pipe_tokens = shlex.split(def_pipe) + pipe_tokens[1:]
-                    elif not pipe_tokens:
+                    sub_expr = right_expr[len(first_tok) :].strip()
+                    recipe_src_res = self._resolve_recipe_call(sub_expr, output_fn)
+                    if recipe_src_res is not None:
+                        r_name, combined_tokens = recipe_src_res
+                        if combined_tokens is None:
+                            return
+                        pipe_tokens = combined_tokens
+                        pipe_line = sub_expr
+                    else:
+                        pipe_tokens = right_tokens[1:]
+                        pipe_line = sub_expr
+                    if not pipe_tokens:
                         if var_name in self.variables:
                             output_fn(
                                 f"pytae: '{var_name}' is already a session variable; cannot assign as a table. Use 'rm var {var_name}' first."
@@ -5311,10 +5548,13 @@ class PytaeRepl:
             self.path_str = old_path
             return
 
-        if first_sub in self.defs:
-            def_pipe = self.defs[first_sub]
-            extra_tokens = sub_tokens[1:]
-            combined_tokens = shlex.split(def_pipe) + extra_tokens
+        recipe_target_res = self._resolve_recipe_call(sub_line.strip(), output_fn)
+        if recipe_target_res is not None:
+            r_name, combined_tokens = recipe_target_res
+            if combined_tokens is None:
+                self.current_df = old_active
+                self.path_str = old_path
+                return
             has_o = any(t == "-o" or t.startswith("-o=") for t in combined_tokens)
             if has_o:
                 self._run_pipeline_on_df(target_df, combined_tokens, output_fn)

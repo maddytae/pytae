@@ -5,18 +5,13 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Added
-- **Reusable REPL Pipeline Recipes (`def <name> = <pipeline>`)**:
-  - Define reusable transformation chains in the interactive REPL: `def clean = -dropna -filter "sales > 0" -mutate "tax = sales * 0.08"`.
-  - Apply defined recipes across tables via pipes (`q1 | clean`, `q1_clean = q1 | clean`) or direct invocation (`clean`, `q1 clean`).
-  - Chain extra flags directly on recipe invocations (e.g. `q1 | clean -head 5`).
-  - Manage recipes with `defs`, `def <name>`, `rm def <name>`, `rm def *`, and `status def`.
-  - Full checkpoint snapshot persistence across `checkpoint` and `restore`.
-  - Tab autocompletion for defined recipe names in prompts, pipe contexts, `rm def`, and `status def`.
-  - Helpful deprecation redirect from `macro` / `macros` to `def` / `defs`.
-- **Python Transpiler for REPL Recipes (`export script.py`)**:
-  - Standalone script export (`export pipeline.py`) extracts used definitions into clean, reusable Python functions (`def clean(df: pt.DataFrame) -> pt.DataFrame:`).
-  - Call sites transpile to clean Python function invocations (`q1_clean = clean(q1)`).
-  - Dead-code pruning automatically removes unused definitions from exported scripts when `prune_dead=True`.
+- **Parameterized REPL Pipeline Recipes (`def <name>[(<params>)] = <pipeline>`)**:
+  - Define reusable transformation chains with custom parameters and default values: `def winsorize(col, min_val=0, max_val=1000) = -filter "$col >= $min_val" -mutate "$col = if_else($col > $max_val, $max_val, $col)"`.
+  - Invoke parameterized recipes with positional, keyword, or default arguments via pipes (`q1 | winsorize(sales, 10)`, `q2 | winsorize(sales, max_val=500)`), bare invocations (`winsorize(sales, 10)`), or targeted execution (`q1 winsorize(sales, 10)`).
+  - Parameter substitution supports `$param`, `${param}`, and `@param` tokens inside verb expressions.
+  - Parameterized recipes transpile to typed, signature-matched Python functions on `export pipeline.py` (`def winsorize(df: pt.DataFrame, col, min_val=0, max_val=1000) -> pt.DataFrame:`).
+  - Call sites transpile directly into Python calls with formatted argument literals (`q1_clean = winsorize(q1, 'sales', 10)`).
+  - Full checkpoint snapshot persistence of parameter signatures across `checkpoint` and `restore`.
 
 ## [3.14.8] - 2026-11-16
 

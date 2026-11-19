@@ -13881,6 +13881,28 @@ pytae> def clean_orders = -dropna -filter "sales > 0" -mutate "tax = sales * 0.0
 Defined recipe 'clean_orders': -dropna -filter "sales > 0" -mutate "tax = sales * 0.08"
 ```
 
+#### Parameterized Recipes (Arguments & Default Values)
+Recipes can accept positional arguments, default values, and keyword arguments:
+
+```text
+pytae> def winsorize(col, min_val=0, max_val=1000) = \
+       -filter "$col >= $min_val" -mutate "$col = if_else($col > $max_val, $max_val, $col)"
+Defined recipe 'winsorize(col, min_val=0, max_val=1000)': -filter "$col >= $min_val" -mutate "$col = if_else($col > $max_val, $max_val, $col)"
+```
+
+Parameters are referenced inside verb arguments using `$param`, `${param}`, or `@param`. When invoked, arguments are substituted into the pipeline template:
+
+```text
+# Positional arguments:
+pytae> q1_clean = q1 | winsorize(sales, 10, 500)
+
+# Using default values:
+pytae> q1_clean = q1 | winsorize(sales)
+
+# Keyword arguments:
+pytae> q2_clean = q2 | winsorize(profit, max_val=250)
+```
+
 ### Applying Recipes with Pipes (`|`) or Direct Invocation
 You can apply a defined recipe to any table using pipe syntax or space-separated command invocation:
 

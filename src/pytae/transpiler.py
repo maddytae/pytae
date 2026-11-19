@@ -18,7 +18,64 @@ from pytae.repl_utils import (
 )
 
 
-def _transpile_pipeline_tokens_to_calls(tokens: list[str]) -> list[str]:
+def _format_token_str(val: str, params: list[str] | None = None) -> str:
+    """Format string token for Python code, using f-strings when parameters are referenced."""
+    if not params:
+        return repr(val)
+    res = val
+    has_sub = False
+    for p in params:
+        if "${" + p + "}" in res or f"${p}" in res or f"@{p}" in res:
+            has_sub = True
+            res = res.replace("${" + p + "}", "{" + p + "}")
+            res = re.sub(r"\$" + re.escape(p) + r"\b", "{" + p + "}", res)
+            res = re.sub(r"@" + re.escape(p) + r"\b", "{" + p + "}", res)
+    if has_sub:
+        escaped = res.replace('"', '\\"')
+        return f'f"{escaped}"'
+    return repr(val)
+
+
+def _format_python_call_args(args_str: str | None) -> str:
+    """Convert REPL call argument string into Python argument list string."""
+    if not args_str or not args_str.strip():
+        return ""
+    from pytae.repl import _split_call_args
+    call_args = _split_call_args(args_str)
+    formatted: list[str] = []
+    for a in call_args:
+        a_str = a.strip()
+        if "=" in a_str and a_str.split("=", 1)[0].strip().isidentifier():
+            k, v = a_str.split("=", 1)
+            k, v = k.strip(), v.strip()
+            v_fmt = v if (v.replace(".", "", 1).isdigit() or (v.startswith(('"', "'")) and v.endswith(('"', "'")))) else repr(v)
+            formatted.append(f"{k}={v_fmt}")
+        else:
+            fmt = a_str if (a_str.replace(".", "", 1).isdigit() or (a_str.startswith(('"', "'")) and a_str.endswith(('"', "'")))) else repr(a_str)
+            formatted.append(fmt)
+    return ", ".join(formatted)
+
+
+def _match_recipe_call_site(call_str: str, defined_recipes: dict[str, str]) -> tuple[str, str, list[str]] | None:
+    """Match a call string against defined recipes.
+    Returns (recipe_name, python_call_args_str, extra_tokens) or None.
+    """
+    from pytae.repl import _parse_call_head
+    try:
+        parsed = _parse_call_head(call_str)
+    except Exception:
+        return None
+    if parsed is None:
+        return None
+    r_name, args_str, rest = parsed
+    if r_name not in defined_recipes:
+        return None
+    py_args = _format_python_call_args(args_str)
+    extra_toks = shlex.split(rest) if rest.strip() else []
+    return r_name, py_args, extra_toks
+
+
+def _transpile_pipeline_tokens_to_calls(tokens: list[str], params: list[str] | None = None) -> list[str]:
     """Convert REPL pipeline tokens into a list of Python method call strings."""
     calls: list[str] = []
     i = 0
@@ -29,7 +86,7 @@ def _transpile_pipeline_tokens_to_calls(tokens: list[str]) -> list[str]:
 
         # -filter <expr>
         if low in ("-filter", "--filter") and i + 1 < n:
-            calls.append(f".filter({repr(tokens[i + 1])})")
+            calls.append(f".filter({_format_token_str(tokens[i + 1], params)})")
             i += 2
             continue
 
@@ -37,14 +94,14 @@ def _transpile_pipeline_tokens_to_calls(tokens: list[str]) -> list[str]:
         if low in ("-select", "--select") and i + 1 < n:
             cols_val = tokens[i + 1]
             col_parts = [c.strip() for c in cols_val.split(",") if c.strip()]
-            formatted_cols = ", ".join(repr(c) for c in col_parts)
+            formatted_cols = ", ".join(_format_token_str(c, params) for c in col_parts)
             calls.append(f".select({formatted_cols})")
             i += 2
             continue
 
         # -mutate <expr>
         if low in ("-mutate", "--mutate") and i + 1 < n:
-            calls.append(f".mutate({repr(tokens[i + 1])})")
+            calls.append(f".mutate({_format_token_str(tokens[i + 1], params)})")
             i += 2
             continue
 
@@ -52,14 +109,14 @@ def _transpile_pipeline_tokens_to_calls(tokens: list[str]) -> list[str]:
         if low in ("-by", "--by") and i + 1 < n:
             cols_val = tokens[i + 1]
             col_parts = [c.strip() for c in cols_val.split(",") if c.strip()]
-            formatted_cols = ", ".join(repr(c) for c in col_parts)
+            formatted_cols = ", ".join(_format_token_str(c, params) for c in col_parts)
             calls.append(f".by({formatted_cols})")
             i += 2
             continue
 
         # -agg <specs>
         if low in ("-agg", "--agg") and i + 1 < n:
-            calls.append(f".agg({repr(tokens[i + 1])})")
+            calls.append(f".agg({_format_token_str(tokens[i + 1], params)})")
             i += 2
             continue
 
@@ -103,10 +160,10 @@ def _transpile_pipeline_tokens_to_calls(tokens: list[str]) -> list[str]:
         if low in ("-sort", "--sort", "-arrange", "--arrange") and i + 1 < n:
             col_val = tokens[i + 1]
             if i + 2 < n and tokens[i + 2].lower() in ("desc", "descending"):
-                calls.append(f".arrange({repr(col_val + ' desc')})")
+                calls.append(f".arrange({_format_token_str(col_val + ' desc', params)})")
                 i += 3
             else:
-                calls.append(f".arrange({repr(col_val)})")
+                calls.append(f".arrange({_format_token_str(col_val, params)})")
                 i += 2
             continue
 
@@ -431,9 +488,9 @@ def _extract_entry_def_and_uses(entry: str) -> tuple[set[str], set[str], bool, b
     if clean.startswith("py"):
         return set(), set(), True, True
 
-    # 1b. Pipeline definitions: def <name> = <pipeline>
+    # 1b. Pipeline definitions: def <name>[(<params>)] = <pipeline>
     if clean.startswith("def "):
-        m = re.match(r"^def\s+([A-Za-z_][A-Za-z0-9_]*)\s*=", clean)
+        m = re.match(r"^def\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(.*?\))?\s*=", clean)
         if m:
             return {f"def:{m.group(1)}"}, set(), False, False
 
@@ -488,9 +545,9 @@ def _extract_entry_def_and_uses(entry: str) -> tuple[set[str], set[str], bool, b
             # Check for pipeline def pipe on RHS: target = src | def_name
             if "|" in right:
                 p_l, p_r = [p.strip() for p in right.split("|", 1)]
-                r_toks = shlex.split(p_r) if p_r else []
-                if r_toks and r_toks[0].isidentifier():
-                    uses.add(f"def:{r_toks[0]}")
+                m_call = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)", p_r) if p_r else None
+                if m_call:
+                    uses.add(f"def:{m_call.group(1)}")
                 if p_l and p_l.isidentifier():
                     uses.add(p_l)
                 elif not p_l:
@@ -563,9 +620,9 @@ def _extract_entry_def_and_uses(entry: str) -> tuple[set[str], set[str], bool, b
     # 6b. Pipe commands: src | def_name
     if "|" in clean:
         p_l, p_r = [p.strip() for p in clean.split("|", 1)]
-        r_toks = shlex.split(p_r) if p_r else []
-        if r_toks and r_toks[0].isidentifier():
-            uses.add(f"def:{r_toks[0]}")
+        m_call = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)", p_r) if p_r else None
+        if m_call:
+            uses.add(f"def:{m_call.group(1)}")
         if p_l and p_l.isidentifier():
             defs.add(p_l)
             uses.add(p_l)
@@ -661,11 +718,16 @@ def _compile_history_to_python(
 
     # Format and emit reusable REPL pipeline definitions
     defined_recipes: dict[str, str] = {}
+    recipe_signatures: dict[str, str] = {}
     for e in entries:
         c = e.strip()
-        m = re.match(r"^def\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$", c)
+        m = re.match(r"^def\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\((.*?)\))?\s*=\s*(.+)$", c)
         if m:
-            defined_recipes[m.group(1)] = m.group(2).strip()
+            name = m.group(1)
+            sig = m.group(2) or ""
+            pipe = m.group(3).strip()
+            defined_recipes[name] = pipe
+            recipe_signatures[name] = sig
 
     used_recipes: set[str] = set()
     for e in entries:
@@ -673,24 +735,28 @@ def _compile_history_to_python(
         if c.startswith("def "):
             continue
         for r_name in defined_recipes:
-            if re.search(r"(?:\||\b)\s*" + re.escape(r_name) + r"(?:\b|\s|$)", c):
+            if re.search(r"(?:\||\b)\s*" + re.escape(r_name) + r"(?:\b|\s|\(|$)", c):
                 used_recipes.add(r_name)
 
     recipes_to_emit = [r for r in defined_recipes if r in used_recipes] if prune_dead else list(defined_recipes.keys())
     if recipes_to_emit:
         lines.append("# Reusable pipeline transformations")
         for r_name in recipes_to_emit:
-            calls = _transpile_pipeline_tokens_to_calls(shlex.split(defined_recipes[r_name]))
+            sig = recipe_signatures.get(r_name, "")
+            sig_params = [p.split("=")[0].strip() for p in sig.split(",") if p.strip()] if sig else []
+            calls = _transpile_pipeline_tokens_to_calls(shlex.split(defined_recipes[r_name]), params=sig_params)
+            sig_str = f", {sig}" if sig else ""
+            header = f"def {r_name}(df: pt.DataFrame{sig_str}) -> pt.DataFrame:"
             if not calls:
-                lines.append(f"def {r_name}(df: pt.DataFrame) -> pt.DataFrame:")
+                lines.append(header)
                 lines.append("    return df")
                 lines.append("")
             elif len(calls) == 1:
-                lines.append(f"def {r_name}(df: pt.DataFrame) -> pt.DataFrame:")
+                lines.append(header)
                 lines.append(f"    return df{calls[0]}")
                 lines.append("")
             else:
-                lines.append(f"def {r_name}(df: pt.DataFrame) -> pt.DataFrame:")
+                lines.append(header)
                 lines.append("    return (")
                 lines.append("        df")
                 for call in calls:
@@ -787,71 +853,86 @@ def _compile_history_to_python(
         if clean.startswith("def "):
             continue
 
-        # Pipeline invocations (e.g. q1_clean = q1 | clean_orders, q1 | clean_orders, or clean_orders)
+        # Pipeline invocations (e.g. q1_clean = q1 | winsorize(sales, 10), q1 | clean, or clean)
         recipe_handled = False
         if "=" in clean and not clean.startswith("-"):
             tgt, rhs = [p.strip() for p in clean.split("=", 1)]
             if tgt.isidentifier():
                 if "|" in rhs:
                     rhs_src, rhs_call = [p.strip() for p in rhs.split("|", 1)]
-                    call_toks = shlex.split(rhs_call) if rhs_call else []
-                    r_name = call_toks[0] if call_toks else ""
-                    if r_name in defined_recipes:
+                    matched = _match_recipe_call_site(rhs_call, defined_recipes)
+                    if matched is not None:
+                        r_name, py_args, extra_toks = matched
                         src_name = rhs_src if rhs_src else (tgt if tgt in known_tables else ("df" if "df" in known_tables or not known_tables else list(known_tables)[-1]))
-                        extra_chain = _transpile_pipeline_tokens_to_python(call_toks[1:])
-                        lines.append(f"{tgt} = {r_name}({src_name}){extra_chain}")
+                        arg_part = f", {py_args}" if py_args else ""
+                        extra_chain = _transpile_pipeline_tokens_to_python(extra_toks)
+                        lines.append(f"{tgt} = {r_name}({src_name}{arg_part}){extra_chain}")
                         known_tables.add(tgt)
                         recipe_handled = True
                 else:
-                    rhs_toks = shlex.split(rhs) if rhs else []
-                    if len(rhs_toks) >= 1 and rhs_toks[0] in defined_recipes:
-                        r_name = rhs_toks[0]
+                    matched = _match_recipe_call_site(rhs, defined_recipes)
+                    if matched is not None:
+                        r_name, py_args, extra_toks = matched
                         src_name = tgt if tgt in known_tables else ("df" if "df" in known_tables or not known_tables else list(known_tables)[-1])
-                        extra_chain = _transpile_pipeline_tokens_to_python(rhs_toks[1:])
-                        lines.append(f"{tgt} = {r_name}({src_name}){extra_chain}")
+                        arg_part = f", {py_args}" if py_args else ""
+                        extra_chain = _transpile_pipeline_tokens_to_python(extra_toks)
+                        lines.append(f"{tgt} = {r_name}({src_name}{arg_part}){extra_chain}")
                         known_tables.add(tgt)
                         recipe_handled = True
-                    elif len(rhs_toks) >= 2 and rhs_toks[1] in defined_recipes and rhs_toks[0].isidentifier():
-                        src_name = rhs_toks[0]
-                        r_name = rhs_toks[1]
-                        extra_chain = _transpile_pipeline_tokens_to_python(rhs_toks[2:])
-                        lines.append(f"{tgt} = {r_name}({src_name}){extra_chain}")
-                        known_tables.add(tgt)
-                        recipe_handled = True
+                    else:
+                        rhs_toks = shlex.split(rhs) if rhs else []
+                        if len(rhs_toks) >= 2 and rhs_toks[0].isidentifier():
+                            rhs_sub = rhs[len(rhs_toks[0]):].strip()
+                            matched_sub = _match_recipe_call_site(rhs_sub, defined_recipes)
+                            if matched_sub is not None:
+                                r_name, py_args, extra_toks = matched_sub
+                                src_name = rhs_toks[0]
+                                arg_part = f", {py_args}" if py_args else ""
+                                extra_chain = _transpile_pipeline_tokens_to_python(extra_toks)
+                                lines.append(f"{tgt} = {r_name}({src_name}{arg_part}){extra_chain}")
+                                known_tables.add(tgt)
+                                recipe_handled = True
         elif "|" in clean:
             src_part, recipe_part = [p.strip() for p in clean.split("|", 1)]
-            call_toks = shlex.split(recipe_part) if recipe_part else []
-            r_name = call_toks[0] if call_toks else ""
-            if r_name in defined_recipes:
+            matched = _match_recipe_call_site(recipe_part, defined_recipes)
+            if matched is not None:
+                r_name, py_args, extra_toks = matched
                 src_name = src_part if src_part else ("df" if "df" in known_tables or not known_tables else list(known_tables)[-1])
-                extra_toks = call_toks[1:]
+                arg_part = f", {py_args}" if py_args else ""
                 if "-o" in extra_toks:
                     o_idx = extra_toks.index("-o")
                     dest = extra_toks[o_idx + 1] if o_idx + 1 < len(extra_toks) else "out.parquet"
                     remaining_extra = [t for j, t in enumerate(extra_toks) if j not in (o_idx, o_idx + 1)]
                     extra_chain = _transpile_pipeline_tokens_to_python(remaining_extra)
-                    lines.append(f"{r_name}({src_name}){extra_chain}.to({repr(dest.strip('\"\''))})")
+                    lines.append(f"{r_name}({src_name}{arg_part}){extra_chain}.to({repr(dest.strip('\"\''))})")
                 else:
                     extra_chain = _transpile_pipeline_tokens_to_python(extra_toks)
-                    lines.append(f"{src_name} = {r_name}({src_name}){extra_chain}")
+                    lines.append(f"{src_name} = {r_name}({src_name}{arg_part}){extra_chain}")
                     known_tables.add(src_name)
                 recipe_handled = True
         else:
-            toks = shlex.split(clean) if clean else []
-            if len(toks) >= 1 and toks[0] in defined_recipes:
-                r_name = toks[0]
+            matched = _match_recipe_call_site(clean, defined_recipes)
+            if matched is not None:
+                r_name, py_args, extra_toks = matched
                 src_name = "df" if "df" in known_tables or not known_tables else list(known_tables)[-1]
-                extra_chain = _transpile_pipeline_tokens_to_python(toks[1:])
-                lines.append(f"{src_name} = {r_name}({src_name}){extra_chain}")
+                arg_part = f", {py_args}" if py_args else ""
+                extra_chain = _transpile_pipeline_tokens_to_python(extra_toks)
+                lines.append(f"{src_name} = {r_name}({src_name}{arg_part}){extra_chain}")
                 known_tables.add(src_name)
                 recipe_handled = True
-            elif len(toks) >= 2 and toks[0].isidentifier() and toks[1] in defined_recipes:
-                src_name = toks[0]
-                r_name = toks[1]
-                extra_chain = _transpile_pipeline_tokens_to_python(toks[2:])
-                lines.append(f"{src_name} = {r_name}({src_name}){extra_chain}")
-                known_tables.add(src_name)
-                recipe_handled = True
+            else:
+                toks = shlex.split(clean) if clean else []
+                if len(toks) >= 2 and toks[0].isidentifier():
+                    rhs_sub = clean[len(toks[0]):].strip()
+                    matched_sub = _match_recipe_call_site(rhs_sub, defined_recipes)
+                    if matched_sub is not None:
+                        r_name, py_args, extra_toks = matched_sub
+                        src_name = toks[0]
+                        arg_part = f", {py_args}" if py_args else ""
+                        extra_chain = _transpile_pipeline_tokens_to_python(extra_toks)
+                        lines.append(f"{src_name} = {r_name}({src_name}{arg_part}){extra_chain}")
+                        known_tables.add(src_name)
+                        recipe_handled = True
 
         if recipe_handled:
             continue
@@ -1366,9 +1447,9 @@ def _is_replayable_entry_static(entry: str) -> bool:
     if clean == "set" or clean.startswith("set ") or clean.startswith("set="):
         return False
 
-    # Pipeline definitions: def <name> = <pipeline>
+    # Pipeline definitions: def <name>[(<params>)] = <pipeline>
     if clean.startswith("def "):
-        m = re.match(r"^def\s+([A-Za-z_][A-Za-z0-9_]*)\s*=", clean)
+        m = re.match(r"^def\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(.*?\))?\s*=", clean)
         if m:
             return True
 
