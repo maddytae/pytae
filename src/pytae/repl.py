@@ -1202,13 +1202,13 @@ DATA TRANSFORMATION & PIPELINES:
   <var> = <tbl> -<pipe>  : Assign pipeline result to new variable (e.g. df3 = df1 -filter ...)
   <var> = sql { <query> }: Create table from ANSI SQL across loaded tables (or <var> = sql <file.sql>)
 
-REUSABLE MACROS & RECIPES:
-  macro <name> = <flags> : Define reusable recipe (e.g. macro clean = -dropna -filter "sales > 0")
-  macros                 : List all defined macros (or 'status macro')
-  macro <name>           : Inspect macro definition
-  [<tbl>] | <macro>      : Apply macro to table or active table (e.g. q1 | clean)
-  <var> = <tbl> | <macro>: Assign result of macro to new table (e.g. q1_clean = q1 | clean)
-  rm macro <name>        : Delete a macro (or 'rm macro *')
+REUSABLE PIPELINES & RECIPES:
+  def <name> = <flags>   : Define reusable recipe (e.g. def clean = -dropna -filter "sales > 0")
+  defs                   : List all defined recipes (or 'status def')
+  def <name>             : Inspect recipe definition
+  [<tbl>] | <name>       : Apply recipe to table or active table (e.g. q1 | clean)
+  <var> = <tbl> | <name> : Assign result of recipe to new table (e.g. q1_clean = q1 | clean)
+  rm def <name>          : Delete a recipe definition (or 'rm def *')
 
 INSPECTION & EXPORT:
   -head [N] / -tail [N]  : Non-destructive preview of top/bottom N rows (e.g. -head 10)
@@ -1236,7 +1236,7 @@ STATE & WORKBENCH:
   rm table <name>        : Delete an in-memory table (or 'rm table *')
   rm checkpoint <name>   : Delete a saved checkpoint (or 'rm checkpoint *')
   rm var <name>          : Delete a session variable (or 'rm var *')
-  rm macro <name>        : Delete a macro definition (or 'rm macro *')
+  rm def <name>          : Delete a recipe definition (or 'rm def *')
   set [key [= value]]    : Configure display settings (max_rows, max_cols, float_precision, comma, syntax_highlight, theme)
   set save               : Save current display settings permanently to ~/.pytae/config.json
   clear                  : Clear the terminal screen
@@ -1722,7 +1722,7 @@ class PytaeRepl:
         self._history_cursor: int | None = None
         self.variables: dict[str, Any] = dict(variables or {})
         self.initial_variables: dict[str, Any] = dict(self.variables)
-        self.macros: dict[str, str] = {}
+        self.defs: dict[str, str] = {}
         self._py_env: dict[str, Any] = {}
 
         self.path: Path | None = None
@@ -2381,7 +2381,7 @@ class PytaeRepl:
             except Exception:
                 pass
 
-        # Check for top-level pipe: <cmd> | <macro> or <repl_command> | <shell_command>
+        # Check for top-level pipe: <cmd> | <def> or <repl_command> | <shell_command>
         pipe_parts = _split_repl_pipe(line)
         if pipe_parts is not None:
             left_cmd, right_pipe_cmd = pipe_parts
@@ -2390,8 +2390,8 @@ class PytaeRepl:
             except Exception:
                 right_pipe_tokens = right_pipe_cmd.strip().split()
             first_right = right_pipe_tokens[0] if right_pipe_tokens else ""
-            if first_right in self.macros:
-                # 1. Macro assignment: <target> = [<src>] | <macro> [extra_flags]
+            if first_right in self.defs:
+                # 1. Recipe assignment: <target> = [<src>] | <def> [extra_flags]
                 if "=" in left_cmd and not left_cmd.strip().startswith("-"):
                     target_var, src_expr = [p.strip() for p in left_cmd.split("=", 1)]
                     if target_var.isidentifier():
@@ -2412,12 +2412,12 @@ class PytaeRepl:
                             source_df = self.current_df
                             src_label = self.path_str or "df"
                         if source_df is None:
-                            output_fn("pytae: no active dataset loaded to apply macro.")
+                            output_fn("pytae: no active dataset loaded to apply recipe.")
                             return True
 
-                        macro_pipe = self.macros[first_right]
+                        def_pipe = self.defs[first_right]
                         extra_tokens = right_pipe_tokens[1:]
-                        combined_tokens = shlex.split(macro_pipe) + extra_tokens
+                        combined_tokens = shlex.split(def_pipe) + extra_tokens
                         res_df, durations = self._eval_pipeline_df(source_df, combined_tokens, output_fn)
                         if res_df is not None:
                             self.tables[target_var] = res_df
@@ -2431,10 +2431,10 @@ class PytaeRepl:
                                 shape_desc = f"lazy, {len(res_df.columns)} cols"
                             else:
                                 shape_desc = f"{res_df.shape[0]:,} rows x {res_df.shape[1]} cols"
-                            output_fn(f"Created '{target_var}' via macro '{first_right}' ({shape_desc}).")
+                            output_fn(f"Created '{target_var}' via recipe '{first_right}' ({shape_desc}).")
                         return True
 
-                # 2. Direct/preview macro application: [<src>] | <macro> [extra_flags]
+                # 2. Direct/preview recipe application: [<src>] | <def> [extra_flags]
                 src_expr = left_cmd.strip()
                 if src_expr:
                     resolved_src = self._resolve_table_name(src_expr)
@@ -2448,12 +2448,12 @@ class PytaeRepl:
                     source_df = self.current_df
                     src_label = self.path_str or "df"
                 if source_df is None:
-                    output_fn("pytae: no active dataset loaded to apply macro.")
+                    output_fn("pytae: no active dataset loaded to apply recipe.")
                     return True
 
-                macro_pipe = self.macros[first_right]
+                def_pipe = self.defs[first_right]
                 extra_tokens = right_pipe_tokens[1:]
-                combined_tokens = shlex.split(macro_pipe) + extra_tokens
+                combined_tokens = shlex.split(def_pipe) + extra_tokens
                 has_o = any(t == "-o" or t.startswith("-o=") for t in combined_tokens)
                 if has_o:
                     self._run_pipeline_on_df(source_df, combined_tokens, output_fn)
@@ -2628,51 +2628,55 @@ class PytaeRepl:
             self._cmd_history(output_fn, args=tokens[1:])
             return True
 
-        # Macros: `macros` (list), `macro <name> = <pipeline>` (define), or `macro <name>` (inspect)
-        if first_lower in ("macro", "macros"):
-            if first_lower == "macros" or len(tokens) == 1:
-                if not self.macros:
-                    output_fn("No macros defined in session. Define one with: macro <name> = <flags...>")
+        # Recipes: `defs` (list), `def <name> = <pipeline>` (define), or `def <name>` (inspect)
+        if first_lower in ("def", "defs"):
+            if first_lower == "defs" or len(tokens) == 1:
+                if not self.defs:
+                    output_fn("No definitions defined in session. Define one with: def <name> = <flags...>")
                 else:
-                    output_fn(f"Defined macros ({len(self.macros)}):")
-                    for m_name, m_pipe in sorted(self.macros.items()):
-                        output_fn(f"  {m_name} = {m_pipe}")
+                    output_fn(f"Defined recipes ({len(self.defs)}):")
+                    for d_name, d_pipe in sorted(self.defs.items()):
+                        output_fn(f"  {d_name} = {d_pipe}")
                 return True
             if "=" in line:
-                macro_part = line.strip()[len(tokens[0]):].strip()
-                m_parts = macro_part.split("=", 1)
-                m_name = m_parts[0].strip()
-                m_pipe = m_parts[1].strip()
-                if not m_name.isidentifier():
-                    output_fn(f"pytae error: macro name '{m_name}' must be a valid Python identifier.")
+                def_part = line.strip()[len(tokens[0]):].strip()
+                d_parts = def_part.split("=", 1)
+                d_name = d_parts[0].strip()
+                d_pipe = d_parts[1].strip()
+                if not d_name.isidentifier():
+                    output_fn(f"pytae error: recipe name '{d_name}' must be a valid Python identifier.")
                     return True
-                if m_name.lower() in _RESERVED_VARIABLE_NAMES or m_name.lower() in _BARE_PIPELINE_VERBS:
-                    output_fn(f"pytae: '{m_name}' is a reserved command or verb; choose a different macro name.")
+                if d_name.lower() in _RESERVED_VARIABLE_NAMES or d_name.lower() in _BARE_PIPELINE_VERBS:
+                    output_fn(f"pytae: '{d_name}' is a reserved command or verb; choose a different recipe name.")
                     return True
-                if not m_pipe:
-                    output_fn("pytae error: macro definition cannot be empty. Usage: macro <name> = <pipeline>")
+                if not d_pipe:
+                    output_fn("pytae error: recipe definition cannot be empty. Usage: def <name> = <pipeline>")
                     return True
-                self.macros[m_name] = m_pipe
-                self._record_history(f"macro {m_name} = {m_pipe}")
-                output_fn(f"Defined macro '{m_name}': {m_pipe}")
+                self.defs[d_name] = d_pipe
+                self._record_history(f"def {d_name} = {d_pipe}")
+                output_fn(f"Defined recipe '{d_name}': {d_pipe}")
                 return True
             else:
-                m_name = tokens[1]
-                if m_name in self.macros:
-                    output_fn(f"macro {m_name} = {self.macros[m_name]}")
+                d_name = tokens[1]
+                if d_name in self.defs:
+                    output_fn(f"def {d_name} = {self.defs[d_name]}")
                 else:
-                    avail = ", ".join(self.macros) if self.macros else "none"
-                    output_fn(f"pytae: macro '{m_name}' is not defined. Available: {avail}")
+                    avail = ", ".join(self.defs) if self.defs else "none"
+                    output_fn(f"pytae: recipe '{d_name}' is not defined. Available: {avail}")
                 return True
 
-        # Bare macro invocation on active table: e.g. clean_orders or clean_orders -head 5
-        if first_lower in self.macros:
+        if first_lower in ("macro", "macros"):
+            output_fn("pytae: 'macro' has been replaced by 'def'; use 'def <name> = <pipeline>', 'defs', or 'def <name>'.")
+            return True
+
+        # Bare recipe invocation on active table: e.g. clean_orders or clean_orders -head 5
+        if first_lower in self.defs:
             if self.current_df is None:
-                output_fn("pytae: no active dataset loaded to apply macro.")
+                output_fn("pytae: no active dataset loaded to apply recipe.")
                 return True
-            macro_pipe = self.macros[first_lower]
+            def_pipe = self.defs[first_lower]
             extra_tokens = tokens[1:]
-            combined_tokens = shlex.split(macro_pipe) + extra_tokens
+            combined_tokens = shlex.split(def_pipe) + extra_tokens
             has_o = any(t == "-o" or t.startswith("-o=") for t in combined_tokens)
             if has_o:
                 self._run_pipeline_on_df(self.current_df, combined_tokens, output_fn)
@@ -2779,7 +2783,7 @@ class PytaeRepl:
                 output_fn(f"Usage: switch <table_name> (available: {avail})")
             return True
 
-        # Remove entity: `rm table <name>`, `rm table *`, `rm checkpoint <name>`, `rm checkpoint *`, `rm var <name>`, `rm var *`, `rm macro <name>`, `rm macro *`
+        # Remove entity: `rm table <name>`, `rm table *`, `rm checkpoint <name>`, `rm checkpoint *`, `rm var <name>`, `rm var *`, `rm def <name>`, `rm def *`
         if first_lower == "rm":
             if len(tokens) < 2:
                 output_fn(
@@ -2790,41 +2794,45 @@ class PytaeRepl:
                     "  rm checkpoint *        : Remove all saved checkpoints\n"
                     "  rm var <name>          : Remove session variable\n"
                     "  rm var *               : Remove all session variables\n"
-                    "  rm macro <name>        : Remove macro definition\n"
-                    "  rm macro *             : Remove all macros"
+                    "  rm def <name>          : Remove recipe definition\n"
+                    "  rm def *               : Remove all recipe definitions"
                 )
                 return True
 
             category = tokens[1].lower()
 
-            if category in ("macros",):
-                output_fn("pytae: plural 'macros' is not recognized; use 'rm macro <name>' or 'rm macro *'.")
+            if category in ("macro", "macros"):
+                output_fn("pytae: 'macro' has been replaced by 'def'; use 'rm def <name>' or 'rm def *'.")
                 return True
 
-            if category == "macro":
+            if category in ("defs",):
+                output_fn("pytae: plural 'defs' is not recognized; use 'rm def <name>' or 'rm def *'.")
+                return True
+
+            if category == "def":
                 if len(tokens) < 3:
-                    output_fn("Usage: rm macro <name> or rm macro *")
+                    output_fn("Usage: rm def <name> or rm def *")
                     return True
                 target = tokens[2]
                 if target in ("-all", "--all", "all", "-*"):
-                    output_fn(f"pytae: 'rm macro {target}' is not recognized; use 'rm macro *'.")
+                    output_fn(f"pytae: 'rm def {target}' is not recognized; use 'rm def *'.")
                     return True
                 if target == "*":
-                    if not self.macros:
-                        output_fn("No macros defined to remove.")
+                    if not self.defs:
+                        output_fn("No definitions defined to remove.")
                         return True
-                    count = len(self.macros)
-                    self.macros.clear()
-                    self._record_history("rm macro *")
-                    output_fn(f"Removed all macros ({count} removed).")
+                    count = len(self.defs)
+                    self.defs.clear()
+                    self._record_history("rm def *")
+                    output_fn(f"Removed all definitions ({count} removed).")
                     return True
-                if target in self.macros:
-                    del self.macros[target]
-                    self._record_history(f"rm macro {target}")
-                    output_fn(f"Removed macro '{target}'.")
+                if target in self.defs:
+                    del self.defs[target]
+                    self._record_history(f"rm def {target}")
+                    output_fn(f"Removed def '{target}'.")
                     return True
-                avail = ", ".join(self.macros) if self.macros else "none"
-                output_fn(f"pytae: macro '{target}' not found. Available: {avail}")
+                avail = ", ".join(self.defs) if self.defs else "none"
+                output_fn(f"pytae: def '{target}' not found. Available: {avail}")
                 return True
 
             if category in ("vars", "variables"):
@@ -2974,7 +2982,7 @@ class PytaeRepl:
 
             # If user entered bare `rm <target>` or `rm *` without category
             if category == "*":
-                output_fn("pytae: 'rm *' requires a category; use 'rm table *', 'rm checkpoint *', 'rm var *', or 'rm macro *'.")
+                output_fn("pytae: 'rm *' requires a category; use 'rm table *', 'rm checkpoint *', 'rm var *', or 'rm def *'.")
                 return True
 
             if self._resolve_table_name(tokens[1]) is not None or tokens[1] in self.tables:
@@ -2989,8 +2997,8 @@ class PytaeRepl:
                 output_fn(f"pytae: 'rm {tokens[1]}' requires explicit category; use 'rm var {tokens[1].lstrip('@')}'.")
                 return True
 
-            if tokens[1] in self.macros:
-                output_fn(f"pytae: 'rm {tokens[1]}' requires explicit category; use 'rm macro {tokens[1]}'.")
+            if tokens[1] in self.defs:
+                output_fn(f"pytae: 'rm {tokens[1]}' requires explicit category; use 'rm def {tokens[1]}'.")
                 return True
 
             output_fn(f"pytae: unrecognized rm category '{tokens[1]}'. Use 'rm table <name>', 'rm checkpoint <name>', or 'rm var <name>'.")
@@ -3599,15 +3607,15 @@ class PytaeRepl:
                     v_repr = v_repr[:57] + "..."
                 output_fn(f"  * @{v_name:<14}: {v_repr} ({type(v_val).__name__})")
 
-        # Macros
-        if not self.macros:
-            output_fn("Macros        : 0 defined")
-        elif len(self.macros) == 1:
-            m_name = next(iter(self.macros.keys()))
-            output_fn(f"Macros        : 1 defined [{m_name}]")
+        # Definitions / Recipes
+        if not self.defs:
+            output_fn("Definitions   : 0 defined")
+        elif len(self.defs) == 1:
+            d_name = next(iter(self.defs.keys()))
+            output_fn(f"Definitions   : 1 defined [{d_name}]")
         else:
-            m_list = list(self.macros.keys())
-            output_fn(f"Macros        : {len(self.macros)} defined [{', '.join(m_list)}]")
+            d_list = list(self.defs.keys())
+            output_fn(f"Definitions   : {len(self.defs)} defined [{', '.join(d_list)}]")
 
         # Checkpoints
         if not self.checkpoints:
@@ -3644,7 +3652,7 @@ class PytaeRepl:
         # Footer tip
         output_fn("-" * 60)
         output_fn(
-            "(Tip: Use 'status table [name]' for table details, 'status checkpoint [name]' for checkpoints, 'status var [name]' for variables)"
+            "(Tip: Use 'status table [name]' for table details, 'status checkpoint [name]' for checkpoints, 'status def [name]' for definitions, 'status var [name]' for variables)"
         )
 
     def _show_external_session_status(self, path_or_name: str, output_fn: Callable[[str], None], verbose: bool = False) -> None:
@@ -3683,25 +3691,29 @@ class PytaeRepl:
             output_fn("pytae: plural 'vars' is not recognized; use 'status var' instead.")
             return
 
-        if cat in ("macros",):
-            output_fn("pytae: plural 'macros' is not recognized; use 'status macro' instead.")
+        if cat in ("macro", "macros"):
+            output_fn("pytae: 'macro' has been replaced by 'def'; use 'status def' instead.")
             return
 
-        if cat == "macro":
+        if cat in ("defs",):
+            output_fn("pytae: plural 'defs' is not recognized; use 'status def' instead.")
+            return
+
+        if cat == "def":
             if len(target_args) == 1:
-                if not self.macros:
-                    output_fn("No macros defined in session. Define one with: macro <name> = <flags...>")
+                if not self.defs:
+                    output_fn("No definitions defined in session. Define one with: def <name> = <flags...>")
                     return
-                output_fn(f"Defined macros ({len(self.macros)}):")
-                for m_name, m_pipe in sorted(self.macros.items()):
-                    output_fn(f"  {m_name} = {m_pipe}")
+                output_fn(f"Defined recipes ({len(self.defs)}):")
+                for d_name, d_pipe in sorted(self.defs.items()):
+                    output_fn(f"  {d_name} = {d_pipe}")
                 return
-            m_name = target_args[1]
-            if m_name in self.macros:
-                output_fn(f"macro {m_name} = {self.macros[m_name]}")
+            d_name = target_args[1]
+            if d_name in self.defs:
+                output_fn(f"def {d_name} = {self.defs[d_name]}")
             else:
-                avail = ", ".join(self.macros) if self.macros else "none"
-                output_fn(f"pytae: macro '{m_name}' not found. Available: {avail}")
+                avail = ", ".join(self.defs) if self.defs else "none"
+                output_fn(f"pytae: def '{d_name}' not found. Available: {avail}")
             return
 
         if cat in ("sessions",):
@@ -3971,7 +3983,7 @@ class PytaeRepl:
             "table_sources": dict(self.table_sources),
             "active_table": self.path_str,
             "current_df": self.current_df.clone() if self.current_df is not None else None,
-            "macros": dict(self.macros),
+            "defs": dict(self.defs),
         }
 
     def _apply_session_state(self, state: Any) -> None:
@@ -3985,7 +3997,7 @@ class PytaeRepl:
             self.orig_tables = {k: v.clone() for k, v in state.get("orig_tables", {}).items()}
             self.initial_tables = {k: v.clone() for k, v in state.get("initial_tables", {}).items()}
             self.table_sources = dict(state.get("table_sources", {}))
-            self.macros = dict(state.get("macros", {}))
+            self.defs = dict(state.get("defs", state.get("macros", {})))
             self.path_str = state.get("active_table")
             if self.path_str and self.path_str in self.tables:
                 self.current_df = self.tables[self.path_str]
@@ -4361,7 +4373,7 @@ class PytaeRepl:
             "current_df_shape": cur_df_shape,
             "variables": dict(self.variables),
             "variables_path": vars_path,
-            "macros": dict(self.macros),
+            "defs": dict(self.defs),
             "created_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "size_bytes": total_bytes,
         }
@@ -4464,10 +4476,12 @@ class PytaeRepl:
             else:
                 self.variables = {}
 
-            if "macros" in snap and isinstance(snap["macros"], dict):
-                self.macros = dict(snap["macros"])
+            if "defs" in snap and isinstance(snap["defs"], dict):
+                self.defs = dict(snap["defs"])
+            elif "macros" in snap and isinstance(snap["macros"], dict):
+                self.defs = dict(snap["macros"])
             else:
-                self.macros = {}
+                self.defs = {}
 
         elif isinstance(snap, pl.DataFrame):
             self.current_df = snap.clone()
@@ -5092,14 +5106,14 @@ class PytaeRepl:
             pipe_tokens: list[str] = []
             pipe_line = ""
 
-            if first_tok in self.macros:
+            if first_tok in self.defs:
                 if self.current_df is None:
-                    output_fn("pytae: no active dataset loaded to apply macro.")
+                    output_fn("pytae: no active dataset loaded to apply recipe.")
                     return
                 source_df = self.current_df
                 source_label = self.path_str or "active"
-                macro_pipe = self.macros[first_tok]
-                pipe_tokens = shlex.split(macro_pipe) + right_tokens[1:]
+                def_pipe = self.defs[first_tok]
+                pipe_tokens = shlex.split(def_pipe) + right_tokens[1:]
                 pipe_line = right_expr
             elif first_tok.startswith("-"):
                 if first_tok == "-join" and "left=" in right_expr:
@@ -5122,9 +5136,9 @@ class PytaeRepl:
                     source_label = first_tok
                     pipe_tokens = right_tokens[1:]
                     pipe_line = right_expr[len(first_tok) :].strip()
-                    if pipe_tokens and pipe_tokens[0] in self.macros:
-                        macro_pipe = self.macros[pipe_tokens[0]]
-                        pipe_tokens = shlex.split(macro_pipe) + pipe_tokens[1:]
+                    if pipe_tokens and pipe_tokens[0] in self.defs:
+                        def_pipe = self.defs[pipe_tokens[0]]
+                        pipe_tokens = shlex.split(def_pipe) + pipe_tokens[1:]
                     elif not pipe_tokens:
                         if var_name in self.variables:
                             output_fn(
@@ -5297,10 +5311,10 @@ class PytaeRepl:
             self.path_str = old_path
             return
 
-        if first_sub in self.macros:
-            macro_pipe = self.macros[first_sub]
+        if first_sub in self.defs:
+            def_pipe = self.defs[first_sub]
             extra_tokens = sub_tokens[1:]
-            combined_tokens = shlex.split(macro_pipe) + extra_tokens
+            combined_tokens = shlex.split(def_pipe) + extra_tokens
             has_o = any(t == "-o" or t.startswith("-o=") for t in combined_tokens)
             if has_o:
                 self._run_pipeline_on_df(target_df, combined_tokens, output_fn)
@@ -6214,14 +6228,14 @@ class PytaeRepl:
                 return ["initial"] if "initial".startswith(text) else []
             return []
 
-        # Pipe completion: e.g. 'q1 | ' -> complete macro names
+        # Pipe completion: e.g. 'q1 | ' -> complete recipe names
         if prefix.rstrip().endswith("|"):
-            return [m for m in self.macros.keys() if m.startswith(text)]
+            return [m for m in self.defs.keys() if m.startswith(text)]
 
-        # Case 5: 'rm ' -> complete categories: table, checkpoint, var, macro
+        # Case 5: 'rm ' -> complete categories: table, checkpoint, var, def
         if first_token == "rm":
             if len(prefix_tokens) == 1:
-                return [opt for opt in ("table", "checkpoint", "var", "macro") if opt.startswith(text)]
+                return [opt for opt in ("table", "checkpoint", "var", "def") if opt.startswith(text)]
             if len(prefix_tokens) == 2 and prefix_tokens[1].lower() == "table":
                 options = ["*"] + list(self.tables.keys())
                 return [t for t in options if t.startswith(text)]
@@ -6231,17 +6245,17 @@ class PytaeRepl:
             if len(prefix_tokens) == 2 and prefix_tokens[1].lower() == "var":
                 options = ["*"] + list(self.variables.keys())
                 return [v for v in options if v.startswith(text)]
-            if len(prefix_tokens) == 2 and prefix_tokens[1].lower() == "macro":
-                options = ["*"] + list(self.macros.keys())
+            if len(prefix_tokens) == 2 and prefix_tokens[1].lower() == "def":
+                options = ["*"] + list(self.defs.keys())
                 return [m for m in options if m.startswith(text)]
             return []
 
-        # Case 5b: 'status ' -> complete subcommands: session, table, checkpoint, var, macro, -v
+        # Case 5b: 'status ' -> complete subcommands: session, table, checkpoint, var, def, -v
         if first_token == "status":
             if len(prefix_tokens) == 1:
                 return [
                     opt
-                    for opt in ("session", "table", "checkpoint", "var", "macro", "-v")
+                    for opt in ("session", "table", "checkpoint", "var", "def", "-v")
                     if opt.startswith(text)
                 ]
             if len(prefix_tokens) == 2 and prefix_tokens[1].lower() == "session":
@@ -6255,8 +6269,8 @@ class PytaeRepl:
             if len(prefix_tokens) == 2 and prefix_tokens[1].lower() == "var":
                 options = list(self.variables.keys()) + ["-v"]
                 return [v for v in options if v.startswith(text)]
-            if len(prefix_tokens) == 2 and prefix_tokens[1].lower() == "macro":
-                options = list(self.macros.keys()) + ["-v"]
+            if len(prefix_tokens) == 2 and prefix_tokens[1].lower() == "def":
+                options = list(self.defs.keys()) + ["-v"]
                 return [m for m in options if m.startswith(text)]
             return []
 
@@ -6312,9 +6326,9 @@ class PytaeRepl:
                 "long", "wide", "pivot",
                 "dropna", "fillna", "clean_columns",
                 "head", "tail", "sample", "describe", "glimpse", "schema", "cols", "dtype", "shape", "nulls",
-                "macro", "macros",
+                "def", "defs",
             ]
-            candidates = top_cmds + list(self.tables.keys()) + list(self.macros.keys())
+            candidates = top_cmds + list(self.tables.keys()) + list(self.defs.keys())
             return [c for c in candidates if c.startswith(text)]
 
         # Case 11: SQL Context (only explicit table names and checkpoints, no magic aliases)

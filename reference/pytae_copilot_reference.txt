@@ -13757,10 +13757,10 @@ This guide covers in-memory pipeline transformations, assignment vs. exploration
 - [In-Memory Pipeline Verbs](#in-memory-pipeline-verbs)
   - [Chaining Multiple Verbs](#chaining-multiple-verbs)
   - [Multi-Line Pipeline Continuation (`\`)](#multi-line-pipeline-continuation-)
-- [Reusable REPL Macros & Recipes (`macro <name> = ...`)](#reusable-repl-macros--recipes-macro-name--)
-  - [Defining Macros](#defining-macros)
-  - [Applying Macros with Pipes (`|`) or Direct Invocation](#applying-macros-with-pipes--or-direct-invocation)
-  - [Inspecting & Managing Macros](#inspecting--managing-macros)
+- [Reusable REPL Recipes (`def <name> = ...`)](#reusable-repl-recipes-def-name--)
+  - [Defining Recipes (`def`)](#defining-recipes-def)
+  - [Applying Recipes with Pipes (`|`) or Direct Invocation](#applying-recipes-with-pipes--or-direct-invocation)
+  - [Inspecting & Managing Recipes (`defs`, `status def`, `rm def`)](#inspecting--managing-recipes-defs-status-def-rm-def)
   - [Transpilation on `export <file.py>` (Clean Reusable Python Functions)](#transpilation-on-export-filepy-clean-reusable-python-functions)
 - [Multi-Table Operations](#multi-table-operations)
   - [Relational Joins (`-join`)](#relational-joins--join)
@@ -13868,21 +13868,21 @@ If you make a mistake while constructing a multi-line buffer, press <kbd>Ctrl+C<
 
 ---
 
-<a id="reusable-repl-macros--recipes-macro-name--"></a>
-## Reusable REPL Macros & Recipes (`macro <name> = ...`)
+<a id="reusable-repl-recipes-def-name--"></a>
+## Reusable REPL Recipes (`def <name> = ...`)
 
-When experimenting across multiple tables or iterative workflows in the workbench, repeating long verb pipelines is tedious. Pytae provides **REPL Macros** (named recipes) to store transformation pipelines and apply them easily to any table.
+When experimenting across multiple tables or iterative workflows in the workbench, repeating long verb pipelines is tedious. Pytae provides **REPL Recipes** (defined via `def`) to store transformation pipelines and apply them easily to any table.
 
-### Defining Macros
-Define a macro by assigning a verb pipeline to a name using `macro <name> = <pipeline>`:
+### Defining Recipes (`def`)
+Define a reusable pipeline recipe by assigning a verb pipeline to a name using `def <name> = <pipeline>`:
 
 ```text
-pytae> macro clean_orders = -dropna -filter "sales > 0" -mutate "tax = sales * 0.08"
-Defined macro 'clean_orders': -dropna -filter "sales > 0" -mutate "tax = sales * 0.08"
+pytae> def clean_orders = -dropna -filter "sales > 0" -mutate "tax = sales * 0.08"
+Defined recipe 'clean_orders': -dropna -filter "sales > 0" -mutate "tax = sales * 0.08"
 ```
 
-### Applying Macros with Pipes (`|`) or Direct Invocation
-You can apply a macro to any table using pipe syntax or space-separated command invocation:
+### Applying Recipes with Pipes (`|`) or Direct Invocation
+You can apply a defined recipe to any table using pipe syntax or space-separated command invocation:
 
 ```text
 # 1. Non-destructive preview on a specific table:
@@ -13890,9 +13890,9 @@ pytae> q1 | clean_orders
 
 # 2. Assign transformed result to a new table:
 pytae> q1_clean = q1 | clean_orders
-Created 'q1_clean' via macro 'clean_orders' (850 rows x 3 cols).
+Created 'q1_clean' via recipe 'clean_orders' (850 rows x 3 cols).
 
-# 3. Apply macro to another table and chain extra verbs:
+# 3. Apply recipe to another table and chain extra verbs:
 pytae> q2_clean = q2 | clean_orders -head 5
 
 # 4. Apply to active table:
@@ -13900,14 +13900,14 @@ pytae [q1]> clean_orders
 pytae [q1]> q1_clean = clean_orders
 ```
 
-### Inspecting & Managing Macros
-- **List macros**: Type `macros` or `status macro` to view all defined macros.
-- **Inspect definition**: Type `macro <name>` (e.g. `macro clean_orders`) to inspect its pipeline.
-- **Remove macros**: Type `rm macro <name>` to delete a macro, or `rm macro *` to clear all.
-- **Checkpoints**: All defined macros are automatically preserved in workbench snapshots (`checkpoint <name>` / `restore <name>`).
+### Inspecting & Managing Recipes (`defs`, `status def`, `rm def`)
+- **List recipes**: Type `defs` or `status def` to view all defined recipes.
+- **Inspect definition**: Type `def <name>` (e.g. `def clean_orders`) to inspect its pipeline.
+- **Remove recipes**: Type `rm def <name>` to delete a recipe definition, or `rm def *` to clear all.
+- **Checkpoints**: All defined recipes are automatically preserved in workbench snapshots (`checkpoint <name>` / `restore <name>`).
 
 ### Transpilation on `export <file.py>` (Clean Reusable Python Functions)
-When exporting your session to a Python script via `export pipeline.py`, Pytae transpiles your macros into **clean, reusable Python transformation functions**:
+When exporting your session to a Python script via `export pipeline.py`, Pytae transpiles your definitions into **clean, reusable Python transformation functions**:
 
 ```text
 pytae> export pipeline.py
@@ -13921,7 +13921,7 @@ import pandas as pd
 import polars as pl
 import pytae as pt
 
-# Reusable REPL macro transformations
+# Reusable pipeline transformations
 def clean_orders(df: pt.DataFrame) -> pt.DataFrame:
     return (
         df
@@ -13937,7 +13937,7 @@ q2_clean = clean_orders(q2).head(5)
 ```
 
 > [!TIP]
-> **Dead-Code Pruning**: If you define 3 test macros during an interactive session but only use 1 in your exported tables, Pytae's dead-code optimizer automatically prunes the 2 unused functions from the generated script.
+> **Dead-Code Pruning**: If you define 3 test recipes during an interactive session but only use 1 in your exported tables, Pytae's dead-code optimizer automatically prunes the 2 unused functions from the generated script.
 
 ---
 

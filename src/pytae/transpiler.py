@@ -431,11 +431,11 @@ def _extract_entry_def_and_uses(entry: str) -> tuple[set[str], set[str], bool, b
     if clean.startswith("py"):
         return set(), set(), True, True
 
-    # 1b. Macro definitions: macro <name> = <pipeline>
-    if clean.startswith("macro "):
-        m = re.match(r"^macro\s+([A-Za-z_][A-Za-z0-9_]*)\s*=", clean)
+    # 1b. Pipeline definitions: def <name> = <pipeline>
+    if clean.startswith("def "):
+        m = re.match(r"^def\s+([A-Za-z_][A-Za-z0-9_]*)\s*=", clean)
         if m:
-            return {f"macro:{m.group(1)}"}, set(), False, False
+            return {f"def:{m.group(1)}"}, set(), False, False
 
     # 2. History / Session barriers and explicit resets
     if clean.startswith(("reset", "restore ", "checkpoint ", "rm table ", "rename ", "switch ")):
@@ -485,12 +485,12 @@ def _extract_entry_def_and_uses(entry: str) -> tuple[set[str], set[str], bool, b
         right = parts[1].strip()
         if left.isidentifier():
             defs.add(left)
-            # Check for macro pipe on RHS: target = src | macro_name
+            # Check for pipeline def pipe on RHS: target = src | def_name
             if "|" in right:
                 p_l, p_r = [p.strip() for p in right.split("|", 1)]
                 r_toks = shlex.split(p_r) if p_r else []
                 if r_toks and r_toks[0].isidentifier():
-                    uses.add(f"macro:{r_toks[0]}")
+                    uses.add(f"def:{r_toks[0]}")
                 if p_l and p_l.isidentifier():
                     uses.add(p_l)
                 elif not p_l:
@@ -560,12 +560,12 @@ def _extract_entry_def_and_uses(entry: str) -> tuple[set[str], set[str], bool, b
         words = set(re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*\b", clean))
         return defs, words, False, False
 
-    # 6b. Pipe commands: src | macro_name
+    # 6b. Pipe commands: src | def_name
     if "|" in clean:
         p_l, p_r = [p.strip() for p in clean.split("|", 1)]
         r_toks = shlex.split(p_r) if p_r else []
         if r_toks and r_toks[0].isidentifier():
-            uses.add(f"macro:{r_toks[0]}")
+            uses.add(f"def:{r_toks[0]}")
         if p_l and p_l.isidentifier():
             defs.add(p_l)
             uses.add(p_l)
@@ -659,38 +659,38 @@ def _compile_history_to_python(
         ("import", "pytae", "pt"),
     }
 
-    # Format and emit reusable REPL macro functions
-    defined_macros: dict[str, str] = {}
+    # Format and emit reusable REPL pipeline definitions
+    defined_recipes: dict[str, str] = {}
     for e in entries:
         c = e.strip()
-        m = re.match(r"^macro\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$", c)
+        m = re.match(r"^def\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$", c)
         if m:
-            defined_macros[m.group(1)] = m.group(2).strip()
+            defined_recipes[m.group(1)] = m.group(2).strip()
 
-    used_macros: set[str] = set()
+    used_recipes: set[str] = set()
     for e in entries:
         c = e.strip()
-        if c.startswith("macro "):
+        if c.startswith("def "):
             continue
-        for m_name in defined_macros:
-            if re.search(r"(?:\||\b)\s*" + re.escape(m_name) + r"(?:\b|\s|$)", c):
-                used_macros.add(m_name)
+        for r_name in defined_recipes:
+            if re.search(r"(?:\||\b)\s*" + re.escape(r_name) + r"(?:\b|\s|$)", c):
+                used_recipes.add(r_name)
 
-    macros_to_emit = [m for m in defined_macros if m in used_macros] if prune_dead else list(defined_macros.keys())
-    if macros_to_emit:
-        lines.append("# Reusable REPL macro transformations")
-        for m_name in macros_to_emit:
-            calls = _transpile_pipeline_tokens_to_calls(shlex.split(defined_macros[m_name]))
+    recipes_to_emit = [r for r in defined_recipes if r in used_recipes] if prune_dead else list(defined_recipes.keys())
+    if recipes_to_emit:
+        lines.append("# Reusable pipeline transformations")
+        for r_name in recipes_to_emit:
+            calls = _transpile_pipeline_tokens_to_calls(shlex.split(defined_recipes[r_name]))
             if not calls:
-                lines.append(f"def {m_name}(df: pt.DataFrame) -> pt.DataFrame:")
+                lines.append(f"def {r_name}(df: pt.DataFrame) -> pt.DataFrame:")
                 lines.append("    return df")
                 lines.append("")
             elif len(calls) == 1:
-                lines.append(f"def {m_name}(df: pt.DataFrame) -> pt.DataFrame:")
+                lines.append(f"def {r_name}(df: pt.DataFrame) -> pt.DataFrame:")
                 lines.append(f"    return df{calls[0]}")
                 lines.append("")
             else:
-                lines.append(f"def {m_name}(df: pt.DataFrame) -> pt.DataFrame:")
+                lines.append(f"def {r_name}(df: pt.DataFrame) -> pt.DataFrame:")
                 lines.append("    return (")
                 lines.append("        df")
                 for call in calls:
@@ -783,46 +783,46 @@ def _compile_history_to_python(
         if not clean or clean.startswith("#"):
             continue
 
-        # Macro definitions: skip inline (they are compiled as functions at the top)
-        if clean.startswith("macro "):
+        # Pipeline definitions: skip inline (they are compiled as functions at the top)
+        if clean.startswith("def "):
             continue
 
-        # Macro invocations (e.g. q1_clean = q1 | clean_orders, q1 | clean_orders, or clean_orders)
-        macro_handled = False
+        # Pipeline invocations (e.g. q1_clean = q1 | clean_orders, q1 | clean_orders, or clean_orders)
+        recipe_handled = False
         if "=" in clean and not clean.startswith("-"):
             tgt, rhs = [p.strip() for p in clean.split("=", 1)]
             if tgt.isidentifier():
                 if "|" in rhs:
                     rhs_src, rhs_call = [p.strip() for p in rhs.split("|", 1)]
                     call_toks = shlex.split(rhs_call) if rhs_call else []
-                    m_name = call_toks[0] if call_toks else ""
-                    if m_name in defined_macros:
+                    r_name = call_toks[0] if call_toks else ""
+                    if r_name in defined_recipes:
                         src_name = rhs_src if rhs_src else (tgt if tgt in known_tables else ("df" if "df" in known_tables or not known_tables else list(known_tables)[-1]))
                         extra_chain = _transpile_pipeline_tokens_to_python(call_toks[1:])
-                        lines.append(f"{tgt} = {m_name}({src_name}){extra_chain}")
+                        lines.append(f"{tgt} = {r_name}({src_name}){extra_chain}")
                         known_tables.add(tgt)
-                        macro_handled = True
+                        recipe_handled = True
                 else:
                     rhs_toks = shlex.split(rhs) if rhs else []
-                    if len(rhs_toks) >= 1 and rhs_toks[0] in defined_macros:
-                        m_name = rhs_toks[0]
+                    if len(rhs_toks) >= 1 and rhs_toks[0] in defined_recipes:
+                        r_name = rhs_toks[0]
                         src_name = tgt if tgt in known_tables else ("df" if "df" in known_tables or not known_tables else list(known_tables)[-1])
                         extra_chain = _transpile_pipeline_tokens_to_python(rhs_toks[1:])
-                        lines.append(f"{tgt} = {m_name}({src_name}){extra_chain}")
+                        lines.append(f"{tgt} = {r_name}({src_name}){extra_chain}")
                         known_tables.add(tgt)
-                        macro_handled = True
-                    elif len(rhs_toks) >= 2 and rhs_toks[1] in defined_macros and rhs_toks[0].isidentifier():
+                        recipe_handled = True
+                    elif len(rhs_toks) >= 2 and rhs_toks[1] in defined_recipes and rhs_toks[0].isidentifier():
                         src_name = rhs_toks[0]
-                        m_name = rhs_toks[1]
+                        r_name = rhs_toks[1]
                         extra_chain = _transpile_pipeline_tokens_to_python(rhs_toks[2:])
-                        lines.append(f"{tgt} = {m_name}({src_name}){extra_chain}")
+                        lines.append(f"{tgt} = {r_name}({src_name}){extra_chain}")
                         known_tables.add(tgt)
-                        macro_handled = True
+                        recipe_handled = True
         elif "|" in clean:
-            src_part, macro_part = [p.strip() for p in clean.split("|", 1)]
-            call_toks = shlex.split(macro_part) if macro_part else []
-            m_name = call_toks[0] if call_toks else ""
-            if m_name in defined_macros:
+            src_part, recipe_part = [p.strip() for p in clean.split("|", 1)]
+            call_toks = shlex.split(recipe_part) if recipe_part else []
+            r_name = call_toks[0] if call_toks else ""
+            if r_name in defined_recipes:
                 src_name = src_part if src_part else ("df" if "df" in known_tables or not known_tables else list(known_tables)[-1])
                 extra_toks = call_toks[1:]
                 if "-o" in extra_toks:
@@ -830,30 +830,30 @@ def _compile_history_to_python(
                     dest = extra_toks[o_idx + 1] if o_idx + 1 < len(extra_toks) else "out.parquet"
                     remaining_extra = [t for j, t in enumerate(extra_toks) if j not in (o_idx, o_idx + 1)]
                     extra_chain = _transpile_pipeline_tokens_to_python(remaining_extra)
-                    lines.append(f"{m_name}({src_name}){extra_chain}.to({repr(dest.strip('\"\''))})")
+                    lines.append(f"{r_name}({src_name}){extra_chain}.to({repr(dest.strip('\"\''))})")
                 else:
                     extra_chain = _transpile_pipeline_tokens_to_python(extra_toks)
-                    lines.append(f"{src_name} = {m_name}({src_name}){extra_chain}")
+                    lines.append(f"{src_name} = {r_name}({src_name}){extra_chain}")
                     known_tables.add(src_name)
-                macro_handled = True
+                recipe_handled = True
         else:
             toks = shlex.split(clean) if clean else []
-            if len(toks) >= 1 and toks[0] in defined_macros:
-                m_name = toks[0]
+            if len(toks) >= 1 and toks[0] in defined_recipes:
+                r_name = toks[0]
                 src_name = "df" if "df" in known_tables or not known_tables else list(known_tables)[-1]
                 extra_chain = _transpile_pipeline_tokens_to_python(toks[1:])
-                lines.append(f"{src_name} = {m_name}({src_name}){extra_chain}")
+                lines.append(f"{src_name} = {r_name}({src_name}){extra_chain}")
                 known_tables.add(src_name)
-                macro_handled = True
-            elif len(toks) >= 2 and toks[0].isidentifier() and toks[1] in defined_macros:
+                recipe_handled = True
+            elif len(toks) >= 2 and toks[0].isidentifier() and toks[1] in defined_recipes:
                 src_name = toks[0]
-                m_name = toks[1]
+                r_name = toks[1]
                 extra_chain = _transpile_pipeline_tokens_to_python(toks[2:])
-                lines.append(f"{src_name} = {m_name}({src_name}){extra_chain}")
+                lines.append(f"{src_name} = {r_name}({src_name}){extra_chain}")
                 known_tables.add(src_name)
-                macro_handled = True
+                recipe_handled = True
 
-        if macro_handled:
+        if recipe_handled:
             continue
 
         # 1. Python blocks: emit Python code directly
@@ -1366,13 +1366,13 @@ def _is_replayable_entry_static(entry: str) -> bool:
     if clean == "set" or clean.startswith("set ") or clean.startswith("set="):
         return False
 
-    # Macro definitions: macro <name> = <pipeline>
-    if clean.startswith("macro "):
-        m = re.match(r"^macro\s+([A-Za-z_][A-Za-z0-9_]*)\s*=", clean)
+    # Pipeline definitions: def <name> = <pipeline>
+    if clean.startswith("def "):
+        m = re.match(r"^def\s+([A-Za-z_][A-Za-z0-9_]*)\s*=", clean)
         if m:
             return True
 
-    # Piped macro applications: e.g. q1 | clean_orders
+    # Piped pipeline applications: e.g. q1 | clean_orders
     if "|" in clean:
         return True
 

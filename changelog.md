@@ -5,17 +5,18 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Added
-- **Reusable REPL Macros & Recipes (`macro <name> = <pipeline>`)**:
-  - Define reusable transformation chains in the interactive REPL: `macro clean = -dropna -filter "sales > 0" -mutate "tax = sales * 0.08"`.
-  - Apply macros across tables via pipes (`q1 | clean`, `q1_clean = q1 | clean`) or direct invocation (`clean`, `q1 clean`).
-  - Chain extra flags directly on macro invocations (e.g. `q1 | clean -head 5`).
-  - Manage macros with `macros`, `macro <name>`, `rm macro <name>`, `rm macro *`, and `status macro`.
+- **Reusable REPL Pipeline Recipes (`def <name> = <pipeline>`)**:
+  - Define reusable transformation chains in the interactive REPL: `def clean = -dropna -filter "sales > 0" -mutate "tax = sales * 0.08"`.
+  - Apply defined recipes across tables via pipes (`q1 | clean`, `q1_clean = q1 | clean`) or direct invocation (`clean`, `q1 clean`).
+  - Chain extra flags directly on recipe invocations (e.g. `q1 | clean -head 5`).
+  - Manage recipes with `defs`, `def <name>`, `rm def <name>`, `rm def *`, and `status def`.
   - Full checkpoint snapshot persistence across `checkpoint` and `restore`.
-  - Tab autocompletion for macro names in prompts and pipe contexts.
-- **Python Transpiler for REPL Macros (`export script.py`)**:
-  - Standalone script export (`export pipeline.py`) extracts used macros into clean, reusable Python functions (`def clean(df: pt.DataFrame) -> pt.DataFrame:`).
+  - Tab autocompletion for defined recipe names in prompts, pipe contexts, `rm def`, and `status def`.
+  - Helpful deprecation redirect from `macro` / `macros` to `def` / `defs`.
+- **Python Transpiler for REPL Recipes (`export script.py`)**:
+  - Standalone script export (`export pipeline.py`) extracts used definitions into clean, reusable Python functions (`def clean(df: pt.DataFrame) -> pt.DataFrame:`).
   - Call sites transpile to clean Python function invocations (`q1_clean = clean(q1)`).
-  - Dead-code pruning automatically removes unused macros from exported scripts when `prune_dead=True`.
+  - Dead-code pruning automatically removes unused definitions from exported scripts when `prune_dead=True`.
 
 ## [3.14.8] - 2026-11-16
 
