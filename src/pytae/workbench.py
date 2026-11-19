@@ -998,6 +998,7 @@ class Workbench:
         *,
         cell: str | None = None,
         output_fn: Callable[[str], None] = print,
+        cell_index: int = 0,
     ) -> Any:
         """Execute a full Pytae CLI pipeline in-process, immutably.
 
@@ -1200,6 +1201,8 @@ class Workbench:
                 )
 
             if failed:
+                if cell_index > 0:
+                    self.failed_cells.add(cell_index)
                 return None
 
             if has_terminal_non_df:
@@ -1465,7 +1468,19 @@ def _rewrite_pt_cmd_to_python(cmd: str, target_var: str | None = None) -> str:
     if m_sample:
         expr = f"pt.sample({m_sample.group(1)!r})"
     else:
-        expr = f"pt.eval_cli({stripped!r}, locals())"
+        try:
+            toks = shlex.split(stripped, posix=False)
+        except ValueError:
+            toks = []
+        if len(toks) == 1 and not toks[0].startswith("-"):
+            raw_tok = toks[0]
+            if (raw_tok.startswith('"') and raw_tok.endswith('"')) or (
+                raw_tok.startswith("'") and raw_tok.endswith("'")
+            ):
+                raw_tok = raw_tok[1:-1]
+            expr = f"pt.read({raw_tok!r})"
+        else:
+            expr = f"pt.eval_cli({stripped!r}, locals())"
     if target_var:
         return f"{target_var} = {expr}"
     return expr

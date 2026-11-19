@@ -198,7 +198,14 @@ class PytaeMagics(Magics):
             -by island
             -agg mean
         """
-        return self.wb.run_pt(line, self._user_ns(), cell=cell, output_fn=print)
+        idx = self._current_cell_index()
+        res = self.wb.run_pt(line, self._user_ns(), cell=cell, output_fn=print, cell_index=idx)
+        if idx in self.wb.failed_cells:
+            hm = getattr(self.shell, "history_manager", None)
+            sess_id = int(getattr(hm, "session_number", 0) or 0)
+            if sess_id > 0:
+                self.wb.save_session_meta(sess_id)
+        return res
 
     @line_magic
     def checkpoint(self, line: str = "") -> None:
