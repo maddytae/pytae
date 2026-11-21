@@ -151,6 +151,14 @@ CHEATSHEET_TEXT = """\
   %set max_rows=20 float_precision=2 comma=true      # Display formatting (`%set save` persists)
   %export analysis.py                                # Clean runnable .py or .ipynb (prunes errors/rollbacks)
   %exit -s [analysis.py]                             # Export session and exit IPython
+  # From the terminal — inspect, search, export, or reload past IPython sessions:
+  pytae -history [-n 50]                             # List recent IPython sessions
+  pytae -history 42 [-clean]                         # View session 42 (raw or cleaned Python)
+  pytae -history -search "penguins"                  # Search across all IPython sessions
+  pytae -history 42 -o analysis.py                   # Export session 42 to .py or .ipynb
+  pytae -history 42 -load                            # Load cleaned session 42 into IPython (populates %history)
+  pytae analysis.py -load                            # Load a .py or .ipynb file into IPython (populates %history)
+  pytae -history -db <path> | -set-db <path|reset>   # One-off or persistent history.sqlite path
 
 14. 📖 DOCUMENTATION SEARCH & MCP SERVER (-doc, -mcp)
 --------------------------------------------------------------------------------

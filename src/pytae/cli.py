@@ -190,6 +190,8 @@ _CLI_FLAGS = {
     "-doc",
     "-mcp",
     "-check",
+    "-history",
+    "-load",
 }
 
 
@@ -1015,10 +1017,26 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write("pytae error: '-save' is not a CLI option; use '-o <file>' or '%export' in IPython.\n")
         return 1
 
-    if raw_argv and raw_argv[0] in ("-export", "--export"):
-        from pytae.workbench import run_cli_export
+    if raw_argv and raw_argv[0] in ("-history", "--history"):
+        from pytae.workbench import run_cli_history
 
-        return run_cli_export(raw_argv[1:])
+        return run_cli_history(raw_argv[1:])
+
+    if len(raw_argv) == 2 and raw_argv[1] in ("-load", "--load") and not raw_argv[0].startswith("-"):
+        from pytae.workbench import run_cli_load
+
+        return run_cli_load(raw_argv[0])
+
+    if raw_argv and raw_argv[0] in ("-load", "--load"):
+        parser = build_parser()
+        parser.error(
+            "put the target before '-load' (e.g. 'pytae analysis.py -load', 'pytae analysis.ipynb -load', "
+            "or 'pytae -history <id> -load')."
+        )
+
+    if raw_argv and raw_argv[0] in ("-export", "--export"):
+        parser = build_parser()
+        parser.error("'-export' has been removed; use 'pytae -history [id|~1] -o <out.py|out.ipynb>' instead.")
 
     if len(raw_argv) == 1 and raw_argv[0].lower().endswith(".py"):
         sys.stderr.write(f"pytae error: '{raw_argv[0]}' is a Python script; run with 'python {raw_argv[0]}'.\n")

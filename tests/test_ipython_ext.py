@@ -169,3 +169,48 @@ def test_cli_disallows_retired_repl_and_pt_flags(capsys: pytest.CaptureFixture[s
         assert exc.value.code != 0
         err = capsys.readouterr().err
         assert "retired" in err.lower()
+
+    with pytest.raises(SystemExit) as exc:
+        cli_main(["-export", "-o", "out.py"])
+    assert exc.value.code != 0
+    err = capsys.readouterr().err
+    assert "-history" in err
+
+    with pytest.raises(SystemExit) as exc:
+        cli_main(["-load", "script.py"])
+    assert exc.value.code != 0
+    err = capsys.readouterr().err
+    assert "before '-load'" in err
+
+
+def test_load_bootstrap_populates_ipython_history_and_vars(
+    ip_shell: InteractiveShell, tmp_path: Path
+) -> None:
+    from pytae.workbench import run_cli_load
+
+    script = tmp_path / "demo.py"
+    script.write_text(
+        "import pytae as pt\n\ndf = pt.DataFrame({'a': [1, 2, 3]})\n\nres = df.filter('a >= 2')\n",
+        encoding="utf-8",
+    )
+
+    bootstraps: list[str] = []
+    rc = run_cli_load(
+        str(script),
+        output_fn=lambda _m: None,
+        launcher_fn=lambda p: (bootstraps.append(p.read_text(encoding="utf-8")), 0)[1],
+    )
+    assert rc == 0
+    assert len(bootstraps) == 1
+
+    # Execute the bootstrap inside a real IPython shell (just like `ipython -i <bootstrap.py>`)
+    ip_shell.run_cell(bootstraps[0], store_history=False)
+
+    # Variables are live in user_ns AND every loaded cell is recorded in In / %history
+    assert "res" in ip_shell.user_ns
+    assert ip_shell.user_ns["res"].shape == (2, 1)
+    in_hist = ip_shell.user_ns["In"]
+    assert any("import pytae as pt" in cell for cell in in_hist)
+    assert any("df = pt.DataFrame" in cell for cell in in_hist)
+    assert any("res = df.filter('a >= 2')" in cell for cell in in_hist)
+    assert "_pytae_cells" not in ip_shell.user_ns

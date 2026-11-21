@@ -57,6 +57,8 @@ _pytae() {
         "-o[Output destination file (.parquet, .csv, .ipc, .xlsx) or clip]:output:_files"
         "-check[Check syntax of a script or pipeline]:script:_files"
         "-doc[Search Pytae documentation]:query:"
+        "-history[Inspect, search, export, or reload IPython history]:session:"
+        "-load[Load a .py/.ipynb file or session into IPython]"
         "-mcp[Start Model Context Protocol server]"
         "-time[Benchmark pipeline execution]"
         "-cheatsheet[Display cheatsheet]"
@@ -79,7 +81,7 @@ fi
 
 BASH_COMPLETION = """_pytae_completion() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
-    local flags="-filter -mutate -select -rename -by -agg -arrange -distinct -dups -outliers -count -join -concat -long -wide -pivot -explode -assert -dropna -fillna -clean_columns -mask -unmask -head -tail -sample -shape -cols -dtype -nulls -schema -describe -glimpse -meta -browse -freq -hist -bar -scatter -corr -plot -diff -sql -o -check -doc -mcp -time -cheatsheet -version -help --install-completion --completion"
+    local flags="-filter -mutate -select -rename -by -agg -arrange -distinct -dups -outliers -count -join -concat -long -wide -pivot -explode -assert -dropna -fillna -clean_columns -mask -unmask -head -tail -sample -shape -cols -dtype -nulls -schema -describe -glimpse -meta -browse -freq -hist -bar -scatter -corr -plot -diff -sql -o -check -doc -history -load -mcp -time -cheatsheet -version -help --install-completion --completion"
 
     if [[ "${cur}" == -* ]] ; then
         COMPREPLY=( $(compgen -W "${flags}" -- "${cur}") )
@@ -139,6 +141,8 @@ complete -c pytae -s sql -d "Execute SQL query"
 complete -c pytae -s o -d "Output destination file or clip"
 complete -c pytae -s check -d "Check syntax of a script or pipeline"
 complete -c pytae -s doc -d "Search Pytae documentation"
+complete -c pytae -s history -d "Inspect, search, export, or reload IPython history"
+complete -c pytae -s load -d "Load a .py/.ipynb file or session into IPython"
 complete -c pytae -s mcp -d "Start Model Context Protocol server"
 complete -c pytae -s time -d "Benchmark pipeline execution"
 complete -c pytae -s cheatsheet -d "Display cheatsheet"
