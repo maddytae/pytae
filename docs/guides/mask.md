@@ -13,6 +13,11 @@ Anonymize, redact, encrypt, tokenize, or replace sensitive/hashed columns with d
   - [String Redaction (`col=redact`)](#string-redaction-colredact)
 - [Readable Deterministic Aliasing (`-alias`)](#readable-deterministic-aliasing--alias)
 - [Banking Risk & Finance Use Cases (With Before → After Examples)](#banking-risk--finance-use-cases-with-before--after-examples)
+  - [1. Redact — CCAR / CECL Data-Quality Debugging](#1-redact--ccar--cecl-data-quality-debugging--mask-colredact)
+  - [2. Salted Hash — IFRS 9 / CECL Multi-Year Vintage Tracking](#2-salted-hash--ifrs-9--cecl-multi-year-vintage-tracking--mask-colhash--salt)
+  - [3. Authenticated Encryption — Watchlist & Special Assets Memos](#3-authenticated-encryption--watchlist--special-assets-memos--mask-colencrypt--key)
+  - [4. Vault Tokenization — Basel IV / External Audit on Corporate Books](#4-vault-tokenization--basel-iv--external-audit-on-corporate-books--mask-coltokenize--vault)
+  - [5. Readable Aliasing — Risk Committee / ALCO Concentration Decks](#5-readable-aliasing--risk-committee--alco-concentration-decks--alias)
 - [Reversible Privacy Option 1: Key-Based Authenticated Encryption (`-key`)](#reversible-privacy-option-1-key-based-authenticated-encryption--key)
   - [Encrypting with `-mask "col=encrypt" -key "..."`](#encrypting-with--mask-colencrypt--key-)
   - [Decrypting with `-unmask "col" -key "..."`](#decrypting-with--unmask-col--key-)
@@ -174,53 +179,53 @@ pytae quarterly_watchlist_pack.parquet \
 ---
 
 ### 4. Vault Tokenization — Basel IV / External Audit on Corporate Books (`-mask "col=tokenize" -vault`)
-Corporate and FI portfolios come from a small, known universe (e.g., S&P 500) where weak hashes could be dictionary-attacked. Tokenize `obligor_id` across linked `facilities` and `collateral` tables using a private vault (`chmod 600`) to preserve joins with zero dictionary-attack risk, then unmask only auditor-flagged outliers:
+Corporate and FI portfolios come from a small, known universe (e.g., S&P 500) where weak hashes could be dictionary-attacked. Tokenize `customer_name` across linked `facilities` and `collateral` tables using a private vault (`chmod 600`) to preserve joins with zero dictionary-attack risk, then unmask only auditor-flagged outliers:
 
 ```bash
 # Risk Ops tokenizes linked tables using the same private vault (preserves foreign keys)
-pytae facilities.parquet -mask "obligor_id=tokenize" -vault risk_vault.parquet -o audit/facilities.parquet
-pytae collateral.parquet -mask "obligor_id=tokenize" -vault risk_vault.parquet -o audit/collateral.parquet
+pytae facilities.parquet -mask "customer_name=tokenize" -vault risk_vault.parquet -o audit/facilities.parquet
+pytae collateral.parquet -mask "customer_name=tokenize" -vault risk_vault.parquet -o audit/collateral.parquet
 
 # Later: Risk Ops unmasks the outliers flagged by external auditors
-pytae audit_flagged_outliers.parquet -unmask "obligor_id" -vault risk_vault.parquet -o internal_action_list.parquet
+pytae audit_flagged_outliers.parquet -unmask "customer_name" -vault risk_vault.parquet -o internal_action_list.parquet
 ```
 
-| | `obligor_id` | `facility_type` | `ead_usd` |
+| | `customer_name` | `facility_type` | `ead_usd` |
 |---|---|---|---|
 | **Before** | `Oracle Corp.` | `Revolver` | `250,000,000` |
 | **Before** | `Microsoft Corp.` | `Term Loan` | `180,000,000` |
-| **After (`-mask`)** | `obligor_id_0001` | `Revolver` | `250,000,000` |
-| **After (`-mask`)** | `obligor_id_0002` | `Term Loan` | `180,000,000` |
+| **After (`-mask`)** | `customer_name_0001` | `Revolver` | `250,000,000` |
+| **After (`-mask`)** | `customer_name_0002` | `Term Loan` | `180,000,000` |
 | **After (`-unmask -vault`)** | `Oracle Corp.` / `Microsoft Corp.` | *(restored)* | *(unchanged)* |
 
 ---
 
 ### 5. Readable Aliasing — Risk Committee / ALCO Concentration Decks (`-alias`)
-Turn `obligor_id_0001` or 64-character salted hashes into clean, deterministic company/banker/city names for Risk Committee slides and MRM docs, and optionally save a local `-vault` to convert flagged names back to exact IDs/hashes for Credit Ops follow-up:
+Turn `customer_name_0001` or 64-character salted hashes into clean, deterministic company/banker/city names for Risk Committee slides and MRM docs, and optionally save a local `-vault` to convert flagged names back to exact tokens/hashes for Credit Ops follow-up:
 
 ```bash
 # Analysts create readable names for ALCO slides & charts (saving a local alias vault)
 pytae audit/facilities.parquet \
-  -alias "obligor_id=company, relationship_mgr=name, branch_city=city" -seed 42 \
+  -alias "customer_name=company, relationship_mgr=name, branch_city=city" -seed 42 \
   -vault alco_alias_vault.parquet \
   -o alco_readable.parquet
 
 # Top-10 single-name exposures for the Risk Committee chart (readable names!)
 pytae alco_readable.parquet \
-  -by obligor_id -agg "total_ead = sum(ead_usd)" \
-  -arrange "total_ead desc" -head 10 -bar "obligor_id:total_ead"
+  -by customer_name -agg "total_ead = sum(ead_usd)" \
+  -arrange "total_ead desc" -head 10 -bar "customer_name:total_ead"
 
-# Convert committee-flagged names back to exact obligor tokens/hashes for Credit Ops
-pytae alco_followup.parquet -unmask "obligor_id" -vault alco_alias_vault.parquet -o credit_ops_handoff.parquet
+# Convert committee-flagged names back to exact customer tokens/hashes for Credit Ops
+pytae alco_followup.parquet -unmask "customer_name" -vault alco_alias_vault.parquet -o credit_ops_handoff.parquet
 ```
 
-| | `obligor_id` | `relationship_mgr` | `branch_city` | `ead_usd` |
+| | `customer_name` | `relationship_mgr` | `branch_city` | `ead_usd` |
 |---|---|---|---|---|
-| **Before (tokens/hashes)** | `obligor_id_0001` *(or `9f4c2a8b...`)* | `emp_4421` | `New York` | `250,000,000` |
-| **Before** | `obligor_id_0002` *(or `3a7d91e0...`)* | `emp_8812` | `Chicago` | `180,000,000` |
+| **Before (tokens/hashes)** | `customer_name_0001` *(or `9f4c2a8b...`)* | `emp_4421` | `New York` | `250,000,000` |
+| **Before** | `customer_name_0002` *(or `3a7d91e0...`)* | `emp_8812` | `Chicago` | `180,000,000` |
 | **After (`-alias -seed 42`)** | `Good Weather Corp` | `Jordan Brooks` | `Northbrook` | `250,000,000` |
 | **After (`-alias -seed 42`)** | `Silver Cedar LLC` | `Maya Lin` | `Clearwater` | `180,000,000` |
-| **After (`-unmask -vault`)** | `obligor_id_0001` / `obligor_id_0002` | *(restored if in vault)* | *(restored)* | `250,000,000` |
+| **After (`-unmask -vault`)** | `customer_name_0001` / `customer_name_0002` | *(restored if in vault)* | *(restored)* | `250,000,000` |
 
 > **Security Takeaways:**
 > - **Never share `-salt`** with receivers — without the salt, dictionary attacks fail even on known universes like S&P 500.
