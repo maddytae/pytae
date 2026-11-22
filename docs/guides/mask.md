@@ -83,7 +83,7 @@ Cryptographic hashes (`78797397...`) are safe, but awkward to discuss in reviews
 | `alias` *(default)* | `friendly`, `readable`, `product` | `Calm River`, `Amber Falcon`, `Swift Pine` |
 | `code` | `short`, `id` | `A7K-492`, `M3P-815` |
 
-- **Deterministic & Join-Safe**: With the same `-seed`, `"Apple Inc."` (or its hash) maps to the exact same readable alias across every table (`orders`, `customers`, `invoices`).
+- **Deterministic & Join-Safe**: With the same `-seed`, `"Oracle Corp."` (or its hash) maps to the exact same readable alias across every table (`orders`, `customers`, `invoices`).
 - **Auto-Disambiguates Collisions**: If two distinct values ever collide on the same phrase, Pytae automatically appends a deterministic suffix (`Good Weather Corp 2`) so distinct entities never silently merge.
 - **Optionally Reversible with `-vault`**: Pass `-vault map.parquet` to persist the mapping so existing `-unmask <col> -vault map.parquet` restores the original values.
 
@@ -142,9 +142,9 @@ pytae q1=lake/q1_2026.parquet q2=lake/q2_2026.parquet \
 
 | | `customer_name` | `stage` | `pd` |
 |---|---|---|---|
-| **Before (Q1)** | `Apple Inc.` | `1` | `0.008` |
+| **Before (Q1)** | `Oracle Corp.` | `1` | `0.008` |
 | **After (Q1)** | `9f4c2a8b1d7e...6c03` | `1` | `0.008` |
-| **Before (Q2)** | `Apple Inc.` | `2` | `0.041` |
+| **Before (Q2)** | `Oracle Corp.` | `2` | `0.041` |
 | **After (Q2)** | `9f4c2a8b1d7e...6c03` *(identical → joins cleanly)* | `2` | `0.041` |
 
 ---
@@ -187,11 +187,11 @@ pytae audit_flagged_outliers.parquet -unmask "obligor_id" -vault risk_vault.parq
 
 | | `obligor_id` | `facility_type` | `ead_usd` |
 |---|---|---|---|
-| **Before** | `Apple Inc.` | `Revolver` | `250,000,000` |
+| **Before** | `Oracle Corp.` | `Revolver` | `250,000,000` |
 | **Before** | `Microsoft Corp.` | `Term Loan` | `180,000,000` |
 | **After (`-mask`)** | `obligor_id_0001` | `Revolver` | `250,000,000` |
 | **After (`-mask`)** | `obligor_id_0002` | `Term Loan` | `180,000,000` |
-| **After (`-unmask -vault`)** | `Apple Inc.` / `Microsoft Corp.` | *(restored)* | *(unchanged)* |
+| **After (`-unmask -vault`)** | `Oracle Corp.` / `Microsoft Corp.` | *(restored)* | *(unchanged)* |
 
 ---
 
