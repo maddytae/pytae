@@ -136,7 +136,7 @@ CHEATSHEET_TEXT = """\
   pytae secure.parquet -unmask "ssn" -key "Secret123"             # Decrypt with key
   pytae dev.parquet -unmask "user" -vault "vault.parquet"         # De-tokenize with vault
   pytae sales.parquet -alias "customer=company, rep=name" -seed 42 # Readable deterministic aliases
-  pytae sales.parquet -alias "customer=company" -seed 42 -vault map.parquet # Reversible aliases
+  pytae hashed.parquet -mutate "disp = cust" -alias "disp=company" -seed 42 # Keep hash + add readable alias
 
 13. 💬 IPYTHON & JUPYTER WORKBENCH (import pytae as pt)
 --------------------------------------------------------------------------------

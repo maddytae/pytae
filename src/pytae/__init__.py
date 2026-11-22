@@ -343,10 +343,9 @@ def alias(
     spec: Any = None,
     *args: Any,
     seed: int | str | None = None,
-    vault: str | Path | None = None,
     **kwargs: Any,
 ) -> DataFrame:
-    return DataFrame(df).alias(spec, *args, seed=seed, vault=vault, **kwargs)
+    return DataFrame(df).alias(spec, *args, seed=seed, **kwargs)
 
 
 def schema(df: Any, fmt: str | None = None, *, table_name: str = "data") -> Any:

@@ -378,11 +378,10 @@ pytae users.csv -mask "email=hash" -salt "company_secret_salt_2026"
 # 2. Character & String Redaction (replaces with '***')
 pytae users.csv -mask "ssn=redact, credit_card=redact"
 
-# 3. Readable Deterministic Aliasing (-alias; works on raw values OR opaque hashes)
+# 3. Readable Deterministic Aliasing (-alias; works on raw values OR opaque hashes, -seed only)
 # Presets: company, name, email, city, alias (default), code
 pytae sales.parquet -alias "customer=company, rep=name, email=email" -seed 42
-pytae sales.parquet -alias "customer=company" -seed 42 -vault "map.parquet" -o safe.parquet
-pytae safe.parquet -unmask "customer" -vault "map.parquet"
+pytae hashed.parquet -mutate "display_name = customer_name" -alias "display_name=company" -seed 42
 
 # 3. Option 1: Reversible Authenticated Encryption (-key)
 # Encrypt sensitive columns using authenticated AES/HMAC stream encryption

@@ -33,12 +33,12 @@ Anonymize, redact, encrypt, tokenize, or replace sensitive/hashed columns with d
 | Flag | Argument | Description |
 |---|---|---|
 | `-mask` | `"col=method, ..."` | Mask specified columns using `hash`, `sha256`, `redact`, `encrypt`, or `tokenize` |
-| `-unmask` | `"col1, col2, ..."` | Revert encrypted, tokenized, or vault-aliased columns back to original values |
+| `-unmask` | `"col1, col2, ..."` | Revert encrypted or tokenized columns back to original values |
 | `-alias` | `"col=preset, ..."` | Replace raw or hashed values with deterministic readable aliases (`company`, `name`, `email`, `city`, `alias`, `code`) |
-| `-seed` | `42` | Deterministic seed for `-alias` (rotate aliases per project while keeping joins consistent) |
+| `-seed` | `42` | Deterministic seed for `-alias` (rotate readable aliases while keeping joins consistent) |
 | `-key` | `"secret_password"` | Secret key for authenticated symmetric encryption & decryption |
 | `-salt` | `"custom_salt"` | Salt appended to values prior to SHA-256 hashing (`-mask "col=hash"`) |
-| `-vault` | `"path/to/vault.parquet"` | File path to persistent vault for `-mask "col=tokenize"` or `-alias` (supports `.parquet`, `.csv`, `.ndjson`, `.json`) |
+| `-vault` | `"path/to/vault.parquet"` | File path to persistent tokenization vault for `-mask "col=tokenize"` & `-unmask` (supports `.parquet`, `.csv`, `.ndjson`, `.json`) |
 
 ---
 
@@ -90,7 +90,7 @@ Cryptographic hashes (`78797397...`) are safe, but awkward to discuss in reviews
 
 - **Deterministic & Join-Safe**: With the same `-seed`, `"Oracle Corp."` (or its hash) maps to the exact same readable alias across every table (`orders`, `customers`, `invoices`).
 - **Auto-Disambiguates Collisions**: If two distinct values ever collide on the same phrase, Pytae automatically appends a deterministic suffix (`Good Weather Corp 2`) so distinct entities never silently merge.
-- **Optionally Reversible with `-vault`**: Pass `-vault map.parquet` to persist the mapping so existing `-unmask <col> -vault map.parquet` restores the original values.
+- **Pure Convenience (`-seed` only)**: `-alias` is strictly for presentation/readability and is decoupled from `-unmask` / `-vault`. To preserve original hashes/tokens for handoff while presenting readable names, copy into a display column (`-mutate "display_name = customer_name" -alias "display_name=company" -seed 42`) and drop `display_name` before handoff.
 
 ```bash
 # Readable aliases for presentations (deterministic with -seed)
@@ -99,15 +99,14 @@ pytae sales.parquet -alias "customer=company, rep=name, email=email, loc=city" -
 # Turn opaque hashes into readable names
 pytae hashed_sales.parquet -alias "cust_hash=company, acct_hash=code" -seed 7
 
-# Reversible readable aliases (unmask later with -unmask -vault)
-pytae sales.parquet -alias "customer=company" -seed 42 -vault map.parquet -o safe.parquet
-pytae safe.parquet -unmask "customer" -vault map.parquet
+# Keep original hash intact while adding a readable display column for charts
+pytae hashed_sales.parquet -mutate "display_name = cust_hash" -alias "display_name=company" -seed 42
 ```
 
 Python / IPython API:
 ```python
 safe = df.alias("customer=company, rep=name", seed=42)
-safe = pt.alias(df, customer="company", vault="map.parquet", seed=42)
+safe = pt.alias(df, customer="company", seed=42)
 ```
 
 ---
@@ -201,36 +200,35 @@ pytae audit_flagged_outliers.parquet -unmask "customer_name" -vault risk_vault.p
 ---
 
 ### 5. Readable Aliasing — Risk Committee / ALCO Concentration Decks (`-alias`)
-Turn `customer_name_0001` or 64-character salted hashes into clean, deterministic company/banker/city names for Risk Committee slides and MRM docs, and optionally save a local `-vault` to convert flagged names back to exact tokens/hashes for Credit Ops follow-up:
+Turn 64-character salted hashes into clean, deterministic company/banker/city names for Risk Committee slides and MRM docs. Copy the hash into a display column (`display_name`) so analysts can present readable names while keeping the original hash intact for handoff back to Credit Ops — zero vault files needed:
 
 ```bash
-# Analysts create readable names for ALCO slides & charts (saving a local alias vault)
-pytae audit/facilities.parquet \
-  -alias "customer_name=company, relationship_mgr=name, branch_city=city" -seed 42 \
-  -vault alco_alias_vault.parquet \
+# Keep original hash in `customer_name`, add readable `display_name` + alias banker & city
+pytae lake/q2_2026.parquet \
+  -mutate "display_name = customer_name" \
+  -alias "display_name=company, relationship_mgr=name, branch_city=city" -seed 42 \
   -o alco_readable.parquet
 
 # Top-10 single-name exposures for the Risk Committee chart (readable names!)
 pytae alco_readable.parquet \
-  -by customer_name -agg "total_ead = sum(ead_usd)" \
-  -arrange "total_ead desc" -head 10 -bar "customer_name:total_ead"
+  -by display_name -agg "total_ead = sum(ead_usd)" \
+  -arrange "total_ead desc" -head 10 -bar "display_name:total_ead"
 
-# Convert committee-flagged names back to exact customer tokens/hashes for Credit Ops
-pytae alco_followup.parquet -unmask "customer_name" -vault alco_alias_vault.parquet -o credit_ops_handoff.parquet
+# Handoff flagged rows back to Credit Ops: drop `display_name`, original hashes stay untouched
+pytae alco_followup.parquet -select "~display_name" -o credit_ops_handoff.parquet
 ```
 
-| | `customer_name` | `relationship_mgr` | `branch_city` | `ead_usd` |
-|---|---|---|---|---|
-| **Before (tokens/hashes)** | `customer_name_0001` *(or `9f4c2a8b...`)* | `emp_4421` | `New York` | `250,000,000` |
-| **Before** | `customer_name_0002` *(or `3a7d91e0...`)* | `emp_8812` | `Chicago` | `180,000,000` |
-| **After (`-alias -seed 42`)** | `Good Weather Corp` | `Jordan Brooks` | `Northbrook` | `250,000,000` |
-| **After (`-alias -seed 42`)** | `Silver Cedar LLC` | `Maya Lin` | `Clearwater` | `180,000,000` |
-| **After (`-unmask -vault`)** | `customer_name_0001` / `customer_name_0002` | *(restored if in vault)* | *(restored)* | `250,000,000` |
+| | `customer_name` *(original hash)* | `display_name` | `relationship_mgr` | `branch_city` | `ead_usd` |
+|---|---|---|---|---|---|
+| **Before** | `9f4c2a8b1d7e...6c03` | — | `c8e1f04a...92b1` | `New York` | `250,000,000` |
+| **Before** | `3a7d91e0c4b2...81f5` | — | `7b2d4e19...04a8` | `Chicago` | `180,000,000` |
+| **After (`-alias -seed 42`)** | `9f4c2a8b1d7e...6c03` *(kept)* | `Good Weather Corp` | `Jordan Brooks` | `Northbrook` | `250,000,000` |
+| **After (`-alias -seed 42`)** | `3a7d91e0c4b2...81f5` *(kept)* | `Silver Cedar LLC` | `Maya Lin` | `Clearwater` | `180,000,000` |
 
 > **Security Takeaways:**
 > - **Never share `-salt`** with receivers — without the salt, dictionary attacks fail even on known universes like S&P 500.
 > - **Prefer `tokenize` + `-vault`** for external parties whenever the entity universe is small or guessable.
-> - **Use `-alias` strictly for readability/convenience** (`-seed` + optional `-vault`), never as a standalone security control.
+> - **Use `-alias` strictly for readability/convenience** (`-seed` only), never as a security control or `-unmask` substitute.
 
 ---
 

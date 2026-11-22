@@ -2,19 +2,16 @@
 
 Maps raw values or opaque cryptographic hashes into readable, deterministic
 pseudonyms using curated zero-dependency presets (`company`, `name`, `email`,
-`city`, `alias`, `code`), with automatic collision disambiguation and optional
-vault persistence (reversible via `pt.unmask` / `-unmask -vault`).
+`city`, `alias`, `code`), controlled by `-seed` with automatic collision
+disambiguation.
 """
 
 from __future__ import annotations
 
 import hashlib
-from pathlib import Path
 from typing import Any
 
 import polars as pl
-
-from pytae.mask import _load_vault, _save_vault
 
 _ADJECTIVES: tuple[str, ...] = (
     "Amber", "Apex", "Arctic", "Atlas", "Autumn", "Azure", "Birch", "Blue", "Bold", "Bright",
@@ -145,7 +142,7 @@ def parse_alias_spec(
                 mapping[str(sub).strip()] = default_preset
 
     for k, v in kwargs.items():
-        if k not in ("seed", "vault", "preset"):
+        if k not in ("seed", "preset"):
             mapping[k.strip()] = str(v).strip().lower()
 
     preset_kw = kwargs.get("preset")
@@ -225,20 +222,12 @@ def alias_polars(
     spec: dict[str, str],
     *,
     seed: int | str | None = None,
-    vault: str | Path | None = None,
 ) -> Any:
     """Replace specified columns in a Polars DataFrame/LazyFrame with deterministic readable aliases."""
     if not spec:
         return df
 
-    vault_path = Path(vault) if vault is not None else None
-    vault_map: dict[str, dict[str, str]] = {}
-    vault_dtypes: dict[str, str] = {}
-    if vault_path is not None:
-        vault_map, vault_dtypes = _load_vault(vault_path)
-
     exprs: list[pl.Expr] = []
-    vault_updated = False
 
     for col, preset in spec.items():
         col_series = (
@@ -246,18 +235,12 @@ def alias_polars(
             if isinstance(df, pl.LazyFrame)
             else df[col].drop_nulls()
         )
-        orig_dtype_str = str(col_series.dtype)
-        if vault_path is not None:
-            vault_dtypes[col] = orig_dtype_str
-
-        col_map: dict[str, str] = dict(vault_map.get(col, {})) if vault_path is not None else {}
-        used_aliases: set[str] = set(col_map.values())
+        col_map: dict[str, str] = {}
+        used_aliases: set[str] = set()
 
         # Sort unique stringified values so collision disambiguation is 100% deterministic
         unique_vals = sorted({str(v) for v in col_series.unique().to_list()})
         for val_str in unique_vals:
-            if val_str in col_map:
-                continue
             base = _format_alias(val_str, preset, seed=seed)
             cand = base
             counter = 2
@@ -266,16 +249,10 @@ def alias_polars(
                 counter += 1
             col_map[val_str] = cand
             used_aliases.add(cand)
-            if vault_path is not None:
-                vault_map.setdefault(col, {})[val_str] = cand
-                vault_updated = True
 
         col_as_str = pl.col(col).cast(pl.String)
         expr = col_as_str.replace_strict(col_map, default=col_as_str).alias(col)
         exprs.append(expr)
-
-    if vault_updated and vault_path is not None:
-        _save_vault(vault_map, vault_dtypes, vault_path)
 
     return df.with_columns(exprs)
 
@@ -285,10 +262,9 @@ def alias(
     spec: Any = None,
     *args: Any,
     seed: int | str | None = None,
-    vault: str | Path | None = None,
     **kwargs: Any,
 ) -> Any:
-    """Replace sensitive or hashed column values with deterministic, human-readable aliases.
+    """Replace raw or hashed column values with deterministic, human-readable aliases.
 
     Presets:
     - `company` (`org`, `corp`): e.g. `"Good Weather Corp"`, `"Silver Cedar LLC"`
@@ -300,7 +276,7 @@ def alias(
 
     Examples:
         pt.alias(df, "customer=company, rep=name", seed=42)
-        pt.alias(df, customer="company", vault="map.parquet", seed=42)
+        pt.alias(df, customer="company", seed=42)
     """
     from pytae.dataframe import DataFrame
 
@@ -310,14 +286,14 @@ def alias(
     underlying = df._df if is_pt else df
 
     if isinstance(underlying, (pl.DataFrame, pl.LazyFrame)):
-        res = alias_polars(underlying, mapping, seed=seed, vault=vault)
+        res = alias_polars(underlying, mapping, seed=seed)
         return DataFrame(res) if is_pt else res
 
     import pandas as pd
 
     if isinstance(underlying, pd.DataFrame):
         pl_df = pl.from_pandas(underlying)
-        res_pl = alias_polars(pl_df, mapping, seed=seed, vault=vault)
+        res_pl = alias_polars(pl_df, mapping, seed=seed)
         res_pd = res_pl.to_pandas()
         return DataFrame(res_pd) if is_pt else res_pd
 

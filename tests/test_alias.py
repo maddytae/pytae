@@ -92,28 +92,33 @@ def test_alias_auto_disambiguates_collisions(monkeypatch: pytest.MonkeyPatch) ->
     assert _disambiguate("A7K-492", "code", 2) == "A7K-492-2"
 
 
-def test_alias_vault_roundtrip_with_unmask_and_cli(tmp_path: Path) -> None:
+def test_alias_cli_and_lazyframe(tmp_path: Path) -> None:
     src = tmp_path / "sales.parquet"
-    masked_out = tmp_path / "aliased.parquet"
-    restored_out = tmp_path / "restored.parquet"
-    vault = tmp_path / "vault.parquet"
+    aliased_out = tmp_path / "aliased.parquet"
 
-    orig = pt.DataFrame({"customer": ["Apple Inc.", "Acme Co", None], "amt": [100, 200, 300]})
+    orig = pt.DataFrame({"customer": ["9f4c2a8b1d7e6c03", "3a7d91e0c4b281f5", None], "amt": [100, 200, 300]})
     orig.to(src)
 
-    # CLI -alias with -seed and -vault
-    rc1 = cli_main([str(src), "-alias", "customer=company", "-seed", "42", "-vault", str(vault), "-o", str(masked_out)])
+    # CLI -alias with -seed (and preserving hash via -mutate)
+    rc1 = cli_main(
+        [
+            str(src),
+            "-mutate",
+            "display_name = customer",
+            "-alias",
+            "display_name=company",
+            "-seed",
+            "42",
+            "-o",
+            str(aliased_out),
+        ]
+    )
     assert rc1 == 0
-    aliased_df = pt.read(masked_out)
-    assert aliased_df._df["customer"][0] != "Apple Inc."
-    assert aliased_df._df["customer"][2] is None
+    aliased_df = pt.read(aliased_out)
+    assert aliased_df._df["customer"].to_list() == ["9f4c2a8b1d7e6c03", "3a7d91e0c4b281f5", None]
+    assert aliased_df._df["display_name"][0] != "9f4c2a8b1d7e6c03"
+    assert aliased_df._df["display_name"][2] is None
 
-    # Existing -unmask -vault reverses the readable alias back to original!
-    rc2 = cli_main([str(masked_out), "-unmask", "customer", "-vault", str(vault), "-o", str(restored_out)])
-    assert rc2 == 0
-    restored_df = pt.read(restored_out)
-    assert restored_df._df["customer"].to_list() == ["Apple Inc.", "Acme Co", None]
-
-    # Works with LazyFrame directly
+    # Works with LazyFrame directly and matches CLI output identically
     lf_res = alias_polars(orig._df.lazy(), {"customer": "company"}, seed=42).collect()
-    assert lf_res["customer"].to_list() == aliased_df._df["customer"].to_list()
+    assert lf_res["customer"].to_list() == aliased_df._df["display_name"].to_list()

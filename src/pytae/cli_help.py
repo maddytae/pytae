@@ -1066,13 +1066,13 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     "alias": KeywordHelp(
         name="alias",
         flag="-alias SPEC",
-        syntax='pytae <path> -alias "<SPEC>" [-seed N] [-vault <PATH>]',
+        syntax='pytae <path> -alias "<SPEC>" [-seed N]',
         summary="Replace raw or hashed column values with deterministic, human-readable aliases.",
         description=(
             "Maps sensitive or already-hashed column values into readable, deterministic pseudonyms\n"
             "using curated zero-dependency presets (`company`, `name`, `email`, `city`, `alias`, `code`).\n"
-            "Same `-seed` produces identical aliases across tables (join-safe), automatically\n"
-            "disambiguates collisions, and optionally saves a `-vault` mapping reversible with `-unmask`."
+            "Controlled strictly by `-seed` for presentation/readability (join-safe across tables with the\n"
+            "same `-seed`, auto-disambiguates collisions). Use `-mask` / `-unmask` for security."
         ),
         options=[
             'col=company (or org/corp) : e.g. "Good Weather Corp", "Silver Cedar LLC".',
@@ -1082,14 +1082,13 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             'col=alias (default; or friendly/readable/product) : e.g. "Calm River".',
             'col=code (or short/id) : e.g. "A7K-492".',
             "-seed <N> : Reproducible seed to rotate readable alias mapping.",
-            "-vault <PATH> : Optional vault file so `-unmask <col> -vault <PATH>` restores originals.",
         ],
         examples=[
             'pytae sales.parquet -alias "customer=company, rep=name" -seed 42',
             'pytae hashed.parquet -alias "cust_hash=company, email=email" -seed 7',
-            'pytae sales.parquet -alias "customer=company" -seed 42 -vault map.parquet -o safe.parquet',
+            'pytae hashed.parquet -mutate "display = customer_name" -alias "display=company" -seed 42',
         ],
-        see_also=["-mask", "-unmask", "-seed", "-vault"],
+        see_also=["-mask", "-unmask", "-seed"],
     ),
     "repl": KeywordHelp(
         name="ipython",

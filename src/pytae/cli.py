@@ -680,7 +680,7 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         action=_OrderedStore,
         metavar="SPEC",
         help="replace raw or hashed column values with deterministic human-readable aliases "
-        "(presets: company, name, email, city, alias, code); supports -seed and optional -vault; "
+        "(presets: company, name, email, city, alias, code); controlled by -seed; "
         'e.g. \'-alias "customer=company, rep=name" -seed 42\'',
     )
     parser.add_argument(

@@ -551,7 +551,6 @@ class _Pipeline:
         spec: Any,
         *,
         seed: int | str | None = None,
-        vault: Any = None,
     ) -> str | None:
         """Apply -alias to the current view. Returns an error message or None."""
         from pytae.alias import alias_polars, parse_alias_spec
@@ -567,7 +566,7 @@ class _Pipeline:
             return unknown_columns_message("-alias", missing, available)
 
         try:
-            self._pldf = alias_polars(self.polars_lazy_frame(), mapping, seed=seed, vault=vault)
+            self._pldf = alias_polars(self.polars_lazy_frame(), mapping, seed=seed)
             self._df = None
             return None
         except Exception as exc:
