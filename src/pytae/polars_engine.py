@@ -2872,7 +2872,9 @@ def join_polars(
             try:
                 threshold = float(fuzzy)
             except (ValueError, TypeError):
-                raise ValueError(f"join(): fuzzy threshold must be a float between 0.0 and 1.0, got {fuzzy!r}")
+                raise ValueError(
+                    f"join(): fuzzy threshold must be a float between 0.0 and 1.0, got {fuzzy!r}"
+                ) from None
         if not (0.0 <= threshold <= 1.0):
             raise ValueError(f"join(): fuzzy threshold must be between 0.0 and 1.0, got {threshold}")
 

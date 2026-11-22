@@ -41,6 +41,7 @@ _PT_CLI_FLAGS = sorted(
         "-diff",
         "-distinct",
         "-dlim",
+        "-doc",
         "-dropna",
         "-dtype",
         "-dups",

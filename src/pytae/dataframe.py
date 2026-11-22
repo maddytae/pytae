@@ -1347,7 +1347,7 @@ class DataFrame:
             raise KeyError(f"rename: column(s) {missing} not found in DataFrame")
         new_df = self._df.rename(mapping)
         new_col_map = dict(self._orig_col_map)
-        for old, new in mapping.items():
+        for _old, new in mapping.items():
             new_col_map[new] = new
         res = DataFrame(new_df, orig_col_map=new_col_map)
         res._orig_index = self._orig_index
@@ -2295,7 +2295,7 @@ def _plot_impl(pdf: Any, *args: Any, **kwargs: Any) -> Any:
     if not isinstance(pdf, pd.DataFrame):
         if hasattr(pdf, "_to_pandas_internal"):
             pdf = pdf._to_pandas_internal()
-        elif hasattr(pdf, "to") and callable(getattr(pdf, "to")):
+        elif hasattr(pdf, "to") and callable(pdf.to):
             pdf = pdf.to("pandas")
         elif hasattr(pdf, "to_pandas"):
             pdf = pdf.to_pandas()

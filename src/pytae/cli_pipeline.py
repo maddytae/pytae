@@ -753,7 +753,7 @@ class _OrderedValue(argparse.Action):
         op_values = getattr(namespace, "_op_values", None)
         if op_values is None:
             op_values = {}
-            setattr(namespace, "_op_values", op_values)
+            namespace._op_values = op_values
         op_values.setdefault(flag_name, []).append(val)
         if flag_name != self.dest:
             op_values.setdefault(self.dest, []).append(val)
@@ -769,7 +769,7 @@ class _OrderedStore(argparse.Action):
         op_values = getattr(namespace, "_op_values", None)
         if op_values is None:
             op_values = {}
-            setattr(namespace, "_op_values", op_values)
+            namespace._op_values = op_values
         op_values.setdefault(flag_name, []).append(values)
         if flag_name != self.dest:
             op_values.setdefault(self.dest, []).append(values)
@@ -788,7 +788,7 @@ class _OrderedAppend(argparse.Action):
         op_values = getattr(namespace, "_op_values", None)
         if op_values is None:
             op_values = {}
-            setattr(namespace, "_op_values", op_values)
+            namespace._op_values = op_values
         op_values.setdefault(flag_name, []).append(values)
         if flag_name != self.dest:
             op_values.setdefault(self.dest, []).append(values)

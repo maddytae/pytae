@@ -76,10 +76,15 @@ recent = %pt sales.parquet -filter "year == 2025" -select "id,region,amount"
 
 # SQL across all DataFrames in IPython's namespace
 top = %pt -sql "SELECT island, COUNT(*) AS n, AVG(body_mass_g) AS avg_mass FROM df GROUP BY island"
+
+# In-memory multi-table joins, concats, docs & TUI browser
+joined = %pt orders -join "right=customers, on=cust_id, how=left"
+%pt -doc "diff on key"
+%pt df -browse
 ```
 
-#### Cell magic (`%%pt`)
-Write readable multi-line pipelines without `\` continuations. Put an optional target variable name on the `%%pt` header line:
+#### Cell magic (`%%pt` and `%%pt [var] -sql`)
+Write readable multi-line pipelines without `\` continuations. Put an optional target variable name on the `%%pt` header line, or add `-sql` for full multi-line SQL across all live DataFrames (without colliding with `jupysql`'s `%%sql`):
 
 ```python
 %%pt summary
@@ -88,6 +93,17 @@ df
 -filter "species != 'Gentoo'"
 -by "species, island"
 -agg "avg_mass = mean(body_mass_g), n = count()"
+```
+
+```sql
+%%pt top_customers -sql
+SELECT c.name, SUM(o.amount) AS total
+FROM orders o
+JOIN customers c ON o.cust_id = c.id
+WHERE o.amount > @min_amt
+GROUP BY c.name
+ORDER BY total DESC
+```
 -arrange "avg_mass desc"
 ```
 
@@ -207,6 +223,10 @@ pytae -history -db ~/alt/history.sqlite  # One-off history DB path override
 pytae -history -set-db ~/alt/history.sqlite  # Persist custom history DB path in ~/.pytae/config.json
 pytae -history -set-db reset             # Reset history DB path back to IPython default
 ```
+
+> **Tip (`-load` vs. IPython's built-in `%run`):**
+> - Use **`pytae analysis.py -load`** / **`pytae analysis.ipynb -load`** (or `pytae -history 42 -load`) when you want each cell replayed into `%history`, ↑ arrow, and `%export`.
+> - Inside an already-running IPython session, use IPython's native **`%run -i analysis.py`** (or **`%run analysis.ipynb`**) to silently execute a script/notebook and load its variables/DataFrames into memory without adding its lines to `%history`.
 
 ---
 

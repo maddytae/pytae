@@ -142,7 +142,11 @@ CHEATSHEET_TEXT = """\
   import pytae as pt
   df = pt.sample("penguins")                         # Or: df = %pt sales.parquet
   heavy = %pt df -filter "body_mass_g > 4000"        # Full CLI in-process (immutable)
+  joined = %pt df1 -join "right=df2, on=id, how=left"# In-memory multi-table join/concat
   %%pt summary                                       # Multi-line pipeline cell magic
+  %%pt top_rows -sql                                 # Multi-line SQL across all live DataFrames
+  %pt -doc "diff on key"                             # In-process offline documentation search
+  %pt df -browse                                     # Interactive terminal TUI table browser
   %checkpoint raw                                    # Ephemeral IPC snapshot (0 MB RAM)
   %checkpoint diff df raw                            # Diff table vs checkpoint
   %restore [raw]                                     # Strict DataFrame rollback + OS RSS trim
@@ -151,6 +155,7 @@ CHEATSHEET_TEXT = """\
   %set max_rows=20 float_precision=2 comma=true      # Display formatting (`%set save` persists)
   %export analysis.py                                # Clean runnable .py or .ipynb (prunes errors/rollbacks)
   %exit -s [analysis.py]                             # Export session and exit IPython
+  %run -i analysis.py                                # Built-in IPython: load vars/DFs from .py/.ipynb silently
   # From the terminal — inspect, search, export, or reload past IPython sessions:
   pytae -history [-n 50]                             # List recent IPython sessions
   pytae -history 42 [-clean]                         # View session 42 (raw or cleaned Python)

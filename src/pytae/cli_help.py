@@ -1431,7 +1431,8 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
         summary="Inspect, search, export, or reload past IPython sessions from history.sqlite.",
         description=(
             "IPython automatically records every session in ~/.ipython/profile_default/history.sqlite.\n"
-            "- Inside IPython: use `%history -n`, `%history -g <pattern>`, `%export out.py`, or `%exit -s out.py`.\n"
+            "- Inside IPython: use `%history -n`, `%history -g <pattern>`, `%export out.py`, `%exit -s out.py`, "
+            "or built-in `%run -i out.py` (loads vars/DFs silently without adding to `%history`).\n"
             "- From the CLI: use `pytae -history` to list, view, search, export (`-o`), or reload (`-load`) past sessions."
         ),
         options=[
