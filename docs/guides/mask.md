@@ -12,7 +12,7 @@ Anonymize, redact, encrypt, tokenize, or replace sensitive/hashed columns with d
   - [Salted Hashing (`-salt`)](#salted-hashing--salt)
   - [String Redaction (`col=redact`)](#string-redaction-colredact)
 - [Readable Deterministic Aliasing (`-alias`)](#readable-deterministic-aliasing--alias)
-  - [Two-Team Workflow: Team A (`-mask`) ↔ Team B (`-alias` + `-unmask`)](#two-team-workflow-team-a--mask--team-b--alias---unmask)
+- [Case Study: Bank Credit Portfolio (Team A, Team B & Team C)](#case-study-bank-credit-portfolio-team-a-team-b--team-c)
 - [Reversible Privacy Option 1: Key-Based Authenticated Encryption (`-key`)](#reversible-privacy-option-1-key-based-authenticated-encryption--key)
   - [Encrypting with `-mask "col=encrypt" -key "..."`](#encrypting-with--mask-colencrypt--key-)
   - [Decrypting with `-unmask "col" -key "..."`](#decrypting-with--unmask-col--key-)
@@ -105,28 +105,116 @@ safe = df.alias("customer=company, rep=name", seed=42)
 safe = pt.alias(df, customer="company", vault="map.parquet", seed=42)
 ```
 
-### Two-Team Workflow: Team A (`-mask`) ↔ Team B (`-alias` + `-unmask`)
+---
 
-A common enterprise pattern separates **data protection** (Team A) from **readable analysis** (Team B) without ever exposing raw PII:
+## Case Study: Bank Credit Portfolio (Team A, Team B & Team C)
+
+Suppose **Team A** (Bank Credit Risk) owns `credit_portfolio.parquet` containing corporate loans to S&P 500 borrowers (`borrower`, `loan_officer`, `ssn_guarantor`, `internal_notes`, `exposure_usd`, `pd`, `lgd`).
+
+Team A needs to share this dataset with two very different audiences — and later ingest both teams' analytical findings back into internal reporting:
+
+| Team | Relationship | Risk Profile | What Team A Sends | How Team A Recovers Names |
+|---|---|---|---|---|
+| **Team B** | External consultant | **High (Strictest)** — knows borrowers are S&P 500 (small guessable universe) | `borrower=tokenize` (`-vault`), `loan_officer=hash` (`-salt`), `ssn_guarantor=redact`, `internal_notes=redact` | `-unmask "borrower" -vault team_a_vault.parquet` |
+| **Team C** | Internal bank team (Model Validation) | **Moderate (Internal)** — needs multi-quarter joins & selective note review | `borrower=hash` (`-salt`), `ssn_guarantor=redact`, `internal_notes=encrypt` (`-key`) | Re-hash internal table on the fly with same `-salt` & join (no vault stored) |
+
+---
+
+### Track 1: Team A → Team B (External Consultant — Strictest Protection)
+
+**Why Team A uses `tokenize` instead of `hash` for `borrower`:**
+Because borrowers come from a small, known universe (S&P 500), an unsalted hash (or a leaked salt) could be dictionary-attacked in milliseconds. Opaque tokens (`borrower_0001`, `borrower_0002`) have **zero mathematical relationship** to the company name.
 
 ```bash
-# 1. Team A (Data Owner): mask raw customer names (one-way hash OR reversible encrypt/tokenize)
-pytae raw_sales.parquet -mask "customer=hash" -salt "team_a_secret" -o shared_masked.parquet
-# -> Team A sends `shared_masked.parquet` (containing hashes like `78797397...`) to Team B
+# Step 1 (Team A): Tokenize borrowers into a private vault, salt-hash officers, redact PII/notes
+pytae credit_portfolio.parquet \
+  -mask "borrower=tokenize, loan_officer=hash, ssn_guarantor=redact, internal_notes=redact" \
+  -salt "$BANK_EXT_SALT" \
+  -vault team_a_vault.parquet \
+  -o for_team_b.parquet
 
-# 2. Team B (Analytics): turn opaque hashes into readable company names + save Team B's vault
-pytae shared_masked.parquet \
-  -alias "customer=company" -seed 42 -vault team_b_alias_vault.parquet \
-  -o working_readable.parquet
-# -> Team B analyzes and presents cleanly ("Good Weather Corp is our #1 customer")
-
-# 3. Team B (Handoff back to Team A): restore exact original hashes before sending results back
-pytae team_b_results.parquet \
-  -unmask "customer" -vault team_b_alias_vault.parquet \
-  -o handoff_to_team_a.parquet
-# -> Team A receives `handoff_to_team_a.parquet` with the original hashes (or encrypted/tokenized
-#    values) intact, ready to join back to internal tables or `-unmask` with Team A's own key/vault.
+chmod 600 team_a_vault.parquet   # Keep Team A's vault strictly private and out of git
+# -> Team A sends ONLY `for_team_b.parquet` to Team B
 ```
+
+**How Team B works with readable names (`-alias`) instead of `borrower_0001` / hex hashes:**
+```bash
+# Step 2 (Team B): Create readable, deterministic aliases + save Team B's own alias vault
+pytae for_team_b.parquet \
+  -alias "borrower=company, loan_officer=name" -seed 42 \
+  -vault team_b_alias.parquet \
+  -o team_b_working.parquet
+
+# Team B analyzes & presents naturally:
+#   "Good Weather Corp accounts for 14% of high-PD exposure, managed by Jordan Brooks."
+```
+
+**How Team B hands findings back to Team A:**
+```bash
+# Step 3 (Team B): Restore Team A's original tokens before sending results back
+pytae team_b_top_risks.parquet \
+  -unmask "borrower" -vault team_b_alias.parquet \
+  -o handoff_from_b.parquet
+
+# Step 4 (Team A): Recover real borrower names using Team A's private vault
+pytae handoff_from_b.parquet \
+  -unmask "borrower" -vault team_a_vault.parquet \
+  -o final_consultant_report.parquet
+```
+
+---
+
+### Track 2: Team A → Team C (Internal Bank Team — Stateless & Join-Safe)
+
+**Why Team A uses salted `hash` + `encrypt` for Team C:**
+Team C works across quarterly snapshots (`q1_loans.parquet`, `q2_loans.parquet`) inside the bank's network. A strong secret `-salt` gives deterministic, join-safe hashes across quarters without maintaining a growing vault file, while `-key` encryption lets authorized reviewers decrypt `internal_notes` on flagged loans without exposing notes to everyone.
+
+```bash
+# Step 1 (Team A): Salted hash for borrowers, redact SSN, encrypt notes for authorized reviewers
+pytae credit_portfolio.parquet \
+  -mask "borrower=hash, ssn_guarantor=redact, internal_notes=encrypt" \
+  -salt "$BANK_AUDIT_SALT" \
+  -key "$AUDIT_NOTES_KEY" \
+  -o for_team_c.parquet
+# -> Team A sends `for_team_c.parquet` to Team C (never shares $BANK_AUDIT_SALT)
+```
+
+**How Team C replaces 64-character hashes with readable names (`-alias`):**
+```bash
+# Step 2 (Team C): Turn 64-char hex hashes into readable company names (same -seed across Q1/Q2)
+pytae for_team_c.parquet \
+  -alias "borrower=company" -seed 7 \
+  -vault team_c_alias.parquet \
+  -o team_c_working.parquet
+
+# Team C discusses "Silver Cedar LLC" in model validation reviews instead of `78797397...`
+# Authorized reviewer can also decrypt notes on flagged rows if they hold $AUDIT_NOTES_KEY:
+pytae team_c_working.parquet -filter "pd > 0.10" -unmask "internal_notes" -key "$AUDIT_NOTES_KEY"
+```
+
+**How Team C hands flagged loans back to Team A (no `hash ↔ original` vault needed!):**
+```bash
+# Step 3 (Team C): Restore original salted hashes before sending flagged loans back
+pytae team_c_flags.parquet \
+  -unmask "borrower" -vault team_c_alias.parquet \
+  -o handoff_from_c.parquet
+
+# Step 4 (Team A): Re-hash internal lookup table on the fly with the same salt & join!
+pytae credit_portfolio.parquet \
+  -select "borrower, exposure_usd" \
+  -mutate "borrower_hash = borrower" \
+  -mask "borrower_hash=hash" -salt "$BANK_AUDIT_SALT" \
+  -o /tmp/internal_keyed.parquet
+
+pytae k=/tmp/internal_keyed.parquet f=handoff_from_c.parquet \
+  -join "left=f, right=k, on=borrower:borrower_hash, how=left" \
+  -o final_validation_report.parquet
+```
+
+> **Security Takeaways:**
+> - **Never share `-salt`** with receivers — without the salt, dictionary attacks fail even on known universes like S&P 500.
+> - **Prefer `tokenize` + `-vault`** for external parties whenever the entity universe is small or guessable.
+> - **Use `-alias` strictly for readability/convenience** (`-seed` + optional `-vault`), never as a standalone security control.
 
 ---
 
