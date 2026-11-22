@@ -12,7 +12,7 @@ Anonymize, redact, encrypt, tokenize, or replace sensitive/hashed columns with d
   - [Salted Hashing (`-salt`)](#salted-hashing--salt)
   - [String Redaction (`col=redact`)](#string-redaction-colredact)
 - [Readable Deterministic Aliasing (`-alias`)](#readable-deterministic-aliasing--alias)
-- [Case Study: Bank Credit Portfolio (Team A, Team B & Team C)](#case-study-bank-credit-portfolio-team-a-team-b--team-c)
+- [Banking Risk & Finance Use Cases (With Before → After Examples)](#banking-risk--finance-use-cases-with-before--after-examples)
 - [Reversible Privacy Option 1: Key-Based Authenticated Encryption (`-key`)](#reversible-privacy-option-1-key-based-authenticated-encryption--key)
   - [Encrypting with `-mask "col=encrypt" -key "..."`](#encrypting-with--mask-colencrypt--key-)
   - [Decrypting with `-unmask "col" -key "..."`](#decrypting-with--unmask-col--key-)
@@ -107,109 +107,120 @@ safe = pt.alias(df, customer="company", vault="map.parquet", seed=42)
 
 ---
 
-## Case Study: Bank Credit Portfolio (Team A, Team B & Team C)
+## Banking Risk & Finance Use Cases (With Before → After Examples)
 
-Suppose **Team A** (Bank Credit Risk) owns `credit_portfolio.parquet` containing corporate loans to S&P 500 borrowers (`borrower`, `loan_officer`, `ssn_guarantor`, `internal_notes`, `exposure_usd`, `pd`, `lgd`).
+### 1. Redact — CCAR / CECL Data-Quality Debugging (`-mask "col=redact"`)
+Strip PII and free-text credit memos before sending a loan tape to IT or a vendor to debug an RWA or ECL mismatch (preserving null vs. populated checks):
 
-Team A needs to share this dataset with two very different audiences — and later ingest both teams' analytical findings back into internal reporting:
+```bash
+pytae loan_tape.parquet \
+  -mask "guarantor_ssn=redact, borrower_address=redact, underwriting_comments=redact" \
+  -o debug_loan_tape.parquet
+```
 
-| Team | Relationship | Risk Profile | What Team A Sends | How Team A Recovers Names |
+| | `guarantor_ssn` | `underwriting_comments` | `ead_usd` |
+|---|---|---|---|
+| **Before** | `123-45-6789` | `Covenant waiver approved by CCO` | `12,500,000` |
+| **After** | `***` | `***` | `12,500,000` |
+| *(Null row)* | `null` → `null` | `null` → `null` | `4,200,000` |
+
+---
+
+### 2. Salted Hash — IFRS 9 / CECL Multi-Year Vintage Tracking (`-mask "col=hash" -salt`)
+Hash `obligor_lei` deterministically across quarterly snapshots so Stage 1 → 2 → 3 migrations and cross-desk concentrations can be joined without storing real borrower identities in the modeling lake:
+
+```bash
+# Same secret salt across Q1 and Q2 keeps obligors joinable
+pytae q1_2026.parquet -mask "obligor_lei=hash" -salt "$RISK_VINTAGE_SALT" -o lake/q1_2026.parquet
+pytae q2_2026.parquet -mask "obligor_lei=hash" -salt "$RISK_VINTAGE_SALT" -o lake/q2_2026.parquet
+
+# Join Q1 and Q2 in the modeling lake to inspect stage migration
+pytae q1=lake/q1_2026.parquet q2=lake/q2_2026.parquet \
+  -join "left=q1, right=q2, on=obligor_lei, how=inner" \
+  -filter "stage_left != stage_right" -head 20
+```
+
+| | `obligor_lei` | `stage` | `pd` |
+|---|---|---|---|
+| **Before (Q1)** | `HWUPKR0MPOU8FGXBT394` | `1` | `0.008` |
+| **After (Q1)** | `9f4c2a8b1d7e...6c03` | `1` | `0.008` |
+| **Before (Q2)** | `HWUPKR0MPOU8FGXBT394` | `2` | `0.041` |
+| **After (Q2)** | `9f4c2a8b1d7e...6c03` *(identical → joins cleanly)* | `2` | `0.041` |
+
+---
+
+### 3. Authenticated Encryption — Watchlist & Special Assets Memos (`-mask "col=encrypt" -key`)
+Encrypt sensitive free-text credit memos so portfolio analysts can aggregate `ead` / `ecl` freely, while only the Chief Credit Officer or Audit holding `$CCO_KEY` can decrypt Stage-3 notes (with no lookup vault file to manage):
+
+```bash
+# Credit Risk prepares the quarterly watchlist pack
+pytae watchlist.parquet \
+  -mask "credit_committee_memo=encrypt, restructuring_terms=encrypt" \
+  -key "$CCO_KEY" \
+  -o quarterly_watchlist_pack.parquet
+
+# Chief Credit Officer decrypts memos only for high-LGD Stage-3 loans
+pytae quarterly_watchlist_pack.parquet \
+  -filter "stage == 3 and lgd > 0.45" \
+  -unmask "credit_committee_memo, restructuring_terms" -key "$CCO_KEY"
+```
+
+| | `loan_id` | `credit_committee_memo` | `lgd` |
+|---|---|---|---|
+| **Before** | `LN-8841` | `Borrower negotiating asset sale; hold collateral` | `0.52` |
+| **After (`-mask`)** | `LN-8841` | `vK9pQ2x...mR8wL1t==` *(random IV per row)* | `0.52` |
+| **After (`-unmask -key`)** | `LN-8841` | `Borrower negotiating asset sale; hold collateral` | `0.52` |
+
+---
+
+### 4. Vault Tokenization — Basel IV / External Audit on Corporate Books (`-mask "col=tokenize" -vault`)
+Corporate and FI portfolios come from a small, known universe (e.g., S&P 500) where weak hashes could be dictionary-attacked. Tokenize `obligor_id` across linked `facilities` and `collateral` tables using a private vault (`chmod 600`) to preserve joins with zero dictionary-attack risk, then unmask only auditor-flagged outliers:
+
+```bash
+# Risk Ops tokenizes linked tables using the same private vault (preserves foreign keys)
+pytae facilities.parquet -mask "obligor_id=tokenize" -vault risk_vault.parquet -o audit/facilities.parquet
+pytae collateral.parquet -mask "obligor_id=tokenize" -vault risk_vault.parquet -o audit/collateral.parquet
+
+# Later: Risk Ops unmasks the outliers flagged by external auditors
+pytae audit_flagged_outliers.parquet -unmask "obligor_id" -vault risk_vault.parquet -o internal_action_list.parquet
+```
+
+| | `obligor_id` | `facility_type` | `ead_usd` |
+|---|---|---|---|
+| **Before** | `Apple Inc.` | `Revolver` | `250,000,000` |
+| **Before** | `Microsoft Corp.` | `Term Loan` | `180,000,000` |
+| **After (`-mask`)** | `obligor_id_0001` | `Revolver` | `250,000,000` |
+| **After (`-mask`)** | `obligor_id_0002` | `Term Loan` | `180,000,000` |
+| **After (`-unmask -vault`)** | `Apple Inc.` / `Microsoft Corp.` | *(restored)* | *(unchanged)* |
+
+---
+
+### 5. Readable Aliasing — Risk Committee / ALCO Concentration Decks (`-alias`)
+Turn `obligor_id_0001` or 64-character salted hashes into clean, deterministic company/banker/city names for Risk Committee slides and MRM docs, and optionally save a local `-vault` to convert flagged names back to exact IDs/hashes for Credit Ops follow-up:
+
+```bash
+# Analysts create readable names for ALCO slides & charts (saving a local alias vault)
+pytae audit/facilities.parquet \
+  -alias "obligor_id=company, relationship_mgr=name, branch_city=city" -seed 42 \
+  -vault alco_alias_vault.parquet \
+  -o alco_readable.parquet
+
+# Top-10 single-name exposures for the Risk Committee chart (readable names!)
+pytae alco_readable.parquet \
+  -by obligor_id -agg "total_ead = sum(ead_usd)" \
+  -arrange "total_ead desc" -head 10 -bar "obligor_id:total_ead"
+
+# Convert committee-flagged names back to exact obligor tokens/hashes for Credit Ops
+pytae alco_followup.parquet -unmask "obligor_id" -vault alco_alias_vault.parquet -o credit_ops_handoff.parquet
+```
+
+| | `obligor_id` | `relationship_mgr` | `branch_city` | `ead_usd` |
 |---|---|---|---|---|
-| **Team B** | External consultant | **High (Strictest)** — knows borrowers are S&P 500 (small guessable universe) | `borrower=tokenize` (`-vault`), `loan_officer=hash` (`-salt`), `ssn_guarantor=redact`, `internal_notes=redact` | `-unmask "borrower" -vault team_a_vault.parquet` |
-| **Team C** | Internal bank team (Model Validation) | **Moderate (Internal)** — needs multi-quarter joins & selective note review | `borrower=hash` (`-salt`), `ssn_guarantor=redact`, `internal_notes=encrypt` (`-key`) | Re-hash internal table on the fly with same `-salt` & join (no vault stored) |
-
----
-
-### Track 1: Team A → Team B (External Consultant — Strictest Protection)
-
-**Why Team A uses `tokenize` instead of `hash` for `borrower`:**
-Because borrowers come from a small, known universe (S&P 500), an unsalted hash (or a leaked salt) could be dictionary-attacked in milliseconds. Opaque tokens (`borrower_0001`, `borrower_0002`) have **zero mathematical relationship** to the company name.
-
-```bash
-# Step 1 (Team A): Tokenize borrowers into a private vault, salt-hash officers, redact PII/notes
-pytae credit_portfolio.parquet \
-  -mask "borrower=tokenize, loan_officer=hash, ssn_guarantor=redact, internal_notes=redact" \
-  -salt "$BANK_EXT_SALT" \
-  -vault team_a_vault.parquet \
-  -o for_team_b.parquet
-
-chmod 600 team_a_vault.parquet   # Keep Team A's vault strictly private and out of git
-# -> Team A sends ONLY `for_team_b.parquet` to Team B
-```
-
-**How Team B works with readable names (`-alias`) instead of `borrower_0001` / hex hashes:**
-```bash
-# Step 2 (Team B): Create readable, deterministic aliases + save Team B's own alias vault
-pytae for_team_b.parquet \
-  -alias "borrower=company, loan_officer=name" -seed 42 \
-  -vault team_b_alias.parquet \
-  -o team_b_working.parquet
-
-# Team B analyzes & presents naturally:
-#   "Good Weather Corp accounts for 14% of high-PD exposure, managed by Jordan Brooks."
-```
-
-**How Team B hands findings back to Team A:**
-```bash
-# Step 3 (Team B): Restore Team A's original tokens before sending results back
-pytae team_b_top_risks.parquet \
-  -unmask "borrower" -vault team_b_alias.parquet \
-  -o handoff_from_b.parquet
-
-# Step 4 (Team A): Recover real borrower names using Team A's private vault
-pytae handoff_from_b.parquet \
-  -unmask "borrower" -vault team_a_vault.parquet \
-  -o final_consultant_report.parquet
-```
-
----
-
-### Track 2: Team A → Team C (Internal Bank Team — Stateless & Join-Safe)
-
-**Why Team A uses salted `hash` + `encrypt` for Team C:**
-Team C works across quarterly snapshots (`q1_loans.parquet`, `q2_loans.parquet`) inside the bank's network. A strong secret `-salt` gives deterministic, join-safe hashes across quarters without maintaining a growing vault file, while `-key` encryption lets authorized reviewers decrypt `internal_notes` on flagged loans without exposing notes to everyone.
-
-```bash
-# Step 1 (Team A): Salted hash for borrowers, redact SSN, encrypt notes for authorized reviewers
-pytae credit_portfolio.parquet \
-  -mask "borrower=hash, ssn_guarantor=redact, internal_notes=encrypt" \
-  -salt "$BANK_AUDIT_SALT" \
-  -key "$AUDIT_NOTES_KEY" \
-  -o for_team_c.parquet
-# -> Team A sends `for_team_c.parquet` to Team C (never shares $BANK_AUDIT_SALT)
-```
-
-**How Team C replaces 64-character hashes with readable names (`-alias`):**
-```bash
-# Step 2 (Team C): Turn 64-char hex hashes into readable company names (same -seed across Q1/Q2)
-pytae for_team_c.parquet \
-  -alias "borrower=company" -seed 7 \
-  -vault team_c_alias.parquet \
-  -o team_c_working.parquet
-
-# Team C discusses "Silver Cedar LLC" in model validation reviews instead of `78797397...`
-# Authorized reviewer can also decrypt notes on flagged rows if they hold $AUDIT_NOTES_KEY:
-pytae team_c_working.parquet -filter "pd > 0.10" -unmask "internal_notes" -key "$AUDIT_NOTES_KEY"
-```
-
-**How Team C hands flagged loans back to Team A (no `hash ↔ original` vault needed!):**
-```bash
-# Step 3 (Team C): Restore original salted hashes before sending flagged loans back
-pytae team_c_flags.parquet \
-  -unmask "borrower" -vault team_c_alias.parquet \
-  -o handoff_from_c.parquet
-
-# Step 4 (Team A): Re-hash internal lookup table on the fly with the same salt & join!
-pytae credit_portfolio.parquet \
-  -select "borrower, exposure_usd" \
-  -mutate "borrower_hash = borrower" \
-  -mask "borrower_hash=hash" -salt "$BANK_AUDIT_SALT" \
-  -o /tmp/internal_keyed.parquet
-
-pytae k=/tmp/internal_keyed.parquet f=handoff_from_c.parquet \
-  -join "left=f, right=k, on=borrower:borrower_hash, how=left" \
-  -o final_validation_report.parquet
-```
+| **Before (tokens/hashes)** | `obligor_id_0001` *(or `9f4c2a8b...`)* | `emp_4421` | `New York` | `250,000,000` |
+| **Before** | `obligor_id_0002` *(or `3a7d91e0...`)* | `emp_8812` | `Chicago` | `180,000,000` |
+| **After (`-alias -seed 42`)** | `Good Weather Corp` | `Jordan Brooks` | `Northbrook` | `250,000,000` |
+| **After (`-alias -seed 42`)** | `Silver Cedar LLC` | `Maya Lin` | `Clearwater` | `180,000,000` |
+| **After (`-unmask -vault`)** | `obligor_id_0001` / `obligor_id_0002` | *(restored if in vault)* | *(restored)* | `250,000,000` |
 
 > **Security Takeaways:**
 > - **Never share `-salt`** with receivers — without the salt, dictionary attacks fail even on known universes like S&P 500.
