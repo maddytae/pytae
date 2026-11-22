@@ -127,24 +127,24 @@ pytae loan_tape.parquet \
 ---
 
 ### 2. Salted Hash — IFRS 9 / CECL Multi-Year Vintage Tracking (`-mask "col=hash" -salt`)
-Hash `obligor_lei` deterministically across quarterly snapshots so Stage 1 → 2 → 3 migrations and cross-desk concentrations can be joined without storing real borrower identities in the modeling lake:
+Hash `customer_name` deterministically across quarterly snapshots so Stage 1 → 2 → 3 migrations and cross-desk concentrations can be joined without storing real borrower identities in the modeling lake:
 
 ```bash
-# Same secret salt across Q1 and Q2 keeps obligors joinable
-pytae q1_2026.parquet -mask "obligor_lei=hash" -salt "$RISK_VINTAGE_SALT" -o lake/q1_2026.parquet
-pytae q2_2026.parquet -mask "obligor_lei=hash" -salt "$RISK_VINTAGE_SALT" -o lake/q2_2026.parquet
+# Same secret salt across Q1 and Q2 keeps customers joinable
+pytae q1_2026.parquet -mask "customer_name=hash" -salt "$RISK_VINTAGE_SALT" -o lake/q1_2026.parquet
+pytae q2_2026.parquet -mask "customer_name=hash" -salt "$RISK_VINTAGE_SALT" -o lake/q2_2026.parquet
 
 # Join Q1 and Q2 in the modeling lake to inspect stage migration
 pytae q1=lake/q1_2026.parquet q2=lake/q2_2026.parquet \
-  -join "left=q1, right=q2, on=obligor_lei, how=inner" \
+  -join "left=q1, right=q2, on=customer_name, how=inner" \
   -filter "stage_left != stage_right" -head 20
 ```
 
-| | `obligor_lei` | `stage` | `pd` |
+| | `customer_name` | `stage` | `pd` |
 |---|---|---|---|
-| **Before (Q1)** | `HWUPKR0MPOU8FGXBT394` | `1` | `0.008` |
+| **Before (Q1)** | `Apple Inc.` | `1` | `0.008` |
 | **After (Q1)** | `9f4c2a8b1d7e...6c03` | `1` | `0.008` |
-| **Before (Q2)** | `HWUPKR0MPOU8FGXBT394` | `2` | `0.041` |
+| **Before (Q2)** | `Apple Inc.` | `2` | `0.041` |
 | **After (Q2)** | `9f4c2a8b1d7e...6c03` *(identical → joins cleanly)* | `2` | `0.041` |
 
 ---
