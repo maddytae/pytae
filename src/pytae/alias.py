@@ -145,7 +145,7 @@ def parse_alias_spec(
                 mapping[str(sub).strip()] = default_preset
 
     for k, v in kwargs.items():
-        if k not in ("seed", "salt", "vault", "preset"):
+        if k not in ("seed", "vault", "preset"):
             mapping[k.strip()] = str(v).strip().lower()
 
     preset_kw = kwargs.get("preset")
@@ -166,10 +166,9 @@ def parse_alias_spec(
     return normalized
 
 
-def _digest_ints(val_str: str, preset: str, seed: int | str | None, salt: str | None) -> tuple[int, int, int, int]:
+def _digest_ints(val_str: str, preset: str, seed: int | str | None) -> tuple[int, int, int, int]:
     seed_part = "" if seed is None else str(seed)
-    salt_part = salt or ""
-    raw = f"{seed_part}:{salt_part}:{preset}:{val_str}".encode()
+    raw = f"{seed_part}:{preset}:{val_str}".encode()
     h = hashlib.sha256(raw).digest()
     return (
         int.from_bytes(h[0:4], "big"),
@@ -179,8 +178,8 @@ def _digest_ints(val_str: str, preset: str, seed: int | str | None, salt: str | 
     )
 
 
-def _format_alias(val_str: str, preset: str, seed: int | str | None, salt: str | None) -> str:
-    n0, n1, n2, n3 = _digest_ints(val_str, preset, seed, salt)
+def _format_alias(val_str: str, preset: str, seed: int | str | None) -> str:
+    n0, n1, n2, n3 = _digest_ints(val_str, preset, seed)
     if preset == "company":
         adj = _ADJECTIVES[n0 % len(_ADJECTIVES)]
         noun = _NOUNS[n1 % len(_NOUNS)]
@@ -226,7 +225,6 @@ def alias_polars(
     spec: dict[str, str],
     *,
     seed: int | str | None = None,
-    salt: str | None = None,
     vault: str | Path | None = None,
 ) -> Any:
     """Replace specified columns in a Polars DataFrame/LazyFrame with deterministic readable aliases."""
@@ -260,7 +258,7 @@ def alias_polars(
         for val_str in unique_vals:
             if val_str in col_map:
                 continue
-            base = _format_alias(val_str, preset, seed=seed, salt=salt)
+            base = _format_alias(val_str, preset, seed=seed)
             cand = base
             counter = 2
             while cand in used_aliases:
@@ -287,7 +285,6 @@ def alias(
     spec: Any = None,
     *args: Any,
     seed: int | str | None = None,
-    salt: str | None = None,
     vault: str | Path | None = None,
     **kwargs: Any,
 ) -> Any:
@@ -313,14 +310,14 @@ def alias(
     underlying = df._df if is_pt else df
 
     if isinstance(underlying, (pl.DataFrame, pl.LazyFrame)):
-        res = alias_polars(underlying, mapping, seed=seed, salt=salt, vault=vault)
+        res = alias_polars(underlying, mapping, seed=seed, vault=vault)
         return DataFrame(res) if is_pt else res
 
     import pandas as pd
 
     if isinstance(underlying, pd.DataFrame):
         pl_df = pl.from_pandas(underlying)
-        res_pl = alias_polars(pl_df, mapping, seed=seed, salt=salt, vault=vault)
+        res_pl = alias_polars(pl_df, mapping, seed=seed, vault=vault)
         res_pd = res_pl.to_pandas()
         return DataFrame(res_pd) if is_pt else res_pd
 

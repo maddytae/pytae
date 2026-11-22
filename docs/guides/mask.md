@@ -32,7 +32,7 @@ Anonymize, redact, encrypt, tokenize, or replace sensitive/hashed columns with d
 | `-alias` | `"col=preset, ..."` | Replace raw or hashed values with deterministic readable aliases (`company`, `name`, `email`, `city`, `alias`, `code`) |
 | `-seed` | `42` | Deterministic seed for `-alias` (rotate aliases per project while keeping joins consistent) |
 | `-key` | `"secret_password"` | Secret key for authenticated symmetric encryption & decryption |
-| `-salt` | `"custom_salt"` | Salt appended to values prior to SHA-256 hashing or aliasing |
+| `-salt` | `"custom_salt"` | Salt appended to values prior to SHA-256 hashing (`-mask "col=hash"`) |
 | `-vault` | `"path/to/vault.parquet"` | File path to persistent vault for `-mask "col=tokenize"` or `-alias` (supports `.parquet`, `.csv`, `.ndjson`, `.json`) |
 
 ---
@@ -83,7 +83,7 @@ Cryptographic hashes (`78797397...`) are safe, but awkward to discuss in reviews
 | `alias` *(default)* | `friendly`, `readable`, `product` | `Calm River`, `Amber Falcon`, `Swift Pine` |
 | `code` | `short`, `id` | `A7K-492`, `M3P-815` |
 
-- **Deterministic & Join-Safe**: With the same `-seed` / `-salt`, `"Apple Inc."` (or its hash) maps to the exact same readable alias across every table (`orders`, `customers`, `invoices`).
+- **Deterministic & Join-Safe**: With the same `-seed`, `"Apple Inc."` (or its hash) maps to the exact same readable alias across every table (`orders`, `customers`, `invoices`).
 - **Auto-Disambiguates Collisions**: If two distinct values ever collide on the same phrase, Pytae automatically appends a deterministic suffix (`Good Weather Corp 2`) so distinct entities never silently merge.
 - **Optionally Reversible with `-vault`**: Pass `-vault map.parquet` to persist the mapping so existing `-unmask <col> -vault map.parquet` restores the original values.
 

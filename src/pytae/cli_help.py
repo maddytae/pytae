@@ -1066,12 +1066,12 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     "alias": KeywordHelp(
         name="alias",
         flag="-alias SPEC",
-        syntax='pytae <path> -alias "<SPEC>" [-seed N] [-salt <SALT>] [-vault <PATH>]',
+        syntax='pytae <path> -alias "<SPEC>" [-seed N] [-vault <PATH>]',
         summary="Replace raw or hashed column values with deterministic, human-readable aliases.",
         description=(
             "Maps sensitive or already-hashed column values into readable, deterministic pseudonyms\n"
             "using curated zero-dependency presets (`company`, `name`, `email`, `city`, `alias`, `code`).\n"
-            "Same `-seed` / `-salt` produces identical aliases across tables (join-safe), automatically\n"
+            "Same `-seed` produces identical aliases across tables (join-safe), automatically\n"
             "disambiguates collisions, and optionally saves a `-vault` mapping reversible with `-unmask`."
         ),
         options=[
@@ -1081,7 +1081,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             'col=city (or place/region) : e.g. "Northbrook", "Clearwater".',
             'col=alias (default; or friendly/readable/product) : e.g. "Calm River".',
             'col=code (or short/id) : e.g. "A7K-492".',
-            "-seed <N> / -salt <STR> : Rotate deterministic alias mapping per project.",
+            "-seed <N> : Reproducible seed to rotate readable alias mapping.",
             "-vault <PATH> : Optional vault file so `-unmask <col> -vault <PATH>` restores originals.",
         ],
         examples=[

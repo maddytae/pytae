@@ -1689,7 +1689,7 @@ def _process_path(
             emit_frame(idx)
         elif op == "alias":
             alias_val = _next_op_val("alias", getattr(args, "alias", None))
-            err = pipeline.apply_alias(alias_val, seed=args.seed, salt=args.salt, vault=args.vault)
+            err = pipeline.apply_alias(alias_val, seed=args.seed, vault=args.vault)
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)

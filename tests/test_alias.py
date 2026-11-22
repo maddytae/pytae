@@ -82,7 +82,7 @@ def test_alias_auto_disambiguates_collisions(monkeypatch: pytest.MonkeyPatch) ->
 
     alias_mod = sys.modules["pytae.alias"]
     # Force all inputs to hash to the exact same phrase to test auto-disambiguation
-    monkeypatch.setattr(alias_mod, "_format_alias", lambda _v, _p, seed, salt: "Good Weather Corp")
+    monkeypatch.setattr(alias_mod, "_format_alias", lambda _v, _p, seed: "Good Weather Corp")
     df = pt.DataFrame({"customer": ["Apple Inc.", "Beta Corp", "Gamma LLC", "Apple Inc."]})
     res = df.alias("customer=company", seed=1)
     vals = res._df["customer"].to_list()
