@@ -135,6 +135,8 @@ CHEATSHEET_TEXT = """\
   pytae users.csv -mask "user=tokenize" -vault "vault.parquet"    # Reversible tokenization (vault)
   pytae secure.parquet -unmask "ssn" -key "Secret123"             # Decrypt with key
   pytae dev.parquet -unmask "user" -vault "vault.parquet"         # De-tokenize with vault
+  pytae sales.parquet -alias "customer=company, rep=name" -seed 42 # Readable deterministic aliases
+  pytae sales.parquet -alias "customer=company" -seed 42 -vault map.parquet # Reversible aliases
 
 13. 💬 IPYTHON & JUPYTER WORKBENCH (import pytae as pt)
 --------------------------------------------------------------------------------

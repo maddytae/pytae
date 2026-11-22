@@ -1061,7 +1061,35 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             'pytae dev.parquet -unmask "name, ssn" -vault vault.parquet',
             'pytae dev.parquet -unmask "name, ssn" -key "MyKey123" -vault vault.parquet',
         ],
-        see_also=["-mask", "-key", "-vault"],
+        see_also=["-mask", "-alias", "-key", "-vault"],
+    ),
+    "alias": KeywordHelp(
+        name="alias",
+        flag="-alias SPEC",
+        syntax='pytae <path> -alias "<SPEC>" [-seed N] [-salt <SALT>] [-vault <PATH>]',
+        summary="Replace raw or hashed column values with deterministic, human-readable aliases.",
+        description=(
+            "Maps sensitive or already-hashed column values into readable, deterministic pseudonyms\n"
+            "using curated zero-dependency presets (`company`, `name`, `email`, `city`, `alias`, `code`).\n"
+            "Same `-seed` / `-salt` produces identical aliases across tables (join-safe), automatically\n"
+            "disambiguates collisions, and optionally saves a `-vault` mapping reversible with `-unmask`."
+        ),
+        options=[
+            'col=company (or org/corp) : e.g. "Good Weather Corp", "Silver Cedar LLC".',
+            'col=name (or person) : e.g. "Jordan Brooks", "Maya Lin".',
+            'col=email : e.g. "jordan.brooks@goodweather.example".',
+            'col=city (or place/region) : e.g. "Northbrook", "Clearwater".',
+            'col=alias (default; or friendly/readable/product) : e.g. "Calm River".',
+            'col=code (or short/id) : e.g. "A7K-492".',
+            "-seed <N> / -salt <STR> : Rotate deterministic alias mapping per project.",
+            "-vault <PATH> : Optional vault file so `-unmask <col> -vault <PATH>` restores originals.",
+        ],
+        examples=[
+            'pytae sales.parquet -alias "customer=company, rep=name" -seed 42',
+            'pytae hashed.parquet -alias "cust_hash=company, email=email" -seed 7',
+            'pytae sales.parquet -alias "customer=company" -seed 42 -vault map.parquet -o safe.parquet',
+        ],
+        see_also=["-mask", "-unmask", "-seed", "-vault"],
     ),
     "repl": KeywordHelp(
         name="ipython",
@@ -1651,6 +1679,8 @@ KEYWORD_ALIASES: dict[str, str] = {
     "-query": "filter",
     "-mask": "mask",
     "--mask": "mask",
+    "-alias": "alias",
+    "--alias": "alias",
     "-unmask": "unmask",
     "--unmask": "unmask",
     "key": "mask",

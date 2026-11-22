@@ -25,6 +25,7 @@ from pytae.workbench import Workbench, frame_columns, is_dataframe
 _PT_CLI_FLAGS = sorted(
     [
         "-agg",
+        "-alias",
         "-arrange",
         "-assert",
         "-bar",

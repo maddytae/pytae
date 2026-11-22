@@ -151,6 +151,7 @@ _CLI_FLAGS = {
     "-clean_columns",
     "-mask",
     "-unmask",
+    "-alias",
     "-key",
     "-salt",
     "-vault",
@@ -672,6 +673,15 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         metavar="COLS",
         help="unmask, decrypt, or de-tokenize sensitive columns; e.g. "
         '\'-unmask "name, ssn" -key "secret"\' or \'-unmask "user" -vault map.parquet\'',
+    )
+    parser.add_argument(
+        "-alias",
+        dest="alias",
+        action=_OrderedStore,
+        metavar="SPEC",
+        help="replace raw or hashed column values with deterministic human-readable aliases "
+        "(presets: company, name, email, city, alias, code); supports -seed, -salt, and optional -vault; "
+        'e.g. \'-alias "customer=company, rep=name" -seed 42\'',
     )
     parser.add_argument(
         "-key",
@@ -1238,6 +1248,7 @@ def main(argv: list[str] | None = None) -> int:
             args.clean_columns is not None,
             args.mask is not None,
             args.unmask is not None,
+            args.alias is not None,
             args.assert_specs,
             args.explode,
             args.join,
@@ -1278,6 +1289,7 @@ def main(argv: list[str] | None = None) -> int:
             args.clean_columns is not None,
             args.mask is not None,
             args.unmask is not None,
+            args.alias is not None,
             args.assert_specs,
             args.explode,
             args.join,

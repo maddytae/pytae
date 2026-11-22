@@ -51,7 +51,7 @@ heavy = %pt df -filter "body_mass_g > 4000" -arrange "body_mass_g desc"
 
 ### 1. `%pt` and `%%pt` — Full In-Process CLI Pipelines (Immutable)
 
-`%pt` executes Pytae's full CLI grammar (`-filter`, `-mutate`, `-select`, `-by`, `-agg`, `-pivot`, `-long`, `-wide`, `-join`, `-concat`, `-outliers`, `-dups`, `-distinct`, `-mask`, `-freq`, `-hist`, `-bar`, `-scatter`, `-corr`, `-plot`, `-browse`, `-diff`, `-meta`, `-schema`, `-glimpse`, `-sql`, `-o`, etc.) **in-process** with zero subprocess overhead.
+`%pt` executes Pytae's full CLI grammar (`-filter`, `-mutate`, `-select`, `-by`, `-agg`, `-pivot`, `-long`, `-wide`, `-join`, `-concat`, `-outliers`, `-dups`, `-distinct`, `-mask`, `-alias`, `-freq`, `-hist`, `-bar`, `-scatter`, `-corr`, `-plot`, `-browse`, `-diff`, `-meta`, `-schema`, `-glimpse`, `-sql`, `-doc`, `-cheatsheet`, `-o`, etc.) **in-process** with zero subprocess overhead.
 
 - **Immutable by default**: `%pt` never mutates an existing DataFrame in-place. Assign explicitly with `res = %pt ...` or `%%pt res`.
 - **Works on RAM DataFrames, disk paths, and `clip`**: Pass a variable name (`df`), a file path (`sales.parquet`), `sample:penguins`, or `clip`.

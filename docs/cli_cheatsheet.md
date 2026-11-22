@@ -364,9 +364,9 @@ pytae archive.csv.gz -shape -head 5
 
 ---
 
-## 12. 🎭 Sensitive Data Masking, Encryption & Tokenization (`-mask`, `-unmask`)
+## 12. 🎭 Sensitive Data Masking, Aliasing, Encryption & Tokenization (`-mask`, `-unmask`, `-alias`)
 
-Secure, redact, encrypt, or tokenize sensitive PII columns across one-way and reversible workflows:
+Secure, redact, encrypt, tokenize, or replace sensitive/hashed columns with deterministic human-readable aliases:
 
 ```bash
 # 1. One-way Cryptographic SHA-256 Hashing
@@ -377,6 +377,12 @@ pytae users.csv -mask "email=hash" -salt "company_secret_salt_2026"
 
 # 2. Character & String Redaction (replaces with '***')
 pytae users.csv -mask "ssn=redact, credit_card=redact"
+
+# 3. Readable Deterministic Aliasing (-alias; works on raw values OR opaque hashes)
+# Presets: company, name, email, city, alias (default), code
+pytae sales.parquet -alias "customer=company, rep=name, email=email" -seed 42
+pytae sales.parquet -alias "customer=company" -seed 42 -vault "map.parquet" -o safe.parquet
+pytae safe.parquet -unmask "customer" -vault "map.parquet"
 
 # 3. Option 1: Reversible Authenticated Encryption (-key)
 # Encrypt sensitive columns using authenticated AES/HMAC stream encryption

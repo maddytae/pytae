@@ -338,6 +338,18 @@ def unmask(
     return DataFrame(df).unmask(cols, *args, key=key, vault=vault, **kwargs)
 
 
+def alias(
+    df: Any,
+    spec: Any = None,
+    *args: Any,
+    seed: int | str | None = None,
+    salt: str | None = None,
+    vault: str | Path | None = None,
+    **kwargs: Any,
+) -> DataFrame:
+    return DataFrame(df).alias(spec, *args, seed=seed, salt=salt, vault=vault, **kwargs)
+
+
 def schema(df: Any, fmt: str | None = None, *, table_name: str = "data") -> Any:
     """Return the schema summary as a 4-column DataFrame, or DDL/model string when fmt is specified."""
     if fmt is not None and fmt.strip().lower() not in ("", "table", "default", "summary"):

@@ -144,8 +144,9 @@ pytae ord=orders.parquet cust=customers.csv \
 pytae legacy.sas7bdat -o clean.parquet
 pytae yesterday.parquet -diff today.parquet -tol 1e-4
 
-# 6. Sensitive PII masking and encryption
+# 6. Sensitive PII masking, encryption & readable deterministic aliasing
 pytae users.csv -mask "email=hash, ssn=encrypt" -key "SecretKey123" -o secure.parquet
+pytae sales.parquet -alias "customer=company, rep=name" -seed 42
 
 # 7. One-command shell tab-completion setup (Zsh, Bash, Fish)
 pytae --install-completion

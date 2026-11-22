@@ -168,6 +168,9 @@ class _BasePtAccessor:
     def unmask(self, cols: Any = None, *args: Any, **kwargs: Any) -> DataFrame:
         return DataFrame(self._obj).unmask(cols, *args, **kwargs)
 
+    def alias(self, spec: Any = None, *args: Any, **kwargs: Any) -> DataFrame:
+        return DataFrame(self._obj).alias(spec, *args, **kwargs)
+
     def cols(self, ascending: bool | None = True) -> list[str]:
         return DataFrame(self._obj).cols(ascending=ascending)
 

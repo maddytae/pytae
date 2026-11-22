@@ -546,6 +546,34 @@ class _Pipeline:
         except Exception as exc:
             return f"-unmask: {exc}"
 
+    def apply_alias(
+        self,
+        spec: Any,
+        *,
+        seed: int | str | None = None,
+        salt: str | None = None,
+        vault: Any = None,
+    ) -> str | None:
+        """Apply -alias to the current view. Returns an error message or None."""
+        from pytae.alias import alias_polars, parse_alias_spec
+
+        try:
+            mapping = parse_alias_spec(spec, default_preset="alias")
+        except Exception as exc:
+            return f"-alias: {exc}"
+
+        available = self._available_columns()
+        missing = [c for c in mapping if c not in available]
+        if missing:
+            return unknown_columns_message("-alias", missing, available)
+
+        try:
+            self._pldf = alias_polars(self.polars_lazy_frame(), mapping, seed=seed, salt=salt, vault=vault)
+            self._df = None
+            return None
+        except Exception as exc:
+            return f"-alias: {exc}"
+
     def apply_sql(self, query: str) -> str | None:
         """Apply one -sql query via Polars SQLContext. Single-file mode: the current view is registered
         as table `data` (the file itself is already named on the command line, so there's no

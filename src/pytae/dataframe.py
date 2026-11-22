@@ -1468,6 +1468,20 @@ class DataFrame:
 
         return unmask(self, cols, *args, key=key, vault=vault, **kwargs)
 
+    def alias(
+        self,
+        spec: Any = None,
+        *args: Any,
+        seed: int | str | None = None,
+        salt: str | None = None,
+        vault: Any = None,
+        **kwargs: Any,
+    ) -> DataFrame:
+        """Replace raw or hashed column values with deterministic human-readable aliases."""
+        from pytae.alias import alias
+
+        return alias(self, spec, *args, seed=seed, salt=salt, vault=vault, **kwargs)
+
     def cols(self, ascending: bool | None = True) -> list[str]:
         """Return sorted or natural column names."""
         columns = list(self.columns)
