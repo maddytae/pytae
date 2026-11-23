@@ -4,6 +4,31 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Unified IPython History CLI & Cell-by-Cell Replay (`pytae -history`, `pytae <file> -load`)**:
+  - `pytae -history [-n N]` lists recent IPython sessions from `history.sqlite` (plain formatted).
+  - `pytae -history <id | ~N> [-clean]` inspects raw numbered cells or prints cleaned/pruned runnable Python to stdout.
+  - `pytae -history -search <term> [-n N]` (also `-g`) searches across all past IPython sessions.
+  - `pytae -history [id | ~N] -o <dest.py | dest.ipynb> [-relative]` exports cleaned scripts or notebooks (replaces retired CLI `pytae -export`).
+  - `pytae -history <id | ~N> -load` and `pytae <script.py | notebook.ipynb> -load` launch interactive IPython replaying each cell via `run_cell(..., store_history=True)` so `%history`, ↑ arrow, `In`, and `%export` include all loaded cells.
+  - `pytae -history -db <path>` (one-off) and `pytae -history -set-db <path | reset>` (persisted in `~/.pytae/config.json`; also supports `PYTAE_HISTORY_DB` env var) manage custom `history.sqlite` locations without touching `%set`.
+- **Deterministic Human-Readable Aliasing (`-alias`, `pt.alias()`, `df.alias()`, `df.pt.alias()` in `src/pytae/alias.py`)**:
+  - Replaces raw values or opaque cryptographic hashes with deterministic, readable pseudonyms using zero-dependency curated presets: `company` (`org`/`corp`), `name` (`person`), `email`, `city` (`place`/`region`), `alias` (default; `friendly`/`readable`/`product`), and `code` (`short`/`id`).
+  - Controlled strictly by `-seed` (join-safe across tables, preserves nulls, automatically disambiguates collisions), cleanly decoupled from `-mask`/`-unmask`/`-vault` security workflows.
+- **IPython Workbench Enhancements (`%pt` / `%%pt`)**:
+  - **Multi-line SQL cell magic (`%%pt [target_var] -sql`)**: Query all live DataFrames in IPython's namespace with `@var` interpolation and `%export` support, without colliding with `jupysql`'s `%%sql`.
+  - **In-process docs & cheatsheet (`%pt -doc <query>`, `%pt -cheatsheet`)**: Zero subprocess overhead inside IPython.
+  - **Seamless in-memory `-join` and `-concat`**: Supports `%pt df1 -join "right=df2, on=id"`, chained pre-filters (`%pt df1 -filter "..." -join "right=df2, on=id"`), and `%pt a=df1 b=df2 -concat` directly on RAM DataFrames.
+  - **Inline plot figure return & TUI browser title**: `%pt df -plot ...` returns the Matplotlib `Figure` inside IPython/Jupyter (and calls `.show()` on interactive GUI backends); `%pt df -browse` shows the DataFrame's variable name in the TUI header.
+
+### Changed & Refactored
+- **Modular Workbench Package (`src/pytae/workbench/`)**: Split monolithic `src/pytae/workbench.py` into focused submodules (`system.py`, `settings.py`, `core.py`, `export.py`, `history.py`, `__init__.py`) with 100% backward-compatible re-exports.
+- **Code Quality & Static Analysis**: Expanded `ruff` ruleset in `pyproject.toml` to `["E", "F", "I", "B", "UP"]` (bugbear + pyupgrade) and enabled `mypy` type checking on `src/pytae/readers.py`.
+- **Documentation**: Added 5 Banking Risk & Finance Before → After examples to `docs/guides/mask.md`, documented `-history`/`-load` vs. IPython's built-in `%run -i` in `docs/ipython.md`, and refreshed `docs/cli_cheatsheet.md`, `docs/pytae.md`, `readme.md`, `cli_help.py`, `cheatsheet.py`, and shell completions.
+
+### Removed / Retired
+- Retired CLI `pytae -export` in favor of `pytae -history [id|~1] -o <out.py|out.ipynb>` (in-IPython `%export` and `%exit -s` remain unchanged).
+
 ## [3.14.9] - 2026-11-19
 
 ### Added
