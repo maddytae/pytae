@@ -226,7 +226,17 @@ pytae -history -set-db reset             # Reset history DB path back to IPython
 
 > **Tip (`-load` vs. IPython's built-in `%run`):**
 > - Use **`pytae analysis.py -load`** / **`pytae analysis.ipynb -load`** (or `pytae -history 42 -load`) when you want each cell replayed into `%history`, ↑ arrow, and `%export`.
-> - Inside an already-running IPython session, use IPython's native **`%run -i analysis.py`** (or **`%run analysis.ipynb`**) to silently execute a script/notebook and load its variables/DataFrames into memory without adding its lines to `%history`.
+> - Inside an already-running IPython or Jupyter session, use IPython's built-in `%run` to execute a `.py` or `.ipynb` file and load its variables/DataFrames directly into your namespace without adding its lines to `%history`:
+>
+> ```python
+> %run script.py                # Run .py in a fresh namespace, then expose its vars/DFs
+> %run -i script.py             # Run .py inside your current namespace (can read existing vars)
+>
+> %run other_notebook.ipynb     # Run all code cells in another .ipynb and expose its vars/DFs
+> %run -i other_notebook.ipynb  # Same, sharing your current namespace
+>
+> %load script.py               # Pull .py code into the cell to inspect/edit before running
+> ```
 
 ---
 
