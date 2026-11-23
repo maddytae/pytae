@@ -153,7 +153,7 @@ CHEATSHEET_TEXT = """\
   %checkpoint diff df raw                            # Diff table vs checkpoint
   %restore [raw]                                     # Strict DataFrame rollback + OS RSS trim
   %status [df | checkpoint] [-v]                     # Tables, RAM, checkpoints, RSS, settings
-  %free df1 [df2 | *]                                # Delete df, scrub Out/_ cache & trim RAM
+  %free [df1 | -df | -vars | *]                      # Delete DFs/vars, scrub Out/_ & trim RAM (keeps imports)
   %set max_rows=20 float_precision=2 comma=true      # Display formatting (`%set save` persists)
   %export analysis.py                                # Clean runnable .py or .ipynb (prunes errors/rollbacks)
   %exit -s [analysis.py]                             # Export session and exit IPython

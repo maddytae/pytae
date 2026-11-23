@@ -20,6 +20,7 @@ All notable changes to this project are documented in this file.
   - **In-process docs & cheatsheet (`%pt -doc <query>`, `%pt -cheatsheet`)**: Zero subprocess overhead inside IPython.
   - **Seamless in-memory `-join` and `-concat`**: Supports `%pt df1 -join "right=df2, on=id"`, chained pre-filters (`%pt df1 -filter "..." -join "right=df2, on=id"`), and `%pt a=df1 b=df2 -concat` directly on RAM DataFrames.
   - **Inline plot figure return & TUI browser title**: `%pt df -plot ...` returns the Matplotlib `Figure` inside IPython/Jupyter (and calls `.show()` on interactive GUI backends); `%pt df -browse` shows the DataFrame's variable name in the TUI header.
+  - **Streamlined `%free` cleanup modes**: `%free -df` (all DataFrames), `%free -vars` (all user variables), and `%free *` (all DataFrames and user variables), always preserving imports (`pt`, `pd`) and function/class definitions.
 
 ### Changed & Refactored
 - **Modular Workbench Package (`src/pytae/workbench/`)**: Split monolithic `src/pytae/workbench.py` into focused submodules (`system.py`, `settings.py`, `core.py`, `export.py`, `history.py`, `__init__.py`) with 100% backward-compatible re-exports.

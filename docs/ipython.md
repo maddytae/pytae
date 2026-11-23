@@ -157,18 +157,34 @@ Checkpoints always capture the **entire workbench state** — every DataFrame (`
 
 ---
 
-### 4. `%free` — Delete DataFrames & Reclaim OS RAM
+### 4. `%free` — Delete DataFrames & Variables and Reclaim OS RAM
 
 In IPython, plain `del df` often fails to free RAM because IPython's output cache (`Out[N]`, `_`, `_N`) still holds strong references to previously displayed DataFrames, and OS allocators retain freed pages.
 
-`%free` deletes the variable(s), **scrubs all hidden references from `Out` / `_`**, runs `gc.collect()`, trims the OS working set, and reports the RSS change:
+`%free` deletes the target DataFrame(s) and/or user variable(s), **scrubs all hidden references from `Out` / `_`**, runs `gc.collect()`, trims the OS working set, and reports the RSS change — **while always keeping your imports (`pt`, `pd`, `pl`, `np`) and function/class definitions intact**:
 
 ```python
 %free big_df             # Delete `big_df`, scrub Out/_ cache, trim OS RSS
-%free df1 df2            # Delete multiple DataFrames + reclaim RAM
-%free *                  # Delete all tracked DataFrames + reclaim RAM
+%free df1 x              # Delete specific DataFrame(s) or variable(s)
+%free -df                # Delete all DataFrames (keeps user vars, imports, functions)
+%free -vars              # Delete all user variables (keeps DataFrames, imports, functions)
+%free *                  # Delete all DataFrames AND user variables (keeps imports & functions)
 %free                    # Keep named variables; scrub stale Out/_ DataFrame refs + trim RAM
 ```
+
+#### Cleanup Quick Reference (`%free` vs. `%restore` vs. native `%reset`)
+
+Day to day, you only need **`%free`** (delete & reclaim RAM) and **`%restore`** (undo to a checkpoint):
+
+| Command | Source | Removes DFs? | Removes User Vars? | Keeps Imports (`pt`, `pd`)? | Scrubs `Out`/`_` & Trims OS RAM? |
+|---|---|---|---|---|---|
+| `%free df1 x` | **Pytae** | Target(s) | Target(s) | Yes | **Yes** |
+| `%free -df` | **Pytae** | **All** | No | Yes | **Yes** |
+| `%free -vars` | **Pytae** | No | **All** | Yes | **Yes** |
+| `%free *` | **Pytae** | **All** | **All** | Yes | **Yes** |
+| `%free` *(bare)* | **Pytae** | No | No | Yes | **Yes** |
+| `%restore [cp]` | **Pytae** | Reverts to checkpoint | Reverts to checkpoint | Yes | **Yes** |
+| `%reset -f` | Native IPython | **All** | **All** | **No** *(wipes `pt`, `pd`)* | Clears `Out`, no OS trim |
 
 ---
 

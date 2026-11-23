@@ -436,6 +436,9 @@ SELECT island, COUNT(*) AS n FROM df GROUP BY island ORDER BY n DESC
 %restore [raw]                   # Strict DataFrame rollback + Out/_ scrub + OS RSS trim
 %status [df | checkpoint] [-v]   # Tables, shapes, RAM, checkpoints, OS RSS, settings
 %free heavy                      # Delete `heavy`, scrub IPython Out/_ cache & trim RAM
+%free -df                        # Delete all DataFrames (keeps vars, imports, functions)
+%free -vars                      # Delete all user variables (keeps DataFrames, imports, functions)
+%free *                          # Delete all DataFrames AND user variables (keeps imports & functions)
 %free                            # Scrub stale Out/_ DataFrame refs & trim RAM
 
 # 3. Persistent Display Settings, Clean Export & Native %run

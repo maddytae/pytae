@@ -408,10 +408,26 @@ class Workbench:
             )
             return f"Reclaimed memory (scrubbed {scrubbed} cached ref(s)){rss_part}."
 
-        if names == ["*"]:
-            targets = list(self.discover_tables(ns).keys())
-        else:
-            targets = names
+        targets: list[str] = []
+        seen_targets: set[str] = set()
+
+        def _add_targets(keys: list[str]) -> None:
+            for k in keys:
+                if k not in seen_targets:
+                    seen_targets.add(k)
+                    targets.append(k)
+
+        for tok in names:
+            low = tok.lower()
+            if tok == "*":
+                _add_targets(list(self.discover_tables(ns).keys()))
+                _add_targets(list(self.discover_vars(ns).keys()))
+            elif low in ("-df", "--df", "-dfs", "--dfs"):
+                _add_targets(list(self.discover_tables(ns).keys()))
+            elif low in ("-vars", "--vars", "-var", "--var"):
+                _add_targets(list(self.discover_vars(ns).keys()))
+            else:
+                _add_targets([tok])
 
         freed_names: list[str] = []
         freed_bytes = 0

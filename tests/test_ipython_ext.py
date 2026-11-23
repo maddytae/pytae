@@ -296,3 +296,36 @@ def test_pt_doc_and_in_memory_join_concat(
     assert res_plot.error_in_exec is None
     assert "fig" in ip_shell.user_ns
     assert hasattr(ip_shell.user_ns["fig"], "savefig")
+
+
+def test_free_df_vars_and_star_preserve_imports_and_functions(ip_shell: InteractiveShell) -> None:
+    ip_shell.run_cell(
+        "import pytae as pt\n"
+        "def helper(x): return x + 1\n"
+        "df1 = pt.DataFrame({'a': [1, 2]})\n"
+        "df2 = pt.DataFrame({'b': [3, 4]})\n"
+        "cutoff = 100\n"
+        "tags = ['x', 'y']"
+    )
+
+    # 1. `%free -vars` deletes user vars only, keeps DataFrames, imports, and functions
+    ip_shell.run_cell("%free -vars")
+    assert "cutoff" not in ip_shell.user_ns
+    assert "tags" not in ip_shell.user_ns
+    assert "df1" in ip_shell.user_ns and "df2" in ip_shell.user_ns
+    assert "pt" in ip_shell.user_ns and "helper" in ip_shell.user_ns
+
+    # 2. `%free -df` deletes DataFrames only, keeps new user vars, imports, and functions
+    ip_shell.run_cell("threshold = 42")
+    ip_shell.run_cell("%free -df")
+    assert "df1" not in ip_shell.user_ns and "df2" not in ip_shell.user_ns
+    assert ip_shell.user_ns["threshold"] == 42
+    assert "pt" in ip_shell.user_ns and "helper" in ip_shell.user_ns
+
+    # 3. `%free *` deletes BOTH DataFrames and user vars, still keeps imports & functions
+    ip_shell.run_cell("df3 = pt.DataFrame({'c': [5]})\nlabel = 'demo'")
+    ip_shell.run_cell("%free *")
+    assert "df3" not in ip_shell.user_ns
+    assert "threshold" not in ip_shell.user_ns
+    assert "label" not in ip_shell.user_ns
+    assert "pt" in ip_shell.user_ns and "helper" in ip_shell.user_ns

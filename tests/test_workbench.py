@@ -107,10 +107,20 @@ def test_free_deletes_and_scrubs() -> None:
     assert "keep_int" in ns
     assert seen_ids[0] is not None and id(df1) in seen_ids[0]
 
-    msg_all = wb.free(["*"], ns)
-    assert "Freed df2" in msg_all
+    # `-df` deletes remaining DataFrames while keeping user variables & callables
+    ns["helper"] = lambda x: x
+    msg_df = wb.free(["-df"], ns)
+    assert "Freed df2" in msg_df
     assert "df2" not in ns
     assert ns["keep_int"] == 42
+    assert "helper" in ns
+
+    # `*` deletes both DataFrames and user variables while keeping callables/imports
+    ns["df3"] = _sample_df()
+    msg_all = wb.free(["*"], ns)
+    assert "df3" in msg_all and "keep_int" in msg_all
+    assert "df3" not in ns and "keep_int" not in ns
+    assert "helper" in ns
 
     msg_gc = wb.free([], ns, cache_scrub_fn=lambda ids: 1)
     assert "Reclaimed memory" in msg_gc

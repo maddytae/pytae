@@ -1487,22 +1487,26 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "rm": KeywordHelp(
         name="free",
-        flag="%free [df1 df2 | *]  |  %checkpoint rm <name | *>",
-        syntax="%free [df1 df2 | *]  |  %checkpoint rm <name | *>",
-        summary="Delete DataFrame(s), scrub IPython Out/_ cache references, and reclaim OS RAM.",
+        flag="%free [df1 | -df | -vars | *]  |  %checkpoint rm <name | *>",
+        syntax="%free [df1 df2 | -df | -vars | *]  |  %checkpoint rm <name | *>",
+        summary="Delete DataFrame(s) and/or user variable(s), scrub IPython Out/_ cache, and reclaim OS RAM (keeps imports).",
         description=(
-            "Replaces legacy REPL `rm table` / `rm checkpoint` in IPython:\n"
-            "- '%free df1 [df2]': Deletes target DataFrame(s), scrubs hidden IPython Out/_ refs, and trims OS RSS.\n"
-            "- '%free *': Deletes all tracked DataFrames and trims OS RSS.\n"
+            "Replaces legacy REPL `rm table` / `rm checkpoint` in IPython (always preserves imports like `pt`/`pd` and functions):\n"
+            "- '%free df1 [x]': Deletes target DataFrame(s)/variable(s), scrubs hidden IPython Out/_ refs, and trims OS RSS.\n"
+            "- '%free -df': Deletes all tracked DataFrames (keeps user variables, imports, functions).\n"
+            "- '%free -vars': Deletes all user variables (keeps DataFrames, imports, functions).\n"
+            "- '%free *': Deletes all tracked DataFrames AND user variables (keeps imports and functions).\n"
             "- '%free': Keeps named variables; scrubs stale Out/_ DataFrame refs and trims OS RSS.\n"
             "- '%checkpoint rm <name | *>': Deletes a saved checkpoint (or all checkpoints) from disk."
         ),
         options=[
-            "%free <df1 ... | *> : Delete DataFrame(s) and reclaim OS RAM.",
+            "%free <df1 ... | -df | -vars | *> : Delete DataFrames and/or user vars and reclaim OS RAM (keeps imports).",
             "%checkpoint rm <name | *> : Delete saved checkpoint(s).",
         ],
         examples=[
             "%free df1",
+            "%free -df",
+            "%free -vars",
             "%free *",
             "%checkpoint rm cp1",
         ],

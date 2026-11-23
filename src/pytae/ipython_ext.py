@@ -307,12 +307,16 @@ class PytaeMagics(Magics):
 
     @line_magic
     def free(self, line: str = "") -> None:
-        """Delete DataFrame(s), scrub IPython Out/_ cache refs, and trim OS RSS.
+        """Delete DataFrame(s) and/or user variable(s), scrub IPython Out/_ cache, and trim OS RSS.
+
+        Always preserves imported modules (`pt`, `pd`, etc.) and functions/classes.
 
         Usage:
-            %free df1 [df2 ...]   Delete target DataFrames and reclaim RAM
-            %free *               Delete all tracked DataFrames and reclaim RAM
-            %free                 Scrub stale DataFrame refs in Out/_ and trim RAM
+            %free df1 [x ...]     Delete specific DataFrame(s) or variable(s)
+            %free -df             Delete all DataFrames (keeps vars, imports, functions)
+            %free -vars           Delete all user variables (keeps DataFrames, imports, functions)
+            %free *               Delete all DataFrames AND user variables (keeps imports & functions)
+            %free                 Scrub stale DataFrame refs in Out/_ and trim OS RAM
         """
         names = shlex.split(line.strip()) if line.strip() else []
         print(self.wb.free(names, self._user_ns(), cache_scrub_fn=self._scrub_fn))
@@ -439,7 +443,7 @@ def _complete_pytae_magic(wb: Workbench, ipython: Any, event: Any) -> list[str]:
         return []
 
     if magic == "free":
-        return [t for t in (table_names + ["*"]) if t.startswith(symbol)]
+        return [t for t in (table_names + ["-df", "-vars", "*"]) if t.startswith(symbol)]
 
     if magic == "status":
         cands = table_names + ["checkpoint", "checkpoints"] + cp_names + ["-v"]
