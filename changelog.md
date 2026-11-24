@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.15.0] - 2026-11-24
+
 ### Added
 - **Unified IPython History CLI & Cell-by-Cell Replay (`pytae -history`, `pytae <file> -load`)**:
   - `pytae -history [-n N]` lists recent IPython sessions from `history.sqlite` (plain formatted).
