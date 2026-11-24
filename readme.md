@@ -144,8 +144,9 @@ pytae ord=orders.parquet cust=customers.csv \
 pytae legacy.sas7bdat -o clean.parquet
 pytae yesterday.parquet -diff today.parquet -tol 1e-4
 
-# 6. Sensitive PII masking and encryption
+# 6. Sensitive PII masking, encryption & readable deterministic aliasing
 pytae users.csv -mask "email=hash, ssn=encrypt" -key "SecretKey123" -o secure.parquet
+pytae sales.parquet -alias "customer=company, rep=name" -seed 42
 
 # 7. One-command shell tab-completion setup (Zsh, Bash, Fish)
 pytae --install-completion
@@ -191,6 +192,13 @@ df
 %exit -s analysis.py            # Export and exit IPython cleanly
 ```
 
+```bash
+# Inspect, search, export, or replay past IPython sessions & notebooks from the terminal
+pytae -history                  # List recent IPython sessions
+pytae -history 42 -load         # Replay cleaned session #42 into IPython (populates %history)
+pytae analysis.ipynb -load      # Replay a .py or .ipynb file into IPython (populates %history)
+```
+
 👉 **Read the Full IPython Workbench Guide**: [**docs/ipython.md**](https://github.com/maddytae/pytae/blob/master/docs/ipython.md)
 
 ---
@@ -201,7 +209,7 @@ df
 |:---|:---|:---|:---|:---|
 | **Filter rows** | `df[df['a'] > 1]`<br>`df.query('a > 1')` | `filter(df, a > 1)` | `DATA out; SET in;`<br>`IF a > 1; RUN;` | `df.filter("a > 1")`<br>`pytae in.csv -filter "a > 1"` |
 | **Add columns** | `df['c'] = df['a'] + df['b']`<br>`df.assign(c=...)` | `mutate(df, c = a + b)` | `DATA out; SET in;`<br>`c = a + b; RUN;` | `df.mutate(c="a + b")`<br>`pytae in.csv -mutate "c = a + b"` |
-| **Grouped agg** | `df.groupby('k').agg(...)`<br>*(MultiIndex hell)* | `df %>% group_by(k) %>%`<br>`summarise(...) %>% ungroup()` | `PROC MEANS DATA=in;`<br>`CLASS k; VAR v; RUN;` | `df.by("k").agg(avg="v:mean")`<br>`pytae in.csv -by k -agg "avg=v:mean"` |
+| **Grouped agg** | `df.groupby('k').agg(...)`<br>*(MultiIndex hell)* | `df %>% group_by(k) %>%`<br>`summarise(...) %>% ungroup()` | `PROC MEANS DATA=in;`<br>`CLASS k; VAR v; RUN;` | `df.by("k").agg(avg="mean(v)")`<br>`pytae in.csv -by k -agg "avg=mean(v)"` |
 | **Sort rows** | `df.sort_values(['a', 'b'],`<br>`ascending=[True, False])` | `arrange(df, a, desc(b))` | `PROC SORT DATA=in;`<br>`BY a DESCENDING b; RUN;` | `df.arrange("a", "b desc")`<br>`pytae in.csv -arrange "a, b desc"` |
 | **Cross-Tab Pivot** | `pd.pivot_table(df, ...)`<br>*(Hierarchical tuples)* | `pivot_wider(df, ...)` | `PROC TRANSPOSE DATA=in ...;`<br>`BY ...; RUN;` | `df.pivot(r='x', c='y', v='z')`<br>`pytae in.csv -pivot "r=x,c=y,v=z"` |
 

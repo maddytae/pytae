@@ -8,9 +8,10 @@ import difflib
 import glob
 import os
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from pytae._parsing import FilterNode, _parse_dict_literal, _parse_filter_node
 from pytae._text import _is_enclosed_pair
@@ -125,7 +126,7 @@ def parse_outliers_spec(
                 if thresh <= 0:
                     raise ValueError()
             except ValueError:
-                raise SystemExit(f"{flag_name}: invalid threshold '{val}'. Expected a positive number")
+                raise SystemExit(f"{flag_name}: invalid threshold '{val}'. Expected a positive number") from None
         elif low.startswith(("drop=", "invert=")):
             val = re.sub(r"^(drop|invert)=", "", low).strip("\"'")
             drop = val in ("true", "1", "yes")
@@ -332,7 +333,9 @@ def parse_head_limit(raw: Any, flag_name: str = "-head") -> SliceSpec:
                     raise ValueError
                 n = val
             except ValueError:
-                raise argparse.ArgumentTypeError(f"{flag_name}: invalid n value '{v_str}'; must be a positive integer")
+                raise argparse.ArgumentTypeError(
+                    f"{flag_name}: invalid n value '{v_str}'; must be a positive integer"
+                ) from None
         elif tok.startswith("prop="):
             v_str = tok[5:].strip()
             try:
@@ -343,7 +346,7 @@ def parse_head_limit(raw: Any, flag_name: str = "-head") -> SliceSpec:
             except ValueError:
                 raise argparse.ArgumentTypeError(
                     f"{flag_name}: invalid prop value '{v_str}'; must be a number between 0 and 1"
-                )
+                ) from None
         elif tok.endswith("%"):
             try:
                 p_val = float(tok[:-1]) / 100.0
@@ -353,7 +356,7 @@ def parse_head_limit(raw: Any, flag_name: str = "-head") -> SliceSpec:
             except ValueError:
                 raise argparse.ArgumentTypeError(
                     f"{flag_name}: invalid percentage '{tok}'; must be between 0% and 100%"
-                )
+                ) from None
         else:
             try:
                 if "." in tok:
@@ -367,7 +370,7 @@ def parse_head_limit(raw: Any, flag_name: str = "-head") -> SliceSpec:
                         raise argparse.ArgumentTypeError(f"{flag_name}: must be > 0, got {val}")
                     n = val
             except ValueError:
-                raise argparse.ArgumentTypeError(f"{flag_name}: unrecognized limit/argument '{tok}'")
+                raise argparse.ArgumentTypeError(f"{flag_name}: unrecognized limit/argument '{tok}'") from None
 
     if n is not None and prop is not None:
         raise argparse.ArgumentTypeError(f"{flag_name}: specify either row count 'n' or proportion 'prop', not both")
@@ -658,7 +661,7 @@ def parse_reshape_kwargs(raw: str | None, *, keys: tuple[str, ...], flag: str) -
                         try:
                             kwargs[key] = float(value)
                         except ValueError:
-                            raise SystemExit(f"{flag}: {key}= must be a numeric value or 'none'")
+                            raise SystemExit(f"{flag}: {key}= must be a numeric value or 'none'") from None
         else:
             kwargs[key] = value
     return kwargs
@@ -1076,7 +1079,9 @@ def parse_join_arg(raw: str) -> dict:
             try:
                 fuzzy_parsed = float(fuzzy_val)
             except ValueError:
-                raise SystemExit(f"-join: invalid fuzzy threshold '{fuzzy_val}', must be a float between 0.0 and 1.0")
+                raise SystemExit(
+                    f"-join: invalid fuzzy threshold '{fuzzy_val}', must be a float between 0.0 and 1.0"
+                ) from None
 
     return {
         "left": kwargs.get("left"),
@@ -1247,7 +1252,7 @@ def parse_bar_spec(raw: str | None) -> dict[str, Any]:
                     try:
                         result["limit"] = (float(lim_parts[0]), float(lim_parts[1]))
                     except ValueError:
-                        raise SystemExit(f"-bar: invalid limit='{val_str}'; expected (min, max)")
+                        raise SystemExit(f"-bar: invalid limit='{val_str}'; expected (min, max)") from None
                 else:
                     raise SystemExit(f"-bar: invalid limit='{val_str}'; expected (min, max)")
             elif key == "pct":
@@ -1256,7 +1261,7 @@ def parse_bar_spec(raw: str | None) -> dict[str, Any]:
                 try:
                     result["width"] = int(val_str)
                 except ValueError:
-                    raise SystemExit(f"-bar: invalid width='{val_str}'; expected positive integer")
+                    raise SystemExit(f"-bar: invalid width='{val_str}'; expected positive integer") from None
             elif key in ("val", "value"):
                 result["val"] = _unquote_name(val_str)
             elif key in ("cat", "category"):
@@ -1303,7 +1308,7 @@ def parse_scatter_spec(raw: str | None) -> dict[str, Any]:
                     try:
                         result["limit_x"] = (float(lim_parts[0]), float(lim_parts[1]))
                     except ValueError:
-                        raise SystemExit(f"-scatter: invalid limit_x='{val_str}'; expected (min, max)")
+                        raise SystemExit(f"-scatter: invalid limit_x='{val_str}'; expected (min, max)") from None
                 else:
                     raise SystemExit(f"-scatter: invalid limit_x='{val_str}'; expected (min, max)")
             elif key in ("limit_y", "ylim"):
@@ -1313,19 +1318,19 @@ def parse_scatter_spec(raw: str | None) -> dict[str, Any]:
                     try:
                         result["limit_y"] = (float(lim_parts[0]), float(lim_parts[1]))
                     except ValueError:
-                        raise SystemExit(f"-scatter: invalid limit_y='{val_str}'; expected (min, max)")
+                        raise SystemExit(f"-scatter: invalid limit_y='{val_str}'; expected (min, max)") from None
                 else:
                     raise SystemExit(f"-scatter: invalid limit_y='{val_str}'; expected (min, max)")
             elif key == "width":
                 try:
                     result["width"] = int(val_str)
                 except ValueError:
-                    raise SystemExit(f"-scatter: invalid width='{val_str}'; expected positive integer")
+                    raise SystemExit(f"-scatter: invalid width='{val_str}'; expected positive integer") from None
             elif key == "height":
                 try:
                     result["height"] = int(val_str)
                 except ValueError:
-                    raise SystemExit(f"-scatter: invalid height='{val_str}'; expected positive integer")
+                    raise SystemExit(f"-scatter: invalid height='{val_str}'; expected positive integer") from None
             elif key == "x":
                 result["x"] = _unquote_name(val_str)
             elif key == "y":

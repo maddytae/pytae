@@ -37,7 +37,7 @@ from pytae.validation import (
     validate_pipeline,
 )
 
-__version__ = "3.14.9"
+__version__ = "3.15.0"
 
 DATA_PATH = Path(__file__).resolve().parent / "datasets"
 _DATASET_NAMES = tuple(sorted(p.stem for p in DATA_PATH.glob("*.parquet")))
@@ -336,6 +336,16 @@ def unmask(
     **kwargs: Any,
 ) -> DataFrame:
     return DataFrame(df).unmask(cols, *args, key=key, vault=vault, **kwargs)
+
+
+def alias(
+    df: Any,
+    spec: Any = None,
+    *args: Any,
+    seed: int | str | None = None,
+    **kwargs: Any,
+) -> DataFrame:
+    return DataFrame(df).alias(spec, *args, seed=seed, **kwargs)
 
 
 def schema(df: Any, fmt: str | None = None, *, table_name: str = "data") -> Any:

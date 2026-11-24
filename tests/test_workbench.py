@@ -107,10 +107,20 @@ def test_free_deletes_and_scrubs() -> None:
     assert "keep_int" in ns
     assert seen_ids[0] is not None and id(df1) in seen_ids[0]
 
-    msg_all = wb.free(["*"], ns)
-    assert "Freed df2" in msg_all
+    # `-df` deletes remaining DataFrames while keeping user variables & callables
+    ns["helper"] = lambda x: x
+    msg_df = wb.free(["-df"], ns)
+    assert "Freed df2" in msg_df
     assert "df2" not in ns
     assert ns["keep_int"] == 42
+    assert "helper" in ns
+
+    # `*` deletes both DataFrames and user variables while keeping callables/imports
+    ns["df3"] = _sample_df()
+    msg_all = wb.free(["*"], ns)
+    assert "df3" in msg_all and "keep_int" in msg_all
+    assert "df3" not in ns and "keep_int" not in ns
+    assert "helper" in ns
 
     msg_gc = wb.free([], ns, cache_scrub_fn=lambda ids: 1)
     assert "Reclaimed memory" in msg_gc
@@ -220,18 +230,22 @@ def test_export_prunes_duplicates_and_dead_assignments(tmp_path: Path) -> None:
     assert "z = y.head(3)" in text
 
 
-def test_cli_export_from_ipython_sqlite(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cli_history_from_ipython_sqlite(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import sqlite3
 
-    from pytae.workbench import run_cli_export
+    from pytae.workbench import get_ipython_history_db, run_cli_history
 
     monkeypatch.setenv("PYTAE_HOME", str(tmp_path / "pytae_home"))
+    monkeypatch.delenv("PYTAE_HISTORY_DB", raising=False)
     db_path = tmp_path / "history.sqlite"
     conn = sqlite3.connect(db_path)
     conn.execute("CREATE TABLE sessions (session INTEGER PRIMARY KEY, start TIMESTAMP, end TIMESTAMP, num_cmds INTEGER, remark TEXT)")
     conn.execute("CREATE TABLE history (session INTEGER, line INTEGER, source TEXT, source_raw TEXT)")
+    conn.execute("INSERT INTO sessions VALUES (9, '2026-11-18 09:00:00', NULL, 2, '')")
     conn.execute("INSERT INTO sessions VALUES (10, '2026-11-19 07:00:00', NULL, 9, '')")
     rows = [
+        (9, 1, "", "import pandas as pd"),
+        (9, 2, "", "x = 42"),
         (10, 1, "", "import pytae as pt"),
         (10, 2, "", "df = %pt sample:penguins"),
         (10, 3, "", "df"),  # bare preview -> pruned
@@ -251,16 +265,61 @@ def test_cli_export_from_ipython_sqlite(tmp_path: Path, monkeypatch: pytest.Monk
     wb.failed_cells.add(7)
     wb.save_session_meta(10)
 
-    # 1. List sessions
+    # 1. List sessions (plain formatted, no failed/restore noise)
     listed: list[str] = []
-    rc_list = run_cli_export([], db_path=db_path, output_fn=listed.append)
+    rc_list = run_cli_history([], db_path=db_path, output_fn=listed.append)
     assert rc_list == 0
-    assert any("10" in line and "import pytae as pt" in line for line in listed)
+    list_text = "\n".join(listed)
+    assert "10" in list_text and "import pytae as pt" in list_text
+    assert "9" in list_text and "import pandas as pd" in list_text
+    assert "failed" not in list_text.lower()
+    assert "restore" not in list_text.lower()
 
-    # 2. Export session 10 to .py
+    # 1b. List with -n 1 limits to latest session
+    listed_1: list[str] = []
+    assert run_cli_history(["-n", "1"], db_path=db_path, output_fn=listed_1.append) == 0
+    assert any("import pytae as pt" in ln for ln in listed_1)
+    assert not any("import pandas as pd" in ln for ln in listed_1)
+
+    # 2. View raw session 10 (plain numbered cells)
+    viewed: list[str] = []
+    rc_view = run_cli_history(["10"], db_path=db_path, output_fn=viewed.append)
+    assert rc_view == 0
+    view_text = "\n".join(viewed)
+    assert "Session 10" in view_text
+    assert "[1] import pytae as pt" in view_text
+    assert "[9] final = df.filter('body_mass_g > 4500')" in view_text
+    assert "failed" not in view_text.lower()
+
+    # 2b. Relative view (~2 -> session 9)
+    viewed_rel: list[str] = []
+    assert run_cli_history(["~2"], db_path=db_path, output_fn=viewed_rel.append) == 0
+    assert "Session 9" in "\n".join(viewed_rel)
+    assert "x = 42" in "\n".join(viewed_rel)
+
+    # 3. Clean preview (-clean) prints pruned runnable Python to stdout
+    cleaned: list[str] = []
+    rc_clean = run_cli_history(["10", "-clean"], db_path=db_path, output_fn=cleaned.append)
+    assert rc_clean == 0
+    clean_text = "\n".join(cleaned)
+    assert "df = pt.sample('penguins')" in clean_text
+    assert "final = df.filter('body_mass_g > 4500')" in clean_text
+    assert "99999" not in clean_text
+    assert "1 / 0" not in clean_text
+    assert "def broken" not in clean_text
+
+    # 4. Search across all sessions (-search)
+    searched: list[str] = []
+    rc_search = run_cli_history(["-search", "penguins"], db_path=db_path, output_fn=searched.append)
+    assert rc_search == 0
+    assert len(searched) == 1
+    assert searched[0].startswith("10/2")
+    assert "sample:penguins" in searched[0]
+
+    # 5. Export session 10 to .py via -o
     out_py = tmp_path / "rescued.py"
     exported: list[str] = []
-    rc_exp = run_cli_export(["10", "-o", str(out_py)], db_path=db_path, output_fn=exported.append)
+    rc_exp = run_cli_history(["10", "-o", str(out_py)], db_path=db_path, output_fn=exported.append)
     assert rc_exp == 0
     text = out_py.read_text(encoding="utf-8")
     assert "df = pt.sample('penguins')" in text
@@ -270,13 +329,65 @@ def test_cli_export_from_ipython_sqlite(tmp_path: Path, monkeypatch: pytest.Monk
     assert "def broken" not in text
     assert "\ndf\n" not in text
 
-    # 3. Export via ~1 to .ipynb
+    # 6. Export via ~1 to .ipynb
     out_nb = tmp_path / "rescued.ipynb"
-    rc_nb = run_cli_export(["~1", "-o", str(out_nb)], db_path=db_path, output_fn=exported.append)
+    rc_nb = run_cli_history(["~1", "-o", str(out_nb)], db_path=db_path, output_fn=exported.append)
     assert rc_nb == 0
     nb = json.loads(out_nb.read_text(encoding="utf-8"))
     assert nb["nbformat"] == 4
     assert len(nb["cells"]) == 3
+
+    # 7. Load session 10 into IPython (-load) with cell-by-cell store_history=True bootstrap
+    loaded_scripts: list[str] = []
+    load_msgs: list[str] = []
+
+    def _fake_launcher(script_path: Path) -> int:
+        loaded_scripts.append(script_path.read_text(encoding="utf-8"))
+        return 0
+
+    rc_load = run_cli_history(["10", "-load"], db_path=db_path, output_fn=load_msgs.append, launcher_fn=_fake_launcher)
+    assert rc_load == 0
+    assert len(loaded_scripts) == 1
+    assert "store_history=True" in loaded_scripts[0]
+    assert "pt.sample" in loaded_scripts[0] and "penguins" in loaded_scripts[0]
+    assert "body_mass_g > 4500" in loaded_scripts[0]
+    assert "1 / 0" not in loaded_scripts[0]
+    assert any("Loading session 10" in m for m in load_msgs)
+
+    # 7b. Reject `-load <id>` ordering (must be `<id> -load`)
+    rc_bad_order = run_cli_history(["-load", "10"], db_path=db_path, output_fn=load_msgs.append, launcher_fn=_fake_launcher)
+    assert rc_bad_order == 1
+
+    # 7c. Load exported .py and .ipynb files via run_cli_load
+    from pytae.workbench import run_cli_load
+
+    py_loaded: list[str] = []
+    assert run_cli_load(str(out_py), output_fn=load_msgs.append, launcher_fn=lambda p: (py_loaded.append(p.read_text(encoding="utf-8")), 0)[1]) == 0
+    assert "store_history=True" in py_loaded[0]
+    assert "body_mass_g > 4500" in py_loaded[0]
+
+    nb_loaded: list[str] = []
+    assert run_cli_load(str(out_nb), output_fn=load_msgs.append, launcher_fn=lambda p: (nb_loaded.append(p.read_text(encoding="utf-8")), 0)[1]) == 0
+    assert "store_history=True" in nb_loaded[0]
+    assert "sample:penguins" in nb_loaded[0]
+
+    # 8. One-off -db override and persistent -set-db / -set-db reset (without touching display settings)
+    db_msgs: list[str] = []
+    assert run_cli_history(["-db", str(db_path), "-n", "1"], output_fn=db_msgs.append) == 0
+    assert any("import pytae as pt" in m for m in db_msgs)
+
+    set_msgs: list[str] = []
+    assert run_cli_history(["-set-db", str(db_path)], output_fn=set_msgs.append) == 0
+    assert get_ipython_history_db() == db_path.resolve()
+    # Now bare run_cli_history without db_path uses persisted config
+    persisted_list: list[str] = []
+    assert run_cli_history([], output_fn=persisted_list.append) == 0
+    assert any("import pytae as pt" in m for m in persisted_list)
+
+    # Reset history_db back to default
+    reset_msgs: list[str] = []
+    assert run_cli_history(["-set-db", "reset"], output_fn=reset_msgs.append) == 0
+    assert get_ipython_history_db() != db_path.resolve()
 
 
 def test_export_auto_infers_startup_imports(tmp_path: Path) -> None:

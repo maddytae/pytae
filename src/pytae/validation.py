@@ -13,9 +13,10 @@ import ast
 import os
 import re
 import sys
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any
 
 
 class PipelineValidationError(ValueError):

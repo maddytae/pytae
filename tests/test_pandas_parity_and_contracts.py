@@ -391,7 +391,9 @@ def test_pandas_relational_joins_and_concat_parity():
     assert "Charlie" in list(j_left["name"])
 
     # Cardinality check
-    with pytest.raises(Exception):
+    import polars as pl
+
+    with pytest.raises((ValueError, pl.exceptions.ComputeError)):
         dup_df2 = pt.DataFrame({"id": [1, 1], "dept": ["Eng1", "Eng2"]})
         df1.join(dup_df2, on="user_id:id", validate="1:1")
 

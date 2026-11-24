@@ -1061,7 +1061,34 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             'pytae dev.parquet -unmask "name, ssn" -vault vault.parquet',
             'pytae dev.parquet -unmask "name, ssn" -key "MyKey123" -vault vault.parquet',
         ],
-        see_also=["-mask", "-key", "-vault"],
+        see_also=["-mask", "-alias", "-key", "-vault"],
+    ),
+    "alias": KeywordHelp(
+        name="alias",
+        flag="-alias SPEC",
+        syntax='pytae <path> -alias "<SPEC>" [-seed N]',
+        summary="Replace raw or hashed column values with deterministic, human-readable aliases.",
+        description=(
+            "Maps sensitive or already-hashed column values into readable, deterministic pseudonyms\n"
+            "using curated zero-dependency presets (`company`, `name`, `email`, `city`, `alias`, `code`).\n"
+            "Controlled strictly by `-seed` for presentation/readability (join-safe across tables with the\n"
+            "same `-seed`, auto-disambiguates collisions). Use `-mask` / `-unmask` for security."
+        ),
+        options=[
+            'col=company (or org/corp) : e.g. "Good Weather Corp", "Silver Cedar LLC".',
+            'col=name (or person) : e.g. "Jordan Brooks", "Maya Lin".',
+            'col=email : e.g. "jordan.brooks@goodweather.example".',
+            'col=city (or place/region) : e.g. "Northbrook", "Clearwater".',
+            'col=alias (default; or friendly/readable/product) : e.g. "Calm River".',
+            'col=code (or short/id) : e.g. "A7K-492".',
+            "-seed <N> : Reproducible seed to rotate readable alias mapping.",
+        ],
+        examples=[
+            'pytae sales.parquet -alias "customer=company, rep=name" -seed 42',
+            'pytae hashed.parquet -alias "cust_hash=company, email=email" -seed 7',
+            'pytae hashed.parquet -mutate "display = customer_name" -alias "display=company" -seed 42',
+        ],
+        see_also=["-mask", "-unmask", "-seed"],
     ),
     "repl": KeywordHelp(
         name="ipython",
@@ -1268,7 +1295,7 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "- '%status [-v]': Inspect active workbench DataFrames, RAM consumption, checkpoints, and OS RSS.\n"
             "- '%checkpoint <name>': Save ephemeral Arrow IPC snapshot (0 MB RAM) for instant rollback.\n"
             "- '%export <path.py | path.ipynb>': Save clean runnable script/notebook (prunes errors, rollbacks, dead assignments).\n"
-            "- 'pytae -export [session_id|~1] -o <path.py|path.ipynb>': Post-hoc export from IPython's history.sqlite.\n"
+            "- 'pytae -history': List, view, search, export (`-o`), or reload (`-load`) past IPython sessions from history.sqlite.\n"
             "- Legacy 'session save' / 'status session' / persistent disk sessions have been retired."
         ),
         options=[
@@ -1277,14 +1304,14 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
             "%restore [name] : Strictly restore DataFrame state to a checkpoint (or latest) and trim OS RSS.",
             "%free [df1 ... | *] : Delete DataFrame(s), scrub IPython Out/_ cache refs, and trim OS RSS.",
             "%export <path.py | path.ipynb> : Export clean runnable script/notebook with automatic pruning.",
-            "pytae -export [id|~1] -o <path> : Rescue and export any past IPython session from history.sqlite.",
+            "pytae -history [id|~1] [-clean|-load|-o <path>] : Inspect, export, or reload past IPython sessions.",
         ],
         examples=[
             "%status",
             "%checkpoint snapshot1",
             "%restore snapshot1",
             "%export pipeline.py",
-            "pytae -export -o pipeline.py",
+            "pytae -history ~1 -o pipeline.py",
         ],
         see_also=["ipython", "status", "set", "checkpoint", "restore"],
     ),
@@ -1426,44 +1453,60 @@ KEYWORD_DOCS: dict[str, KeywordHelp] = {
     ),
     "history": KeywordHelp(
         name="history",
-        flag="%history / pytae -export",
-        syntax="%history -g <pattern>  |  pytae -export [session_id|~1] -o <path.py|path.ipynb>",
-        summary="Search IPython session history or export past sessions from history.sqlite.",
+        flag="-history",
+        syntax="pytae -history [id|~N] [-n N] [-clean] [-search TERM] [-o PATH] [-load] [-db PATH] [-set-db PATH|reset]",
+        summary="Inspect, search, export, or reload past IPython sessions from history.sqlite.",
         description=(
             "IPython automatically records every session in ~/.ipython/profile_default/history.sqlite.\n"
-            "- Inside IPython: use `%history -n`, `%history -g <pattern>`, `%export out.py`, or `%exit -s out.py`.\n"
-            "- From the CLI: use `pytae -export` to list sessions and `pytae -export [id|~1] -o out.py` to export."
+            "- Inside IPython: use `%history -n`, `%history -g <pattern>`, `%export out.py`, `%exit -s out.py`, "
+            "or built-in `%run -i out.py` (loads vars/DFs silently without adding to `%history`).\n"
+            "- From the CLI: use `pytae -history` to list, view, search, export (`-o`), or reload (`-load`) past sessions."
         ),
         options=[
-            "%history -g <pattern> : Grep across all past IPython sessions.",
-            "pytae -export : List recent IPython sessions from history.sqlite.",
-            "pytae -export [id|~1] -o <path.py|path.ipynb> : Export a past session cleanly.",
+            "pytae -history [-n N] : List recent IPython sessions (default: 25).",
+            "pytae -history <id|~N> : View raw cells for a session (plain formatted).",
+            "pytae -history <id|~N> -clean : Print cleaned/pruned Python to stdout.",
+            "pytae -history -search <term> [-n N] : Search across all past sessions.",
+            "pytae -history [id|~N] -o <path.py|path.ipynb> [-relative] : Export a past session cleanly.",
+            "pytae -history [id|~N] -load : Launch interactive IPython with the cleaned session replayed into %history.",
+            "pytae <script.py|notebook.ipynb> -load : Launch interactive IPython with a .py or .ipynb replayed into %history.",
+            "pytae -history -db <path> : One-off history.sqlite path override.",
+            "pytae -history -set-db <path|reset> : Persist or reset history_db in ~/.pytae/config.json.",
         ],
         examples=[
-            "%history -n",
-            "pytae -export",
-            "pytae -export -o analysis.py",
+            "pytae -history",
+            "pytae -history 42",
+            "pytae -history ~1 -clean",
+            'pytae -history -search "penguins"',
+            "pytae -history 42 -o analysis.py",
+            "pytae -history 42 -load",
+            "pytae analysis.py -load",
+            "pytae analysis.ipynb -load",
         ],
         see_also=["status", "session", "exit", "checkpoint"],
     ),
     "rm": KeywordHelp(
         name="free",
-        flag="%free [df1 df2 | *]  |  %checkpoint rm <name | *>",
-        syntax="%free [df1 df2 | *]  |  %checkpoint rm <name | *>",
-        summary="Delete DataFrame(s), scrub IPython Out/_ cache references, and reclaim OS RAM.",
+        flag="%free [df1 | -df | -vars | *]  |  %checkpoint rm <name | *>",
+        syntax="%free [df1 df2 | -df | -vars | *]  |  %checkpoint rm <name | *>",
+        summary="Delete DataFrame(s) and/or user variable(s), scrub IPython Out/_ cache, and reclaim OS RAM (keeps imports).",
         description=(
-            "Replaces legacy REPL `rm table` / `rm checkpoint` in IPython:\n"
-            "- '%free df1 [df2]': Deletes target DataFrame(s), scrubs hidden IPython Out/_ refs, and trims OS RSS.\n"
-            "- '%free *': Deletes all tracked DataFrames and trims OS RSS.\n"
+            "Replaces legacy REPL `rm table` / `rm checkpoint` in IPython (always preserves imports like `pt`/`pd` and functions):\n"
+            "- '%free df1 [x]': Deletes target DataFrame(s)/variable(s), scrubs hidden IPython Out/_ refs, and trims OS RSS.\n"
+            "- '%free -df': Deletes all tracked DataFrames (keeps user variables, imports, functions).\n"
+            "- '%free -vars': Deletes all user variables (keeps DataFrames, imports, functions).\n"
+            "- '%free *': Deletes all tracked DataFrames AND user variables (keeps imports and functions).\n"
             "- '%free': Keeps named variables; scrubs stale Out/_ DataFrame refs and trims OS RSS.\n"
             "- '%checkpoint rm <name | *>': Deletes a saved checkpoint (or all checkpoints) from disk."
         ),
         options=[
-            "%free <df1 ... | *> : Delete DataFrame(s) and reclaim OS RAM.",
+            "%free <df1 ... | -df | -vars | *> : Delete DataFrames and/or user vars and reclaim OS RAM (keeps imports).",
             "%checkpoint rm <name | *> : Delete saved checkpoint(s).",
         ],
         examples=[
             "%free df1",
+            "%free -df",
+            "%free -vars",
             "%free *",
             "%checkpoint rm cp1",
         ],
@@ -1614,8 +1657,13 @@ KEYWORD_ALIASES: dict[str, str] = {
     "o": "output",
     "-o": "output",
     "--output": "output",
-    "export": "output",
-    "-export": "output",
+    "export": "history",
+    "-export": "history",
+    "-history": "history",
+    "--history": "history",
+    "load": "history",
+    "-load": "history",
+    "--load": "history",
     "run": "repl",
     "-run": "repl",
     "limit": "nrows",
@@ -1634,6 +1682,8 @@ KEYWORD_ALIASES: dict[str, str] = {
     "-query": "filter",
     "-mask": "mask",
     "--mask": "mask",
+    "-alias": "alias",
+    "--alias": "alias",
     "-unmask": "unmask",
     "--unmask": "unmask",
     "key": "mask",

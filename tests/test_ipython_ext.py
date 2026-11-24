@@ -169,3 +169,163 @@ def test_cli_disallows_retired_repl_and_pt_flags(capsys: pytest.CaptureFixture[s
         assert exc.value.code != 0
         err = capsys.readouterr().err
         assert "retired" in err.lower()
+
+    with pytest.raises(SystemExit) as exc:
+        cli_main(["-export", "-o", "out.py"])
+    assert exc.value.code != 0
+    err = capsys.readouterr().err
+    assert "-history" in err
+
+    with pytest.raises(SystemExit) as exc:
+        cli_main(["-load", "script.py"])
+    assert exc.value.code != 0
+    err = capsys.readouterr().err
+    assert "before '-load'" in err
+
+
+def test_load_bootstrap_populates_ipython_history_and_vars(
+    ip_shell: InteractiveShell, tmp_path: Path
+) -> None:
+    from pytae.workbench import run_cli_load
+
+    script = tmp_path / "demo.py"
+    script.write_text(
+        "import pytae as pt\n\ndf = pt.DataFrame({'a': [1, 2, 3]})\n\nres = df.filter('a >= 2')\n",
+        encoding="utf-8",
+    )
+
+    bootstraps: list[str] = []
+    rc = run_cli_load(
+        str(script),
+        output_fn=lambda _m: None,
+        launcher_fn=lambda p: (bootstraps.append(p.read_text(encoding="utf-8")), 0)[1],
+    )
+    assert rc == 0
+    assert len(bootstraps) == 1
+
+    # Execute the bootstrap inside a real IPython shell (just like `ipython -i <bootstrap.py>`)
+    ip_shell.run_cell(bootstraps[0], store_history=False)
+
+    # Variables are live in user_ns AND every loaded cell is recorded in In / %history
+    assert "res" in ip_shell.user_ns
+    assert ip_shell.user_ns["res"].shape == (2, 1)
+    in_hist = ip_shell.user_ns["In"]
+    assert any("import pytae as pt" in cell for cell in in_hist)
+    assert any("df = pt.DataFrame" in cell for cell in in_hist)
+    assert any("res = df.filter('a >= 2')" in cell for cell in in_hist)
+    assert "_pytae_cells" not in ip_shell.user_ns
+
+
+def test_pt_sql_cell_magic_and_export(ip_shell: InteractiveShell, tmp_path: Path) -> None:
+    ip_shell.run_cell(
+        "import pytae as pt\n"
+        "orders = pt.DataFrame({'id': [1, 2, 3], 'cust_id': [10, 20, 10], 'amt': [50, 200, 150]})\n"
+        "customers = pt.DataFrame({'id': [10, 20], 'name': ['Alice', 'Bob']})\n"
+        "min_amt = 100",
+        store_history=True,
+    )
+    sql_cell = (
+        "%%pt big_orders -sql\n"
+        "SELECT c.name, SUM(o.amt) AS total\n"
+        "FROM orders o\n"
+        "JOIN customers c ON o.cust_id = c.id\n"
+        "WHERE o.amt >= @min_amt\n"
+        "GROUP BY c.name\n"
+        "ORDER BY total DESC\n"
+    )
+    res = ip_shell.run_cell(sql_cell, store_history=True)
+    assert res.error_in_exec is None
+    assert "big_orders" in ip_shell.user_ns
+    out_df = ip_shell.user_ns["big_orders"]
+    assert out_df._df["name"].to_list() == ["Bob", "Alice"]
+    assert out_df._df["total"].to_list() == [200, 150]
+
+    # Export produces valid runnable standalone Python
+    out_py = tmp_path / "sql_export.py"
+    ip_shell.run_cell(f"%export {out_py}", store_history=True)
+    text = out_py.read_text(encoding="utf-8")
+    assert "big_orders = pt.eval_cli(" in text
+    exec_ns: dict[str, object] = {}
+    exec(compile(text, str(out_py), "exec"), exec_ns)
+    assert exec_ns["big_orders"]._df["total"].to_list() == [200, 150]
+
+
+def test_pt_doc_and_in_memory_join_concat(
+    ip_shell: InteractiveShell, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ip_shell.run_cell(
+        "import pytae as pt\n"
+        "df1 = pt.DataFrame({'id': [1, 2, 3], 'val': [10, 20, 30]})\n"
+        "df2 = pt.DataFrame({'id': [2, 3], 'tag': ['B', 'C']})"
+    )
+
+    # 1. In-process doc search via `%pt -doc`
+    capsys.readouterr()
+    res_doc = ip_shell.run_cell("%pt -doc explode")
+    assert res_doc.error_in_exec is None
+    doc_out = capsys.readouterr().out
+    assert "explode" in doc_out.lower()
+
+    # 2. Direct in-memory join (`%pt df1 -join "right=df2, on=id"`)
+    res_j1 = ip_shell.run_cell('j1 = %pt df1 -join "right=df2, on=id, how=inner"')
+    assert res_j1.error_in_exec is None
+    assert ip_shell.user_ns["j1"].shape == (2, 3)
+
+    # 3. Pipeline filter BEFORE in-memory join (`%pt df1 -filter ... -join "right=df2, on=id"`)
+    res_j2 = ip_shell.run_cell('j2 = %pt df1 -filter "val >= 25" -join "right=df2, on=id, how=inner"')
+    assert res_j2.error_in_exec is None
+    assert ip_shell.user_ns["j2"].shape == (1, 3)
+    assert ip_shell.user_ns["j2"]._df["tag"].to_list() == ["C"]
+
+    # 4. In-memory concat (`%pt a=df1 b=df1 -concat`)
+    res_c = ip_shell.run_cell('stacked = %pt a=df1 b=df1 -concat "frames=a,b"')
+    assert res_c.error_in_exec is None
+    assert ip_shell.user_ns["stacked"].shape == (6, 2)
+
+    # 5. In-process cheatsheet (`%pt -cheatsheet`)
+    capsys.readouterr()
+    res_cs = ip_shell.run_cell("%pt -cheatsheet")
+    assert res_cs.error_in_exec is None
+    assert "PYTAE CLI CHEAT SHEET" in capsys.readouterr().out
+
+    # 6. `%pt df -plot ...` returns the matplotlib Figure inside IPython
+    import matplotlib
+
+    matplotlib.use("Agg")
+    res_plot = ip_shell.run_cell('fig = %pt df1 -plot "kind=bar, x=id, y=val"')
+    assert res_plot.error_in_exec is None
+    assert "fig" in ip_shell.user_ns
+    assert hasattr(ip_shell.user_ns["fig"], "savefig")
+
+
+def test_free_df_vars_and_star_preserve_imports_and_functions(ip_shell: InteractiveShell) -> None:
+    ip_shell.run_cell(
+        "import pytae as pt\n"
+        "def helper(x): return x + 1\n"
+        "df1 = pt.DataFrame({'a': [1, 2]})\n"
+        "df2 = pt.DataFrame({'b': [3, 4]})\n"
+        "cutoff = 100\n"
+        "tags = ['x', 'y']"
+    )
+
+    # 1. `%free -vars` deletes user vars only, keeps DataFrames, imports, and functions
+    ip_shell.run_cell("%free -vars")
+    assert "cutoff" not in ip_shell.user_ns
+    assert "tags" not in ip_shell.user_ns
+    assert "df1" in ip_shell.user_ns and "df2" in ip_shell.user_ns
+    assert "pt" in ip_shell.user_ns and "helper" in ip_shell.user_ns
+
+    # 2. `%free -df` deletes DataFrames only, keeps new user vars, imports, and functions
+    ip_shell.run_cell("threshold = 42")
+    ip_shell.run_cell("%free -df")
+    assert "df1" not in ip_shell.user_ns and "df2" not in ip_shell.user_ns
+    assert ip_shell.user_ns["threshold"] == 42
+    assert "pt" in ip_shell.user_ns and "helper" in ip_shell.user_ns
+
+    # 3. `%free *` deletes BOTH DataFrames and user vars, still keeps imports & functions
+    ip_shell.run_cell("df3 = pt.DataFrame({'c': [5]})\nlabel = 'demo'")
+    ip_shell.run_cell("%free *")
+    assert "df3" not in ip_shell.user_ns
+    assert "threshold" not in ip_shell.user_ns
+    assert "label" not in ip_shell.user_ns
+    assert "pt" in ip_shell.user_ns and "helper" in ip_shell.user_ns

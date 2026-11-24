@@ -364,9 +364,9 @@ pytae archive.csv.gz -shape -head 5
 
 ---
 
-## 12. 🎭 Sensitive Data Masking, Encryption & Tokenization (`-mask`, `-unmask`)
+## 12. 🎭 Sensitive Data Masking, Aliasing, Encryption & Tokenization (`-mask`, `-unmask`, `-alias`)
 
-Secure, redact, encrypt, or tokenize sensitive PII columns across one-way and reversible workflows:
+Secure, redact, encrypt, tokenize, or replace sensitive/hashed columns with deterministic human-readable aliases:
 
 ```bash
 # 1. One-way Cryptographic SHA-256 Hashing
@@ -377,6 +377,11 @@ pytae users.csv -mask "email=hash" -salt "company_secret_salt_2026"
 
 # 2. Character & String Redaction (replaces with '***')
 pytae users.csv -mask "ssn=redact, credit_card=redact"
+
+# 3. Readable Deterministic Aliasing (-alias; works on raw values OR opaque hashes, -seed only)
+# Presets: company, name, email, city, alias (default), code
+pytae sales.parquet -alias "customer=company, rep=name, email=email" -seed 42
+pytae hashed.parquet -mutate "display_name = customer_name" -alias "display_name=company" -seed 42
 
 # 3. Option 1: Reversible Authenticated Encryption (-key)
 # Encrypt sensitive columns using authenticated AES/HMAC stream encryption
@@ -408,13 +413,20 @@ import pytae as pt
 # 1. Load & transform immutably in-process (`%pt` / `%%pt`)
 df = pt.sample("penguins")                             # or: df = %pt sales.parquet
 heavy = %pt df -filter "body_mass_g > 4000" -arrange "body_mass_g desc"
+joined = %pt df1 -join "right=df2, on=id, how=left"    # In-memory join/concat
 top = %pt -sql "SELECT island, COUNT(*) AS n FROM df GROUP BY island"
+%pt -doc "diff on key"                                 # Instant in-process doc search
+%pt -cheatsheet                                        # Instant in-process cheat sheet
+%pt df -browse                                         # Interactive terminal TUI grid
 
 %%pt summary
 df
 -dropna "body_mass_g"
 -by "species, island"
 -agg "avg_mass = mean(body_mass_g), n = count()"
+
+%%pt top_islands -sql
+SELECT island, COUNT(*) AS n FROM df GROUP BY island ORDER BY n DESC
 
 # 2. Checkpoints, Strict Restore & Memory Reclaim
 %checkpoint raw                  # Ephemeral Arrow IPC snapshot (0 MB RAM)
@@ -424,14 +436,29 @@ df
 %restore [raw]                   # Strict DataFrame rollback + Out/_ scrub + OS RSS trim
 %status [df | checkpoint] [-v]   # Tables, shapes, RAM, checkpoints, OS RSS, settings
 %free heavy                      # Delete `heavy`, scrub IPython Out/_ cache & trim RAM
+%free -df                        # Delete all DataFrames (keeps vars, imports, functions)
+%free -vars                      # Delete all user variables (keeps DataFrames, imports, functions)
+%free *                          # Delete all DataFrames AND user variables (keeps imports & functions)
 %free                            # Scrub stale Out/_ DataFrame refs & trim RAM
 
-# 3. Persistent Display Settings & Clean Export
+# 3. Persistent Display Settings, Clean Export & Native %run
 %set max_rows=20 float_precision=2 comma=true
 %set save                        # Persist to ~/.pytae/config.json
 %export analysis.py              # Standalone runnable .py (prunes errors, rollbacks, previews)
 %export analysis.ipynb           # Jupyter notebook (nbformat v4)
 %exit -s analysis.py             # Export and exit IPython cleanly
+%run -i analysis.py              # Built-in IPython: load vars/DFs silently without %history
+```
+
+```bash
+# 4. Terminal CLI History & Session/Script Replay (`-history`, `-load`)
+pytae -history [-n 50]                  # List recent IPython sessions
+pytae -history 42 [-clean]              # View session #42 (raw or cleaned Python)
+pytae -history -search "penguins"       # Search across all sessions
+pytae -history 42 -o analysis.py        # Export session #42 to .py or .ipynb
+pytae -history 42 -load                 # Replay cleaned session #42 into IPython (%history populated)
+pytae analysis.ipynb -load              # Replay .py or .ipynb into IPython (%history populated)
+pytae -history -db <path> | -set-db <path|reset>  # One-off or persistent history.sqlite path
 ```
 
 👉 Full guide: [**docs/ipython.md**](ipython.md)

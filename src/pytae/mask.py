@@ -94,7 +94,7 @@ def _load_vault(vault_path: Path) -> tuple[dict[str, dict[str, str]], dict[str, 
     elif suffix in (".jsonl", ".ndjson"):
         vdf = pl.read_ndjson(vault_path)
     elif suffix == ".json":
-        with open(vault_path, "r", encoding="utf-8") as f:
+        with open(vault_path, encoding="utf-8") as f:
             data = json.load(f)
             if isinstance(data, dict):
                 col_map: dict[str, dict[str, str]] = {}

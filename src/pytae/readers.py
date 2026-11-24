@@ -174,10 +174,11 @@ class CsvReader:
             try:
                 import polars as pl
 
+                enc: Any = self.encoding or "utf8"
                 lf = pl.scan_csv(
                     self.path,
                     separator=self.sep,
-                    encoding=self.encoding or "utf8",
+                    encoding=enc,
                     truncate_ragged_lines=True,
                     infer_schema_length=0,
                     skip_rows=skip_rows if isinstance(skip_rows, int) else 0,
@@ -348,16 +349,17 @@ class CsvReader:
         import polars as pl
 
         skip_rows = self.reader_kwargs.get("skip_rows", self.reader_kwargs.get("skiprows", 0))
-        skip_kw = {"skip_rows": skip_rows} if isinstance(skip_rows, int) else {}
+        skip_rows_int = skip_rows if isinstance(skip_rows, int) else 0
+        enc: Any = self.encoding or "utf8"
         try:
             lf = pl.scan_csv(
                 self.path,
                 separator=self.sep,
-                encoding=self.encoding or "utf8",
+                encoding=enc,
                 null_values=["", '""', "NA", "NaN", "null", "None", "NULL", "nan", "n/a", "N/A", "<NA>"],
                 truncate_ragged_lines=True,
                 infer_schema_length=infer_schema_length,
-                **skip_kw,
+                skip_rows=skip_rows_int,
             )
             if columns is not None:
                 lf = lf.select(columns)
@@ -1227,19 +1229,20 @@ def read_uri(uri: str | Path, **opts: Any) -> tuple[Path, Any]:
             ) from None
 
         _, db_path_str, target = parse_db_uri(clean)
+        duck_conn: Any
         if db_path_str in (":memory:", ""):
-            conn = duckdb.connect()
+            duck_conn = duckdb.connect()
             db_name = ":memory:"
         else:
             db_path = Path(db_path_str).expanduser()
             if not db_path.exists():
                 raise FileNotFoundError(f"DuckDB database file not found: {db_path}")
-            conn = duckdb.connect(str(db_path), read_only=True)
+            duck_conn = duckdb.connect(str(db_path), read_only=True)
             db_name = db_path.name
 
         try:
             if not target:
-                cursor = conn.cursor()
+                cursor = duck_conn.cursor()
                 tables = [row[0] for row in cursor.execute("SHOW TABLES").fetchall()]
                 if len(tables) == 1:
                     target = tables[0]
@@ -1263,34 +1266,35 @@ def read_uri(uri: str | Path, **opts: Any) -> tuple[Path, Any]:
             if nrows is not None:
                 query = f"{query.rstrip(';')} LIMIT {int(nrows)}"
 
-            if hasattr(conn, "sql"):
-                rel = conn.sql(query)
-            elif hasattr(conn, "query"):
-                rel = conn.query(query)
+            if hasattr(duck_conn, "sql"):
+                rel = duck_conn.sql(query)
+            elif hasattr(duck_conn, "query"):
+                rel = duck_conn.query(query)
             else:
-                rel = conn.execute(query)
+                rel = duck_conn.execute(query)
 
+            df_obj: Any
             if hasattr(rel, "pl"):
-                df = rel.pl()
+                df_obj = rel.pl()
             elif hasattr(rel, "arrow"):
                 arrow_obj = rel.arrow()
                 arrow_tbl = arrow_obj.read_all() if hasattr(arrow_obj, "read_all") else arrow_obj
-                df = pl.from_arrow(arrow_tbl)
+                df_obj = pl.from_arrow(arrow_tbl)
             elif hasattr(rel, "to_arrow_table"):
-                df = pl.from_arrow(rel.to_arrow_table())
+                df_obj = pl.from_arrow(rel.to_arrow_table())
             elif hasattr(rel, "fetch_arrow_table"):
-                df = pl.from_arrow(rel.fetch_arrow_table())
-            elif hasattr(conn, "fetch_arrow_table"):
-                df = pl.from_arrow(conn.fetch_arrow_table())
+                df_obj = pl.from_arrow(rel.fetch_arrow_table())
+            elif hasattr(duck_conn, "fetch_arrow_table"):
+                df_obj = pl.from_arrow(duck_conn.fetch_arrow_table())
             elif hasattr(rel, "df"):
-                df = pl.from_pandas(rel.df())
+                df_obj = pl.from_pandas(rel.df())
             else:
-                df = pl.from_pandas(conn.df())
-            if not isinstance(df, pl.DataFrame):
-                df = pl.DataFrame(df)
-            return Path(f"duckdb://{db_name}:{tbl_label}"), df
+                df_obj = pl.from_pandas(duck_conn.df())
+            if not isinstance(df_obj, pl.DataFrame):
+                df_obj = pl.DataFrame(df_obj)
+            return Path(f"duckdb://{db_name}:{tbl_label}"), df_obj
         finally:
-            conn.close()
+            duck_conn.close()
 
     if scheme in ("s3", "gcs", "gs"):
         fmt = opts.pop("fmt", opts.pop("format", None))
@@ -1872,7 +1876,7 @@ def read(source: Any, *args: Any, **kwargs: Any) -> Any:
         if first_ext in (".parquet", ".pq"):
             return DataFrame(pl.read_parquet([str(s) for s in norm_list], *args, **kwargs))
         elif first_ext in (".ipc", ".arrow", ".feather"):
-            return DataFrame(pl.read_ipc([str(s) for s in norm_list], *args, **kwargs))
+            return DataFrame(pl.read_ipc([str(s) for s in norm_list], *args, **kwargs))  # type: ignore[arg-type]
         else:
             dfs = [read(s, *args, **kwargs) for s in norm_list]
             return DataFrame(pl.concat([d._df for d in dfs]))

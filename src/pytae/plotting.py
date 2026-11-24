@@ -172,7 +172,7 @@ class Plotter:
         if df is not None and not isinstance(df, (str, list, tuple)):
             if hasattr(df, "_to_pandas_internal"):
                 df = df._to_pandas_internal()
-            elif hasattr(df, "to") and callable(getattr(df, "to")):
+            elif hasattr(df, "to") and callable(df.to):
                 df = df.to("pandas")
             elif hasattr(df, "to_pandas"):
                 df = df.to_pandas()
@@ -213,7 +213,7 @@ class Plotter:
         if df is not None and not isinstance(df, (str, list, tuple)):
             if hasattr(df, "_to_pandas_internal"):
                 df = df._to_pandas_internal()
-            elif hasattr(df, "to") and callable(getattr(df, "to")):
+            elif hasattr(df, "to") and callable(df.to):
                 df = df.to("pandas")
             elif hasattr(df, "to_pandas"):
                 df = df.to_pandas()
@@ -231,9 +231,9 @@ class Plotter:
             labels = string.ascii_uppercase
             grid = []
             idx = 0
-            for r in range(nrows):
+            for _r in range(nrows):
                 row = []
-                for c in range(ncols):
+                for _c in range(ncols):
                     label = labels[idx] if idx < len(labels) else f"ax_{idx}"
                     row.append(label)
                     idx += 1
@@ -279,7 +279,7 @@ class Plotter:
         if df is not None and not isinstance(df, (str, list, tuple)):
             if hasattr(df, "_to_pandas_internal"):
                 df = df._to_pandas_internal()
-            elif hasattr(df, "to") and callable(getattr(df, "to")):
+            elif hasattr(df, "to") and callable(df.to):
                 df = df.to("pandas")
             elif hasattr(df, "to_pandas"):
                 df = df.to_pandas()
@@ -450,7 +450,8 @@ class Plotter:
                     self.axd[ax_key] = right_ax
                 else:
                     warnings.warn(
-                        f"Axis '{ax_key}' already exists in axd; using existing axis instead of creating new one."
+                        f"Axis '{ax_key}' already exists in axd; using existing axis instead of creating new one.",
+                        stacklevel=2,
                     )
                     right_ax = self.axd[ax_key]
             else:
@@ -478,7 +479,7 @@ class Plotter:
         spec = _KIND_SPECS[spec_key]
         for key, message in spec["unsupported"].items():
             if key in self.last_kwargs:
-                warnings.warn(message)
+                warnings.warn(message, stacklevel=2)
         return self._filter_plot_kwargs(spec["strip"])
 
     def _apply_axis_labels(self, ax):
@@ -507,7 +508,7 @@ class Plotter:
         try:
             cmap = plt.get_cmap(palette)
         except (ValueError, AttributeError):
-            warnings.warn(f"Unknown palette '{palette}', falling back to 'tab10'.")
+            warnings.warn(f"Unknown palette '{palette}', falling back to 'tab10'.", stacklevel=2)
             cmap = plt.get_cmap("tab10")
 
         n = len(categories)
@@ -945,7 +946,7 @@ class Plotter:
             try:
                 data.to_clipboard(index=False)
             except Exception as exc:
-                warnings.warn(f"Plotter: failed to copy data to clipboard: {exc}")
+                warnings.warn(f"Plotter: failed to copy data to clipboard: {exc}", stacklevel=2)
 
     def _collect_handles_and_legends(self):
         """

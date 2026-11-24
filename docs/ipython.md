@@ -51,7 +51,7 @@ heavy = %pt df -filter "body_mass_g > 4000" -arrange "body_mass_g desc"
 
 ### 1. `%pt` and `%%pt` — Full In-Process CLI Pipelines (Immutable)
 
-`%pt` executes Pytae's full CLI grammar (`-filter`, `-mutate`, `-select`, `-by`, `-agg`, `-pivot`, `-long`, `-wide`, `-join`, `-concat`, `-outliers`, `-dups`, `-distinct`, `-mask`, `-freq`, `-hist`, `-bar`, `-scatter`, `-corr`, `-plot`, `-browse`, `-diff`, `-meta`, `-schema`, `-glimpse`, `-sql`, `-o`, etc.) **in-process** with zero subprocess overhead.
+`%pt` executes Pytae's full CLI grammar (`-filter`, `-mutate`, `-select`, `-by`, `-agg`, `-pivot`, `-long`, `-wide`, `-join`, `-concat`, `-outliers`, `-dups`, `-distinct`, `-mask`, `-alias`, `-freq`, `-hist`, `-bar`, `-scatter`, `-corr`, `-plot`, `-browse`, `-diff`, `-meta`, `-schema`, `-glimpse`, `-sql`, `-doc`, `-cheatsheet`, `-o`, etc.) **in-process** with zero subprocess overhead.
 
 - **Immutable by default**: `%pt` never mutates an existing DataFrame in-place. Assign explicitly with `res = %pt ...` or `%%pt res`.
 - **Works on RAM DataFrames, disk paths, and `clip`**: Pass a variable name (`df`), a file path (`sales.parquet`), `sample:penguins`, or `clip`.
@@ -76,10 +76,15 @@ recent = %pt sales.parquet -filter "year == 2025" -select "id,region,amount"
 
 # SQL across all DataFrames in IPython's namespace
 top = %pt -sql "SELECT island, COUNT(*) AS n, AVG(body_mass_g) AS avg_mass FROM df GROUP BY island"
+
+# In-memory multi-table joins, concats, docs & TUI browser
+joined = %pt orders -join "right=customers, on=cust_id, how=left"
+%pt -doc "diff on key"
+%pt df -browse
 ```
 
-#### Cell magic (`%%pt`)
-Write readable multi-line pipelines without `\` continuations. Put an optional target variable name on the `%%pt` header line:
+#### Cell magic (`%%pt` and `%%pt [var] -sql`)
+Write readable multi-line pipelines without `\` continuations. Put an optional target variable name on the `%%pt` header line, or add `-sql` for full multi-line SQL across all live DataFrames (without colliding with `jupysql`'s `%%sql`):
 
 ```python
 %%pt summary
@@ -88,6 +93,17 @@ df
 -filter "species != 'Gentoo'"
 -by "species, island"
 -agg "avg_mass = mean(body_mass_g), n = count()"
+```
+
+```sql
+%%pt top_customers -sql
+SELECT c.name, SUM(o.amount) AS total
+FROM orders o
+JOIN customers c ON o.cust_id = c.id
+WHERE o.amount > @min_amt
+GROUP BY c.name
+ORDER BY total DESC
+```
 -arrange "avg_mass desc"
 ```
 
@@ -141,18 +157,34 @@ Checkpoints always capture the **entire workbench state** — every DataFrame (`
 
 ---
 
-### 4. `%free` — Delete DataFrames & Reclaim OS RAM
+### 4. `%free` — Delete DataFrames & Variables and Reclaim OS RAM
 
 In IPython, plain `del df` often fails to free RAM because IPython's output cache (`Out[N]`, `_`, `_N`) still holds strong references to previously displayed DataFrames, and OS allocators retain freed pages.
 
-`%free` deletes the variable(s), **scrubs all hidden references from `Out` / `_`**, runs `gc.collect()`, trims the OS working set, and reports the RSS change:
+`%free` deletes the target DataFrame(s) and/or user variable(s), **scrubs all hidden references from `Out` / `_`**, runs `gc.collect()`, trims the OS working set, and reports the RSS change — **while always keeping your imports (`pt`, `pd`, `pl`, `np`) and function/class definitions intact**:
 
 ```python
 %free big_df             # Delete `big_df`, scrub Out/_ cache, trim OS RSS
-%free df1 df2            # Delete multiple DataFrames + reclaim RAM
-%free *                  # Delete all tracked DataFrames + reclaim RAM
+%free df1 x              # Delete specific DataFrame(s) or variable(s)
+%free -df                # Delete all DataFrames (keeps user vars, imports, functions)
+%free -vars              # Delete all user variables (keeps DataFrames, imports, functions)
+%free *                  # Delete all DataFrames AND user variables (keeps imports & functions)
 %free                    # Keep named variables; scrub stale Out/_ DataFrame refs + trim RAM
 ```
+
+#### Cleanup Quick Reference (`%free` vs. `%restore` vs. native `%reset`)
+
+Day to day, you only need **`%free`** (delete & reclaim RAM) and **`%restore`** (undo to a checkpoint):
+
+| Command | Source | Removes DFs? | Removes User Vars? | Keeps Imports (`pt`, `pd`)? | Scrubs `Out`/`_` & Trims OS RAM? |
+|---|---|---|---|---|---|
+| `%free df1 x` | **Pytae** | Target(s) | Target(s) | Yes | **Yes** |
+| `%free -df` | **Pytae** | **All** | No | Yes | **Yes** |
+| `%free -vars` | **Pytae** | No | **All** | Yes | **Yes** |
+| `%free *` | **Pytae** | **All** | **All** | Yes | **Yes** |
+| `%free` *(bare)* | **Pytae** | No | No | Yes | **Yes** |
+| `%restore [cp]` | **Pytae** | Reverts to checkpoint | Reverts to checkpoint | Yes | **Yes** |
+| `%reset -f` | Native IPython | **All** | **All** | **No** *(wipes `pt`, `pd`)* | Clears `Out`, no OS trim |
 
 ---
 
@@ -188,15 +220,39 @@ What `%export` automatically cleans up:
 - **Workbench & inspection noise** (`%status`, `%checkpoint`, `%restore`, `%free`, `%set`, `%exit`, bare `df`, unassigned `df.head()`, unassigned `%pt df -head`)
 - **Standalone Python rewrite** (for `.py`): converts `df = %pt sample:penguins` → `df = pt.sample('penguins')` and `res = %pt ...` → `res = pt.eval_cli(..., locals())` so `python analysis.py` runs out of the box.
 
-#### Post-Hoc CLI Export from IPython's SQLite History
-Forgot to run `%export` or IPython closed unexpectedly? Export any past IPython session straight from `~/.ipython/profile_default/history.sqlite` with the exact same cleaner:
+#### CLI History: Inspect, Search, Export & Reload Past Sessions
+Forgot to run `%export`, want to look up what you ran yesterday, or resume a past session? `pytae -history` reads `~/.ipython/profile_default/history.sqlite` directly:
 
 ```bash
-pytae -export                  # List recent IPython sessions (ID, timestamp, preview)
-pytae -export -o code.py       # Export the latest session to standalone Python
-pytae -export 42 -o code.py    # Export session #42
-pytae -export ~1 -o nb.ipynb   # Export latest session (~2 for two ago) to Jupyter notebook
+pytae -history                           # List last 25 IPython sessions (ID, timestamp, cmds, preview)
+pytae -history -n 50                     # List last 50 sessions
+pytae -history 42                        # View raw cells of session #42
+pytae -history ~1                        # View latest session (~2 for two ago)
+pytae -history 42 -clean                 # Print cleaned/pruned Python to stdout
+pytae -history -search "penguins"        # Search across all sessions
+pytae -history 42 -o code.py             # Export session #42 to standalone Python
+pytae -history ~1 -o nb.ipynb            # Export latest session to Jupyter notebook
+pytae -history 42 -load                  # Replay cleaned session #42 into IPython (populates %history)
+pytae code.py -load                      # Replay a .py script into IPython (populates %history)
+pytae nb.ipynb -load                     # Replay a .ipynb notebook into IPython (populates %history)
+pytae -history -db ~/alt/history.sqlite  # One-off history DB path override
+pytae -history -set-db ~/alt/history.sqlite  # Persist custom history DB path in ~/.pytae/config.json
+pytae -history -set-db reset             # Reset history DB path back to IPython default
 ```
+
+> **Tip (`-load` vs. IPython's built-in `%run`):**
+> - Use **`pytae analysis.py -load`** / **`pytae analysis.ipynb -load`** (or `pytae -history 42 -load`) when you want each cell replayed into `%history`, ↑ arrow, and `%export`.
+> - Inside an already-running IPython or Jupyter session, use IPython's built-in `%run` to execute a `.py` or `.ipynb` file and load its variables/DataFrames directly into your namespace without adding its lines to `%history`:
+>
+> ```python
+> %run script.py                # Run .py in a fresh namespace, then expose its vars/DFs
+> %run -i script.py             # Run .py inside your current namespace (can read existing vars)
+>
+> %run other_notebook.ipynb     # Run all code cells in another .ipynb and expose its vars/DFs
+> %run -i other_notebook.ipynb  # Same, sharing your current namespace
+>
+> %load script.py               # Pull .py code into the cell to inspect/edit before running
+> ```
 
 ---
 

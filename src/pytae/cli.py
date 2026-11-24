@@ -151,6 +151,7 @@ _CLI_FLAGS = {
     "-clean_columns",
     "-mask",
     "-unmask",
+    "-alias",
     "-key",
     "-salt",
     "-vault",
@@ -190,6 +191,8 @@ _CLI_FLAGS = {
     "-doc",
     "-mcp",
     "-check",
+    "-history",
+    "-load",
 }
 
 
@@ -672,6 +675,15 @@ def build_parser(exit_on_error: bool = True) -> argparse.ArgumentParser:
         '\'-unmask "name, ssn" -key "secret"\' or \'-unmask "user" -vault map.parquet\'',
     )
     parser.add_argument(
+        "-alias",
+        dest="alias",
+        action=_OrderedStore,
+        metavar="SPEC",
+        help="replace raw or hashed column values with deterministic human-readable aliases "
+        "(presets: company, name, email, city, alias, code); controlled by -seed; "
+        'e.g. \'-alias "customer=company, rep=name" -seed 42\'',
+    )
+    parser.add_argument(
         "-key",
         dest="key",
         default=None,
@@ -1015,10 +1027,26 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write("pytae error: '-save' is not a CLI option; use '-o <file>' or '%export' in IPython.\n")
         return 1
 
-    if raw_argv and raw_argv[0] in ("-export", "--export"):
-        from pytae.workbench import run_cli_export
+    if raw_argv and raw_argv[0] in ("-history", "--history"):
+        from pytae.workbench import run_cli_history
 
-        return run_cli_export(raw_argv[1:])
+        return run_cli_history(raw_argv[1:])
+
+    if len(raw_argv) == 2 and raw_argv[1] in ("-load", "--load") and not raw_argv[0].startswith("-"):
+        from pytae.workbench import run_cli_load
+
+        return run_cli_load(raw_argv[0])
+
+    if raw_argv and raw_argv[0] in ("-load", "--load"):
+        parser = build_parser()
+        parser.error(
+            "put the target before '-load' (e.g. 'pytae analysis.py -load', 'pytae analysis.ipynb -load', "
+            "or 'pytae -history <id> -load')."
+        )
+
+    if raw_argv and raw_argv[0] in ("-export", "--export"):
+        parser = build_parser()
+        parser.error("'-export' has been removed; use 'pytae -history [id|~1] -o <out.py|out.ipynb>' instead.")
 
     if len(raw_argv) == 1 and raw_argv[0].lower().endswith(".py"):
         sys.stderr.write(f"pytae error: '{raw_argv[0]}' is a Python script; run with 'python {raw_argv[0]}'.\n")
@@ -1220,6 +1248,7 @@ def main(argv: list[str] | None = None) -> int:
             args.clean_columns is not None,
             args.mask is not None,
             args.unmask is not None,
+            args.alias is not None,
             args.assert_specs,
             args.explode,
             args.join,
@@ -1260,6 +1289,7 @@ def main(argv: list[str] | None = None) -> int:
             args.clean_columns is not None,
             args.mask is not None,
             args.unmask is not None,
+            args.alias is not None,
             args.assert_specs,
             args.explode,
             args.join,

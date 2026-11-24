@@ -5,9 +5,9 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import pandas as pd
 
@@ -125,7 +125,7 @@ def _split_width_arg(flag: str, arg: str | None) -> tuple[str | None, int]:
         try:
             return c_part.strip(), int(w_part.strip())
         except ValueError:
-            raise SystemExit(f"{flag}: invalid width='{w_part.strip()}'; expected positive integer")
+            raise SystemExit(f"{flag}: invalid width='{w_part.strip()}'; expected positive integer") from None
     return arg, width
 
 
@@ -133,9 +133,9 @@ def _run_viz_op(flag: str, func: Any, *args: Any, **kwargs: Any) -> Any:
     try:
         return func(*args, **kwargs)
     except KeyError as exc:
-        raise SystemExit(str(exc))
+        raise SystemExit(str(exc)) from None
     except ValueError as exc:
-        raise SystemExit(f"{flag}: {exc}")
+        raise SystemExit(f"{flag}: {exc}") from None
 
 
 def _compute_freq(source_df: Any, col: str | None, dropna: bool) -> Any:
@@ -575,7 +575,7 @@ def _compute_diff(
     elif hasattr(right_target, "_to_pandas_internal"):
         right_df = right_target._to_pandas_internal()
         right_name = getattr(right_target, "_name", "<right>")
-    elif hasattr(right_target, "to") and callable(getattr(right_target, "to")):
+    elif hasattr(right_target, "to") and callable(right_target.to):
         right_df = right_target.to("pandas")
         right_name = getattr(right_target, "_name", "<right>")
     elif hasattr(right_target, "to_pandas"):
@@ -1085,6 +1085,11 @@ def _process_path(
             )
     else:
         pipeline = _Pipeline(frames=frames)
+        mem_df = getattr(args, "_memory_df", None)
+        if mem_df is not None:
+            import polars as pl
+
+            pipeline._pldf = mem_df.collect() if isinstance(mem_df, pl.LazyFrame) else mem_df
 
     out_target = str(args.output).strip() if args.output is not None else None
     image_exts = (".png", ".svg", ".pdf", ".jpg", ".jpeg", ".webp", ".tif", ".tiff")
@@ -1211,6 +1216,8 @@ def _process_path(
                 return _fail(parser, batch, "-join requires multiple input tables (e.g. pytae t1 t2 -join ...)")
             left_name = spec.get("left")
             right_name = spec.get("right")
+            if not left_name and (pipeline._pldf is not None or pipeline._df is not None):
+                left_name = "data"
             if not left_name or not right_name:
                 frame_keys = list(frames.keys())
                 if len(frame_keys) >= 2:
@@ -1398,9 +1405,10 @@ def _process_path(
         elif op == "browse":
             from pytae.tui_browser import browse_dataframe
 
+            browse_title = getattr(args, "_table_name", None) or (str(path) if path is not None else "pipeline")
             browse_dataframe(
                 pipeline.current_frame(),
-                title=str(path) if path is not None else "pipeline",
+                title=browse_title,
                 output_fn=lambda msg: _output_text(msg, args),
             )
         elif op == "glimpse":
@@ -1679,6 +1687,12 @@ def _process_path(
             if err:
                 return _fail(parser, batch, err)
             emit_frame(idx)
+        elif op == "alias":
+            alias_val = _next_op_val("alias", getattr(args, "alias", None))
+            err = pipeline.apply_alias(alias_val, seed=args.seed)
+            if err:
+                return _fail(parser, batch, err)
+            emit_frame(idx)
         elif op == "long":
             long_val = _next_op_val("long", args.long)
             long_kwargs = parse_long_arg(long_val)
@@ -1786,17 +1800,22 @@ def _process_path(
                 p.save(dest_path)
                 print(f"Saved plot to {dest_path}")
             elif should_print(idx):
+                in_repl = bool(getattr(args, "in_repl", False))
+                if in_repl:
+                    args._result_fig = p.fig
                 bk = matplotlib.get_backend().lower()
                 if bk in ("agg", "template"):
-                    print(
-                        "Note: Matplotlib is using the headless 'Agg' backend, so no interactive GUI window can be shown.\n"
-                        "To display interactive plot windows on Linux:\n"
-                        "  - Install Tkinter: sudo apt install python3-tk (or sudo dnf install python3-tkinter)\n"
-                        "  - Or install PyQt: pip install PyQt6\n"
-                        "  - Or save the plot directly to an image: -o plot.png",
-                        file=sys.stderr,
-                    )
-                p.show()
+                    if not in_repl:
+                        print(
+                            "Note: Matplotlib is using the headless 'Agg' backend, so no interactive GUI window can be shown.\n"
+                            "To display interactive plot windows on Linux:\n"
+                            "  - Install Tkinter: sudo apt install python3-tk (or sudo dnf install python3-tkinter)\n"
+                            "  - Or install PyQt: pip install PyQt6\n"
+                            "  - Or save the plot directly to an image: -o plot.png",
+                            file=sys.stderr,
+                        )
+                else:
+                    p.show()
 
     if current_by is not None:
         return _fail(parser, batch, "-by requires -agg, -mutate, -head, -tail, -count, or -sample to follow it")
@@ -1898,8 +1917,8 @@ def _process_path(
             and isinstance(pipeline._reader._df, pl.LazyFrame)
         )
         if is_lazy_source and not getattr(args, "collect", False):
-            setattr(args, "_result_frame", pipeline.polars_lazy_frame())
+            args._result_frame = pipeline.polars_lazy_frame()
         else:
-            setattr(args, "_result_frame", pipeline.current_frame())
-    setattr(args, "_result_pipeline", pipeline)
+            args._result_frame = pipeline.current_frame()
+    args._result_pipeline = pipeline
     return False
